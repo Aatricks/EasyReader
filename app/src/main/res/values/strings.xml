@@ -1,0 +1,63 @@
+<resources>
+    <!-- App Name -->
+    <string name="app_name">Novel Scraper</string>
+    
+    <!-- Main Screen -->
+    <string name="open_library">Open Library</string>
+    <string name="loading_content">Loading content…</string>
+    
+    <!-- Error States -->
+    <string name="error_loading_content">Error loading content</string>
+    <string name="error_icon_description">Error</string>
+    <string name="retry">Retry</string>
+    <string name="unsupported_file_type">Unsupported file type</string>
+    <string name="storage_permission_required">Storage permission is required to access files</string>
+    
+    <!-- Empty States -->
+    <string name="no_content_available">No content available</string>
+    <string name="empty_icon_description">Empty</string>
+    <string name="add_novel_from_library">Add a novel from the library</string>
+    <string name="library_empty">Library is empty</string>
+    <string name="add_first_novel_hint">Add your first novel using the URL field above</string>
+    
+    <!-- Library Drawer -->
+    <string name="library_title">Library</string>
+    <string name="novel_url_label">Novel URL</string>
+    <string name="novel_url_placeholder">Enter novel URL…</string>
+    <string name="add_button">Add</string>
+    <string name="add_icon_description">Add</string>
+    <string name="download_button">Download</string>
+    <string name="download_icon_description">Download</string>
+    <string name="delete_button">Delete (%1$d)</string>
+    <string name="delete_icon_description">Delete</string>
+    
+    <!-- Library Sections -->
+    <string name="section_currently_reading">Currently Reading</string>
+    <string name="section_library">Library</string>
+    
+    <!-- Library Item -->
+    <string name="reading_status">READING</string>
+    <string name="selected_icon_description">Selected</string>
+    <string name="chapter_progress">Chapter %1$d / %2$d</string>
+    <string name="progress_percentage">%1$d%%</string>
+    <string name="downloading_status">Downloading…</string>
+    <string name="loaded_file_toast">Loaded: %1$s</string>
+    
+    <!-- Content Renderer -->
+    <string name="novel_image_description">Novel image</string>
+    <string name="loading_image">Loading image…</string>
+    <string name="failed_load_image">Failed to load image</string>
+    <string name="failed_load_image_description">Failed to load image</string>
+    
+    <!-- File Types -->
+    <string name="content_type_web">Web</string>
+    <string name="content_type_pdf">PDF</string>
+    <string name="content_type_html">HTML</string>
+    <string name="content_type_epub">EPUB</string>
+    
+    <!-- Accessibility -->
+    <string name="empty_library_icon_description">Empty Library</string>
+    
+    <!-- Misc -->
+    <string name="unknown_title">Unknown</string>
+</resources>
