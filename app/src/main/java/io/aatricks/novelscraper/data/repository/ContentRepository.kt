@@ -4,6 +4,7 @@ import android.content.Context
 import com.itextpdf.kernel.pdf.PdfDocument
 import com.itextpdf.kernel.pdf.PdfReader
 import com.itextpdf.kernel.pdf.canvas.parser.PdfTextExtractor
+import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -50,19 +51,33 @@ class ContentRepository(private val context: Context) {
      */
     suspend fun loadContent(url: String): ContentResult = withContext(Dispatchers.IO) {
         try {
+            // Handle HTTP(S) web URLs
+            if (url.startsWith("http://") || url.startsWith("https://")) {
+                return@withContext loadWebContent(url)
+            }
+
+            // Handle content:// and file:// URIs by checking MIME type where possible
+            if (url.startsWith("content://") || url.startsWith("file://") || url.contains("/storage/")) {
+                try {
+                    val uri = android.net.Uri.parse(url)
+                    val mime = context.contentResolver.getType(uri)
+                    if (mime != null) {
+                        return@withContext when {
+                            mime.contains("pdf") -> loadPdfContent(url)
+                            mime.contains("html") || mime.contains("text") -> loadHtmlFile(url)
+                            else -> ContentResult.Error("Unsupported MIME type: $mime")
+                        }
+                    }
+                } catch (_: Exception) {
+                    // fall through to extension-based detection
+                }
+            }
+
+            // Fallback to extension-based detection for file paths
             when {
-                url.startsWith("http://") || url.startsWith("https://") -> {
-                    loadWebContent(url)
-                }
-                url.endsWith(".pdf", ignoreCase = true) -> {
-                    loadPdfContent(url)
-                }
-                url.endsWith(".html", ignoreCase = true) || url.endsWith(".htm", ignoreCase = true) -> {
-                    loadHtmlFile(url)
-                }
-                else -> {
-                    ContentResult.Error("Unsupported file type")
-                }
+                url.endsWith(".pdf", ignoreCase = true) -> loadPdfContent(url)
+                url.endsWith(".html", ignoreCase = true) || url.endsWith(".htm", ignoreCase = true) -> loadHtmlFile(url)
+                else -> ContentResult.Error("Unsupported file type")
             }
         } catch (e: Exception) {
             ContentResult.Error("Failed to load content: ${e.message}", e)
@@ -113,12 +128,21 @@ class ContentRepository(private val context: Context) {
      */
     private suspend fun loadHtmlFile(filePath: String): ContentResult = withContext(Dispatchers.IO) {
         try {
-            val file = File(filePath)
-            if (!file.exists()) {
-                return@withContext ContentResult.Error("File not found: $filePath")
+            val document = if (filePath.startsWith("content://") || filePath.startsWith("file://")) {
+                val uri = Uri.parse(filePath)
+                context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { reader ->
+                    val html = reader.readText()
+                    Jsoup.parse(html, uri.toString())
+                } ?: return@withContext ContentResult.Error("Unable to read HTML content: $filePath")
+            } else {
+                val file = File(filePath)
+                if (!file.exists()) {
+                    return@withContext ContentResult.Error("File not found: $filePath")
+                }
+
+                Jsoup.parse(file, "UTF-8")
             }
-            
-            val document = Jsoup.parse(file, "UTF-8")
+
             parseHtmlDocument(document, filePath)
         } catch (e: Exception) {
             ContentResult.Error("Failed to load HTML file: ${e.message}", e)
@@ -179,15 +203,24 @@ class ContentRepository(private val context: Context) {
      */
     private suspend fun loadPdfContent(filePath: String): ContentResult = withContext(Dispatchers.IO) {
         try {
-            val file = File(filePath)
-            if (!file.exists()) {
-                return@withContext ContentResult.Error("PDF file not found: $filePath")
-            }
-            
             val paragraphs = mutableListOf<String>()
-            val pdfReader = PdfReader(file)
-            val pdfDocument = PdfDocument(pdfReader)
-            
+
+            // Support content:// URIs as well as regular file paths
+            val pdfDocument = if (filePath.startsWith("content://")) {
+                val uri = Uri.parse(filePath)
+                context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    val pdfReader = PdfReader(inputStream)
+                    PdfDocument(pdfReader)
+                } ?: return@withContext ContentResult.Error("PDF file not found: $filePath")
+            } else {
+                val file = File(filePath)
+                if (!file.exists()) {
+                    return@withContext ContentResult.Error("PDF file not found: $filePath")
+                }
+                val pdfReader = PdfReader(file)
+                PdfDocument(pdfReader)
+            }
+
             try {
                 for (pageNum in 1..pdfDocument.numberOfPages) {
                     val pageText = PdfTextExtractor.getTextFromPage(pdfDocument.getPage(pageNum))
@@ -213,7 +246,15 @@ class ContentRepository(private val context: Context) {
             }
             
             // Try to extract title from filename
-            val title = file.nameWithoutExtension
+            val title = try {
+                if (filePath.startsWith("content://")) {
+                    Uri.parse(filePath).lastPathSegment ?: "PDF Document"
+                } else {
+                    File(filePath).nameWithoutExtension
+                }
+            } catch (e: Exception) {
+                "PDF Document"
+            }
             
             ContentResult.Success(
                 paragraphs = paragraphs,
@@ -291,6 +332,58 @@ class ContentRepository(private val context: Context) {
      */
     fun isCached(url: String): Boolean {
         return getCachedFile(url).exists()
+    }
+
+    /**
+     * Fetch the title for a web page without fully parsing its content into paragraphs.
+     * Returns the title string or null if it cannot be determined.
+     */
+    suspend fun fetchTitle(url: String): String? = withContext(Dispatchers.IO) {
+        try {
+            if (!url.startsWith("http")) return@withContext null
+            // If cached, parse cached file
+            val cached = getCachedFile(url)
+            val document = if (cached.exists()) {
+                Jsoup.parse(cached, "UTF-8", url)
+            } else {
+                val html = downloadHtml(url)
+                cached.writeText(html)
+                Jsoup.parse(html, url)
+            }
+
+            document.title().takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Prefetch and cache a web URL (download HTML to cache) or cache a file path.
+     */
+    suspend fun prefetch(url: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if (url.startsWith("http")) {
+                val html = downloadHtml(url)
+                getCachedFile(url).writeText(html)
+                true
+            } else {
+                // Local files/content URIs don't need prefetch but validate existence
+                val exists = if (url.startsWith("content://") || url.startsWith("file://")) {
+                    try {
+                        val uri = Uri.parse(url)
+                        context.contentResolver.openInputStream(uri)?.close()
+                        true
+                    } catch (e: Exception) {
+                        false
+                    }
+                } else {
+                    File(url).exists()
+                }
+                exists
+            }
+        } catch (e: Exception) {
+            false
+        }
     }
     
     /**

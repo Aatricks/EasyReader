@@ -6,11 +6,14 @@ import io.aatricks.novelscraper.data.model.ChapterContent
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 /**
  * ViewModel for the reader screen.
@@ -27,6 +30,15 @@ class ReaderViewModel(
 
     // Current library item ID being read
     private var currentLibraryItemId: String? = null
+    // Throttle auto navigation to avoid repeated triggers
+    private var lastAutoNavigateAt: Long = 0L
+    // Suppress auto navigation when restoring a saved position until user interacts
+    private var suppressAutoNavUntilUserInteraction: Boolean = false
+    private var restoredScrollPercent: Float = 0f
+    // Track last raw scroll offset (pixels) to detect actual user gesture direction
+    private var lastRawScrollOffset: Float = -1f
+    // Debounce progress updates to reduce jitter
+    private var progressUpdateJob: Job? = null
 
     /**
      * Data class representing the reader UI state
@@ -51,6 +63,22 @@ class ReaderViewModel(
     fun loadContent(url: String, libraryItemId: String? = null) {
         viewModelScope.launch {
             try {
+                // Save previous progress for the current library item before loading next
+                val prevItemId = currentLibraryItemId
+                val prevContent = _uiState.value.content
+                val prevProgress = _uiState.value.scrollProgress
+                if (prevItemId != null && prevContent != null) {
+                    try {
+                        libraryRepository.updateProgress(
+                            itemId = prevItemId,
+                            currentChapter = prevContent.title ?: prevContent.url.substringAfterLast('/'),
+                            progress = _uiState.value.scrollProgress,
+                            currentChapterUrl = prevContent.url,
+                            lastScrollProgress = _uiState.value.scrollPosition.toInt()
+                        )
+                    } catch (_: Exception) {}
+                }
+
                 _uiState.update { it.copy(isLoading = true, error = null) }
                 currentLibraryItemId = libraryItemId
 
@@ -77,9 +105,21 @@ class ReaderViewModel(
                             )
                         }
 
-                        // Mark as currently reading in library
+                        // Mark as currently reading in library and restore saved progress if available
                         libraryItemId?.let {
                             libraryRepository.markAsCurrentlyReading(it)
+                            val item = libraryRepository.getItemById(it)
+                            item?.let { libItem ->
+                                // Restore last known saved chapter percent/position for this library item
+                                restoredScrollPercent = libItem.lastScrollPosition.toFloat()
+                                suppressAutoNavUntilUserInteraction = true
+                                _uiState.update { state ->
+                                    state.copy(
+                                        scrollPosition = restoredScrollPercent,
+                                        scrollProgress = libItem.progress
+                                    )
+                                }
+                            }
                         }
                     }
                     is ContentRepository.ContentResult.Error -> {
@@ -133,32 +173,81 @@ class ReaderViewModel(
         maxScrollOffset: Float,
         viewportHeight: Float
     ) {
-        val quarterScreenThreshold = viewportHeight / 4f
-        val hasReached = scrollOffset >= quarterScreenThreshold
+        // Cancel previous update and schedule new one with debounce
+        progressUpdateJob?.cancel()
+        progressUpdateJob = viewModelScope.launch {
+            delay(100) // 100ms debounce to reduce jitter
+            performScrollUpdate(scrollOffset, maxScrollOffset, viewportHeight)
+        }
+    }
 
-        // Determine scroll direction
-        val isScrollingDown = scrollOffset > _uiState.value.scrollPosition
-
-        // Calculate progress percentage
-        val progress = if (maxScrollOffset > 0) {
-            ((scrollOffset / maxScrollOffset) * 100).coerceIn(0f, 100f).toInt()
+    private fun performScrollUpdate(
+        scrollOffset: Float,
+        maxScrollOffset: Float,
+        viewportHeight: Float
+    ) {
+        // Determine raw delta to detect true user gesture direction
+        val deltaRaw = if (lastRawScrollOffset < 0f) {
+            0f
         } else {
-            0
+            scrollOffset - lastRawScrollOffset
         }
 
+        // Determine scroll direction from raw delta
+        val isScrollingDown = deltaRaw > 0f
+
+        // Calculate progress percentage as normalized percent (0-100)
+        val progress = if (maxScrollOffset > 0) {
+            ((scrollOffset / maxScrollOffset) * 100f).coerceIn(0f, 100f)
+        } else {
+            0f
+        }
+
+        // hasReachedQuarterScreen interpreted as percent >= 25%
+        val hasReached = progress >= 25f
+
+        // Update UI state: use scrollPosition as percent (Float), scrollProgress as Int
+        val progressInt = progress.toInt()
         _uiState.update {
             it.copy(
-                scrollPosition = scrollOffset,
-                scrollProgress = progress,
+                scrollPosition = progress,
+                scrollProgress = progressInt,
                 isScrollingDown = isScrollingDown,
                 hasReachedQuarterScreen = hasReached
             )
         }
 
-        // Update reading progress in library when reaching milestones
-        if (progress > 0 && progress % 10 == 0) {
-            updateReadingProgress(progress)
+        // Update reading progress in library when reaching milestones (every 2%)
+        if (progressInt > 0 && progressInt % 2 == 0) {
+            updateReadingProgress(progressInt)
         }
+
+        // Auto-navigation logic: suppressed until user moves sufficiently away from restored percent
+        val now = System.currentTimeMillis()
+        if (suppressAutoNavUntilUserInteraction) {
+            // If user moved more than 2 percentage points away, clear suppression
+            if (abs(progress - restoredScrollPercent) > 2f) {
+                suppressAutoNavUntilUserInteraction = false
+            } else {
+                // still suppressed; update lastRawScrollOffset and do not auto-navigate
+                lastRawScrollOffset = scrollOffset
+                return
+            }
+        }
+
+        // If user reached bottom (progress >= 95%) and scrolling down, try to auto-navigate to next chapter
+        if (isScrollingDown && progressInt >= 95 && now - lastAutoNavigateAt > 3000) {
+            lastAutoNavigateAt = now
+            val content = _uiState.value.content
+            if (content != null && content.paragraphs.isNotEmpty() && content.hasNextChapter()) {
+                navigateToNextChapter()
+            }
+        }
+
+        // Previous-chapter auto-navigation disabled: previous chapters open only via explicit user actions
+
+        // Update last raw scroll offset for next direction calculation
+        lastRawScrollOffset = scrollOffset
     }
 
     /**
@@ -169,20 +258,55 @@ class ReaderViewModel(
         viewModelScope.launch {
             try {
                 currentLibraryItemId?.let { itemId ->
-                    val currentChapter = _uiState.value.content?.title
+                    val contentUrl = _uiState.value.content?.url
+                    val currentChapter = extractChapterLabelFromUrl(contentUrl ?: "") ?: _uiState.value.content?.title
                         ?: _uiState.value.content?.url?.substringAfterLast("/")
                         ?: "Unknown Chapter"
-                    
+                    val currentChapterUrl = _uiState.value.content?.url ?: ""
+                    val lastScroll = _uiState.value.scrollPosition.toInt()
+
                     libraryRepository.updateProgress(
                         itemId = itemId,
                         currentChapter = currentChapter,
-                        progress = progress
+                        progress = progress,
+                        currentChapterUrl = currentChapterUrl,
+                        lastScrollProgress = lastScroll
                     )
                 }
             } catch (e: Exception) {
                 // Silently fail progress updates to not interrupt reading
             }
         }
+    }
+
+    /**
+     * Extract chapter label from title
+     */
+    private fun extractChapterLabel(title: String?): String? {
+        if (title == null) return null
+        val regex = Regex("(chapter|ch|ch\\.)\\s*(\\d+)", RegexOption.IGNORE_CASE)
+        val match = regex.find(title)
+        return match?.let { "Chapter ${it.groupValues[2]}" }
+    }
+
+    /**
+     * Extract chapter label from URL
+     */
+    private fun extractChapterLabelFromUrl(url: String): String? {
+        val patterns = listOf(
+            Regex("chapter\\s*(\\d+)", RegexOption.IGNORE_CASE),
+            Regex("ch(?:apter)?\\D*(\\d+)", RegexOption.IGNORE_CASE),
+            Regex("/(\\d+)(?:/|$)"),
+            Regex("-(\\d+)(?:\\D|$)")
+        )
+        for (r in patterns) {
+            val m = r.find(url)
+            if (m != null && m.groupValues.size >= 2) {
+                val num = m.groupValues[1]
+                return "Chapter $num"
+            }
+        }
+        return null
     }
 
     /**

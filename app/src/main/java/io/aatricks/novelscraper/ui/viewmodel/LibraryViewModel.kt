@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.model.LibraryItem
 import io.aatricks.novelscraper.data.repository.LibraryRepository
+import io.aatricks.novelscraper.data.repository.ContentRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,7 +18,8 @@ import kotlinx.coroutines.launch
  * Manages library items, selection mode, filtering, and search.
  */
 class LibraryViewModel(
-    private val libraryRepository: LibraryRepository
+    private val libraryRepository: LibraryRepository,
+    private val contentRepository: ContentRepository? = null
 ) : ViewModel() {
 
     // UI State
@@ -163,11 +165,157 @@ class LibraryViewModel(
     }
 
     /**
+     * Fetch title asynchronously then add item to library. Falls back to URL if title not found.
+     * For WEB content, also try to add next chapters.
+     */
+    fun fetchAndAdd(url: String) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true, error = null) }
+
+                // If item exists, short-circuit
+                val existing = libraryRepository.getItemByUrl(url)
+                if (existing != null) {
+                    _uiState.update { it.copy(isLoading = false, error = "This item already exists in your library") }
+                    return@launch
+                }
+
+                val fetchedTitle = try {
+                    contentRepository?.fetchTitle(url) ?: url
+                } catch (e: Exception) {
+                    url
+                }
+
+                // Normalize base title by removing chapter suffixes like "Chapter 12", "Ch. 12" etc.
+                val normalizedTitle = normalizeBaseTitle(fetchedTitle)
+
+                // Extract chapter label from title or url
+                val chapterLabel = extractChapterLabel(fetchedTitle) ?: extractChapterLabelFromUrl(url) ?: "Chapter 1"
+
+                val addedItem = libraryRepository.addItem(
+                    title = normalizedTitle.trim().ifBlank { url },
+                    url = url.trim(),
+                    contentType = ContentType.WEB,
+                    currentChapter = chapterLabel
+                )
+
+                _uiState.update { it.copy(isLoading = false) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = "Failed to add item: ${e.message}") }
+            }
+        }
+    }
+
+    /**
+     * Prefetch items in library (or selected) to cache HTML content.
+     * For WEB items, also try to add next chapters.
+     */
+    fun prefetchLibrary(selectedOnly: Boolean = false) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                val items = if (selectedOnly) libraryRepository.getSelectedItems() else libraryRepository.libraryItems.value
+                items.forEach { item ->
+                    try {
+                        contentRepository?.prefetch(item.url)
+                        // For WEB items, try to add next chapters
+                        if (item.contentType == ContentType.WEB) {
+                            addNextChapters(item, maxChapters = 10)
+                        }
+                    } catch (_: Exception) {}
+                }
+                _uiState.update { it.copy(isLoading = false) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = "Prefetch failed: ${e.message}") }
+            }
+        }
+    }
+
+    /**
+     * Try to add next chapters for a WEB item by incrementing URL.
+     */
+    private suspend fun addNextChapters(item: LibraryItem, maxChapters: Int) {
+        var currentUrl = item.url
+        val baseTitle = normalizeBaseTitle(item.title)
+        for (i in 1..maxChapters) {
+            try {
+                val nextUrl = contentRepository?.incrementChapterUrl(currentUrl) ?: break
+                if (nextUrl == currentUrl) break // no more chapters
+                // Check if already exists
+                if (libraryRepository.getItemByUrl(nextUrl) != null) break
+                // Fetch title
+                val nextTitle = contentRepository?.fetchTitle(nextUrl) ?: break
+                val normalizedNext = normalizeBaseTitle(nextTitle)
+                // If title matches base, add it
+                if (normalizedNext == baseTitle) {
+                    val chapterLabel = extractChapterLabel(nextTitle) ?: extractChapterLabelFromUrl(nextUrl) ?: "Chapter ${item.currentChapter.toIntOrNull()?.plus(i) ?: (i + 1)}"
+                    libraryRepository.addItem(
+                        title = nextTitle,
+                        url = nextUrl,
+                        contentType = ContentType.WEB,
+                        currentChapter = chapterLabel
+                    )
+                    currentUrl = nextUrl
+                } else {
+                    break // title changed, probably end of series
+                }
+            } catch (_: Exception) {
+                break
+            }
+        }
+    }
+
+    /**
+     * Normalize a fetched title by removing trailing chapter markers
+     */
+    private fun normalizeBaseTitle(title: String?): String {
+        if (title == null) return ""
+        // Remove common chapter markers like "Chapter 12", "Ch. 12", " — Chapter 12"
+        // Use a raw regex with explicit ignore case option
+        val regex = Regex("""(?:[–—\-]\s*)?(?:chapter|ch|ch\.)\s*\d+\b.*$""", RegexOption.IGNORE_CASE)
+        return title.replace(regex, "").trim()
+    }
+
+    /**
+     * Try to extract a human chapter label from a title string
+     */
+    private fun extractChapterLabel(title: String?): String? {
+        if (title == null) return null
+        val regex = Regex("""(chapter|ch|ch\.)\s*(\d+)""", RegexOption.IGNORE_CASE)
+        val match = regex.find(title)
+        return match?.let { "Chapter ${it.groupValues[2]}" }
+    }
+
+    /**
+     * Try to find a numeric chapter in the URL
+     */
+    private fun extractChapterLabelFromUrl(url: String): String? {
+        val patterns = listOf(
+            Regex("""chapter[-_/](\d+)""", RegexOption.IGNORE_CASE),
+            Regex("""ch[-_/]?(\d+)""", RegexOption.IGNORE_CASE),
+            Regex("""(\d+)(?=\.html|\.htm|$)""")
+        )
+        for (p in patterns) {
+            val m = p.find(url)
+            if (m != null) return "Chapter ${m.groupValues[1]}"
+        }
+        return null
+    }
+
+    /**
      * Remove a single item from library
      */
     fun removeItem(itemId: String) {
         viewModelScope.launch {
             try {
+                // Try to clear cached content for this item (best-effort)
+                try {
+                    val item = libraryRepository.getItemById(itemId)
+                    if (item != null) {
+                        contentRepository?.clearCache(item.url)
+                    }
+                } catch (_: Exception) {}
+
                 libraryRepository.removeItem(itemId)
             } catch (e: Exception) {
                 _uiState.update {
@@ -178,23 +326,26 @@ class LibraryViewModel(
     }
 
     /**
-     * Remove selected items from library
+     * Remove all items in a group by base title
      */
-    fun removeSelectedItems() {
+    fun removeGroup(baseTitle: String) {
         viewModelScope.launch {
             try {
-                val selectedIds = libraryRepository.selectedItems.value
-                if (selectedIds.isNotEmpty()) {
-                    val removedCount = libraryRepository.removeItems(selectedIds)
-                    libraryRepository.clearSelection()
-                    
-                    _uiState.update {
-                        it.copy(error = null)
+                val groupItems = uiState.value.groupedItems[baseTitle] ?: emptyList()
+                if (groupItems.isNotEmpty()) {
+                    // Clear cache for each item (best-effort)
+                    groupItems.forEach { item ->
+                        try {
+                            contentRepository?.clearCache(item.url)
+                        } catch (_: Exception) {}
                     }
+
+                    val ids = groupItems.map { it.id }.toSet()
+                    libraryRepository.removeItems(ids)
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(error = "Failed to remove items: ${e.message}")
+                    it.copy(error = "Failed to remove group: ${e.message}")
                 }
             }
         }

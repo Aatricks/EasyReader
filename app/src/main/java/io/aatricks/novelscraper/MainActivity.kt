@@ -94,6 +94,13 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Load last reading item if present
+        val last = libraryRepository.getCurrentlyReading()
+        last?.let { item ->
+            val loadUrl = if (item.currentChapterUrl.isNotBlank()) item.currentChapterUrl else item.url
+            readerViewModel.loadContent(loadUrl, item.id)
+        }
+
         // Handle intent (deep links, file opens)
         handleIntent(intent)
     }
@@ -128,7 +135,7 @@ class MainActivity : ComponentActivity() {
                         ReaderViewModel(contentRepository, libraryRepository) as T
                     }
                     modelClass.isAssignableFrom(LibraryViewModel::class.java) -> {
-                        LibraryViewModel(libraryRepository) as T
+                        LibraryViewModel(libraryRepository, contentRepository) as T
                     }
                     else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
                 }
@@ -186,7 +193,7 @@ class MainActivity : ComponentActivity() {
         libraryViewModel.addItem(
             title = title,
             url = url,
-            contentType = ContentType.Web
+            contentType = ContentType.WEB
         )
 
         // Load content in reader

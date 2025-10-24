@@ -9,8 +9,14 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -93,12 +99,8 @@ fun LibraryDrawerContent(
             Button(
                 onClick = {
                     if (urlInput.isNotBlank()) {
-                        // Use addItem with a default inferred title and web content type
-                        libraryViewModel.addItem(
-                            title = urlInput, // fallback; repository may replace with fetched title
-                            url = urlInput,
-                            contentType = io.aatricks.novelscraper.data.model.ContentType.Web
-                        )
+                        // Fetch title asynchronously and add
+                        libraryViewModel.fetchAndAdd(urlInput)
                         urlInput = ""
                     }
                 },
@@ -118,41 +120,15 @@ fun LibraryDrawerContent(
                 Text("Add", color = Color.White)
             }
             
-            // Download Button (reload/cache placeholder)
+            // Open PDF button
             Button(
-                onClick = { libraryViewModel.reload() },
+                onClick = { onOpenFilePicker() },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF2196F3)
-                )
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF795548))
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Download,
-                    contentDescription = "Download",
-                    modifier = Modifier.size(20.dp)
-                )
+                Icon(imageVector = Icons.Filled.Image, contentDescription = "Open PDF", modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Download", color = Color.White)
-            }
-        }
-        
-        // Delete Selected Button (conditional)
-        if (libraryUiState.isSelectionMode) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Button(
-                onClick = { libraryViewModel.removeSelectedItems() },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFFF5252)
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = "Delete",
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Delete (${libraryUiState.selectedCount})", color = Color.White)
+                Text("Open PDF", color = Color.White)
             }
         }
         
@@ -162,30 +138,182 @@ fun LibraryDrawerContent(
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        // Library Items List
+        // Library Items List (grouped by base title, expandable)
         if (libraryUiState.items.isEmpty()) {
             EmptyLibraryState()
         } else {
-            LibraryItemsList(
-                items = libraryUiState.items,
-                selectedItems = libraryUiState.selectedCount.let { libraryUiState.items.filter { it.isSelected }.map { it.id }.toSet() },
-                currentItemId = libraryUiState.currentlyReading?.id,
-                onItemClick = { item ->
-                    if (libraryUiState.isSelectionMode) {
-                        libraryViewModel.toggleSelection(item.id)
-                    } else {
-                        // Load content in reader
-                        readerViewModel.loadContent(item.url, item.id)
-                        libraryViewModel.markAsCurrentlyReading(item.id)
-                        onCloseDrawer()
+            // Track expanded state per group title
+            val expandedState = remember { mutableStateMapOf<String, Boolean>() }
+
+            val grouped = libraryUiState.groupedItems
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                grouped.forEach { (groupTitle, items) ->
+                    item(key = groupTitle) {
+                        val isExpanded = expandedState[groupTitle] ?: false
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp)),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0D0D0D))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                // Header row: title and current chapter / expand arrow
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Header clickable: open last unfinished/current chapter
+                                    Row(modifier = Modifier.weight(1f)) {
+                                        Column(modifier = Modifier
+                                            .fillMaxWidth()
+                                            .pointerInput(Unit) {
+                                                detectTapGestures(
+                                                    onTap = {
+                                                        // On tap load current/last unfinished chapter
+                                                        val current = items.find { it.isCurrentlyReading }
+                                                            ?: items.maxByOrNull { it.progress }
+                                                            ?: items.first()
+                                                        val loadUrl = if (current.currentChapterUrl.isNotBlank()) current.currentChapterUrl else current.url
+                                                        readerViewModel.loadContent(loadUrl, current.id)
+                                                        libraryViewModel.markAsCurrentlyReading(current.id)
+                                                        onCloseDrawer()
+                                                    },
+                                                    onLongPress = {
+                                                        // On long press, delete the entire group
+                                                        libraryViewModel.removeGroup(groupTitle)
+                                                    }
+                                                )
+                                            }
+                                        ) {
+                                            Text(
+                                                text = groupTitle,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = Color.White
+                                            )
+                                            // Show current/last unfinished chapter label when folded
+                                            if (!isExpanded) {
+                                                val current = items.find { it.isCurrentlyReading }
+                                                    ?: items.maxByOrNull { it.progress }
+                                                    ?: items.first()
+                                                    Text(
+                                                        text = current.currentChapter.ifBlank {
+                                                            extractChapterLabelFromTitle(current.title)
+                                                                ?: extractChapterLabelFromUrl(current.url)
+                                                                ?: "Chapter 1"
+                                                        },
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = Color.Gray
+                                                    )
+                                                // Show progress bar if currently reading
+                                                if (current.isCurrentlyReading) {
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    LinearProgressIndicator(
+                                                        progress = { readerUiState.scrollProgress / 100f },
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        color = Color(0xFF4CAF50),
+                                                        trackColor = Color(0xFF2C2C2C)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    IconButton(onClick = {
+                                        expandedState[groupTitle] = !(expandedState[groupTitle] ?: false)
+                                    }) {
+                                        Icon(
+                                            imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.Filled.KeyboardArrowRight,
+                                            contentDescription = if (isExpanded) "Collapse" else "Expand",
+                                            tint = Color.White
+                                        )
+                                    }
+                                }
+
+                                // Expanded list of chapters
+                                if (isExpanded) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        items.forEach { chapterItem ->
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .pointerInput(Unit) {
+                                                        detectTapGestures(
+                                                            onTap = {
+                                                                val loadUrl = if (chapterItem.currentChapterUrl.isNotBlank()) chapterItem.currentChapterUrl else chapterItem.url
+                                                                readerViewModel.loadContent(loadUrl, chapterItem.id)
+                                                                libraryViewModel.markAsCurrentlyReading(chapterItem.id)
+                                                                onCloseDrawer()
+                                                            },
+                                                            onLongPress = {
+                                                                // On long press, delete this chapter
+                                                                libraryViewModel.removeItem(chapterItem.id)
+                                                            }
+                                                        )
+                                                    }
+                                                    .padding(vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = chapterItem.currentChapter.ifBlank {
+                                                        extractChapterLabelFromTitle(chapterItem.title)
+                                                            ?: extractChapterLabelFromUrl(chapterItem.url)
+                                                            ?: "Chapter 1"
+                                                    },
+                                                    color = Color.White,
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
-                },
-                onItemLongClick = { item ->
-                    libraryViewModel.toggleSelection(item.id)
                 }
-            )
+            }
         }
     }
+}
+
+/**
+ * Try to extract a chapter label from a URL or title string.
+ * Returns a string like "Chapter 12" or null if not found.
+ */
+private fun extractChapterLabelFromUrl(text: String): String? {
+    // common patterns: "chapter 12", "ch12", "/12", "-12"
+    val patterns = listOf(
+        Regex("chapter\\s*(\\d+)", RegexOption.IGNORE_CASE),
+        Regex("ch(?:apter)?\\D*(\\d+)", RegexOption.IGNORE_CASE),
+        Regex("/(\\d+)(?:/|$)"),
+        Regex("-(\\d+)(?:\\D|$)")
+    )
+
+    for (r in patterns) {
+        val m = r.find(text)
+        if (m != null && m.groupValues.size >= 2) {
+            val num = m.groupValues[1]
+            return "Chapter $num"
+        }
+    }
+    return null
+}
+
+/**
+ * Try to extract a chapter label from a title string.
+ * Returns a string like "Chapter 12" or null if not found.
+ */
+private fun extractChapterLabelFromTitle(title: String?): String? {
+    if (title == null) return null
+    val regex = Regex("(chapter|ch|ch\\.)\\s*(\\d+)", RegexOption.IGNORE_CASE)
+    val match = regex.find(title)
+    return match?.let { "Chapter ${it.groupValues[2]}" }
 }
 
 /**

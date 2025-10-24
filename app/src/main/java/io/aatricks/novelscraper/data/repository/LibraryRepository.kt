@@ -106,7 +106,9 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
     suspend fun updateProgress(
         itemId: String,
         currentChapter: String,
-        progress: Int
+        progress: Int,
+        currentChapterUrl: String? = null,
+        lastScrollProgress: Int? = null
     ): Boolean = withContext(Dispatchers.IO) {
         val currentItems = _libraryItems.value.toMutableList()
         val index = currentItems.indexOfFirst { it.id == itemId }
@@ -116,6 +118,8 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
             currentItems[index] = item.copy(
                 currentChapter = currentChapter,
                 progress = progress,
+                currentChapterUrl = currentChapterUrl ?: item.currentChapterUrl,
+                lastScrollPosition = lastScrollProgress ?: item.lastScrollPosition,
                 lastRead = System.currentTimeMillis()
             )
             _libraryItems.value = currentItems
@@ -179,7 +183,20 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
      * Group items by title
      */
     fun getGroupedByTitle(): Map<String, List<LibraryItem>> {
-        return _libraryItems.value.groupBy { it.title }
+        // Normalize titles by removing trailing chapter markers so chapters group under base title
+        // But only for WEB content to avoid mixing PDFs with novels
+        return _libraryItems.value.groupBy { item ->
+            if (item.contentType == ContentType.WEB) {
+                val title = item.title
+                // Remove common chapter markers like "Chapter 12", "Ch. 12", and trailing separators
+                val regex = Regex("""(?:[–—\-]\s*)?(?:chapter|ch|ch\.)\s*\d+\b.*$""", RegexOption.IGNORE_CASE)
+                val normalized = title.replace(regex, "").trim()
+                if (normalized.isBlank()) title else normalized
+            } else {
+                // For PDFs and HTML, use full title to keep them separate
+                item.title
+            }
+        }
     }
     
     /**
@@ -335,7 +352,7 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
         val items = _libraryItems.value
         return LibraryStatistics(
             totalItems = items.size,
-            webItems = items.count { it.contentType == ContentType.Web },
+            webItems = items.count { it.contentType == ContentType.WEB },
             pdfItems = items.count { it.contentType == ContentType.PDF },
             htmlItems = items.count { it.contentType == ContentType.HTML },
             averageProgress = if (items.isNotEmpty()) items.map { it.progress }.average().toInt() else 0,
