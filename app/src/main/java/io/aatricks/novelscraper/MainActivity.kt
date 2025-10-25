@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
@@ -24,6 +25,7 @@ import io.aatricks.novelscraper.ui.theme.NovelScraperTheme
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import io.aatricks.novelscraper.util.FileUtils
+import kotlinx.coroutines.launch
 
 /**
  * Main Activity for Novel Scraper app.
@@ -237,14 +239,37 @@ class MainActivity : ComponentActivity() {
 
         // Add to library
         val title = fileName.substringBeforeLast('.')
-        libraryViewModel.addItem(
+        val addedItem = libraryViewModel.addItem(
             title = title,
             url = uri.toString(),
             contentType = contentType
         )
 
         // Load content in reader
-        readerViewModel.loadContent(uri.toString())
+        // For EPUB files, load the first chapter properly with loadEpubChapter
+        if (contentType == ContentType.EPUB) {
+            // Get the first chapter href from the EPUB TOC
+            lifecycleScope.launch {
+                try {
+                    val epubBook = contentRepository.getEpubBook(uri.toString())
+                    val firstHref = epubBook?.toc?.firstOrNull()?.href
+                    if (firstHref != null) {
+                        // Load first chapter with proper EPUB rendering (images + text)
+                        readerViewModel.loadEpubChapter(uri.toString(), firstHref, null)
+                    } else {
+                        // Fallback to regular load if no TOC
+                        readerViewModel.loadContent(uri.toString())
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("MainActivity", "Failed to load EPUB TOC", e)
+                    // Fallback to regular load
+                    readerViewModel.loadContent(uri.toString())
+                }
+            }
+        } else {
+            // For PDF/HTML, use regular loadContent
+            readerViewModel.loadContent(uri.toString())
+        }
 
         Toast.makeText(
             this,
