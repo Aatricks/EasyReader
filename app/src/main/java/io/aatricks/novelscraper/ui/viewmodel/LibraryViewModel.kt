@@ -145,11 +145,15 @@ class LibraryViewModel(
                     return@launch
                 }
 
+                // Extract baseTitle for grouping
+                val baseTitle = extractBaseTitle(title, contentType)
+
                 libraryRepository.addItem(
                     title = title.trim(),
                     url = url.trim(),
                     contentType = contentType,
-                    currentChapter = currentChapter
+                    currentChapter = currentChapter,
+                    baseTitle = baseTitle
                 )
 
                 _uiState.update { it.copy(isLoading = false) }
@@ -206,25 +210,26 @@ class LibraryViewModel(
                 }
 
                 if (contentType == ContentType.EPUB) {
-                    // For EPUB, add a single entry and store TOC in metadata
+                    // For EPUB, add a single entry (baseTitle = title since no grouping needed)
                     libraryRepository.addItem(
                         title = fetchedTitle.trim().ifBlank { url },
                         url = url.trim(),
                         contentType = ContentType.EPUB,
-                        currentChapter = "Chapter 1"
+                        currentChapter = "Chapter 1",
+                        baseTitle = fetchedTitle.trim().ifBlank { url } // EPUB doesn't group, so baseTitle = title
                     )
                 } else {
-                    // For WEB content, normalize base title
-                    val normalizedTitle = normalizeBaseTitle(fetchedTitle)
-
-                    // Extract chapter label from title or url
+                    // For WEB content, extract baseTitle once and store it
                     val chapterLabel = extractChapterLabel(fetchedTitle) ?: extractChapterLabelFromUrl(url) ?: "Chapter 1"
+                    val fullTitle = fetchedTitle.trim().ifBlank { url }
+                    val baseTitle = extractBaseTitle(fullTitle, contentType)
 
                     val addedItem = libraryRepository.addItem(
-                        title = normalizedTitle.trim().ifBlank { url },
+                        title = fullTitle,
                         url = url.trim(),
                         contentType = contentType,
-                        currentChapter = chapterLabel
+                        currentChapter = chapterLabel,
+                        baseTitle = baseTitle
                     )
                 }
 
@@ -265,7 +270,9 @@ class LibraryViewModel(
      */
     private suspend fun addNextChapters(item: LibraryItem, maxChapters: Int) {
         var currentUrl = item.url
-        val baseTitle = normalizeBaseTitle(item.title)
+        // Use the item's baseTitle - it's already been extracted
+        val itemBaseTitle = item.baseTitle.ifBlank { extractBaseTitle(item.title, ContentType.WEB) }
+        
         for (i in 1..maxChapters) {
             try {
                 val nextUrl = contentRepository?.incrementChapterUrl(currentUrl) ?: break
@@ -274,15 +281,19 @@ class LibraryViewModel(
                 if (libraryRepository.getItemByUrl(nextUrl) != null) break
                 // Fetch title
                 val nextTitle = contentRepository?.fetchTitle(nextUrl) ?: break
-                val normalizedNext = normalizeBaseTitle(nextTitle)
-                // If title matches base, add it
-                if (normalizedNext == baseTitle) {
-                    val chapterLabel = extractChapterLabel(nextTitle) ?: extractChapterLabelFromUrl(nextUrl) ?: "Chapter ${item.currentChapter.toIntOrNull()?.plus(i) ?: (i + 1)}"
+                val nextBaseTitle = extractBaseTitle(nextTitle, ContentType.WEB)
+                
+                // If base title matches (or next is blank/generic), add it
+                if (nextBaseTitle.equals(itemBaseTitle, ignoreCase = true) || nextBaseTitle.isBlank()) {
+                    val chapterLabel = extractChapterLabel(nextTitle) ?: extractChapterLabelFromUrl(nextUrl) ?: "Chapter ${item.currentChapter.filter { it.isDigit() }.toIntOrNull()?.plus(i) ?: (i + 1)}"
+                    val fullTitle = nextTitle.trim().ifBlank { "$itemBaseTitle - Chapter ${chapterLabel.replace("Chapter ", "")}" }
+                    
                     libraryRepository.addItem(
-                        title = nextTitle,
+                        title = fullTitle,
                         url = nextUrl,
                         contentType = ContentType.WEB,
-                        currentChapter = chapterLabel
+                        currentChapter = chapterLabel,
+                        baseTitle = itemBaseTitle
                     )
                     currentUrl = nextUrl
                 } else {
@@ -295,14 +306,24 @@ class LibraryViewModel(
     }
 
     /**
-     * Normalize a fetched title by removing trailing chapter markers
+     * Extract base title by removing chapter markers
+     * Only normalizes WEB content - PDFs/HTML/EPUB keep full titles
      */
-    private fun normalizeBaseTitle(title: String?): String {
-        if (title == null) return ""
-        // Remove common chapter markers like "Chapter 12", "Ch. 12", " — Chapter 12"
-        // Use a raw regex with explicit ignore case option
-        val regex = Regex("""(?:[–—\-]\s*)?(?:chapter|ch|ch\.)\s*\d+\b.*$""", RegexOption.IGNORE_CASE)
-        return title.replace(regex, "").trim()
+    private fun extractBaseTitle(title: String, contentType: ContentType): String {
+        // Only normalize WEB content for grouping
+        if (contentType != ContentType.WEB) return title
+        
+        // Remove common chapter markers and trailing content
+        val patterns = listOf(
+            Regex("""[–—\-:]?\s*(?:chapter|ch|ch\.)\s*\d+.*$""", RegexOption.IGNORE_CASE),
+            Regex("""\s*[–—\-]\s*\d+.*$"""), // "Title - 123" or "Title – 123"
+            Regex("""\s*:\s*\d+.*$""") // "Title: 123"
+        )
+        var normalized = title
+        for (pattern in patterns) {
+            normalized = normalized.replace(pattern, "").trim()
+        }
+        return if (normalized.isBlank() || normalized.length < 3) title else normalized
     }
 
     /**

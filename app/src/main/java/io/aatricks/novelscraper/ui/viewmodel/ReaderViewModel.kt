@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.aatricks.novelscraper.data.model.ChapterContent
 import io.aatricks.novelscraper.data.model.ContentElement
+import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
 import kotlinx.coroutines.Job
@@ -85,9 +86,11 @@ class ReaderViewModel(
                 val prevProgress = _uiState.value.scrollProgress
                 if (prevItemId != null && prevContent != null) {
                     try {
+                        // Only update progress and scroll position, NOT currentChapter
+                        // currentChapter should remain the clean label set during item creation
                         libraryRepository.updateProgress(
                             itemId = prevItemId,
-                            currentChapter = prevContent.title ?: prevContent.url.substringAfterLast('/'),
+                            currentChapter = "", // Empty string signals to keep existing value
                             progress = _uiState.value.scrollProgress,
                             currentChapterUrl = prevContent.url,
                             lastScrollProgress = _uiState.value.scrollPosition.toInt()
@@ -169,13 +172,117 @@ class ReaderViewModel(
 
     /**
      * Navigate to the next chapter
+     * Automatically adds the chapter to library if it doesn't exist
      */
     fun navigateToNextChapter() {
         val nextUrl = _uiState.value.content?.nextChapterUrl
         if (nextUrl != null) {
-            // Mark as explicit navigation to prevent scroll restoration
-            isExplicitNavigation = true
-            loadContent(nextUrl, currentLibraryItemId)
+            viewModelScope.launch {
+                // Mark as explicit navigation to prevent scroll restoration
+                isExplicitNavigation = true
+                
+                // Get current library item to extract baseTitle and other metadata
+                val currentItem = currentLibraryItemId?.let { libraryRepository.getItemById(it) }
+                
+                // Check if next chapter already exists in library
+                val existingNextItem = libraryRepository.getItemByUrl(nextUrl)
+                
+                val nextItemId = if (existingNextItem != null) {
+                    // Chapter already exists, use its ID
+                    existingNextItem.id
+                } else if (currentItem != null && currentItem.contentType == ContentType.WEB) {
+                    // Add new chapter to library with same baseTitle as current chapter
+                    try {
+                        val fetchedTitle = contentRepository.fetchTitle(nextUrl) ?: nextUrl
+                        val chapterLabel = extractChapterLabel(fetchedTitle) 
+                            ?: extractChapterLabelFromUrl(nextUrl) 
+                            ?: "Chapter ${extractChapterNumber(currentItem.currentChapter)?.plus(1) ?: 1}"
+                        
+                        // Get base title from current item, or extract it if empty
+                        val baseTitle = if (currentItem.baseTitle.isNotBlank()) {
+                            currentItem.baseTitle
+                        } else {
+                            extractBaseTitle(currentItem.title, ContentType.WEB)
+                        }
+                        
+                        val newItem = libraryRepository.addItem(
+                            title = fetchedTitle.trim().ifBlank { "$baseTitle - $chapterLabel" },
+                            url = nextUrl,
+                            contentType = ContentType.WEB,
+                            currentChapter = chapterLabel,
+                            baseTitle = baseTitle
+                        )
+                        newItem.id
+                    } catch (e: Exception) {
+                        // Failed to add, load without library tracking
+                        null
+                    }
+                } else {
+                    // Not a WEB item or no current item, load without library tracking
+                    null
+                }
+                
+                // Load the next chapter content
+                loadContent(nextUrl, nextItemId)
+            }
+        }
+    }
+    
+    /**
+     * Navigate to the previous chapter
+     * Automatically adds the chapter to library if it doesn't exist
+     */
+    fun navigateToPreviousChapter() {
+        val prevUrl = _uiState.value.content?.previousChapterUrl
+        if (prevUrl != null) {
+            viewModelScope.launch {
+                // Mark as explicit navigation to prevent scroll restoration
+                isExplicitNavigation = true
+                
+                // Get current library item to extract baseTitle and other metadata
+                val currentItem = currentLibraryItemId?.let { libraryRepository.getItemById(it) }
+                
+                // Check if previous chapter already exists in library
+                val existingPrevItem = libraryRepository.getItemByUrl(prevUrl)
+                
+                val prevItemId = if (existingPrevItem != null) {
+                    // Chapter already exists, use its ID
+                    existingPrevItem.id
+                } else if (currentItem != null && currentItem.contentType == ContentType.WEB) {
+                    // Add new chapter to library with same baseTitle as current chapter
+                    try {
+                        val fetchedTitle = contentRepository.fetchTitle(prevUrl) ?: prevUrl
+                        val chapterLabel = extractChapterLabel(fetchedTitle) 
+                            ?: extractChapterLabelFromUrl(prevUrl) 
+                            ?: "Chapter ${extractChapterNumber(currentItem.currentChapter)?.minus(1) ?: 1}"
+                        
+                        // Get base title from current item, or extract it if empty
+                        val baseTitle = if (currentItem.baseTitle.isNotBlank()) {
+                            currentItem.baseTitle
+                        } else {
+                            extractBaseTitle(currentItem.title, ContentType.WEB)
+                        }
+                        
+                        val newItem = libraryRepository.addItem(
+                            title = fetchedTitle.trim().ifBlank { "$baseTitle - $chapterLabel" },
+                            url = prevUrl,
+                            contentType = ContentType.WEB,
+                            currentChapter = chapterLabel,
+                            baseTitle = baseTitle
+                        )
+                        newItem.id
+                    } catch (e: Exception) {
+                        // Failed to add, load without library tracking
+                        null
+                    }
+                } else {
+                    // Not a WEB item or no current item, load without library tracking
+                    null
+                }
+                
+                // Load the previous chapter content
+                loadContent(prevUrl, prevItemId)
+            }
         }
     }
     
@@ -193,9 +300,10 @@ class ReaderViewModel(
                 val prevContent = _uiState.value.content
                 if (prevItemId != null && prevContent != null) {
                     try {
+                        // Only update progress and scroll position, NOT currentChapter
                         libraryRepository.updateProgress(
                             itemId = prevItemId,
-                            currentChapter = prevContent.title ?: prevContent.url.substringAfterLast('/'),
+                            currentChapter = "", // Empty string signals to keep existing value
                             progress = _uiState.value.scrollProgress,
                             currentChapterUrl = prevContent.url,
                             lastScrollProgress = _uiState.value.scrollPosition.toInt()
@@ -290,18 +398,6 @@ class ReaderViewModel(
     }
 
     /**
-     * Navigate to the previous chapter
-     */
-    fun navigateToPreviousChapter() {
-        val prevUrl = _uiState.value.content?.previousChapterUrl
-        if (prevUrl != null) {
-            // Mark as explicit navigation to prevent scroll restoration
-            isExplicitNavigation = true
-            loadContent(prevUrl, currentLibraryItemId)
-        }
-    }
-
-    /**
      * Update scroll position and calculate progress
      * @param scrollOffset Current scroll offset
      * @param maxScrollOffset Maximum possible scroll offset
@@ -389,16 +485,12 @@ class ReaderViewModel(
         viewModelScope.launch {
             try {
                 currentLibraryItemId?.let { itemId ->
-                    val contentUrl = _uiState.value.content?.url
-                    val currentChapter = extractChapterLabelFromUrl(contentUrl ?: "") ?: _uiState.value.content?.title
-                        ?: _uiState.value.content?.url?.substringAfterLast("/")
-                        ?: "Unknown Chapter"
                     val currentChapterUrl = _uiState.value.content?.url ?: ""
                     val lastScroll = _uiState.value.scrollPosition.toInt()
 
                     libraryRepository.updateProgress(
                         itemId = itemId,
-                        currentChapter = currentChapter,
+                        currentChapter = "", // Don't update currentChapter label
                         progress = progress,
                         currentChapterUrl = currentChapterUrl,
                         lastScrollProgress = lastScroll
@@ -528,5 +620,36 @@ class ReaderViewModel(
         if (progress > 0) {
             updateReadingProgress(progress)
         }
+    }
+    
+    /**
+     * Extract base title by removing chapter markers
+     * Only normalizes WEB content - PDFs/HTML/EPUB keep full titles
+     */
+    private fun extractBaseTitle(title: String, contentType: ContentType): String {
+        // Only normalize WEB content for grouping
+        if (contentType != ContentType.WEB) return title
+        
+        // Remove common chapter markers and trailing content
+        val patterns = listOf(
+            Regex("""[–—\-:]?\s*(?:chapter|ch|ch\.)\s*\d+.*$""", RegexOption.IGNORE_CASE),
+            Regex("""\s*[–—\-]\s*\d+.*$"""), // "Title - 123" or "Title – 123"
+            Regex("""\s*:\s*\d+.*$""") // "Title: 123"
+        )
+        var normalized = title
+        for (pattern in patterns) {
+            normalized = normalized.replace(pattern, "").trim()
+        }
+        return if (normalized.isBlank() || normalized.length < 3) title else normalized
+    }
+    
+    /**
+     * Try to extract chapter number from chapter label
+     */
+    private fun extractChapterNumber(chapterLabel: String?): Int? {
+        if (chapterLabel == null) return null
+        val regex = Regex("""\d+""")
+        val match = regex.find(chapterLabel)
+        return match?.value?.toIntOrNull()
     }
 }

@@ -57,7 +57,7 @@ class SummaryService(private val context: Context) {
                     reasoningBudget = 0
                 ),
                 preferSystemDownloader = true,
-                forceDownload = true // Force re-download to get new context size
+                forceDownload = false // Use cached model if available
             )
             
             Log.d(TAG, "Model loaded: ${download.file.name} (${if (download.fromCache) "cached" else "downloaded"})")
