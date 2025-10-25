@@ -530,51 +530,79 @@ class ContentRepository(private val context: Context) {
         android.util.Log.d(TAG, "loadEpubChapter: Loading chapter '$href' from $filePath")
         
         doc.select("body").first()?.let { body ->
-            // Select all paragraphs and divs directly (not just immediate children)
-            val paragraphs = body.select("p, div")
-            android.util.Log.d(TAG, "loadEpubChapter: Found ${paragraphs.size} p/div elements")
-            
-            paragraphs.forEach { element ->
-                val text = element.text().trim()
-                if (text.isNotBlank() && text.length > 10) {
-                    contentElements.add(ContentElement.Text(text))
-                    android.util.Log.d(TAG, "loadEpubChapter: Added text: ${text.take(50)}...")
+            // Traverse the body in document order to preserve image/text positioning
+            // This ensures images appear exactly where they are in the EPUB
+            fun processElement(element: org.jsoup.nodes.Element) {
+                when {
+                    // Check if this is a text container (p, div, h1-h6, etc.)
+                    element.tagName() in listOf("p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "li") -> {
+                        // First check for images within this element
+                        val images = element.select("img, image")
+                        if (images.isNotEmpty()) {
+                            // If the element contains images, process its children in order
+                            element.children().forEach { child ->
+                                processElement(child)
+                            }
+                            // Also get any direct text in this element (not in children)
+                            val directText = element.ownText().trim()
+                            if (directText.isNotBlank() && directText.length > 10) {
+                                contentElements.add(ContentElement.Text(directText))
+                                android.util.Log.d(TAG, "loadEpubChapter: Added text: ${directText.take(50)}...")
+                            }
+                        } else {
+                            // No images, just get the text content
+                            val text = element.text().trim()
+                            if (text.isNotBlank() && text.length > 10) {
+                                contentElements.add(ContentElement.Text(text))
+                                android.util.Log.d(TAG, "loadEpubChapter: Added text: ${text.take(50)}...")
+                            }
+                        }
+                    }
+                    // Check if this is an img tag
+                    element.tagName() == "img" -> {
+                        val src = element.attr("src")
+                        if (src.isNotBlank()) {
+                            val imgPath = resolveEpubPath(href, src)
+                            android.util.Log.d(TAG, "loadEpubChapter: Found img tag with src: $imgPath")
+                            contentElements.add(
+                                ContentElement.Image(
+                                    url = "$filePath#img:$imgPath",
+                                    altText = element.attr("alt"),
+                                    description = element.attr("title")
+                                )
+                            )
+                        }
+                    }
+                    // Check if this is an SVG image element
+                    element.tagName() == "image" -> {
+                        val imageHref = element.attr("xlink:href").ifBlank { element.attr("href") }
+                        if (imageHref.isNotBlank()) {
+                            val imgPath = resolveEpubPath(href, imageHref)
+                            android.util.Log.d(TAG, "loadEpubChapter: Found SVG image with xlink:href: $imgPath")
+                            contentElements.add(
+                                ContentElement.Image(
+                                    url = "$filePath#img:$imgPath",
+                                    altText = element.attr("alt"),
+                                    description = element.attr("title")
+                                )
+                            )
+                        }
+                    }
+                    // For other container elements, recurse into children
+                    else -> {
+                        element.children().forEach { child ->
+                            processElement(child)
+                        }
+                    }
                 }
             }
             
-            // Select all images - both <img> tags and SVG <image> elements
-            body.select("img").forEach { element ->
-                val src = element.attr("src")
-                if (src.isNotBlank()) {
-                    // Resolve relative image path
-                    val imgPath = resolveEpubPath(href, src)
-                    android.util.Log.d(TAG, "loadEpubChapter: Found img tag with src: $imgPath")
-                    contentElements.add(
-                        ContentElement.Image(
-                            url = "$filePath#img:$imgPath",
-                            altText = element.attr("alt"),
-                            description = element.attr("title")
-                        )
-                    )
-                }
+            // Process all direct children of body in document order
+            body.children().forEach { child ->
+                processElement(child)
             }
             
-            // Also check for SVG image elements with xlink:href
-            body.select("image").forEach { element ->
-                val imageHref = element.attr("xlink:href").ifBlank { element.attr("href") }
-                if (imageHref.isNotBlank()) {
-                    // Resolve relative image path
-                    val imgPath = resolveEpubPath(href, imageHref)
-                    android.util.Log.d(TAG, "loadEpubChapter: Found SVG image with xlink:href: $imgPath")
-                    contentElements.add(
-                        ContentElement.Image(
-                            url = "$filePath#img:$imgPath",
-                            altText = element.attr("alt"),
-                            description = element.attr("title")
-                        )
-                    )
-                }
-            }
+            android.util.Log.d(TAG, "loadEpubChapter: Found ${contentElements.size} content elements in document order")
         }
         
         android.util.Log.d(TAG, "loadEpubChapter: Extracted ${contentElements.size} content elements")
