@@ -51,11 +51,23 @@ class PreferencesManager(context: Context) {
     }
     
     fun loadLibraryItems(): List<LibraryItem> {
-        val json = prefs.getString(KEY_LIBRARY_ITEMS, null) ?: return emptyList()
-        val type = object : TypeToken<List<LibraryItem>>() {}.type
-        return try {
-            gson.fromJson(json, type)
-        } catch (e: Exception) {
+        val json = prefs.getString(KEY_LIBRARY_ITEMS, null)
+        return if (json != null) {
+            try {
+                val type = object : TypeToken<List<LibraryItem>>() {}.type
+                val items: List<LibraryItem> = gson.fromJson(json, type)
+                // Migration: ensure chapterSummaries is never null (for items persisted before the field was added)
+                items.map { item ->
+                    if (item.chapterSummaries == null) {
+                        item.copy(chapterSummaries = emptyMap())
+                    } else {
+                        item
+                    }
+                }
+            } catch (e: Exception) {
+                emptyList()
+            }
+        } else {
             emptyList()
         }
     }

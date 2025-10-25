@@ -28,7 +28,8 @@ data class LibraryItem(
     val dateAdded: Long = System.currentTimeMillis(),
     val lastRead: Long = System.currentTimeMillis(),
     val isDownloading: Boolean = false,
-    val lastScrollPosition: Int = 0
+    val lastScrollPosition: Int = 0,
+    val chapterSummaries: Map<String, String>? = emptyMap() // chapter URL -> AI-generated summary (nullable for Gson backward compatibility)
 ) {
     init {
         require(title.isNotBlank()) { "Title cannot be blank" }

@@ -374,16 +374,8 @@ class ReaderViewModel(
             }
         }
 
-        // If user reached bottom (progress >= 95%) and scrolling down, try to auto-navigate to next chapter
-        if (isScrollingDown && progressInt >= 95 && now - lastAutoNavigateAt > 3000) {
-            lastAutoNavigateAt = now
-            val content = _uiState.value.content
-            if (content != null && content.paragraphs.isNotEmpty() && content.hasNextChapter()) {
-                navigateToNextChapter()
-            }
-        }
-
-        // Previous-chapter auto-navigation disabled: previous chapters open only via explicit user actions
+        // Auto-navigation disabled: chapters change only via explicit user actions (button taps)
+        // This prevents unwanted navigation when scrolling to read the end of a chapter
 
         // Update last raw scroll offset for next direction calculation
         lastRawScrollOffset = scrollOffset

@@ -605,4 +605,28 @@ class LibraryViewModel(
         _searchQuery.value = ""
         _contentTypeFilter.value = null
     }
+    
+    /**
+     * Update chapter summary for a specific item
+     * @param itemId The library item ID
+     * @param chapterUrl The chapter URL
+     * @param summary The AI-generated summary
+     */
+    fun updateChapterSummary(itemId: String, chapterUrl: String, summary: String) {
+        viewModelScope.launch {
+            try {
+                val item = libraryRepository.getItemById(itemId)
+                if (item != null) {
+                    val updatedSummaries = (item.chapterSummaries ?: emptyMap()).toMutableMap()
+                    updatedSummaries[chapterUrl] = summary
+                    val updatedItem = item.copy(chapterSummaries = updatedSummaries)
+                    libraryRepository.updateItem(updatedItem)
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(error = "Failed to save summary: ${e.message}")
+                }
+            }
+        }
+    }
 }

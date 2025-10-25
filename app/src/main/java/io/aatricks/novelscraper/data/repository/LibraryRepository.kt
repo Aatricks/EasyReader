@@ -189,9 +189,17 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
             if (item.contentType == ContentType.WEB) {
                 val title = item.title
                 // Remove common chapter markers like "Chapter 12", "Ch. 12", and trailing separators
-                val regex = Regex("""(?:[–—\-]\s*)?(?:chapter|ch|ch\.)\s*\d+\b.*$""", RegexOption.IGNORE_CASE)
-                val normalized = title.replace(regex, "").trim()
-                if (normalized.isBlank()) title else normalized
+                // Patterns: "- Chapter 12", "Chapter 12:", "Ch 12", "Ch.12", etc.
+                val patterns = listOf(
+                    Regex("""[–—\-:]?\s*(?:chapter|ch|ch\.)\s*\d+.*$""", RegexOption.IGNORE_CASE),
+                    Regex("""\s*[–—\-]\s*\d+.*$"""), // Handle "Title - 12" or "Title – 12"
+                )
+                var normalized = title
+                for (pattern in patterns) {
+                    normalized = normalized.replace(pattern, "").trim()
+                }
+                // Return original if normalized is blank or too short
+                if (normalized.isBlank() || normalized.length < 3) title else normalized
             } else {
                 // For PDFs and HTML, use full title to keep them separate
                 item.title
