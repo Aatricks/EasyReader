@@ -7,9 +7,11 @@
 
 **A lightweight, distraction-free Android reader for web novels, PDFs, and local documents** — built with modern Kotlin and Jetpack Compose for speed, simplicity, and offline-first reading.
 
+<img src="HomeImage.png" alt="EasyReader Screenshot" width="300" />
+
 ---
 
-## 📖 Overview
+## Overview
 
 EasyReader is a complete Kotlin rewrite of the original Java NovelScraper app, designed for readers who want a clean, focused environment to consume web novels and local documents. With intelligent content caching, automatic progress tracking, and seamless chapter navigation.
 
@@ -22,27 +24,27 @@ EasyReader is a complete Kotlin rewrite of the original Java NovelScraper app, d
 
 ---
 
-## ✨ Features
+## Features
 
-### 📚 **Multi-Format Support**
+### **Multi-Format Support**
 - **Web novels**: Scrape and read directly from URLs (JSoup-powered)
 - **PDFs**: Extract text with iText7, remove page numbers automatically
 - **HTML/EPUB**: Parse local files with intelligent content extraction
 - **Images**: Inline image support with Coil-powered loading
 
-### 🎯 **Reading Experience**
+### **Reading Experience**
 - **Immersive UI**: Edge-to-edge display with Material3 dark theme
 - **Smart navigation**: Swipe gestures to jump chapters, auto-restore scroll position
 - **Lazy rendering**: Smooth scrolling even with massive chapters
 - **Progress tracking**: Automatic save points for every novel
 
-### 📂 **Library Management**
+### **Library Management**
 - **Multi-source**: Add by URL, file picker, or deep link
 - **Batch operations**: Multi-select delete, currently-reading markers
 - **Progress indicators**: Visual progress bars and reading state
 - **Smart grouping**: Auto-detect and group chapters by base title
 
-### 🚀 **Content Processing**
+### **Content Processing**
 - **PDF cleanup**: Strip page numbers, decode entities, format text
 - **URL intelligence**: Extract titles and chapter numbers from URLs
 - **Caching**: Download and cache chapters for offline access
@@ -50,7 +52,7 @@ EasyReader is a complete Kotlin rewrite of the original Java NovelScraper app, d
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 ### Core Android
 | Component | Version | Purpose |
@@ -126,7 +128,7 @@ cd EasyReader
 
 ---
 
-## 🎯 Usage
+## Usage
 
 ### Adding Content
 
@@ -151,7 +153,7 @@ cd EasyReader
 
 ---
 
-## 🎨 Key Components
+## Key Components
 
 ### ContentRepository
 **Central content loading hub** — handles web scraping, PDF parsing, HTML extraction, and caching.
@@ -205,13 +207,6 @@ data class ReaderUiState(
 | **LazyColumn** | ~80% memory reduction | Virtualized list rendering |
 | **Coil caching** | 3x faster image loads | Disk + memory cache |
 | **Content prefetch** | Instant chapter loads | Background coroutine queue |
-
----
-
-## 👨‍💻 Author
-
-**Aatricks**  
-[![GitHub](https://img.shields.io/badge/GitHub-@Aatricks-181717?logo=github)](https://github.com/Aatricks)
 
 ---
 
