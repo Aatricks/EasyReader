@@ -204,6 +204,18 @@ class MainActivity : ComponentActivity() {
      * Handle picked file from file picker
      */
     private fun handleFilePicked(uri: Uri) {
+        // Take persistent URI permission for content:// URIs
+        if (uri.scheme == "content") {
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                android.util.Log.w("MainActivity", "Could not take persistent permission for URI: $uri", e)
+            }
+        }
+        
         // Get file information
         val fileName = FileUtils.getFileName(this, uri) ?: "Unknown"
         val fileType = FileUtils.detectFileType(this, uri)
@@ -212,7 +224,7 @@ class MainActivity : ComponentActivity() {
         val contentType = when (fileType) {
             FileUtils.FileType.PDF -> ContentType.PDF
             FileUtils.FileType.HTML -> ContentType.HTML
-            FileUtils.FileType.EPUB -> ContentType.HTML
+            FileUtils.FileType.EPUB -> ContentType.EPUB
             else -> {
                 Toast.makeText(
                     this,

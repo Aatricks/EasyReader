@@ -6,7 +6,8 @@ package io.aatricks.novelscraper.data.model
 enum class ContentType(val typeName: String) {
     WEB("web"),
     PDF("pdf"),
-    HTML("html");
+    HTML("html"),
+    EPUB("epub");
 
     override fun toString(): String = typeName
 
@@ -15,6 +16,7 @@ enum class ContentType(val typeName: String) {
             "web" -> WEB
             "pdf" -> PDF
             "html" -> HTML
+            "epub" -> EPUB
             else -> WEB
         }
     }

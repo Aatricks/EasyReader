@@ -167,6 +167,7 @@ class LibraryViewModel(
     /**
      * Fetch title asynchronously then add item to library. Falls back to URL if title not found.
      * For WEB content, also try to add next chapters.
+     * For EPUB content, parse structure and add to library with TOC.
      */
     fun fetchAndAdd(url: String) {
         viewModelScope.launch {
@@ -180,24 +181,52 @@ class LibraryViewModel(
                     return@launch
                 }
 
+                // Detect content type
+                val contentType = when {
+                    url.endsWith(".epub", ignoreCase = true) || url.contains("epub") -> ContentType.EPUB
+                    url.endsWith(".pdf", ignoreCase = true) || url.contains("pdf") -> ContentType.PDF
+                    url.endsWith(".html", ignoreCase = true) || url.endsWith(".htm", ignoreCase = true) -> ContentType.HTML
+                    url.startsWith("http://") || url.startsWith("https://") -> ContentType.WEB
+                    else -> {
+                        // For content:// URIs, try to detect from URL string
+                        when {
+                            url.contains("epub", ignoreCase = true) -> ContentType.EPUB
+                            url.contains("pdf", ignoreCase = true) -> ContentType.PDF
+                            url.contains("html", ignoreCase = true) -> ContentType.HTML
+                            else -> ContentType.WEB
+                        }
+                    }
+                }
+
+                // Fetch title based on content type
                 val fetchedTitle = try {
                     contentRepository?.fetchTitle(url) ?: url
                 } catch (e: Exception) {
                     url
                 }
 
-                // Normalize base title by removing chapter suffixes like "Chapter 12", "Ch. 12" etc.
-                val normalizedTitle = normalizeBaseTitle(fetchedTitle)
+                if (contentType == ContentType.EPUB) {
+                    // For EPUB, add a single entry and store TOC in metadata
+                    libraryRepository.addItem(
+                        title = fetchedTitle.trim().ifBlank { url },
+                        url = url.trim(),
+                        contentType = ContentType.EPUB,
+                        currentChapter = "Chapter 1"
+                    )
+                } else {
+                    // For WEB content, normalize base title
+                    val normalizedTitle = normalizeBaseTitle(fetchedTitle)
 
-                // Extract chapter label from title or url
-                val chapterLabel = extractChapterLabel(fetchedTitle) ?: extractChapterLabelFromUrl(url) ?: "Chapter 1"
+                    // Extract chapter label from title or url
+                    val chapterLabel = extractChapterLabel(fetchedTitle) ?: extractChapterLabelFromUrl(url) ?: "Chapter 1"
 
-                val addedItem = libraryRepository.addItem(
-                    title = normalizedTitle.trim().ifBlank { url },
-                    url = url.trim(),
-                    contentType = ContentType.WEB,
-                    currentChapter = chapterLabel
-                )
+                    val addedItem = libraryRepository.addItem(
+                        title = normalizedTitle.trim().ifBlank { url },
+                        url = url.trim(),
+                        contentType = contentType,
+                        currentChapter = chapterLabel
+                    )
+                }
 
                 _uiState.update { it.copy(isLoading = false) }
             } catch (e: Exception) {

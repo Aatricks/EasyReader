@@ -20,7 +20,7 @@ import kotlin.math.abs
  * Manages content loading, navigation, and reading progress.
  */
 class ReaderViewModel(
-    private val contentRepository: ContentRepository,
+    val contentRepository: ContentRepository,
     private val libraryRepository: LibraryRepository
 ) : ViewModel() {
 
@@ -63,6 +63,20 @@ class ReaderViewModel(
     fun loadContent(url: String, libraryItemId: String? = null) {
         viewModelScope.launch {
             try {
+                // Check if this is an EPUB URL with href fragment (format: path#href or content://...#href)
+                if (url.contains("#")) {
+                    val parts = url.split("#", limit = 2)
+                    if (parts.size == 2) {
+                        val basePath = parts[0]
+                        val href = parts[1]
+                        // Check if base path looks like an EPUB (content URI or .epub file)
+                        if (basePath.startsWith("content://") || basePath.endsWith(".epub", ignoreCase = true) || basePath.contains("epub")) {
+                            loadEpubChapter(basePath, href, libraryItemId)
+                            return@launch
+                        }
+                    }
+                }
+                
                 // Save previous progress for the current library item before loading next
                 val prevItemId = currentLibraryItemId
                 val prevContent = _uiState.value.content
@@ -149,6 +163,104 @@ class ReaderViewModel(
         val nextUrl = _uiState.value.content?.nextChapterUrl
         if (nextUrl != null) {
             loadContent(nextUrl, currentLibraryItemId)
+        }
+    }
+    
+    /**
+     * Load a specific EPUB chapter by href
+     * @param epubPath The path to the EPUB file
+     * @param href The chapter href within the EPUB
+     * @param libraryItemId Optional library item ID to track reading progress
+     */
+    fun loadEpubChapter(epubPath: String, href: String, libraryItemId: String? = null) {
+        viewModelScope.launch {
+            try {
+                // Save previous progress for the current library item before loading next
+                val prevItemId = currentLibraryItemId
+                val prevContent = _uiState.value.content
+                if (prevItemId != null && prevContent != null) {
+                    try {
+                        libraryRepository.updateProgress(
+                            itemId = prevItemId,
+                            currentChapter = prevContent.title ?: prevContent.url.substringAfterLast('/'),
+                            progress = _uiState.value.scrollProgress,
+                            currentChapterUrl = prevContent.url,
+                            lastScrollProgress = _uiState.value.scrollPosition.toInt()
+                        )
+                    } catch (_: Exception) {}
+                }
+
+                _uiState.update { it.copy(isLoading = true, error = null) }
+                currentLibraryItemId = libraryItemId
+
+                // Get EPUB book structure
+                val epubBook = contentRepository.getEpubBook(epubPath)
+                if (epubBook == null) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = "Failed to load EPUB structure"
+                        )
+                    }
+                    return@launch
+                }
+
+                // Load chapter content with full ContentElements (text + images)
+                val chapter = contentRepository.loadEpubChapterFull(epubPath, href)
+                if (chapter == null) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = "Failed to load chapter content"
+                        )
+                    }
+                    return@launch
+                }
+                
+                val content = ChapterContent(
+                    paragraphs = chapter.content,
+                    title = chapter.title,
+                    url = "$epubPath#$href",
+                    nextChapterUrl = epubBook.getNextHref(href)?.let { "$epubPath#$it" },
+                    previousChapterUrl = epubBook.getPreviousHref(href)?.let { "$epubPath#$it" }
+                )
+
+                _uiState.update {
+                    it.copy(
+                        content = content,
+                        isLoading = false,
+                        error = null,
+                        canNavigateNext = content.hasNextChapter(),
+                        canNavigatePrevious = content.hasPreviousChapter(),
+                        scrollPosition = 0f,
+                        scrollProgress = 0,
+                        hasReachedQuarterScreen = false
+                    )
+                }
+
+                // Mark as currently reading in library
+                libraryItemId?.let {
+                    libraryRepository.markAsCurrentlyReading(it)
+                    val item = libraryRepository.getItemById(it)
+                    item?.let { libItem ->
+                        restoredScrollPercent = libItem.lastScrollPosition.toFloat()
+                        suppressAutoNavUntilUserInteraction = true
+                        _uiState.update { state ->
+                            state.copy(
+                                scrollPosition = restoredScrollPercent,
+                                scrollProgress = libItem.progress
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "Failed to load EPUB chapter: ${e.message}"
+                    )
+                }
+            }
         }
     }
 

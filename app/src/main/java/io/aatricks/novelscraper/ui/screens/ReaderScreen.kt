@@ -14,7 +14,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
@@ -200,15 +203,77 @@ private fun ContentArea(
                     )
                 }
                 is ContentElement.Image -> {
-                    // Image rendering would go here
-                    // For now, just show a placeholder
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp)
-                            .background(Color.DarkGray)
+                    EpubImageView(
+                        imageUrl = element.url,
+                        altText = element.altText,
+                        readerViewModel = readerViewModel
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Display EPUB image
+ */
+@Composable
+private fun EpubImageView(
+    imageUrl: String,
+    altText: String?,
+    readerViewModel: ReaderViewModel
+) {
+    var imageData by remember(imageUrl) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var isLoading by remember(imageUrl) { mutableStateOf(true) }
+    var hasError by remember(imageUrl) { mutableStateOf(false) }
+    
+    LaunchedEffect(imageUrl) {
+        try {
+            isLoading = true
+            hasError = false
+            val bytes = readerViewModel.contentRepository.getEpubImage(imageUrl)
+            if (bytes != null) {
+                imageData = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            } else {
+                hasError = true
+            }
+        } catch (e: Exception) {
+            hasError = true
+        } finally {
+            isLoading = false
+        }
+    }
+    
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            isLoading -> {
+                CircularProgressIndicator(
+                    color = Color.Gray,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .padding(16.dp)
+                )
+            }
+            hasError -> {
+                Text(
+                    text = altText ?: "Image unavailable",
+                    color = Color.Gray,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+            imageData != null -> {
+                androidx.compose.foundation.Image(
+                    bitmap = imageData!!.asImageBitmap(),
+                    contentDescription = altText,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentScale = ContentScale.FillWidth
+                )
             }
         }
     }
