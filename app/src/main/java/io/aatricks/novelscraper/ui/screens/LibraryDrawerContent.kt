@@ -30,8 +30,11 @@ import io.aatricks.novelscraper.data.model.EpubBook
 import io.aatricks.novelscraper.data.model.EpubTocItem
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.ui.components.LibraryItemCard
+import io.aatricks.novelscraper.ui.components.ChapterSummaryDropdown
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
+import io.aatricks.novelscraper.ui.viewmodel.SummaryViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 
 /**
@@ -60,8 +63,15 @@ fun LibraryDrawerContent(
 ) {
     val libraryUiState by libraryViewModel.uiState.collectAsState()
     val readerUiState by readerViewModel.uiState.collectAsState()
+    val summaryViewModel: SummaryViewModel = viewModel()
+    val summaryUiState by summaryViewModel.uiState.collectAsState()
     
     var urlInput by remember { mutableStateOf("") }
+    
+    // Initialize summary service on first composition
+    LaunchedEffect(Unit) {
+        summaryViewModel.initializeSummaryService()
+    }
     
     Column(
         modifier = Modifier
@@ -265,34 +275,66 @@ fun LibraryDrawerContent(
                                         Spacer(modifier = Modifier.height(8.dp))
                                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                             items.forEach { chapterItem ->
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .pointerInput(Unit) {
-                                                            detectTapGestures(
-                                                                onTap = {
-                                                                    val loadUrl = if (chapterItem.currentChapterUrl.isNotBlank()) chapterItem.currentChapterUrl else chapterItem.url
-                                                                    readerViewModel.loadContent(loadUrl, chapterItem.id)
-                                                                    libraryViewModel.markAsCurrentlyReading(chapterItem.id)
-                                                                    onCloseDrawer()
-                                                                },
-                                                                onLongPress = {
-                                                                    // On long press, delete this chapter
-                                                                    libraryViewModel.removeItem(chapterItem.id)
+                                                Column(modifier = Modifier.fillMaxWidth()) {
+                                                    // Chapter row
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .pointerInput(Unit) {
+                                                                detectTapGestures(
+                                                                    onTap = {
+                                                                        val loadUrl = if (chapterItem.currentChapterUrl.isNotBlank()) chapterItem.currentChapterUrl else chapterItem.url
+                                                                        readerViewModel.loadContent(loadUrl, chapterItem.id)
+                                                                        libraryViewModel.markAsCurrentlyReading(chapterItem.id)
+                                                                        onCloseDrawer()
+                                                                    },
+                                                                    onLongPress = {
+                                                                        // On long press, delete this chapter
+                                                                        libraryViewModel.removeItem(chapterItem.id)
+                                                                    }
+                                                                )
+                                                            }
+                                                            .padding(vertical = 6.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = chapterItem.currentChapter.ifBlank {
+                                                                extractChapterLabelFromTitle(chapterItem.title)
+                                                                    ?: extractChapterLabelFromUrl(chapterItem.url)
+                                                                    ?: "Chapter 1"
+                                                            },
+                                                            color = Color.White,
+                                                            style = MaterialTheme.typography.bodyMedium
+                                                        )
+                                                    }
+                                                    
+                                                    // AI Summary Dropdown
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    val chapterUrl = if (chapterItem.currentChapterUrl.isNotBlank()) 
+                                                        chapterItem.currentChapterUrl else chapterItem.url
+                                                    val cachedSummary = chapterItem.chapterSummaries?.get(chapterUrl)
+                                                    
+                                                    ChapterSummaryDropdown(
+                                                        chapterTitle = chapterItem.currentChapter.ifBlank { chapterItem.title },
+                                                        chapterUrl = chapterUrl,
+                                                        summary = cachedSummary,
+                                                        isGenerating = summaryUiState.isGenerating,
+                                                        onGenerateSummary = {
+                                                            scope.launch {
+                                                                // Load chapter content for summary
+                                                                val result = contentRepository.loadContent(chapterUrl)
+                                                                if (result is ContentRepository.ContentResult.Success) {
+                                                                    summaryViewModel.generateSummary(
+                                                                        chapterUrl = chapterUrl,
+                                                                        chapterTitle = chapterItem.currentChapter.ifBlank { chapterItem.title },
+                                                                        content = result.paragraphs
+                                                                    ) { summary ->
+                                                                        // Save summary to library item
+                                                                        libraryViewModel.updateChapterSummary(chapterItem.id, chapterUrl, summary)
+                                                                    }
                                                                 }
-                                                            )
+                                                            }
                                                         }
-                                                        .padding(vertical = 6.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Text(
-                                                        text = chapterItem.currentChapter.ifBlank {
-                                                            extractChapterLabelFromTitle(chapterItem.title)
-                                                                ?: extractChapterLabelFromUrl(chapterItem.url)
-                                                                ?: "Chapter 1"
-                                                        },
-                                                        color = Color.White,
-                                                        style = MaterialTheme.typography.bodyMedium
                                                     )
                                                 }
                                             }

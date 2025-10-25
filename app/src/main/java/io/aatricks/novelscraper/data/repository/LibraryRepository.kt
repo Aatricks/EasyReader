@@ -33,7 +33,8 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
         title: String,
         url: String,
         contentType: ContentType,
-        currentChapter: String = "Chapter 1"
+        currentChapter: String = "Chapter 1",
+        baseTitle: String = title // Default to full title if not provided
     ): LibraryItem = withContext(Dispatchers.IO) {
         val newItem = LibraryItem(
             id = UUID.randomUUID().toString(),
@@ -43,7 +44,8 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
             contentType = contentType,
             dateAdded = System.currentTimeMillis(),
             lastRead = System.currentTimeMillis(),
-            isCurrentlyReading = false
+            isCurrentlyReading = false,
+            baseTitle = baseTitle
         )
         
         val currentItems = _libraryItems.value.toMutableList()
@@ -116,7 +118,8 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
         if (index != -1) {
             val item = currentItems[index]
             currentItems[index] = item.copy(
-                currentChapter = currentChapter,
+                // Only update currentChapter if a non-empty value is provided
+                currentChapter = if (currentChapter.isNotBlank()) currentChapter else item.currentChapter,
                 progress = progress,
                 currentChapterUrl = currentChapterUrl ?: item.currentChapterUrl,
                 lastScrollPosition = lastScrollProgress ?: item.lastScrollPosition,
@@ -180,22 +183,13 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
     }
     
     /**
-     * Group items by title
+     * Group items by baseTitle
      */
     fun getGroupedByTitle(): Map<String, List<LibraryItem>> {
-        // Normalize titles by removing trailing chapter markers so chapters group under base title
-        // But only for WEB content to avoid mixing PDFs with novels
+        // Simply group by baseTitle field - normalization happened at creation time
         return _libraryItems.value.groupBy { item ->
-            if (item.contentType == ContentType.WEB) {
-                val title = item.title
-                // Remove common chapter markers like "Chapter 12", "Ch. 12", and trailing separators
-                val regex = Regex("""(?:[–—\-]\s*)?(?:chapter|ch|ch\.)\s*\d+\b.*$""", RegexOption.IGNORE_CASE)
-                val normalized = title.replace(regex, "").trim()
-                if (normalized.isBlank()) title else normalized
-            } else {
-                // For PDFs and HTML, use full title to keep them separate
-                item.title
-            }
+            // Use baseTitle if available, otherwise fall back to title
+            item.baseTitle.ifBlank { item.title }
         }
     }
     

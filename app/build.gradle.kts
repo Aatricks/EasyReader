@@ -55,6 +55,15 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     
+    // llmedge AI Library
+    implementation(files("libs/llmedge-release.aar"))
+    
+    // Ktor dependencies for llmedge (required for Hugging Face downloads)
+    implementation("io.ktor:ktor-client-core:2.3.7")
+    implementation("io.ktor:ktor-client-okhttp:2.3.7")
+    implementation("io.ktor:ktor-client-content-negotiation:2.3.7")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.7")
+    
     // Navigation Compose
     implementation("androidx.navigation:navigation-compose:2.7.7")
     
