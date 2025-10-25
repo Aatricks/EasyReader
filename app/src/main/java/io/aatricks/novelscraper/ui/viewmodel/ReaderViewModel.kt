@@ -35,6 +35,8 @@ class ReaderViewModel(
     // Suppress auto navigation when restoring a saved position until user interacts
     private var suppressAutoNavUntilUserInteraction: Boolean = false
     private var restoredScrollPercent: Float = 0f
+    // Track if we're explicitly navigating (not restoring from library)
+    private var isExplicitNavigation: Boolean = false
     // Track last raw scroll offset (pixels) to detect actual user gesture direction
     private var lastRawScrollOffset: Float = -1f
     // Debounce progress updates to reduce jitter
@@ -119,22 +121,27 @@ class ReaderViewModel(
                             )
                         }
 
-                        // Mark as currently reading in library and restore saved progress if available
+                        // Mark as currently reading in library and restore saved progress if not explicit navigation
                         libraryItemId?.let {
                             libraryRepository.markAsCurrentlyReading(it)
-                            val item = libraryRepository.getItemById(it)
-                            item?.let { libItem ->
-                                // Restore last known saved chapter percent/position for this library item
-                                restoredScrollPercent = libItem.lastScrollPosition.toFloat()
-                                suppressAutoNavUntilUserInteraction = true
-                                _uiState.update { state ->
-                                    state.copy(
-                                        scrollPosition = restoredScrollPercent,
-                                        scrollProgress = libItem.progress
-                                    )
+                            if (!isExplicitNavigation) {
+                                val item = libraryRepository.getItemById(it)
+                                item?.let { libItem ->
+                                    // Restore last known saved chapter percent/position for this library item
+                                    restoredScrollPercent = libItem.lastScrollPosition.toFloat()
+                                    suppressAutoNavUntilUserInteraction = true
+                                    _uiState.update { state ->
+                                        state.copy(
+                                            scrollPosition = restoredScrollPercent,
+                                            scrollProgress = libItem.progress
+                                        )
+                                    }
                                 }
                             }
                         }
+                        
+                        // Reset explicit navigation flag
+                        isExplicitNavigation = false
                     }
                     is ContentRepository.ContentResult.Error -> {
                         _uiState.update {
@@ -143,6 +150,8 @@ class ReaderViewModel(
                                 error = result.message
                             )
                         }
+                        // Reset explicit navigation flag on error
+                        isExplicitNavigation = false
                     }
                 }
             } catch (e: Exception) {
@@ -152,6 +161,8 @@ class ReaderViewModel(
                         error = "Failed to load content: ${e.message}"
                     )
                 }
+                // Reset explicit navigation flag on error
+                isExplicitNavigation = false
             }
         }
     }
@@ -162,6 +173,8 @@ class ReaderViewModel(
     fun navigateToNextChapter() {
         val nextUrl = _uiState.value.content?.nextChapterUrl
         if (nextUrl != null) {
+            // Mark as explicit navigation to prevent scroll restoration
+            isExplicitNavigation = true
             loadContent(nextUrl, currentLibraryItemId)
         }
     }
@@ -217,12 +230,16 @@ class ReaderViewModel(
                     return@launch
                 }
                 
+                // Prefer the next/previous hrefs returned by the chapter loader (these
+                // account for merged chapters). Fall back to spine-based lookup if absent.
                 val content = ChapterContent(
                     paragraphs = chapter.content,
                     title = chapter.title,
                     url = "$epubPath#$href",
-                    nextChapterUrl = epubBook.getNextHref(href)?.let { "$epubPath#$it" },
-                    previousChapterUrl = epubBook.getPreviousHref(href)?.let { "$epubPath#$it" }
+                    nextChapterUrl = chapter.nextHref?.let { "$epubPath#${it}" }
+                        ?: epubBook.getNextHref(href)?.let { "$epubPath#${it}" },
+                    previousChapterUrl = chapter.previousHref?.let { "$epubPath#${it}" }
+                        ?: epubBook.getPreviousHref(href)?.let { "$epubPath#${it}" }
                 )
 
                 _uiState.update {
@@ -241,18 +258,24 @@ class ReaderViewModel(
                 // Mark as currently reading in library
                 libraryItemId?.let {
                     libraryRepository.markAsCurrentlyReading(it)
-                    val item = libraryRepository.getItemById(it)
-                    item?.let { libItem ->
-                        restoredScrollPercent = libItem.lastScrollPosition.toFloat()
-                        suppressAutoNavUntilUserInteraction = true
-                        _uiState.update { state ->
-                            state.copy(
-                                scrollPosition = restoredScrollPercent,
-                                scrollProgress = libItem.progress
-                            )
+                    // Only restore scroll position if we haven't explicitly reset it (i.e., not from navigation)
+                    if (!isExplicitNavigation) {
+                        val item = libraryRepository.getItemById(it)
+                        item?.let { libItem ->
+                            restoredScrollPercent = libItem.lastScrollPosition.toFloat()
+                            suppressAutoNavUntilUserInteraction = true
+                            _uiState.update { state ->
+                                state.copy(
+                                    scrollPosition = restoredScrollPercent,
+                                    scrollProgress = libItem.progress
+                                )
+                            }
                         }
                     }
                 }
+                
+                // Reset explicit navigation flag
+                isExplicitNavigation = false
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -260,6 +283,8 @@ class ReaderViewModel(
                         error = "Failed to load EPUB chapter: ${e.message}"
                     )
                 }
+                // Reset explicit navigation flag on error
+                isExplicitNavigation = false
             }
         }
     }
@@ -270,6 +295,8 @@ class ReaderViewModel(
     fun navigateToPreviousChapter() {
         val prevUrl = _uiState.value.content?.previousChapterUrl
         if (prevUrl != null) {
+            // Mark as explicit navigation to prevent scroll restoration
+            isExplicitNavigation = true
             loadContent(prevUrl, currentLibraryItemId)
         }
     }

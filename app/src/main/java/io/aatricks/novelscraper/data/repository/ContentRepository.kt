@@ -542,12 +542,13 @@ class ContentRepository(private val context: Context) {
                 }
             }
             
-            // Select all images (both <img> and SVG <image> tags)
+            // Select all images - both <img> tags and SVG <image> elements
             body.select("img").forEach { element ->
                 val src = element.attr("src")
                 if (src.isNotBlank()) {
                     // Resolve relative image path
                     val imgPath = resolveEpubPath(href, src)
+                    android.util.Log.d(TAG, "loadEpubChapter: Found img tag with src: $imgPath")
                     contentElements.add(
                         ContentElement.Image(
                             url = "$filePath#img:$imgPath",
@@ -558,14 +559,13 @@ class ContentRepository(private val context: Context) {
                 }
             }
             
-            // Also select SVG images with xlink:href
-            body.select("svg image").forEach { element ->
-                val xlinkHref = element.attr("xlink:href")
-                val href2 = element.attr("href")
-                val src = xlinkHref.ifBlank { href2 }
-                if (src.isNotBlank()) {
+            // Also check for SVG image elements with xlink:href
+            body.select("image").forEach { element ->
+                val imageHref = element.attr("xlink:href").ifBlank { element.attr("href") }
+                if (imageHref.isNotBlank()) {
                     // Resolve relative image path
-                    val imgPath = resolveEpubPath(href, src)
+                    val imgPath = resolveEpubPath(href, imageHref)
+                    android.util.Log.d(TAG, "loadEpubChapter: Found SVG image with xlink:href: $imgPath")
                     contentElements.add(
                         ContentElement.Image(
                             url = "$filePath#img:$imgPath",
@@ -579,10 +579,34 @@ class ContentRepository(private val context: Context) {
         
         android.util.Log.d(TAG, "loadEpubChapter: Extracted ${contentElements.size} content elements")
         
-        // If this chapter has very little or no text content, try to load the next chapter in the spine
-        // This handles EPUBs where the TOC points to image-only pages followed by actual text content
-        if (contentElements.filterIsInstance<ContentElement.Text>().isEmpty()) {
-            android.util.Log.d(TAG, "loadEpubChapter: Chapter '$href' has no text content, trying next in spine")
+        // If this chapter has ONLY images but no text, try to load the next chapter and combine them
+        // This handles EPUBs where intro image pages are separate from text content
+        val hasText = contentElements.any { it is ContentElement.Text }
+        val hasImages = contentElements.any { it is ContentElement.Image }
+        
+        if (hasImages && !hasText) {
+            android.util.Log.d(TAG, "loadEpubChapter: Chapter '$href' has only images, checking for text in next chapter")
+            val nextHref = epubBook.getNextHref(href)
+            if (nextHref != null && nextHref != href) {
+                android.util.Log.d(TAG, "loadEpubChapter: Loading next chapter for text: $nextHref")
+                val nextChapter = loadEpubChapter(filePath, epubBook, nextHref)
+                // Combine: images from current chapter + content from next chapter
+                val combinedContent = contentElements + nextChapter.content
+                android.util.Log.d(TAG, "loadEpubChapter: Combined chapter with '$nextHref', nextHref now points to '${nextChapter.nextHref}'")
+                // Use the nextHref from the recursively merged chapter to skip all intermediate merges
+                return EpubChapter(
+                    href = href,
+                    title = tocItem?.title ?: nextChapter.title ?: doc.title(),
+                    content = combinedContent,
+                    nextHref = nextChapter.nextHref, // Use the final next href from the merged chain
+                    previousHref = epubBook.getPreviousHref(href)
+                )
+            }
+        }
+        
+        // If this chapter has NO content at all, try to load the next chapter
+        if (contentElements.isEmpty()) {
+            android.util.Log.d(TAG, "loadEpubChapter: Chapter '$href' has no content, trying next in spine")
             val nextHref = epubBook.getNextHref(href)
             if (nextHref != null && nextHref != href) {
                 android.util.Log.d(TAG, "loadEpubChapter: Loading next chapter: $nextHref")

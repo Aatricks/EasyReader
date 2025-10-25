@@ -3,7 +3,7 @@ package io.aatricks.novelscraper.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
@@ -136,6 +136,8 @@ private fun ContentArea(
 ) {
     val listState = rememberLazyListState()
     val uiState by readerViewModel.uiState.collectAsState()
+    val scope = rememberCoroutineScope()
+    
     // Remember whether we've applied a restored scroll for this content URL
     val appliedRestore = remember(content.url) { mutableStateOf(false) }
     
@@ -192,7 +194,10 @@ private fun ContentArea(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        items(content.paragraphs, key = { it.hashCode() }) { element ->
+        // Use indexed keys that include the chapter URL to ensure uniqueness across
+        // chapters and prevent IllegalArgumentException when the same element values
+        // (and thus identical hashCodes) appear in multiple chapters.
+        itemsIndexed(content.paragraphs, key = { index: Int, _: ContentElement -> "${content.url}_$index" }) { index: Int, element: ContentElement ->
             when (element) {
                 is ContentElement.Text -> {
                     Text(
@@ -208,6 +213,42 @@ private fun ContentArea(
                         altText = element.altText,
                         readerViewModel = readerViewModel
                     )
+                }
+            }
+        }
+        
+        // Navigation buttons at the end of content
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 32.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                // Previous chapter button
+                if (content.hasPreviousChapter()) {
+                    Button(
+                        onClick = { readerViewModel.navigateToPreviousChapter() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF1A1A1A),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text("← Previous Chapter")
+                    }
+                }
+                
+                // Next chapter button
+                if (content.hasNextChapter()) {
+                    Button(
+                        onClick = { readerViewModel.navigateToNextChapter() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF1A1A1A),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text("Next Chapter →")
+                    }
                 }
             }
         }
