@@ -94,6 +94,13 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Load last reading item if present
+        val last = libraryRepository.getCurrentlyReading()
+        last?.let { item ->
+            val loadUrl = if (item.currentChapterUrl.isNotBlank()) item.currentChapterUrl else item.url
+            readerViewModel.loadContent(loadUrl, item.id)
+        }
+
         // Handle intent (deep links, file opens)
         handleIntent(intent)
     }
@@ -128,7 +135,7 @@ class MainActivity : ComponentActivity() {
                         ReaderViewModel(contentRepository, libraryRepository) as T
                     }
                     modelClass.isAssignableFrom(LibraryViewModel::class.java) -> {
-                        LibraryViewModel(libraryRepository) as T
+                        LibraryViewModel(libraryRepository, contentRepository) as T
                     }
                     else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
                 }
@@ -186,7 +193,7 @@ class MainActivity : ComponentActivity() {
         libraryViewModel.addItem(
             title = title,
             url = url,
-            contentType = ContentType.Web
+            contentType = ContentType.WEB
         )
 
         // Load content in reader
@@ -197,6 +204,18 @@ class MainActivity : ComponentActivity() {
      * Handle picked file from file picker
      */
     private fun handleFilePicked(uri: Uri) {
+        // Take persistent URI permission for content:// URIs
+        if (uri.scheme == "content") {
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                android.util.Log.w("MainActivity", "Could not take persistent permission for URI: $uri", e)
+            }
+        }
+        
         // Get file information
         val fileName = FileUtils.getFileName(this, uri) ?: "Unknown"
         val fileType = FileUtils.detectFileType(this, uri)
@@ -205,7 +224,7 @@ class MainActivity : ComponentActivity() {
         val contentType = when (fileType) {
             FileUtils.FileType.PDF -> ContentType.PDF
             FileUtils.FileType.HTML -> ContentType.HTML
-            FileUtils.FileType.EPUB -> ContentType.HTML
+            FileUtils.FileType.EPUB -> ContentType.EPUB
             else -> {
                 Toast.makeText(
                     this,

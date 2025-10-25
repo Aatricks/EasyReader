@@ -17,16 +17,18 @@ data class LibraryItem(
     val title: String,
     val url: String,
     val timestamp: Long = System.currentTimeMillis(),
-    val type: ContentType = ContentType.Web,
+    val type: ContentType = ContentType.WEB,
     val progress: Int = 0,
     val isCurrentlyReading: Boolean = false,
     val isSelected: Boolean = false,
     val currentChapter: String = "",
+    val currentChapterUrl: String = "",
     val totalChapters: Int = 0,
-    val contentType: ContentType = ContentType.Web,
+    val contentType: ContentType = ContentType.WEB,
     val dateAdded: Long = System.currentTimeMillis(),
     val lastRead: Long = System.currentTimeMillis(),
-    val isDownloading: Boolean = false
+    val isDownloading: Boolean = false,
+    val lastScrollPosition: Int = 0
 ) {
     init {
         require(title.isNotBlank()) { "Title cannot be blank" }
