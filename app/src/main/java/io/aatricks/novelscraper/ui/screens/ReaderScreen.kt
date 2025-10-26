@@ -1,6 +1,11 @@
 package io.aatricks.novelscraper.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -9,12 +14,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -22,6 +30,7 @@ import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 /**
  * Main reading screen with drawer layout for library management.
@@ -97,29 +106,11 @@ fun ReaderScreen(
                     else -> {
                         ContentArea(
                             content = uiState.content!!,
-                            readerViewModel = readerViewModel
+                            readerViewModel = readerViewModel,
+                            onLibraryClick = { scope.launch { drawerState.open() } }
                         )
                     }
                 }
-                
-                // Floating button to open library when content is loaded
-                if (uiState.content != null) {
-                    FloatingActionButton(
-                        onClick = { scope.launch { drawerState.open() } },
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(16.dp),
-                        containerColor = Color(0xFF1A1A1A),
-                        contentColor = Color.White
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Menu,
-                            contentDescription = "Open Library"
-                        )
-                    }
-                }
-                
-                // Progress indicator moved to library drawer
             }
         }
     }
@@ -132,7 +123,8 @@ fun ReaderScreen(
 @Composable
 private fun ContentArea(
     content: io.aatricks.novelscraper.data.model.ChapterContent,
-    readerViewModel: ReaderViewModel
+    readerViewModel: ReaderViewModel,
+    onLibraryClick: () -> Unit
 ) {
     val listState = rememberLazyListState()
     val uiState by readerViewModel.uiState.collectAsState()
@@ -186,14 +178,30 @@ private fun ContentArea(
         }
     }
     
-    LazyColumn(
-        state = listState,
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp)
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = {
+                            readerViewModel.toggleControls()
+                        }
+                    )
+                }
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures { _, dragAmount ->
+                        // Hide controls on any vertical swipe
+                        if (abs(dragAmount) > 10f) {
+                            readerViewModel.hideControls()
+                        }
+                    }
+                },
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
         // Use indexed keys that include the chapter URL to ensure uniqueness across
         // chapters and prevent IllegalArgumentException when the same element values
         // (and thus identical hashCodes) appear in multiple chapters.
@@ -249,6 +257,208 @@ private fun ContentArea(
                     ) {
                         Text("Next Chapter →")
                     }
+                }
+            }
+        }
+    }
+        
+        // Animated top bar with novel name and chapter
+        AnimatedVisibility(
+            visible = uiState.showControls,
+            enter = slideInVertically(initialOffsetY = { -it }),
+            exit = slideOutVertically(targetOffsetY = { -it }),
+            modifier = Modifier.align(Alignment.TopCenter)
+        ) {
+            TopInfoBar(
+                novelName = uiState.novelName,
+                chapterTitle = uiState.chapterTitle,
+                onLibraryClick = onLibraryClick
+            )
+        }
+        
+        // Animated bottom navigation bar
+        AnimatedVisibility(
+            visible = uiState.showControls,
+            enter = slideInVertically(initialOffsetY = { it }),
+            exit = slideOutVertically(targetOffsetY = { it }),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            BottomNavigationBar(
+                progress = uiState.scrollProgress,
+                canNavigatePrevious = uiState.canNavigatePrevious,
+                canNavigateNext = uiState.canNavigateNext,
+                onPreviousClick = { readerViewModel.navigateToPreviousChapter() },
+                onNextClick = { readerViewModel.navigateToNextChapter() }
+            )
+        }
+    }
+}
+
+/**
+ * Top info bar with novel name and chapter title
+ */
+@Composable
+private fun TopInfoBar(
+    novelName: String,
+    chapterTitle: String,
+    onLibraryClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(0.dp),
+        color = Color(0xE6000000), // Semi-transparent black
+        shadowElevation = 8.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Library button
+            IconButton(
+                onClick = onLibraryClick,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Menu,
+                    contentDescription = "Open Library",
+                    tint = Color.White
+                )
+            }
+            
+            Spacer(modifier = Modifier.width(8.dp))
+            
+            // Novel name and chapter title
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                // Novel name
+                if (novelName.isNotBlank()) {
+                    Text(
+                        text = novelName,
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                
+                // Chapter title
+                if (chapterTitle.isNotBlank()) {
+                    Text(
+                        text = chapterTitle,
+                        color = Color(0xFFAAAAAA),
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Bottom navigation bar with chapter navigation and progress
+ */
+@Composable
+private fun BottomNavigationBar(
+    progress: Int,
+    canNavigatePrevious: Boolean,
+    canNavigateNext: Boolean,
+    onPreviousClick: () -> Unit,
+    onNextClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(0.dp),
+        color = Color(0xE6000000), // Semi-transparent black
+        shadowElevation = 8.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            // Progress bar
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Progress",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    text = "$progress%",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(4.dp))
+            
+            LinearProgressIndicator(
+                progress = { progress / 100f },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp),
+                color = Color(0xFF4CAF50),
+                trackColor = Color(0xFF2A2A2A)
+            )
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Navigation buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                // Previous button
+                Button(
+                    onClick = onPreviousClick,
+                    enabled = canNavigatePrevious,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF1A1A1A),
+                        contentColor = Color.White,
+                        disabledContainerColor = Color(0xFF0D0D0D),
+                        disabledContentColor = Color(0xFF555555)
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ArrowBack,
+                        contentDescription = "Previous Chapter",
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Previous")
+                }
+                
+                Spacer(modifier = Modifier.width(16.dp))
+                
+                // Next button
+                Button(
+                    onClick = onNextClick,
+                    enabled = canNavigateNext,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF1A1A1A),
+                        contentColor = Color.White,
+                        disabledContainerColor = Color(0xFF0D0D0D),
+                        disabledContentColor = Color(0xFF555555)
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Next")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        imageVector = Icons.Filled.ArrowForward,
+                        contentDescription = "Next Chapter",
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
         }

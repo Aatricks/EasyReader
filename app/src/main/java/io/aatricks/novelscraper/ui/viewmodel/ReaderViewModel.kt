@@ -55,7 +55,10 @@ class ReaderViewModel(
         val isScrollingDown: Boolean = true,
         val hasReachedQuarterScreen: Boolean = false,
         val canNavigateNext: Boolean = false,
-        val canNavigatePrevious: Boolean = false
+        val canNavigatePrevious: Boolean = false,
+        val showControls: Boolean = false, // Show/hide bottom navigation bar
+        val novelName: String = "", // Novel/book title
+        val chapterTitle: String = "" // Current chapter title
     )
 
     /**
@@ -111,6 +114,11 @@ class ReaderViewModel(
                             previousChapterUrl = contentRepository.decrementChapterUrl(result.url)
                         )
 
+                        // Get novel name and chapter info
+                        val libraryItem = libraryItemId?.let { libraryRepository.getItemById(it) }
+                        val novelName = libraryItem?.baseTitle?.ifBlank { libraryItem.title } ?: content.title ?: ""
+                        val chapterTitle = content.title ?: libraryItem?.currentChapter ?: ""
+                        
                         _uiState.update {
                             it.copy(
                                 content = content,
@@ -120,7 +128,9 @@ class ReaderViewModel(
                                 canNavigatePrevious = content.hasPreviousChapter(),
                                 scrollPosition = 0f,
                                 scrollProgress = 0,
-                                hasReachedQuarterScreen = false
+                                hasReachedQuarterScreen = false,
+                                novelName = novelName,
+                                chapterTitle = chapterTitle
                             )
                         }
 
@@ -350,6 +360,11 @@ class ReaderViewModel(
                         ?: epubBook.getPreviousHref(href)?.let { "$epubPath#${it}" }
                 )
 
+                // Get novel name and chapter info
+                val libraryItem = libraryItemId?.let { libraryRepository.getItemById(it) }
+                val novelName = libraryItem?.baseTitle?.ifBlank { libraryItem.title } ?: content.title ?: ""
+                val chapterTitle = content.title ?: libraryItem?.currentChapter ?: ""
+                
                 _uiState.update {
                     it.copy(
                         content = content,
@@ -359,7 +374,9 @@ class ReaderViewModel(
                         canNavigatePrevious = content.hasPreviousChapter(),
                         scrollPosition = 0f,
                         scrollProgress = 0,
-                        hasReachedQuarterScreen = false
+                        hasReachedQuarterScreen = false,
+                        novelName = novelName,
+                        chapterTitle = chapterTitle
                     )
                 }
 
@@ -651,5 +668,19 @@ class ReaderViewModel(
         val regex = Regex("""\d+""")
         val match = regex.find(chapterLabel)
         return match?.value?.toIntOrNull()
+    }
+    
+    /**
+     * Toggle UI controls visibility
+     */
+    fun toggleControls() {
+        _uiState.update { it.copy(showControls = !it.showControls) }
+    }
+    
+    /**
+     * Hide UI controls
+     */
+    fun hideControls() {
+        _uiState.update { it.copy(showControls = false) }
     }
 }
