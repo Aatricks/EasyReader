@@ -6,6 +6,7 @@ import io.aatricks.novelscraper.data.model.ChapterContent
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.repository.ContentRepository
+import io.aatricks.novelscraper.util.TextUtils
 import io.aatricks.novelscraper.data.repository.LibraryRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -350,8 +351,35 @@ class ReaderViewModel(
                 
                 // Prefer the next/previous hrefs returned by the chapter loader (these
                 // account for merged chapters). Fall back to spine-based lookup if absent.
+                // Format text runs in EPUB chapter content so the UI sees the
+                // same formatted paragraphs as the preview generator. We need
+                // to preserve image positions, so we flush consecutive text
+                // runs through the formatter and emit images as-is.
+                val formattedElements = mutableListOf<ContentElement>()
+                val textBuffer = mutableListOf<String>()
+
+                fun flushTextBuffer() {
+                    if (textBuffer.isEmpty()) return
+                    val joined = textBuffer.joinToString("\n\n")
+                    val formatted = TextUtils.formatChapterText(joined)
+                    val parts = formatted.split(Regex("\\n\\s*\\n")).map { it.trim() }.filter { it.isNotBlank() }
+                    parts.forEach { p -> formattedElements.add(ContentElement.Text(p)) }
+                    textBuffer.clear()
+                }
+
+                for (el in chapter.content) {
+                    when (el) {
+                        is ContentElement.Text -> textBuffer.add(el.content)
+                        is ContentElement.Image -> {
+                            flushTextBuffer()
+                            formattedElements.add(el)
+                        }
+                    }
+                }
+                flushTextBuffer()
+
                 val content = ChapterContent(
-                    paragraphs = chapter.content,
+                    paragraphs = formattedElements,
                     title = chapter.title,
                     url = "$epubPath#$href",
                     nextChapterUrl = chapter.nextHref?.let { "$epubPath#${it}" }

@@ -197,11 +197,51 @@ class ContentRepository(private val context: Context) {
                         val html = element.html().replace(Regex("(?i)<br\\s*/?>"), "[[LINE_BREAK]]")
                         val text = Jsoup.parseBodyFragment(html).text().replace("[[LINE_BREAK]]", "\n")
 
-                        if (text.isNotBlank() && text.length > 20) { // Filter short paragraphs
+                        // Keep any non-blank paragraph here; small fragments like
+                        // single-word or short dialogue lines (e.g., "'No.'") are
+                        // meaningful and will be filtered later if they match
+                        // heading/pagination patterns.
+                        if (text.isNotBlank()) {
                             paragraphs.add(text)
                         }
                     }
                     if (paragraphs.isNotEmpty()) break
+                }
+
+                // Remove paragraphs that look like chapter headings/titles. These
+                // often appear as a standalone <p> containing "Chapter 123: Title"
+                // or just the chapter number. If left in they may be merged with
+                // the first real paragraph causing the UI to show the chapter
+                // title inline with content. We deliberately drop those here.
+                if (paragraphs.isNotEmpty()) {
+                    val filtered = paragraphs.filter { raw ->
+                        val p = raw.trim()
+                        if (p.isEmpty()) return@filter false
+
+                        // Pure numeric (page/chapter number)
+                        if (p.matches(Regex("^\\d+"))) return@filter false
+
+                        // Common chapter heading patterns: "Chapter 123", "Ch. 123",
+                        // "CHAPTER 1 - Title", etc.
+                        val chapterPattern = Regex("(?i)^(?:chapter|chap|ch|ch\\.)[\\s:\\-\\.]*\\d+\\b.*")
+                        if (chapterPattern.containsMatchIn(p)) return@filter false
+
+                        // Also drop short lines that contain the word "chapter" and a digit
+                        if (p.length <= 80 && p.contains(Regex("(?i)chapter")) && p.any { it.isDigit() }) return@filter false
+
+                        // Drop if paragraph exactly equals or starts with the document title
+                        // (some sites repeat the full title as the first paragraph)
+                        if (title != null) {
+                            val tnorm = title.trim()
+                            if (tnorm.isNotBlank() && (p.equals(tnorm, ignoreCase = true) || p.startsWith(tnorm))) return@filter false
+                        }
+
+                        // Otherwise keep
+                        true
+                    }
+
+                    paragraphs.clear()
+                    paragraphs.addAll(filtered)
                 }
             }
 
@@ -273,7 +313,20 @@ class ContentRepository(private val context: Context) {
             // separated by a blank line, so join and re-split after formatting.
             val joined = paragraphs.distinct().joinToString("\n\n")
             val formatted = TextUtils.formatChapterText(joined)
-            val formattedParagraphs = formatted.split(Regex("\\n\\s*\\n")).map { it.trim() }.filter { it.isNotBlank() }
+            var formattedParagraphs = formatted.split(Regex("\\n\\s*\\n")).map { it.trim() }.filter { it.isNotBlank() }
+
+            // If the first paragraph looks like a chapter heading/title
+            // (e.g., "Chapter 525: Title" or just a number), drop it so it
+            // doesn't appear inline with the content in the UI.
+            if (formattedParagraphs.isNotEmpty()) {
+                val first = formattedParagraphs.first()
+                val headingPattern = Regex("(?i)^\\s*(?:chapter|chap|ch|ch\\.)[\\s:\\-\\.]*\\d+\\b.*")
+                val numericOnly = Regex("^\\s*\\d{1,5}\\s*$")
+                // Drop if matches heading pattern or is numeric only
+                if (headingPattern.containsMatchIn(first) || numericOnly.matches(first)) {
+                    formattedParagraphs = formattedParagraphs.drop(1)
+                }
+            }
 
             return ContentResult.Success(
                 paragraphs = formattedParagraphs,
@@ -615,14 +668,17 @@ class ContentRepository(private val context: Context) {
                             }
                             // Also get any direct text in this element (not in children)
                             val directText = element.ownText().trim()
-                            if (directText.isNotBlank() && directText.length > 10) {
+                            // Allow short text fragments (dialogue, single words) to be
+                            // included. Previously we required length > 10 which could
+                            // remove legitimate short lines from EPUBs.
+                            if (directText.isNotBlank() && directText.length > 1) {
                                 contentElements.add(ContentElement.Text(directText))
                                 android.util.Log.d(TAG, "loadEpubChapter: Added text: ${directText.take(50)}...")
                             }
                         } else {
                             // No images, just get the text content
                             val text = element.text().trim()
-                            if (text.isNotBlank() && text.length > 10) {
+                            if (text.isNotBlank() && text.length > 1) {
                                 contentElements.add(ContentElement.Text(text))
                                 android.util.Log.d(TAG, "loadEpubChapter: Added text: ${text.take(50)}...")
                             }
