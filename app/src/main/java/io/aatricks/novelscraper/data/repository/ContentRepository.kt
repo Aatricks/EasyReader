@@ -25,27 +25,27 @@ import java.util.zip.ZipInputStream
  * Repository for content operations including web scraping, HTML/PDF parsing, and caching
  */
 class ContentRepository(private val context: Context) {
-    
+
     private val TAG = "ContentRepository"
-    
+
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
-    
+
     private val cacheDir: File
         get() = File(context.cacheDir, "html_cache").apply {
             if (!exists()) mkdirs()
         }
-    
+
     private val epubCacheDir: File
         get() = File(context.cacheDir, "epub_cache").apply {
             if (!exists()) mkdirs()
         }
-    
+
     // In-memory cache for parsed EPUB books
     private val epubBookCache = mutableMapOf<String, EpubBook>()
-    
+
     /**
      * Sealed class for content operation results
      */
@@ -55,13 +55,13 @@ class ContentRepository(private val context: Context) {
             val title: String? = null,
             val url: String
         ) : ContentResult()
-        
+
         data class Error(
             val message: String,
             val exception: Exception? = null
         ) : ContentResult()
     }
-    
+
     /**
      * Load content from URL (web or local file)
      */
@@ -101,7 +101,7 @@ class ContentRepository(private val context: Context) {
             ContentResult.Error("Failed to load content: ${e.message}", e)
         }
     }
-    
+
     /**
      * Load web content with caching
      */
@@ -117,13 +117,13 @@ class ContentRepository(private val context: Context) {
                 cachedFile.writeText(html)
                 Jsoup.parse(html, url)
             }
-            
+
             parseHtmlDocument(document, url)
         } catch (e: Exception) {
             ContentResult.Error("Failed to load web content: ${e.message}", e)
         }
     }
-    
+
     /**
      * Download HTML using OkHttp
      */
@@ -132,7 +132,7 @@ class ContentRepository(private val context: Context) {
             .url(url)
             .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
             .build()
-        
+
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 throw Exception("HTTP ${response.code}: ${response.message}")
@@ -140,7 +140,7 @@ class ContentRepository(private val context: Context) {
             return response.body?.string() ?: throw Exception("Empty response body")
         }
     }
-    
+
     /**
      * Load local HTML file
      */
@@ -166,7 +166,7 @@ class ContentRepository(private val context: Context) {
             ContentResult.Error("Failed to load HTML file: ${e.message}", e)
         }
     }
-    
+
     /**
      * Parse HTML document and extract content
      */
@@ -337,7 +337,7 @@ class ContentRepository(private val context: Context) {
             return ContentResult.Error("Failed to parse HTML: ${e.message}", e)
         }
     }
-    
+
     /**
      * Load PDF content and extract text
      */
@@ -364,27 +364,27 @@ class ContentRepository(private val context: Context) {
             try {
                 for (pageNum in 1..pdfDocument.numberOfPages) {
                     val pageText = PdfTextExtractor.getTextFromPage(pdfDocument.getPage(pageNum))
-                    
+
                     // Remove page numbers (lines with only numbers)
                     val cleanedText = pageText.lines()
                         .filterNot { line -> line.trim().matches(Regex("^\\d+$")) }
                         .joinToString("\n")
-                    
+
                     // Split into paragraphs
                     val pageParagraphs = cleanedText.split(Regex("\n\\s*\n"))
                         .map { it.trim() }
                         .filter { it.isNotBlank() && it.length > 20 }
-                    
+
                     paragraphs.addAll(pageParagraphs)
                 }
             } finally {
                 pdfDocument.close()
             }
-            
+
             if (paragraphs.isEmpty()) {
                 return@withContext ContentResult.Error("No text content found in PDF")
             }
-            
+
             // Try to extract title from filename
             val title = try {
                 if (filePath.startsWith("content://")) {
@@ -395,7 +395,7 @@ class ContentRepository(private val context: Context) {
             } catch (e: Exception) {
                 "PDF Document"
             }
-            
+
             ContentResult.Success(
                 paragraphs = paragraphs,
                 title = title,
@@ -405,7 +405,7 @@ class ContentRepository(private val context: Context) {
             ContentResult.Error("Failed to load PDF: ${e.message}", e)
         }
     }
-    
+
     /**
      * Load EPUB content and parse structure
      */
@@ -415,12 +415,12 @@ class ContentRepository(private val context: Context) {
             val epubBook = epubBookCache[filePath] ?: parseEpubFile(filePath).also {
                 epubBookCache[filePath] = it
             }
-            
+
             // If chapterHref is provided, load that specific chapter
             val href = chapterHref ?: epubBook.spine.firstOrNull() ?: return@withContext ContentResult.Error("No chapters found in EPUB")
-            
+
             val chapter = loadEpubChapter(filePath, epubBook, href)
-            
+
             ContentResult.Success(
                 paragraphs = chapter.content.filterIsInstance<ContentElement.Text>().map { it.content },
                 title = chapter.title ?: epubBook.metadata.title,
@@ -430,7 +430,7 @@ class ContentRepository(private val context: Context) {
             ContentResult.Error("Failed to load EPUB: ${e.message}", e)
         }
     }
-    
+
     /**
      * Parse EPUB file structure
      */
@@ -441,9 +441,9 @@ class ContentRepository(private val context: Context) {
         } else {
             File(filePath).inputStream()
         }
-        
+
         val zipEntries = mutableMapOf<String, ByteArray>()
-        
+
         // Extract all files from EPUB (ZIP)
         ZipInputStream(inputStream).use { zipStream ->
             var entry: ZipEntry? = zipStream.nextEntry
@@ -455,22 +455,22 @@ class ContentRepository(private val context: Context) {
                 entry = zipStream.nextEntry
             }
         }
-        
+
         // Find and parse container.xml to locate OPF file
         val containerXml = zipEntries["META-INF/container.xml"]
             ?: throw Exception("container.xml not found in EPUB")
-        
+
         val containerDoc = Jsoup.parse(String(containerXml), "", org.jsoup.parser.Parser.xmlParser())
         val opfPath = containerDoc.select("rootfile").attr("full-path")
             ?: throw Exception("OPF file path not found in container.xml")
-        
+
         // Parse OPF file
         val opfContent = zipEntries[opfPath] ?: throw Exception("OPF file not found: $opfPath")
         val opfDoc = Jsoup.parse(String(opfContent), "", org.jsoup.parser.Parser.xmlParser())
-        
+
         // Extract metadata
         val metadata = parseEpubMetadata(opfDoc)
-        
+
         // Extract manifest (id -> href mapping)
         val opfBasePath = opfPath.substringBeforeLast("/", "")
         val manifest = mutableMapOf<String, String>()
@@ -482,19 +482,19 @@ class ContentRepository(private val context: Context) {
                 manifest[id] = fullHref
             }
         }
-        
+
         // Extract spine (reading order)
         val spine = mutableListOf<String>()
         opfDoc.select("spine itemref").forEach { itemref ->
             val idref = itemref.attr("idref")
             manifest[idref]?.let { spine.add(it) }
         }
-        
+
         // Parse TOC (try toc.ncx first, then nav.xhtml)
-        val toc = parseTocNcx(zipEntries, manifest, opfBasePath) 
-            ?: parseTocNav(zipEntries, manifest, opfBasePath) 
+        val toc = parseTocNcx(zipEntries, manifest, opfBasePath)
+            ?: parseTocNav(zipEntries, manifest, opfBasePath)
             ?: emptyList()
-        
+
         return EpubBook(
             metadata = metadata,
             toc = toc,
@@ -502,7 +502,7 @@ class ContentRepository(private val context: Context) {
             manifest = manifest
         )
     }
-    
+
     /**
      * Parse EPUB metadata from OPF
      */
@@ -516,7 +516,7 @@ class ContentRepository(private val context: Context) {
             identifier = metadata?.select("dc|identifier, identifier")?.first()?.text()
         )
     }
-    
+
     /**
      * Parse TOC from toc.ncx file
      */
@@ -524,12 +524,12 @@ class ContentRepository(private val context: Context) {
         // Find toc.ncx file
         val ncxPath = manifest.values.firstOrNull { it.endsWith("toc.ncx") || it.contains("toc.ncx") }
             ?: return null
-        
+
         android.util.Log.d(TAG, "parseTocNcx: Found ncx at: $ncxPath")
-        
+
         val ncxContent = zipEntries[ncxPath] ?: return null
         val ncxDoc = Jsoup.parse(String(ncxContent), "", org.jsoup.parser.Parser.xmlParser())
-        
+
         fun parseNavPoint(navPoint: org.jsoup.nodes.Element, playOrder: Int = 0): EpubTocItem {
             val id = navPoint.attr("id")
             val title = navPoint.select("navLabel text").first()?.text() ?: "Chapter"
@@ -537,11 +537,11 @@ class ContentRepository(private val context: Context) {
             // Handle both absolute and relative paths, strip leading slashes
             val src = if (rawSrc.startsWith("/")) rawSrc.substring(1) else rawSrc
             val href = if (basePath.isNotBlank() && !src.contains("/")) "$basePath/$src" else src
-            
+
             val children = navPoint.select("> navPoint").mapIndexed { index, child ->
                 parseNavPoint(child, playOrder + index + 1)
             }
-            
+
             return EpubTocItem(
                 id = id,
                 title = title,
@@ -550,17 +550,17 @@ class ContentRepository(private val context: Context) {
                 children = children
             )
         }
-        
+
         // Parse all top-level navPoints - these may have children
         val topLevelNavPoints = ncxDoc.select("navMap > navPoint").mapIndexed { index, navPoint ->
             parseNavPoint(navPoint, index)
         }
-        
+
         android.util.Log.d(TAG, "parseTocNcx: Found ${topLevelNavPoints.size} top-level navPoints")
         topLevelNavPoints.forEach { item ->
             android.util.Log.d(TAG, "  - ${item.title} (${item.children.size} children)")
         }
-        
+
         // Flatten the structure: if there's only one top-level item and it has children, use the children
         val result = if (topLevelNavPoints.size == 1 && topLevelNavPoints[0].children.isNotEmpty()) {
             android.util.Log.d(TAG, "parseTocNcx: Flattening - using children of '${topLevelNavPoints[0].title}'")
@@ -568,37 +568,37 @@ class ContentRepository(private val context: Context) {
         } else {
             topLevelNavPoints
         }
-        
+
         android.util.Log.d(TAG, "parseTocNcx: Returning ${result.size} items")
         result.forEach { item ->
             android.util.Log.d(TAG, "  Final TOC: ${item.title} -> ${item.href}")
         }
-        
+
         return result
     }
-    
+
     /**
      * Parse TOC from nav.xhtml file (EPUB 3)
      */
     private fun parseTocNav(zipEntries: Map<String, ByteArray>, manifest: Map<String, String>, basePath: String): List<EpubTocItem>? {
         // Find nav.xhtml or similar
-        val navPath = manifest.values.firstOrNull { 
+        val navPath = manifest.values.firstOrNull {
             it.contains("nav.xhtml") || it.contains("nav.html") || it.endsWith("nav.xhtml")
         } ?: return null
-        
+
         val navContent = zipEntries[navPath] ?: return null
         val navDoc = Jsoup.parse(String(navContent))
-        
+
         fun parseNavItem(li: org.jsoup.nodes.Element, playOrder: Int = 0): EpubTocItem? {
             val link = li.select("> a, > span > a").first() ?: return null
             val title = link.text()
             val rawHref = link.attr("href")
             val href = if (basePath.isNotBlank()) "$basePath/$rawHref" else rawHref
-            
+
             val children = li.select("> ol > li, > ul > li").mapIndexedNotNull { index, child ->
                 parseNavItem(child, playOrder + index + 1)
             }
-            
+
             return EpubTocItem(
                 id = "nav_$playOrder",
                 title = title,
@@ -607,25 +607,25 @@ class ContentRepository(private val context: Context) {
                 children = children
             )
         }
-        
+
         return navDoc.select("nav[*|type=toc] ol > li, nav#toc ol > li").mapIndexedNotNull { index, li ->
             parseNavItem(li, index)
         }
     }
-    
+
     /**
      * Load a specific chapter from EPUB
      */
-    private fun loadEpubChapter(filePath: String, epubBook: EpubBook, href: String): EpubChapter {
+    private fun loadEpubChapter(filePath: String, epubBook: EpubBook, href: String, isPeeking: Boolean = false): EpubChapter {
         val inputStream = if (filePath.startsWith("content://")) {
             context.contentResolver.openInputStream(Uri.parse(filePath))
                 ?: throw Exception("Cannot open EPUB file")
         } else {
             File(filePath).inputStream()
         }
-        
+
         var chapterContent: ByteArray? = null
-        
+
         // Find and extract the specific chapter file
         ZipInputStream(inputStream).use { zipStream ->
             var entry: ZipEntry? = zipStream.nextEntry
@@ -638,20 +638,20 @@ class ContentRepository(private val context: Context) {
                 entry = zipStream.nextEntry
             }
         }
-        
+
         if (chapterContent == null) {
             throw Exception("Chapter not found: $href")
         }
-        
+
         // Parse HTML content
         val doc = Jsoup.parse(String(chapterContent!!))
         val tocItem = epubBook.findTocItemByHref(href)
-        
+
         // Extract content elements (text and images)
         val contentElements = mutableListOf<ContentElement>()
-        
+
         android.util.Log.d(TAG, "loadEpubChapter: Loading chapter '$href' from $filePath")
-        
+
         doc.select("body").first()?.let { body ->
             // Traverse the body in document order to preserve image/text positioning
             // This ensures images appear exactly where they are in the EPUB
@@ -722,52 +722,128 @@ class ContentRepository(private val context: Context) {
                     }
                 }
             }
-            
+
             // Process all direct children of body in document order
             body.children().forEach { child ->
                 processElement(child)
             }
-            
+
             android.util.Log.d(TAG, "loadEpubChapter: Found ${contentElements.size} content elements in document order")
         }
-        
+
         android.util.Log.d(TAG, "loadEpubChapter: Extracted ${contentElements.size} content elements")
-        
-        // If this chapter has ONLY images but no text, try to load the next chapter and combine them
-        // This handles EPUBs where intro image pages are separate from text content
-        val hasText = contentElements.any { it is ContentElement.Text }
-        val hasImages = contentElements.any { it is ContentElement.Image }
-        
-        if (hasImages && !hasText) {
-            android.util.Log.d(TAG, "loadEpubChapter: Chapter '$href' has only images, checking for text in next chapter")
-            val nextHref = epubBook.getNextHref(href)
-            if (nextHref != null && nextHref != href) {
-                android.util.Log.d(TAG, "loadEpubChapter: Loading next chapter for text: $nextHref")
-                val nextChapter = loadEpubChapter(filePath, epubBook, nextHref)
-                // Combine: images from current chapter + content from next chapter
-                val combinedContent = contentElements + nextChapter.content
-                android.util.Log.d(TAG, "loadEpubChapter: Combined chapter with '$nextHref', nextHref now points to '${nextChapter.nextHref}'")
-                // Use the nextHref from the recursively merged chapter to skip all intermediate merges
+
+                // If this chapter has ONLY images but no text, try to load the next chapter and combine them
+                // This handles EPUBs where intro image pages are separate from text content
+                val hasText = contentElements.any { it is ContentElement.Text }
+                val hasImages = contentElements.any { it is ContentElement.Image }
+
+                                                // If chapter has images but no text, merge with the next chapter that has text
+
+                                                if (hasImages && !hasText && !isPeeking) {
+
+                                                    var nextHref = epubBook.getNextHref(href)
+
+                                                    val combinedContent = contentElements.toMutableList()
+
+                                                    var finalNextHref = epubBook.getNextHref(href)
+
+                                                    var nextTitle: String? = null
+
+
+
+                                                    while (nextHref != null && nextHref != href) {
+
+                                                        val nextChapter = loadEpubChapter(filePath, epubBook, nextHref, isPeeking = true)
+
+                                                        val nextHasText = nextChapter.content.any { it is ContentElement.Text }
+
+
+
+                                                        combinedContent.addAll(nextChapter.content)
+
+                                                        finalNextHref = nextChapter.nextHref
+
+                                                        if (nextChapter.title != null) {
+
+                                                            nextTitle = nextChapter.title
+
+                                                        }
+
+
+
+                                                        if (nextHasText) {
+
+                                                            break
+
+                                                        }
+
+
+
+                                                        nextHref = epubBook.getNextHref(nextHref)
+
+                                                    }
+
+
+
+                                                    return EpubChapter(
+
+                                                        href = href,
+
+                                                        title = tocItem?.title ?: nextTitle ?: doc.title(),
+
+                                                        content = combinedContent,
+
+                                                        nextHref = finalNextHref,
+
+                                                        previousHref = epubBook.getPreviousHref(href)
+
+                                                    )
+
+                                                }        // If chapter has text but no images, check if PREVIOUS chapter was image-only
+        if (hasText && !hasImages && !isPeeking) { // Do not merge when peeking
+            var prevHref = epubBook.getPreviousHref(href)
+            val contentToPrepend = mutableListOf<ContentElement>()
+            var finalPrevHref: String? = epubBook.getPreviousHref(href)
+            var firstHrefInMerge: String? = null
+
+            while (prevHref != null && prevHref != href) {
+                val prevChapter = loadEpubChapter(filePath, epubBook, prevHref, isPeeking = true)
+                val prevHasText = prevChapter.content.any { it is ContentElement.Text }
+                val prevHasImages = prevChapter.content.any { it is ContentElement.Image }
+
+                if (prevHasImages && !prevHasText) {
+                    contentToPrepend.addAll(0, prevChapter.content)
+                    finalPrevHref = epubBook.getPreviousHref(prevHref)
+                    firstHrefInMerge = prevHref
+                } else {
+                    break
+                }
+
+                prevHref = epubBook.getPreviousHref(prevHref)
+            }
+
+            if (contentToPrepend.isNotEmpty()) {
+                val combinedContent = contentToPrepend + contentElements
                 return EpubChapter(
-                    href = href,
-                    title = tocItem?.title ?: nextChapter.title ?: doc.title(),
+                    href = firstHrefInMerge!!,
+                    title = tocItem?.title ?: doc.title(),
                     content = combinedContent,
-                    nextHref = nextChapter.nextHref, // Use the final next href from the merged chain
-                    previousHref = epubBook.getPreviousHref(href)
+                    nextHref = epubBook.getNextHref(href),
+                    previousHref = finalPrevHref
                 )
             }
         }
-        
-        // If this chapter has NO content at all, try to load the next chapter
-        if (contentElements.isEmpty()) {
-            android.util.Log.d(TAG, "loadEpubChapter: Chapter '$href' has no content, trying next in spine")
-            val nextHref = epubBook.getNextHref(href)
-            if (nextHref != null && nextHref != href) {
-                android.util.Log.d(TAG, "loadEpubChapter: Loading next chapter: $nextHref")
-                return loadEpubChapter(filePath, epubBook, nextHref)
-            }
-        }
-        
+
+                // If this chapter has NO content at all, try to load the next chapter
+                if (contentElements.isEmpty() && !isPeeking) { // Do not merge when peeking
+                    android.util.Log.d(TAG, "loadEpubChapter: Chapter '$href' has no content, trying next in spine")
+                    val nextHref = epubBook.getNextHref(href)
+                    if (nextHref != null && nextHref != href) {
+                        android.util.Log.d(TAG, "loadEpubChapter: Loading next chapter: $nextHref")
+                        return loadEpubChapter(filePath, epubBook, nextHref)
+                    }
+                }
         return EpubChapter(
             href = href,
             title = tocItem?.title ?: doc.title(),
@@ -776,13 +852,13 @@ class ContentRepository(private val context: Context) {
             previousHref = epubBook.getPreviousHref(href)
         )
     }
-    
+
     /**
      * Resolve relative path in EPUB
      */
     private fun resolveEpubPath(baseHref: String, relativePath: String): String {
         if (relativePath.startsWith("/")) return relativePath.drop(1)
-        
+
         val basePath = baseHref.substringBeforeLast("/", "")
         return if (basePath.isNotBlank()) {
             "$basePath/$relativePath"
@@ -790,21 +866,21 @@ class ContentRepository(private val context: Context) {
             relativePath
         }
     }
-    
+
     /**
      * Increment chapter URL (e.g., chapter-1 -> chapter-2)
      */
     fun incrementChapterUrl(url: String): String? {
         return adjustChapterUrl(url, 1)
     }
-    
+
     /**
      * Decrement chapter URL (e.g., chapter-2 -> chapter-1)
      */
     fun decrementChapterUrl(url: String): String? {
         return adjustChapterUrl(url, -1)
     }
-    
+
     /**
      * Adjust chapter URL by delta
      */
@@ -818,32 +894,32 @@ class ContentRepository(private val context: Context) {
                 Regex("""(?<=/|-)(\d+)(?=\.html|\.htm|$)""", RegexOption.IGNORE_CASE),
                 Regex("""(\d+)(?=\.html|\.htm)""")
             )
-            
+
             for (pattern in patterns) {
                 val match = pattern.find(url)
                 if (match != null) {
                     val currentNumber = match.groupValues.last().toIntOrNull() ?: continue
                     val newNumber = currentNumber + delta
-                    
+
                     if (newNumber < 1) return null // Can't go below chapter 1
-                    
+
                     // Preserve leading zeros if present
                     val originalLength = match.groupValues.last().length
                     val newNumberStr = newNumber.toString().padStart(originalLength, '0')
-                    
+
                     return url.replaceRange(match.range, match.value.replace(
                         match.groupValues.last(),
                         newNumberStr
                     ))
                 }
             }
-            
+
             return null // No pattern matched
         } catch (e: Exception) {
             return null
         }
     }
-    
+
     /**
      * Get cached file for URL
      */
@@ -851,7 +927,7 @@ class ContentRepository(private val context: Context) {
         val filename = url.hashCode().toString() + ".html"
         return File(cacheDir, filename)
     }
-    
+
     /**
      * Check if URL is cached
      */
@@ -870,7 +946,7 @@ class ContentRepository(private val context: Context) {
                 val epubBook = getEpubBook(url)
                 return@withContext epubBook?.metadata?.title
             }
-            
+
             // Handle PDF files
             if (url.endsWith(".pdf", ignoreCase = true) || url.contains("pdf")) {
                 return@withContext if (url.startsWith("content://")) {
@@ -879,7 +955,7 @@ class ContentRepository(private val context: Context) {
                     File(url).nameWithoutExtension
                 }
             }
-            
+
             // Handle web URLs
             if (!url.startsWith("http")) return@withContext null
             // If cached, parse cached file
@@ -930,7 +1006,7 @@ class ContentRepository(private val context: Context) {
             false
         }
     }
-    
+
     /**
      * Prefetch EPUB file and cache images
      */
@@ -940,11 +1016,11 @@ class ContentRepository(private val context: Context) {
             val epubBook = epubBookCache[filePath] ?: parseEpubFile(filePath).also {
                 epubBookCache[filePath] = it
             }
-            
+
             // Create cache directory for this EPUB
             val bookId = filePath.hashCode().toString()
             val bookCacheDir = File(epubCacheDir, bookId).apply { mkdirs() }
-            
+
             // Extract all images from EPUB
             val inputStream = if (filePath.startsWith("content://")) {
                 context.contentResolver.openInputStream(Uri.parse(filePath))
@@ -952,7 +1028,7 @@ class ContentRepository(private val context: Context) {
             } else {
                 File(filePath).inputStream()
             }
-            
+
             ZipInputStream(inputStream).use { zipStream ->
                 var entry: ZipEntry? = zipStream.nextEntry
                 while (entry != null) {
@@ -968,13 +1044,13 @@ class ContentRepository(private val context: Context) {
                     entry = zipStream.nextEntry
                 }
             }
-            
+
             true
         } catch (e: Exception) {
             false
         }
     }
-    
+
     /**
      * Check if file is an image based on extension
      */
@@ -982,7 +1058,7 @@ class ContentRepository(private val context: Context) {
         val ext = filename.substringAfterLast('.', "").lowercase()
         return ext in setOf("jpg", "jpeg", "png", "gif", "webp", "svg", "bmp")
     }
-    
+
     /**
      * Get cached image file for EPUB
      */
@@ -993,7 +1069,7 @@ class ContentRepository(private val context: Context) {
         val imageFile = File(bookCacheDir, imageName)
         return if (imageFile.exists()) imageFile else null
     }
-    
+
     /**
      * Get EPUB book structure (for TOC display)
      */
@@ -1006,14 +1082,14 @@ class ContentRepository(private val context: Context) {
             null
         }
     }
-    
+
     /**
      * Load specific EPUB chapter by href
      */
     suspend fun loadEpubChapterByHref(filePath: String, href: String): ContentResult = withContext(Dispatchers.IO) {
         loadEpubContent(filePath, href)
     }
-    
+
     /**
      * Load EPUB chapter with full ContentElement list (text + images)
      */
@@ -1028,7 +1104,7 @@ class ContentRepository(private val context: Context) {
             null
         }
     }
-    
+
     /**
      * Get image bytes from EPUB file
      * @param url Format: "epubPath#img:imagePath"
@@ -1036,20 +1112,20 @@ class ContentRepository(private val context: Context) {
     suspend fun getEpubImage(url: String): ByteArray? = withContext(Dispatchers.IO) {
         try {
             if (!url.contains("#img:")) return@withContext null
-            
+
             val parts = url.split("#img:", limit = 2)
             if (parts.size != 2) return@withContext null
-            
+
             val epubPath = parts[0]
             val imagePath = parts[1]
-            
+
             val inputStream = if (epubPath.startsWith("content://")) {
                 context.contentResolver.openInputStream(Uri.parse(epubPath))
                     ?: return@withContext null
             } else {
                 File(epubPath).inputStream()
             }
-            
+
             var imageBytes: ByteArray? = null
             ZipInputStream(inputStream).use { zipStream ->
                 var entry: ZipEntry? = zipStream.nextEntry
@@ -1062,14 +1138,14 @@ class ContentRepository(private val context: Context) {
                     entry = zipStream.nextEntry
                 }
             }
-            
+
             imageBytes
         } catch (e: Exception) {
             android.util.Log.e(TAG, "Failed to load EPUB image: ${e.message}", e)
             null
         }
     }
-    
+
     /**
      * Fetch title for EPUB or other content
      */
@@ -1080,7 +1156,7 @@ class ContentRepository(private val context: Context) {
             false
         }
     }
-    
+
     /**
      * Clear all cache
      */
@@ -1092,7 +1168,7 @@ class ContentRepository(private val context: Context) {
             false
         }
     }
-    
+
     /**
      * Get cache size in bytes
      */
