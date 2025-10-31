@@ -13,6 +13,7 @@ import okhttp3.Request
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import io.aatricks.novelscraper.data.model.*
+import io.aatricks.novelscraper.util.TextUtils
 import java.io.File
 import java.io.InputStream
 import java.net.URL
@@ -204,12 +205,78 @@ class ContentRepository(private val context: Context) {
                 }
             }
 
+            // Merge adjacent paragraphs that are likely accidental splits produced by
+            // the source HTML using multiple <p> tags for a single logical sentence.
+            // Heuristics:
+            // - If a paragraph does NOT end with a sentence terminator and is short
+            //   (<= 8 words) or ends with a continuation word (of, to, for, etc.),
+            //   merge it with the next paragraph.
+            if (paragraphs.size > 1) {
+                val merged = mutableListOf<String>()
+                var idx = 0
+                val sentenceEnders = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
+                val continuationWords = setOf("of", "to", "for", "and", "but", "or", "the", "a", "an", "my", "his", "her", "their", "its", "in", "on", "at", "from", "with")
+
+                fun lastWord(s: String): String {
+                    val parts = s.trim().split(Regex("\\s+"))
+                    return parts.lastOrNull() ?: ""
+                }
+
+                while (idx < paragraphs.size) {
+                    var cur = paragraphs[idx].trim()
+                    if (cur.isEmpty()) { idx++; continue }
+
+                    if (idx + 1 < paragraphs.size) {
+                        val next = paragraphs[idx + 1].trim()
+                        if (next.isNotEmpty()) {
+                            val lastChar = cur.lastOrNull()
+                            val lastW = lastWord(cur).lowercase()
+                            val wordCount = cur.split(Regex("\\s+")).size
+
+                            val shouldMerge = (lastChar != null && !sentenceEnders.contains(lastChar)) &&
+                                    (wordCount <= 8 || lastW in continuationWords || lastW.length <= 4)
+
+                            if (shouldMerge) {
+                                cur = (cur + " " + next).replace(Regex(" +"), " ")
+                                idx += 2
+                                // merge multiple accidental splits
+                                while (idx < paragraphs.size) {
+                                    val peek = paragraphs[idx].trim()
+                                    if (peek.isEmpty()) { idx++; continue }
+                                    val peekFirst = peek.firstOrNull()
+                                    if (peekFirst != null && peekFirst.isUpperCase() && cur.trim().lastOrNull()?.let { sentenceEnders.contains(it) } == true) break
+                                    cur = (cur + " " + peek).replace(Regex(" +"), " ")
+                                    idx++
+                                }
+                                merged.add(cur)
+                                continue
+                            }
+                        }
+                    }
+
+                    merged.add(cur)
+                    idx++
+                }
+
+                paragraphs.clear()
+                paragraphs.addAll(merged)
+            }
+
             if (paragraphs.isEmpty()) {
                 return ContentResult.Error("No content found in document")
             }
 
+            // Apply in-paragraph formatting to the chapter as a whole so that
+            // soft line-breaks and hyphenation fixes are consistent whether
+            // viewed in the preview/test harness or inside the app UI. The
+            // formatter expects a block of text where logical paragraphs are
+            // separated by a blank line, so join and re-split after formatting.
+            val joined = paragraphs.distinct().joinToString("\n\n")
+            val formatted = TextUtils.formatChapterText(joined)
+            val formattedParagraphs = formatted.split(Regex("\\n\\s*\\n")).map { it.trim() }.filter { it.isNotBlank() }
+
             return ContentResult.Success(
-                paragraphs = paragraphs.distinct(), // Remove duplicates
+                paragraphs = formattedParagraphs,
                 title = title,
                 url = url
             )
