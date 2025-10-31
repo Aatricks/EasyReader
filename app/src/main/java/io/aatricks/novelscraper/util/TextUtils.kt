@@ -352,4 +352,24 @@ object TextUtils {
         val wordCount = countWords(text)
         return maxOf(1, (wordCount / 200.0).toInt())
     }
+
+    /**
+     * Formats the text of a chapter by removing extra whitespace and normalizing paragraph breaks.
+     *
+     * @param text The chapter text to format.
+     * @return The formatted chapter text.
+     */
+    fun formatChapterText(text: String): String {
+        return text
+            // Remove leading/trailing whitespace from the entire text
+            .trim()
+            // Replace multiple spaces with a single space
+            .replace(Regex(" +"), " ")
+            // Normalize all line breaks to a single newline character
+            .replace(Regex("\\r\\n|\\r"), "\n")
+            // Remove spaces at the beginning and end of each line
+            .lines().joinToString("\n") { it.trim() }
+            // Ensure paragraphs are separated by a double newline, preserving single newlines
+            .replace(Regex("(\\n\\n)+"), "\n\n")
+    }
 }

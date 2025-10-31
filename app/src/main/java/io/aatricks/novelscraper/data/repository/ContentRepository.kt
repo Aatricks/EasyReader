@@ -173,10 +173,10 @@ class ContentRepository(private val context: Context) {
         try {
             // Extract title
             val title = document.title().takeIf { it.isNotBlank() }
-            
+
             // Extract paragraphs from various possible containers
             val paragraphs = mutableListOf<String>()
-            
+
             // Try common content selectors
             val contentSelectors = listOf(
                 "article p",
@@ -187,12 +187,15 @@ class ContentRepository(private val context: Context) {
                 "main p",
                 "p"
             )
-            
+
             for (selector in contentSelectors) {
                 val elements = document.select(selector)
                 if (elements.isNotEmpty()) {
                     elements.forEach { element ->
-                        val text = element.text().trim()
+                        // Preserve line breaks by replacing <br> tags with a placeholder
+                        val html = element.html().replace(Regex("(?i)<br\\s*/?>"), "[[LINE_BREAK]]")
+                        val text = Jsoup.parseBodyFragment(html).text().replace("[[LINE_BREAK]]", "\n")
+
                         if (text.isNotBlank() && text.length > 20) { // Filter short paragraphs
                             paragraphs.add(text)
                         }
@@ -200,11 +203,11 @@ class ContentRepository(private val context: Context) {
                     if (paragraphs.isNotEmpty()) break
                 }
             }
-            
+
             if (paragraphs.isEmpty()) {
                 return ContentResult.Error("No content found in document")
             }
-            
+
             return ContentResult.Success(
                 paragraphs = paragraphs.distinct(), // Remove duplicates
                 title = title,
