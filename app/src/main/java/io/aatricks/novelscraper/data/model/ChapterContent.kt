@@ -1,5 +1,7 @@
 package io.aatricks.novelscraper.data.model
 
+import io.aatricks.novelscraper.util.TextUtils
+
 /**
  * Data class representing the content of a chapter or section.
  * Contains a list of content elements (text and images) along with metadata.
@@ -51,9 +53,11 @@ data class ChapterContent(
     /**
      * Get all text content concatenated together
      */
-    fun getAllText(): String = paragraphs
-        .filterIsInstance<ContentElement.Text>()
-        .joinToString("\n\n") { it.content }
+    fun getAllText(): String = TextUtils.formatChapterText(
+        paragraphs
+            .filterIsInstance<ContentElement.Text>()
+            .joinToString("\n\n") { it.content }
+    )
     
     /**
      * Get all image URLs
