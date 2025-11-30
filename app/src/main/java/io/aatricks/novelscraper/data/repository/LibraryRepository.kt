@@ -1,5 +1,7 @@
 package io.aatricks.novelscraper.data.repository
 
+import io.aatricks.novelscraper.util.TextUtils
+
 import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.model.LibraryItem
 import io.aatricks.novelscraper.data.model.ContentType
@@ -190,11 +192,39 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
      * Group items by baseTitle
      */
     fun getGroupedByTitle(): Map<String, List<LibraryItem>> {
-        // Simply group by baseTitle field - normalization happened at creation time
+        // Group by baseTitle and sort each group's chapters in descending order when possible
+        // Sort by chapter number if available, otherwise by date added (most recent first)
         return _libraryItems.value.groupBy { item ->
             // Use baseTitle if available, otherwise fall back to title
             item.baseTitle.ifBlank { item.title }
+        }.mapValues { (_, items) ->
+            // Sort items by chapter number (descending) when we can parse it, otherwise by dateAdded
+            items.sortedWith { a, b ->
+                val aNum = parseChapterNumberOrNull(a)
+                val bNum = parseChapterNumberOrNull(b)
+                when {
+                    aNum != null && bNum != null -> bNum.compareTo(aNum)
+                    else -> b.dateAdded.compareTo(a.dateAdded)
+                }
+            }
         }
+    }
+
+    // Helper to extract chapter number from title or currentChapter using TextUtils helper if available
+    private fun parseChapterNumberOrNull(item: LibraryItem): Int? {
+        // Try currentChapter first
+        val cc = item.currentChapter
+        if (cc.isNotBlank()) {
+            val num = TextUtils.extractChapterNumber(cc)
+            if (num != null) return num
+        }
+        // Fallback to title
+        val titleNum = TextUtils.extractChapterNumber(item.title)
+        if (titleNum != null) return titleNum
+        // Fallback to URL - try to extract from URL string
+        val urlNum = TextUtils.extractChapterNumber(item.url)
+        if (urlNum != null) return urlNum
+        return null
     }
     
     /**

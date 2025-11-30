@@ -188,7 +188,9 @@ fun LibraryDrawerContent(
                             )
                         } else {
                             // Render regular grouped items (WEB, PDF, HTML)
-                            val isExpanded = expandedState[groupTitle] ?: false
+                            // Default to expanded when a group has multiple chapters so users
+                            // can see downloaded chapters without having to manually expand.
+                            val isExpanded = expandedState.getOrPut(groupTitle) { items.size > 1 }
 
                             Card(
                                 modifier = Modifier
@@ -249,7 +251,7 @@ fun LibraryDrawerContent(
                                                     if (current.isCurrentlyReading) {
                                                         Spacer(modifier = Modifier.height(4.dp))
                                                         LinearProgressIndicator(
-                                                            progress = { readerUiState.scrollProgress / 100f },
+                                                            progress = readerUiState.scrollProgress / 100f,
                                                             modifier = Modifier.fillMaxWidth(),
                                                             color = Color(0xFF4CAF50),
                                                             trackColor = Color(0xFF2C2C2C)
@@ -260,7 +262,8 @@ fun LibraryDrawerContent(
                                         }
 
                                         IconButton(onClick = {
-                                            expandedState[groupTitle] = !(expandedState[groupTitle] ?: false)
+                                            val current = expandedState[groupTitle] ?: (items.size > 1)
+                                            expandedState[groupTitle] = !current
                                         }) {
                                             Icon(
                                                 imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.Filled.KeyboardArrowRight,
