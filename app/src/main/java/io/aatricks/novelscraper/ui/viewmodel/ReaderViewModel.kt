@@ -53,6 +53,8 @@ class ReaderViewModel(
         val error: String? = null,
         val scrollPosition: Float = 0f,
         val scrollProgress: Int = 0, // 0-100 percentage
+        val scrollIndex: Int = 0, // First visible item index
+        val scrollOffset: Int = 0, // First visible item offset
         val isScrollingDown: Boolean = true,
         val hasReachedQuarterScreen: Boolean = false,
         val canNavigateNext: Boolean = false,
@@ -97,7 +99,9 @@ class ReaderViewModel(
                             currentChapter = "", // Empty string signals to keep existing value
                             progress = _uiState.value.scrollProgress,
                             currentChapterUrl = prevContent.url,
-                            lastScrollProgress = _uiState.value.scrollPosition.toInt()
+                            lastScrollProgress = _uiState.value.scrollPosition.toInt(),
+                            lastReadIndex = _uiState.value.scrollIndex,
+                            lastReadOffset = _uiState.value.scrollOffset
                         )
                     } catch (_: Exception) {}
                 }
@@ -129,6 +133,8 @@ class ReaderViewModel(
                                 canNavigatePrevious = content.hasPreviousChapter(),
                                 scrollPosition = 0f,
                                 scrollProgress = 0,
+                                scrollIndex = 0,
+                                scrollOffset = 0,
                                 hasReachedQuarterScreen = false,
                                 novelName = novelName,
                                 chapterTitle = chapterTitle
@@ -147,7 +153,9 @@ class ReaderViewModel(
                                     _uiState.update { state ->
                                         state.copy(
                                             scrollPosition = restoredScrollPercent,
-                                            scrollProgress = libItem.progress
+                                            scrollProgress = libItem.progress,
+                                            scrollIndex = libItem.lastReadIndex,
+                                            scrollOffset = libItem.lastReadOffset
                                         )
                                     }
                                 }
@@ -317,7 +325,9 @@ class ReaderViewModel(
                             currentChapter = "", // Empty string signals to keep existing value
                             progress = _uiState.value.scrollProgress,
                             currentChapterUrl = prevContent.url,
-                            lastScrollProgress = _uiState.value.scrollPosition.toInt()
+                            lastScrollProgress = _uiState.value.scrollPosition.toInt(),
+                            lastReadIndex = _uiState.value.scrollIndex,
+                            lastReadOffset = _uiState.value.scrollOffset
                         )
                     } catch (_: Exception) {}
                 }
@@ -402,6 +412,8 @@ class ReaderViewModel(
                         canNavigatePrevious = content.hasPreviousChapter(),
                         scrollPosition = 0f,
                         scrollProgress = 0,
+                        scrollIndex = 0,
+                        scrollOffset = 0,
                         hasReachedQuarterScreen = false,
                         novelName = novelName,
                         chapterTitle = chapterTitle
@@ -420,7 +432,9 @@ class ReaderViewModel(
                             _uiState.update { state ->
                                 state.copy(
                                     scrollPosition = restoredScrollPercent,
-                                    scrollProgress = libItem.progress
+                                    scrollProgress = libItem.progress,
+                                    scrollIndex = libItem.lastReadIndex,
+                                    scrollOffset = libItem.lastReadOffset
                                 )
                             }
                         }
@@ -447,24 +461,30 @@ class ReaderViewModel(
      * @param scrollOffset Current scroll offset
      * @param maxScrollOffset Maximum possible scroll offset
      * @param viewportHeight Height of the visible viewport
+     * @param index First visible item index
+     * @param offset First visible item scroll offset
      */
     fun updateScrollPosition(
         scrollOffset: Float,
         maxScrollOffset: Float,
-        viewportHeight: Float
+        viewportHeight: Float,
+        index: Int,
+        offset: Int
     ) {
         // Cancel previous update and schedule new one with debounce
         progressUpdateJob?.cancel()
         progressUpdateJob = viewModelScope.launch {
             delay(100) // 100ms debounce to reduce jitter
-            performScrollUpdate(scrollOffset, maxScrollOffset, viewportHeight)
+            performScrollUpdate(scrollOffset, maxScrollOffset, viewportHeight, index, offset)
         }
     }
 
     private fun performScrollUpdate(
         scrollOffset: Float,
         maxScrollOffset: Float,
-        viewportHeight: Float
+        viewportHeight: Float,
+        index: Int,
+        offset: Int
     ) {
         // Determine raw delta to detect true user gesture direction
         val deltaRaw = if (lastRawScrollOffset < 0f) {
@@ -492,6 +512,8 @@ class ReaderViewModel(
             it.copy(
                 scrollPosition = progress,
                 scrollProgress = progressInt,
+                scrollIndex = index,
+                scrollOffset = offset,
                 isScrollingDown = isScrollingDown,
                 hasReachedQuarterScreen = hasReached
             )
@@ -532,13 +554,17 @@ class ReaderViewModel(
                 currentLibraryItemId?.let { itemId ->
                     val currentChapterUrl = _uiState.value.content?.url ?: ""
                     val lastScroll = _uiState.value.scrollPosition.toInt()
+                    val index = _uiState.value.scrollIndex
+                    val offset = _uiState.value.scrollOffset
 
                     libraryRepository.updateProgress(
                         itemId = itemId,
                         currentChapter = "", // Don't update currentChapter label
                         progress = progress,
                         currentChapterUrl = currentChapterUrl,
-                        lastScrollProgress = lastScroll
+                        lastScrollProgress = lastScroll,
+                        lastReadIndex = index,
+                        lastReadOffset = offset
                     )
                 }
             } catch (e: Exception) {

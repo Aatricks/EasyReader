@@ -110,7 +110,9 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
         currentChapter: String,
         progress: Int,
         currentChapterUrl: String? = null,
-        lastScrollProgress: Int? = null
+        lastScrollProgress: Int? = null,
+        lastReadIndex: Int? = null,
+        lastReadOffset: Int? = null
     ): Boolean = withContext(Dispatchers.IO) {
         val currentItems = _libraryItems.value.toMutableList()
         val index = currentItems.indexOfFirst { it.id == itemId }
@@ -123,6 +125,8 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
                 progress = progress,
                 currentChapterUrl = currentChapterUrl ?: item.currentChapterUrl,
                 lastScrollPosition = lastScrollProgress ?: item.lastScrollPosition,
+                lastReadIndex = lastReadIndex ?: item.lastReadIndex,
+                lastReadOffset = lastReadOffset ?: item.lastReadOffset,
                 lastRead = System.currentTimeMillis()
             )
             _libraryItems.value = currentItems

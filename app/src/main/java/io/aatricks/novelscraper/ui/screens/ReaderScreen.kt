@@ -134,27 +134,38 @@ private fun ContentArea(
     val appliedRestore = remember(content.url) { mutableStateOf(false) }
     
     // If there's a saved percent scroll position in the ViewModel, apply it once when content loads.
-    LaunchedEffect(content.url, uiState.scrollPosition) {
-        if (!appliedRestore.value && uiState.scrollPosition > 0f && content.paragraphs.isNotEmpty()) {
-            // Map percent -> item index + offset
-            val totalItems = content.paragraphs.size
-            val percent = uiState.scrollPosition.coerceIn(0f, 100f) / 100f
+    LaunchedEffect(content.url, uiState.scrollPosition, uiState.scrollIndex) {
+        if (!appliedRestore.value && content.paragraphs.isNotEmpty()) {
+            // Try precise restoration first
+            if (uiState.scrollIndex > 0 || uiState.scrollOffset > 0) {
+                try {
+                    listState.scrollToItem(uiState.scrollIndex, uiState.scrollOffset)
+                    appliedRestore.value = true
+                } catch (_: Exception) {
+                    // Fallback or ignore
+                }
+            } else if (uiState.scrollPosition > 0f) {
+                // Fallback to percentage-based restoration (backward compatibility)
+                // Map percent -> item index + offset
+                val totalItems = content.paragraphs.size
+                val percent = uiState.scrollPosition.coerceIn(0f, 100f) / 100f
 
-            // Use same approximations as progress calculation below
-            val itemHeight = 100f
-            val targetPosition = percent * totalItems
-            val index = targetPosition.toInt().coerceIn(0, totalItems - 1)
-            val offsetFraction = targetPosition - index
-            val pixelOffset = (offsetFraction * itemHeight).toInt()
+                // Use same approximations as progress calculation below
+                val itemHeight = 100f
+                val targetPosition = percent * totalItems
+                val index = targetPosition.toInt().coerceIn(0, totalItems - 1)
+                val offsetFraction = targetPosition - index
+                val pixelOffset = (offsetFraction * itemHeight).toInt()
 
-            // Programmatic scroll to approximate position
-            try {
-                listState.scrollToItem(index, pixelOffset)
-            } catch (_: Exception) {
-                // ignore failures to avoid crashing UI
+                // Programmatic scroll to approximate position
+                try {
+                    listState.scrollToItem(index, pixelOffset)
+                } catch (_: Exception) {
+                    // ignore failures to avoid crashing UI
+                }
+
+                appliedRestore.value = true
             }
-
-            appliedRestore.value = true
         }
     }
 
@@ -173,7 +184,9 @@ private fun ContentArea(
             readerViewModel.updateScrollPosition(
                 scrollOffset = currentScrollOffset,
                 maxScrollOffset = maxScrollOffset,
-                viewportHeight = viewportHeight
+                viewportHeight = viewportHeight,
+                index = listState.firstVisibleItemIndex,
+                offset = listState.firstVisibleItemScrollOffset
             )
         }
     }
