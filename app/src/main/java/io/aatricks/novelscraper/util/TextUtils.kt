@@ -365,8 +365,12 @@ object TextUtils {
         // Normalize line endings first
         val normalized = text.trim().replace(Regex("\\r\\n|\\r"), "\n")
 
-        // Split into paragraphs on 2+ newlines.
-        var rawParagraphs = normalized.split(Regex("\\n{2,}"))
+        // Split into paragraphs on 2+ newlines, keeping the separator length for each paragraph
+        // so we can avoid merging paragraphs that were intentionally separated
+        val rawParagraphsWithSep = Regex("(?s)(.*?)(\\n{2,}|$)").findAll(normalized)
+            .map { it.groupValues[1] to it.groupValues[2].length }
+            .toList()
+        var rawParagraphs = rawParagraphsWithSep.map { it.first }
 
         // Keep all raw paragraphs; do not remove promotional/footer fragments here.
 
@@ -384,6 +388,13 @@ object TextUtils {
             // Lookahead to decide if we should merge with next paragraph
             if (i + 1 < rawParagraphs.size) {
                 val next = rawParagraphs[i + 1].trim()
+                // If the original input had a deliberate paragraph break of 2+ newlines
+                // between these two paragraphs, do not attempt to merge them.
+                if (rawParagraphsWithSep[i].second >= 2) {
+                    paragraphs.add(cur)
+                    i++
+                    continue
+                }
                 if (next.isNotEmpty()) {
                     val lastChar = cur.lastOrNull()
                     val sentenceEnders = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
@@ -400,7 +411,14 @@ object TextUtils {
                     val shouldMerge = (lastChar != null && !sentenceEnders.contains(lastChar)) &&
                             (wordCount <= 8 || lastW in continuationWords || lastW.length <= 4)
 
-                    if (shouldMerge) {
+                        // If the next paragraph looks like a heading (short, starts with uppercase),
+                        // avoid merging as it likely indicates an intentional paragraph break.
+                        val nextFirstChar = next.firstOrNull()
+                        val nextWordCount = next.split(Regex("\\s+")).filter { it.isNotBlank() }.size
+                        val looksLikeHeading = nextFirstChar != null && nextFirstChar.isUpperCase() && nextWordCount in 1..4 &&
+                            (next.uppercase() == next || next.trimEnd().endsWith(":"))
+
+                        if (shouldMerge && !looksLikeHeading) {
                         // Merge current and next paragraph with a space (preserve spacing)
                         cur = (cur + " " + next).replace(Regex(" +"), " ")
                         i += 2
@@ -440,6 +458,10 @@ object TextUtils {
                 val nxt = paragraphs[pi + 1].trim()
                 if (nxt.isEmpty()) { pi++; continue }
 
+                // If the original normalized text has a hard paragraph separation
+                // between cur and nxt, do not attempt to aggressively merge them.
+                if (normalized.contains("${cur}\n\n${nxt}")) break
+
                 val lastChar = cur.lastOrNull()
                 fun lastWord(s: String): String {
                     val parts = s.trim().split(Regex("\\s+"))
@@ -448,8 +470,13 @@ object TextUtils {
                 val lastW = lastWord(cur).lowercase()
                 val wordCount = cur.split(Regex("\\s+")).size
 
+                val nextFirst = nxt.firstOrNull()
+                val nextWordCountAgg = nxt.split(Regex("\\s+")).filter { it.isNotBlank() }.size
+                val looksLikeHeadingAgg = nextFirst != null && nextFirst.isUpperCase() && nextWordCountAgg in 1..4 &&
+                    (nxt.uppercase() == nxt || nxt.trimEnd().endsWith(":"))
+
                 val shouldMergeAggressive = (lastChar != null && !sentenceEnders.contains(lastChar)) &&
-                        (wordCount <= 10 || lastW in continuationWords || lastW.length <= 4)
+                    (wordCount <= 10 || lastW in continuationWords || lastW.length <= 4) && !looksLikeHeadingAgg
 
                 if (shouldMergeAggressive) {
                     cur = (cur + " " + nxt).replace(Regex(" +"), " ")
@@ -581,6 +608,9 @@ object TextUtils {
             val right = parts[pi2 + 1]
             if (left.isEmpty() || right.isEmpty()) { pi2++; continue }
 
+            // Respect explicit paragraph separators in the original text
+            if (normalized.contains("${left}\n\n${right}")) { pi2++; continue }
+
             val lastChar = left.lastOrNull()
             fun lastWord(s: String): String {
                 val parts = s.trim().split(Regex("\\s+"))
@@ -618,6 +648,9 @@ object TextUtils {
             val right = postParts[idx + 1]
             if (left.isEmpty() || right.isEmpty()) { idx++; continue }
 
+            // Respect explicit paragraph separators in the original text
+            if (normalized.contains("${left}\n\n${right}")) { idx++; continue }
+
             val leftLast = left.lastOrNull()
             val rightFirst = right.firstOrNull()
             val sentenceEnders3 = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
@@ -644,5 +677,15 @@ object TextUtils {
 
         // Trim extra whitespace and return
         return collapsedSingleNewlines.replace(Regex("[ ]{2,}"), " ").trim()
+    }
+
+    // Debug helper used in tests to inspect how paragraphs are split and
+    // what separators (number of newlines) were found between them.
+    fun debugGetParagraphsWithSeparators(text: String): List<Pair<String, Int>> {
+        if (text.isEmpty()) return emptyList()
+        val normalized = text.trim().replace(Regex("\\r\\n|\\r"), "\n")
+        return Regex("(?s)(.*?)(\\n{2,}|$)").findAll(normalized)
+            .map { it.groupValues[1].trim() to it.groupValues[2].length }
+            .toList()
     }
 }

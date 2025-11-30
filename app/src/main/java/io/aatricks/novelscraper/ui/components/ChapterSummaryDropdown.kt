@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,6 +39,7 @@ fun ChapterSummaryDropdown(
     summary: String?,
     isGenerating: Boolean,
     onGenerateSummary: () -> Unit,
+    onCancel: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var isExpanded by remember { mutableStateOf(false) }
@@ -120,7 +122,7 @@ fun ChapterSummaryDropdown(
                                     .padding(vertical = 12.dp),
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
-                            ) {
+                                ) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(20.dp),
                                     color = Color(0xFF4CAF50),
@@ -133,6 +135,16 @@ fun ChapterSummaryDropdown(
                                     color = Color.Gray,
                                     fontStyle = FontStyle.Italic
                                 )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                if (onCancel != null) {
+                                    IconButton(onClick = onCancel) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Close,
+                                            contentDescription = "Cancel generation",
+                                            tint = Color(0xFFBDBDBD)
+                                        )
+                                    }
+                                }
                             }
                         }
                         summary != null -> {

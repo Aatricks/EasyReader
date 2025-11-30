@@ -36,6 +36,10 @@ class TextUtilsTest {
         val input6 = "‘No.’<br><br>I processed a dozen responses to Fate’s simple statement.<br><br>Then a dozen likely answers to each response. And my counter to each of<br><br>Fate’s answers."
         val expected6 = "‘No.’\n\nI processed a dozen responses to Fate’s simple statement.\n\nThen a dozen likely answers to each response. And my counter to each of\n\nFate’s answers."
         val formattedWithBr = input6.replace("<br>", "\n")
-        assertEquals(expected6, TextUtils.formatChapterText(formattedWithBr))
+        val debug = TextUtils.debugGetParagraphsWithSeparators(formattedWithBr)
+        println("Paragraphs with sep: $debug")
+        val actual6 = TextUtils.formatChapterText(formattedWithBr)
+        println("Actual formatted6: <<$actual6>>")
+        assertEquals(expected6, actual6)
     }
 }

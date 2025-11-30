@@ -25,6 +25,7 @@ class SummaryViewModel(application: Application) : AndroidViewModel(application)
         val isGenerating: Boolean = false,
         val error: String? = null,
         val currentSummary: String? = null,
+        val activeChapterUrl: String? = null,
         val summariesCache: Map<String, String> = emptyMap() // chapterUrl -> summary
     )
     
@@ -79,11 +80,18 @@ class SummaryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isGenerating = true,
+                activeChapterUrl = chapterUrl,
                 error = null,
                 currentSummary = null
             )
             
-            val result = summaryService.generateSummary(chapterTitle, content)
+            val sb = StringBuilder()
+            val result = summaryService.generateSummary(chapterTitle, content, onProgress = { token ->
+                // Append token and update UI state
+                sb.append(token)
+                Log.d(TAG, "token: $token")
+                _uiState.value = _uiState.value.copy(currentSummary = sb.toString())
+            })
             
             if (result.isSuccess) {
                 val summary = result.getOrNull() ?: "Summary generated"
@@ -95,6 +103,7 @@ class SummaryViewModel(application: Application) : AndroidViewModel(application)
                 
                 _uiState.value = _uiState.value.copy(
                     isGenerating = false,
+                    activeChapterUrl = null,
                     currentSummary = summary,
                     summariesCache = updatedCache
                 )
@@ -105,10 +114,18 @@ class SummaryViewModel(application: Application) : AndroidViewModel(application)
                 Log.e(TAG, "Summary generation failed: $error")
                 _uiState.value = _uiState.value.copy(
                     isGenerating = false,
+                    activeChapterUrl = null,
                     error = error
                 )
             }
         }
+    }
+
+    /** Cancel current generation if any (and clear active state) */
+    fun cancelGeneration() {
+        Log.d(TAG, "cancelGeneration invoked from UI")
+        try { io.aatricks.llmedge.LLMEdgeManager.cancelGeneration() } catch (_: Throwable) {}
+        _uiState.value = _uiState.value.copy(isGenerating = false, activeChapterUrl = null)
     }
     
     /**

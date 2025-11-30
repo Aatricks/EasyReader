@@ -3,18 +3,19 @@ package io.aatricks.novelscraper.data.repository
 import android.content.Context
 import android.util.Log
 import io.aatricks.llmedge.SmolLM
+import io.aatricks.llmedge.LLMEdgeManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
  * Service for generating AI summaries of novel chapters using llmedge library
- * Uses SmolLM for on-device inference with a small quantized model
+ * Uses LLMEdgeManager (llmedge) for model management and on-device inference
  */
 class SummaryService(private val context: Context) {
     
     private val TAG = "SummaryService"
-    private var smolLM: SmolLM? = null
+    private var modelFile: File? = null
     private var isInitialized = false
     private var isInitializing = false
     
@@ -38,37 +39,23 @@ class SummaryService(private val context: Context) {
         isInitializing = true
         
         try {
-            Log.d(TAG, "Initializing SmolLM for chapter summarization")
-            
-            val llm = SmolLM(useVulkan = false) // Disable Vulkan for compatibility
-            
-            // Use a small quantized model for quick summaries
-            // Qwen3-0.6B is a good choice for summarization (small and fast)
-            val download = llm.loadFromHuggingFace(
+            Log.d(TAG, "Downloading and ensuring model via LLMEdgeManager for chapter summarization")
+
+            val modelId = "unsloth/Qwen3-0.6B-GGUF"
+            val modelFilename = "Qwen3-0.6B-Q4_K_M.gguf"
+
+            val downloadedFile = LLMEdgeManager.downloadModel(
                 context = context,
-                modelId = "unsloth/Qwen3-0.6B-GGUF",
-                filename = "Qwen3-0.6B-Q4_K_M.gguf", // 4-bit quantized for memory efficiency
-                params = SmolLM.InferenceParams(
-                    numThreads = 2,
-                    contextSize = 4096L, // Reduced from 8192 - more conservative
-                    temperature = 0.3f, // Lower temperature for more focused summaries
-                    storeChats = false,
-                    thinkingMode = SmolLM.ThinkingMode.DISABLED,
-                    reasoningBudget = 0
-                ),
-                preferSystemDownloader = true,
-                forceDownload = false // Use cached model if available
+                modelId = modelId,
+                filename = modelFilename,
+                preferSystemDownloader = true
             )
-            
-            Log.d(TAG, "Model loaded: ${download.file.name} (${if (download.fromCache) "cached" else "downloaded"})")
-            
-            // Set system prompt for summarization
-            llm.addSystemPrompt("""You are a concise chapter summarizer. 
-                |Your task is to read novel chapters and create brief, informative summaries.
-                |Focus on: main plot points, key character actions, and important events.
-                |Keep summaries to 2-3 sentences. Be factual and avoid speculation.""".trimMargin())
-            
-            smolLM = llm
+
+            Log.d(TAG, "Model ready: ${'$'}{downloadedFile.name} (path=${'$'}{downloadedFile.absolutePath})")
+
+            modelFile = downloadedFile
+            // Prefer conservative performance mode for stability on mobile devices
+            LLMEdgeManager.preferPerformanceMode = false
             isInitialized = true
             isInitializing = false
             
@@ -88,7 +75,8 @@ class SummaryService(private val context: Context) {
      */
     suspend fun generateSummary(
         chapterTitle: String?,
-        content: List<String>
+        content: List<String>,
+        onProgress: ((String) -> Unit)? = null
     ): Result<String> = withContext(Dispatchers.Default) {
         try {
             // Ensure initialization
@@ -97,17 +85,21 @@ class SummaryService(private val context: Context) {
                 return@withContext Result.failure(initResult.exceptionOrNull() ?: Exception("Initialization failed"))
             }
             
-            val llm = smolLM ?: return@withContext Result.failure(Exception("SmolLM not initialized"))
+            // LLMEdgeManager will handle model loading/caching; ensure we have a model path
+            val currentModelPath = modelFile?.absolutePath
             
             // Smart content selection for better summaries
-            // Reduced to 600 words to ensure we stay well within 8192 token limit
-            val selectedContent = selectKeyContent(content, maxWords = 600)
+            // Reduced to 300 words to ensure we stay well within token/context limits
+            val selectedContent = selectKeyContent(content, maxWords = 300)
             
             val prompt = buildString {
                 append("Read this chapter excerpt and provide a concise summary focusing on:\n")
                 append("- Main plot developments\n")
                 append("- Key character actions and decisions\n")
                 append("- Important events or revelations\n\n")
+                if (!chapterTitle.isNullOrBlank()) {
+                    append("Chapter title: ${'$'}{chapterTitle}\n\n")
+                }
                 append("Chapter text:\n")
                 append(selectedContent)
                 append("\n\nProvide a 3-4 sentence summary:")
@@ -119,7 +111,22 @@ class SummaryService(private val context: Context) {
             
             var summary: String
             try {
-                summary = llm.getResponse(prompt)
+                val params = LLMEdgeManager.TextGenerationParams(
+                    prompt = prompt,
+                    systemPrompt = """You are a concise chapter summarizer. 
+                        |Your task is to read novel chapters and create brief, informative summaries.
+                        |Focus on: main plot points, key character actions, and important events.
+                        |Keep summaries to 2-3 sentences. Be factual and avoid speculation.""".trimMargin(),
+                    modelId = "unsloth/Qwen3-0.6B-GGUF",
+                    modelFilename = modelFile?.name ?: "Qwen3-0.6B-Q4_K_M.gguf",
+                    modelPath = currentModelPath,
+                    temperature = 0.3f,
+                    maxTokens = 256,
+                    thinkingMode = SmolLM.ThinkingMode.DISABLED,
+                    reasoningBudget = 0
+                )
+
+                summary = withContext(Dispatchers.IO) { LLMEdgeManager.generateText(context, params, onProgress) }
             } catch (e: IllegalStateException) {
                 if (e.message?.contains("context size reached") == true) {
                     Log.w(TAG, "Context size reached, trying with shorter content")
@@ -131,7 +138,17 @@ class SummaryService(private val context: Context) {
                         append("\n\nSummary:")
                     }
                     Log.d(TAG, "Retry: ${shorterContent.split(Regex("\\s+")).size} words, ${shorterContent.length} chars")
-                    summary = llm.getResponse(shorterPrompt)
+                    val params = LLMEdgeManager.TextGenerationParams(
+                        prompt = shorterPrompt,
+                        systemPrompt = "You are a concise chapter summarizer.",
+                        modelId = "unsloth/Qwen3-0.6B-GGUF",
+                        modelFilename = modelFile?.name ?: "Qwen3-0.6B-Q4_K_M.gguf",
+                        modelPath = currentModelPath,
+                        temperature = 0.3f,
+                        thinkingMode = SmolLM.ThinkingMode.DISABLED,
+                        reasoningBudget = 0
+                    )
+                    summary = withContext(Dispatchers.IO) { LLMEdgeManager.generateText(context, params, onProgress) }
                     Log.d(TAG, "Generated summary with shorter content")
                 } else {
                     throw e
@@ -158,8 +175,12 @@ class SummaryService(private val context: Context) {
      * Release resources
      */
     fun release() {
-        smolLM?.close()
-        smolLM = null
+        // Cancel any ongoing generation and clear local references
+        try {
+            LLMEdgeManager.cancelGeneration()
+        } catch (_: Throwable) {
+        }
+        modelFile = null
         isInitialized = false
         Log.d(TAG, "SummaryService released")
     }
@@ -273,5 +294,5 @@ class SummaryService(private val context: Context) {
     /**
      * Check if service is ready
      */
-    fun isReady(): Boolean = isInitialized && smolLM != null
+    fun isReady(): Boolean = isInitialized && modelFile != null
 }

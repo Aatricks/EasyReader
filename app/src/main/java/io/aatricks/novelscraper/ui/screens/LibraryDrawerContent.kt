@@ -313,12 +313,13 @@ fun LibraryDrawerContent(
                                                     val chapterUrl = if (chapterItem.currentChapterUrl.isNotBlank()) 
                                                         chapterItem.currentChapterUrl else chapterItem.url
                                                     val cachedSummary = chapterItem.chapterSummaries?.get(chapterUrl)
+                                                    val streamingSummary = if (summaryUiState.activeChapterUrl == chapterUrl) summaryUiState.currentSummary else cachedSummary
                                                     
                                                     ChapterSummaryDropdown(
                                                         chapterTitle = chapterItem.currentChapter.ifBlank { chapterItem.title },
                                                         chapterUrl = chapterUrl,
-                                                        summary = cachedSummary,
-                                                        isGenerating = summaryUiState.isGenerating,
+                                                        summary = streamingSummary,
+                                                        isGenerating = summaryUiState.isGenerating && summaryUiState.activeChapterUrl == chapterUrl,
                                                         onGenerateSummary = {
                                                             scope.launch {
                                                                 // Load chapter content for summary
@@ -334,6 +335,10 @@ fun LibraryDrawerContent(
                                                                     }
                                                                 }
                                                             }
+                                                        }
+                                                        ,
+                                                        onCancel = {
+                                                            summaryViewModel.cancelGeneration()
                                                         }
                                                     )
                                                 }
