@@ -1,5 +1,10 @@
 package io.aatricks.novelscraper.ui.screens
 
+import android.app.Activity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -34,14 +39,14 @@ import kotlin.math.abs
 
 /**
  * Main reading screen with drawer layout for library management.
- * 
+ *
  * Features:
  * - Left drawer with library content
  * - Scrollable main content area displaying text and images
  * - Automatic scroll position tracking
  * - Security scroll detection for chapter navigation
  * - Loading and error state handling
- * 
+ *
  * @param readerViewModel ViewModel managing reader state and content
  * @param libraryViewModel ViewModel managing library
  * @param onOpenFilePicker Callback to open file picker
@@ -57,10 +62,35 @@ fun ReaderScreen(
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    
+
     // Collect state from ViewModel
     val uiState by readerViewModel.uiState.collectAsState()
-    
+
+    // Manage Status Bar Visibility
+    val view = LocalView.current
+    val window = (view.context as? Activity)?.window
+
+    LaunchedEffect(uiState.showControls) {
+        if (window != null) {
+            val windowInsetsController = WindowCompat.getInsetsController(window, view)
+            windowInsetsController.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            if (!uiState.showControls) {
+                windowInsetsController.hide(WindowInsetsCompat.Type.statusBars())
+            } else {
+                windowInsetsController.show(WindowInsetsCompat.Type.statusBars())
+            }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            window?.let {
+                WindowCompat.getInsetsController(it, view).show(WindowInsetsCompat.Type.statusBars())
+            }
+        }
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         modifier = modifier,
@@ -92,17 +122,20 @@ fun ReaderScreen(
                     uiState.isLoading -> {
                         LoadingState()
                     }
+
                     uiState.error != null -> {
                         ErrorState(
                             error = uiState.error!!,
                             onRetry = { readerViewModel.retryLoad() }
                         )
                     }
+
                     uiState.content == null -> {
                         EmptyState(onOpenLibrary = {
                             scope.launch { drawerState.open() }
                         })
                     }
+
                     else -> {
                         ContentArea(
                             content = uiState.content!!,
@@ -129,10 +162,10 @@ private fun ContentArea(
     val listState = rememberLazyListState()
     val uiState by readerViewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
-    
+
     // Remember whether we've applied a restored scroll for this content URL
     val appliedRestore = remember(content.url) { mutableStateOf(false) }
-    
+
     // If there's a saved percent scroll position in the ViewModel, apply it once when content loads.
     LaunchedEffect(content.url, uiState.scrollPosition, uiState.scrollIndex) {
         if (!appliedRestore.value && content.paragraphs.isNotEmpty()) {
@@ -190,7 +223,7 @@ private fun ContentArea(
             )
         }
     }
-    
+
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
@@ -215,66 +248,69 @@ private fun ContentArea(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-        // Use indexed keys that include the chapter URL to ensure uniqueness across
-        // chapters and prevent IllegalArgumentException when the same element values
-        // (and thus identical hashCodes) appear in multiple chapters.
-        itemsIndexed(content.paragraphs, key = { index: Int, _: ContentElement -> "${content.url}_$index" }) { index: Int, element: ContentElement ->
-            when (element) {
-                is ContentElement.Text -> {
-                    Text(
-                        text = element.content,
-                        color = Color.White,
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-                is ContentElement.Image -> {
-                    EpubImageView(
-                        imageUrl = element.url,
-                        altText = element.altText,
-                        readerViewModel = readerViewModel
-                    )
-                }
-            }
-        }
-        
-        // Navigation buttons at the end of content
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 32.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                // Previous chapter button
-                if (content.hasPreviousChapter()) {
-                    Button(
-                        onClick = { readerViewModel.navigateToPreviousChapter() },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF1A1A1A),
-                            contentColor = Color.White
+            // Use indexed keys that include the chapter URL to ensure uniqueness across
+            // chapters and prevent IllegalArgumentException when the same element values
+            // (and thus identical hashCodes) appear in multiple chapters.
+            itemsIndexed(
+                content.paragraphs,
+                key = { index: Int, _: ContentElement -> "${content.url}_$index" }) { index: Int, element: ContentElement ->
+                when (element) {
+                    is ContentElement.Text -> {
+                        Text(
+                            text = element.content,
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.fillMaxWidth()
                         )
-                    ) {
-                        Text("← Previous Chapter")
                     }
-                }
-                
-                // Next chapter button
-                if (content.hasNextChapter()) {
-                    Button(
-                        onClick = { readerViewModel.navigateToNextChapter() },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF1A1A1A),
-                            contentColor = Color.White
+
+                    is ContentElement.Image -> {
+                        EpubImageView(
+                            imageUrl = element.url,
+                            altText = element.altText,
+                            readerViewModel = readerViewModel
                         )
-                    ) {
-                        Text("Next Chapter →")
                     }
                 }
             }
+
+            // Navigation buttons at the end of content
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 32.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    // Previous chapter button
+                    if (content.hasPreviousChapter()) {
+                        Button(
+                            onClick = { readerViewModel.navigateToPreviousChapter() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF1A1A1A),
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text("← Previous Chapter")
+                        }
+                    }
+
+                    // Next chapter button
+                    if (content.hasNextChapter()) {
+                        Button(
+                            onClick = { readerViewModel.navigateToNextChapter() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF1A1A1A),
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text("Next Chapter →")
+                        }
+                    }
+                }
+            }
         }
-    }
-        
+
         // Animated top bar with novel name and chapter
         AnimatedVisibility(
             visible = uiState.showControls,
@@ -288,7 +324,7 @@ private fun ContentArea(
                 onLibraryClick = onLibraryClick
             )
         }
-        
+
         // Animated bottom navigation bar
         AnimatedVisibility(
             visible = uiState.showControls,
@@ -340,9 +376,9 @@ private fun TopInfoBar(
                     tint = Color.White
                 )
             }
-            
+
             Spacer(modifier = Modifier.width(8.dp))
-            
+
             // Novel name and chapter title
             Column(
                 modifier = Modifier.weight(1f)
@@ -357,7 +393,7 @@ private fun TopInfoBar(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-                
+
                 // Chapter title
                 if (chapterTitle.isNotBlank()) {
                     Text(
@@ -411,9 +447,9 @@ private fun BottomNavigationBar(
                     style = MaterialTheme.typography.bodySmall
                 )
             }
-            
+
             Spacer(modifier = Modifier.height(4.dp))
-            
+
             LinearProgressIndicator(
                 progress = { progress / 100f },
                 modifier = Modifier
@@ -422,9 +458,9 @@ private fun BottomNavigationBar(
                 color = Color(0xFF4CAF50),
                 trackColor = Color(0xFF2A2A2A)
             )
-            
+
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             // Navigation buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -450,9 +486,9 @@ private fun BottomNavigationBar(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Previous")
                 }
-                
+
                 Spacer(modifier = Modifier.width(16.dp))
-                
+
                 // Next button
                 Button(
                     onClick = onNextClick,
@@ -490,7 +526,7 @@ private fun EpubImageView(
     var imageData by remember(imageUrl) { mutableStateOf<android.graphics.Bitmap?>(null) }
     var isLoading by remember(imageUrl) { mutableStateOf(true) }
     var hasError by remember(imageUrl) { mutableStateOf(false) }
-    
+
     LaunchedEffect(imageUrl) {
         try {
             isLoading = true
@@ -507,7 +543,7 @@ private fun EpubImageView(
             isLoading = false
         }
     }
-    
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -523,6 +559,7 @@ private fun EpubImageView(
                         .padding(16.dp)
                 )
             }
+
             hasError -> {
                 Text(
                     text = altText ?: "Image unavailable",
@@ -531,6 +568,7 @@ private fun EpubImageView(
                     modifier = Modifier.padding(16.dp)
                 )
             }
+
             imageData != null -> {
                 androidx.compose.foundation.Image(
                     bitmap = imageData!!.asImageBitmap(),
