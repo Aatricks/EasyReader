@@ -98,7 +98,7 @@ fun ReaderScreen(
     if (showExplore) {
         ExploreScreen(
             exploreRepository = exploreRepository,
-            libraryRepository = libraryViewModel.repository,
+            libraryViewModel = libraryViewModel,
             onNavigateBack = { showExplore = false }
         )
     } else {

@@ -10,7 +10,12 @@ class StandardEbooksSource : NovelSource {
     override val name = "Standard Ebooks"
     override val baseUrl = "https://standardebooks.org"
 
-    override suspend fun getPopularNovels(): List<ExploreItem> = withContext(Dispatchers.IO) {
+    override suspend fun getPopularNovels(page: Int): List<ExploreItem> = withContext(Dispatchers.IO) {
+        // Feed doesn't support pagination easily, fallback to HTML for pages > 1
+        if (page > 1) {
+            return@withContext scrapeHtmlList("$baseUrl/ebooks?page=$page")
+        }
+
         // Using "New Releases" feed as popular/explore since it's an atom feed which is cleaner
         val url = "$baseUrl/feeds/atom/new-releases"
         try {
@@ -50,9 +55,9 @@ class StandardEbooksSource : NovelSource {
         }
     }
 
-    override suspend fun searchNovels(query: String): List<ExploreItem> = withContext(Dispatchers.IO) {
+    override suspend fun searchNovels(query: String, page: Int): List<ExploreItem> = withContext(Dispatchers.IO) {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
-        val url = "$baseUrl/ebooks?query=$encodedQuery"
+        val url = "$baseUrl/ebooks?query=$encodedQuery&page=$page"
         scrapeHtmlList(url)
     }
 
@@ -122,13 +127,23 @@ class StandardEbooksSource : NovelSource {
         // Standard ebooks are usually single "book" entities, chapter count is not always prominent or relevant (it's one epub).
         // But we can check word count or reading time if available.
 
+        // Resolve readingUrl (EPUB link)
+        // Standard Ebooks page usually has "Compatible epub" link
+        val epubHref = document.select("a[href$=.epub]").firstOrNull()?.attr("href")
+        val readingUrl = if (epubHref != null) {
+            if (epubHref.startsWith("http")) epubHref else "$baseUrl$epubHref"
+        } else {
+            null
+        }
+
         ExploreItem(
             title = title,
             url = url,
             coverUrl = coverUrl,
             author = author,
             summary = summary,
-            source = name
+            source = name,
+            readingUrl = readingUrl
         )
     }
 }

@@ -15,11 +15,11 @@ class ExploreRepository {
         StandardEbooksSource()
     )
 
-    suspend fun getPopularNovels(): List<ExploreItem> = coroutineScope {
+    suspend fun getPopularNovels(page: Int = 1): List<ExploreItem> = coroutineScope {
         sources.map { source ->
             async {
                 try {
-                    source.getPopularNovels()
+                    source.getPopularNovels(page)
                 } catch (e: Exception) {
                     emptyList()
                 }
@@ -27,11 +27,11 @@ class ExploreRepository {
         }.awaitAll().flatten().shuffled() // Shuffle to mix sources
     }
 
-    suspend fun searchNovels(query: String): List<ExploreItem> = coroutineScope {
+    suspend fun searchNovels(query: String, page: Int = 1): List<ExploreItem> = coroutineScope {
         sources.map { source ->
             async {
                 try {
-                    source.searchNovels(query)
+                    source.searchNovels(query, page)
                 } catch (e: Exception) {
                     emptyList()
                 }

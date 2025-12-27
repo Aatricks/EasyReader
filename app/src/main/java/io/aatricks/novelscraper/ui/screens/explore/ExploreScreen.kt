@@ -33,7 +33,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 @Composable
 fun ExploreScreen(
     exploreRepository: ExploreRepository,
-    libraryRepository: LibraryRepository,
+    libraryViewModel: io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel,
     onNavigateBack: () -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -41,12 +41,31 @@ fun ExploreScreen(
     var exploreItems by remember { mutableStateOf<List<ExploreItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var selectedItem by remember { mutableStateOf<ExploreItem?>(null) }
+    var page by remember { mutableStateOf(1) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    fun loadMore() {
+        if (isLoading) return
+        scope.launch {
+            isLoading = true
+            val newItems = if (searchQuery.isBlank()) {
+                exploreRepository.getPopularNovels(page + 1)
+            } else {
+                exploreRepository.searchNovels(searchQuery, page + 1)
+            }
+            if (newItems.isNotEmpty()) {
+                exploreItems = exploreItems + newItems
+                page++
+            }
+            isLoading = false
+        }
+    }
+
     LaunchedEffect(Unit) {
         isLoading = true
-        exploreItems = exploreRepository.getPopularNovels()
+        exploreItems = exploreRepository.getPopularNovels(1)
+        page = 1
         isLoading = false
     }
 
@@ -54,7 +73,8 @@ fun ExploreScreen(
         if (searchQuery.isBlank()) return
         scope.launch {
             isLoading = true
-            exploreItems = exploreRepository.searchNovels(searchQuery)
+            page = 1
+            exploreItems = exploreRepository.searchNovels(searchQuery, 1)
             isLoading = false
         }
     }
@@ -78,7 +98,17 @@ fun ExploreScreen(
                             ),
                             trailingIcon = {
                                 if (searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { searchQuery = "" }) {
+                                    IconButton(onClick = {
+                                        searchQuery = ""
+                                        // Reset to popular when clearing
+                                        isSearching = false
+                                        scope.launch {
+                                            isLoading = true
+                                            page = 1
+                                            exploreItems = exploreRepository.getPopularNovels(1)
+                                            isLoading = false
+                                        }
+                                    }) {
                                         Icon(Icons.Default.Close, contentDescription = "Clear")
                                     }
                                 }
@@ -98,7 +128,8 @@ fun ExploreScreen(
                             // Reload popular
                             scope.launch {
                                 isLoading = true
-                                exploreItems = exploreRepository.getPopularNovels()
+                                page = 1
+                                exploreItems = exploreRepository.getPopularNovels(1)
                                 isLoading = false
                             }
                         } else {
@@ -136,6 +167,12 @@ fun ExploreScreen(
                         items(exploreItems) { item ->
                             ExploreItemCard(item = item, onClick = { selectedItem = item })
                         }
+
+                        item {
+                            LaunchedEffect(true) {
+                                loadMore()
+                            }
+                        }
                     }
                 }
             }
@@ -147,19 +184,11 @@ fun ExploreScreen(
             item = selectedItem!!,
             onDismiss = { selectedItem = null },
             onAddToLibrary = {
+                libraryViewModel.addExploreItem(selectedItem!!, exploreRepository)
                 scope.launch {
-                    try {
-                        libraryRepository.addItem(
-                            title = selectedItem!!.title,
-                            url = selectedItem!!.url,
-                            contentType = ContentType.WEB // Default to WEB for scraped items
-                        )
-                        snackbarHostState.showSnackbar("Added to library")
-                        selectedItem = null
-                    } catch (e: Exception) {
-                        snackbarHostState.showSnackbar("Failed to add: ${e.message}")
-                    }
+                    snackbarHostState.showSnackbar("Adding to library...")
                 }
+                selectedItem = null
             }
         )
     }

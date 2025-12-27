@@ -9,5 +9,6 @@ data class ExploreItem(
     val chapterCount: Int = 0,
     val rank: String? = null,
     val rating: String? = null,
-    val source: String
+    val source: String,
+    val readingUrl: String? = null
 )

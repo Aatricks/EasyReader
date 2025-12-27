@@ -10,8 +10,8 @@ class NovelFireSource : NovelSource {
     override val name = "NovelFire"
     override val baseUrl = "https://novelfire.net"
 
-    override suspend fun getPopularNovels(): List<ExploreItem> = withContext(Dispatchers.IO) {
-        val url = "$baseUrl/genre-all/sort-popular/status-all/all-novel"
+    override suspend fun getPopularNovels(page: Int): List<ExploreItem> = withContext(Dispatchers.IO) {
+        val url = "$baseUrl/genre-all/sort-popular/status-all/all-novel?page=$page"
         val document = Jsoup.connect(url)
             .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .timeout(10000)
@@ -90,9 +90,10 @@ class NovelFireSource : NovelSource {
         items.take(20)
     }
 
-    override suspend fun searchNovels(query: String): List<ExploreItem> = withContext(Dispatchers.IO) {
+    override suspend fun searchNovels(query: String, page: Int): List<ExploreItem> = withContext(Dispatchers.IO) {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
-        val url = "$baseUrl/genre-all/sort-new/status-all/all-novel?keyword=$encodedQuery"
+        // Use sort-popular to improve relevance of search results
+        val url = "$baseUrl/genre-all/sort-popular/status-all/all-novel?keyword=$encodedQuery&page=$page"
         val document = Jsoup.connect(url)
             .userAgent("Mozilla/5.0")
             .timeout(10000)
@@ -147,6 +148,21 @@ class NovelFireSource : NovelSource {
         val ratingRegex = Regex("Average score is\\s+([0-9.]+)", RegexOption.IGNORE_CASE)
         val rating = ratingRegex.find(infoText)?.groupValues?.get(1)
 
+        // Find Reading URL (First Chapter)
+        // Typically found in "Read Now" button or first item in chapter list
+        val readNowHref = document.select("a:contains(Read Now)").attr("href")
+        val readingUrl = if (readNowHref.isNotBlank()) {
+            if (readNowHref.startsWith("http")) readNowHref else "$baseUrl$readNowHref"
+        } else {
+            // Fallback to first chapter in list
+            val firstChapterHref = document.select(".chapter-list a, ul.chapters a, .chapters a").first()?.attr("href")
+            if (firstChapterHref != null) {
+                if (firstChapterHref.startsWith("http")) firstChapterHref else "$baseUrl$firstChapterHref"
+            } else {
+                null
+            }
+        }
+
         ExploreItem(
             title = title,
             url = url,
@@ -156,7 +172,8 @@ class NovelFireSource : NovelSource {
             chapterCount = chapterCount,
             rank = rank,
             rating = rating,
-            source = name
+            source = name,
+            readingUrl = readingUrl
         )
     }
 }
