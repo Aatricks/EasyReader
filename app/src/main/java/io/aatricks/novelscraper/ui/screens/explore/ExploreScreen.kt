@@ -152,7 +152,7 @@ fun ExploreScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         Box(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
-            if (isLoading) {
+            if (isLoading && exploreItems.isEmpty()) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             } else {
                 if (exploreItems.isEmpty()) {
@@ -171,6 +171,11 @@ fun ExploreScreen(
                         item {
                             LaunchedEffect(true) {
                                 loadMore()
+                            }
+                            if (isLoading) {
+                                Box(modifier = Modifier.fillMaxWidth().height(50.dp), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                }
                             }
                         }
                     }
