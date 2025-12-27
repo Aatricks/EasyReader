@@ -68,32 +68,23 @@ class StandardEbooksSource : NovelSource {
             .get()
 
         val items = mutableListOf<ExploreItem>()
-        // Based on text dump:
-        // 1. [13][louis-joseph-vance...]-[14]...
-        // [15]The Lone Wolf
-        // [16]Louis Joseph Vance
-
-        // This looks like an ordered list <ol> or <ul>.
-        val listItems = document.select("ol.ebooks-list li, ul.ebooks-list li, li")
-        // Again guessing class names. Standard Ebooks uses semantic HTML usually.
-
-        // Let's look for specific structure: image link followed by title link followed by author link.
-
-        val entries = document.select("li:has(img)") // Select list items that have images
+        // Standard Ebooks uses ol.ebooks-list for their grids
+        val entries = document.select("ol.ebooks-list li[about], ul.ebooks-list li[about]")
 
         entries.forEach { entry ->
-            val titleLink = entry.select("a[href^='/ebooks/']").find { it.text().isNotBlank() }
+            val titleLink = entry.select("p a[property='schema:url'], a[property='schema:url']").first()
             if (titleLink != null) {
                 val title = titleLink.text()
                 val href = titleLink.attr("href") // relative path e.g. /ebooks/author/title
                 val fullUrl = if (href.startsWith("http")) href else "$baseUrl$href"
 
-                val author = entry.select("p.author, span.author").text() // Guessing selector
-                    .ifEmpty { entry.text().substringAfter(title).trim() } // Fallback
+                val author = entry.select("p.author a, span.author a").text()
+                    .ifEmpty { entry.select("p.author, span.author").text() }
 
-                val img = entry.select("img").first()
-                val coverUrl = img?.attr("src")?.let {
-                    if (it.startsWith("http")) it else "$baseUrl$it"
+                val img = entry.select("img[property='schema:image'], img").first()
+                var coverUrl = img?.attr("src")
+                if (coverUrl != null && !coverUrl.startsWith("http")) {
+                    coverUrl = "$baseUrl$coverUrl"
                 }
 
                 items.add(ExploreItem(
@@ -114,14 +105,18 @@ class StandardEbooksSource : NovelSource {
             .timeout(10000)
             .get()
 
-        val title = document.select("h1").first()?.text() ?: "Unknown"
-        val author = document.select("h2, .author").first()?.text()
+        val title = document.select("h1[property='schema:name'], h1").first()?.text() ?: "Unknown"
+        val author = document.select("a[property='schema:author'], .author").first()?.text()
 
         // Summary might be in a section or div
-        val summary = document.select("section#summary, .description, div[itemprop=description]").text()
+        val summary = document.select("section#description, section#summary, .description, div[itemprop=description], meta[name='description']").let {
+            if (it.first()?.tagName() == "meta") it.attr("content") else it.text()
+        }
 
-        val coverUrl = document.select("img[itemprop=image], .cover img").attr("src").let {
-             if (it.startsWith("http")) it else "$baseUrl$it"
+        val coverUrl = document.select("img[property='schema:image'], .cover img, img[src*='cover']").attr("src").let {
+             if (it.isBlank()) null
+             else if (it.startsWith("http")) it 
+             else "$baseUrl$it"
         }
 
         // Standard ebooks are usually single "book" entities, chapter count is not always prominent or relevant (it's one epub).

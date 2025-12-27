@@ -41,9 +41,22 @@ fun ExploreScreen(
     var exploreItems by remember { mutableStateOf<List<ExploreItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var selectedItem by remember { mutableStateOf<ExploreItem?>(null) }
+    var selectedItemDetails by remember { mutableStateOf<ExploreItem?>(null) }
+    var isFetchingDetails by remember { mutableStateOf(false) }
     var page by remember { mutableStateOf(1) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    fun fetchDetails(item: ExploreItem) {
+        selectedItem = item
+        selectedItemDetails = null
+        isFetchingDetails = true
+        scope.launch {
+            val details = exploreRepository.getNovelDetails(item.url, item.source)
+            selectedItemDetails = details ?: item
+            isFetchingDetails = false
+        }
+    }
 
     fun loadMore() {
         if (isLoading) return
@@ -165,7 +178,7 @@ fun ExploreScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(exploreItems) { item ->
-                            ExploreItemCard(item = item, onClick = { selectedItem = item })
+                            ExploreItemCard(item = item, onClick = { fetchDetails(item) })
                         }
 
                         item {
@@ -186,14 +199,20 @@ fun ExploreScreen(
 
     if (selectedItem != null) {
         ExploreItemDetailDialog(
-            item = selectedItem!!,
-            onDismiss = { selectedItem = null },
+            item = selectedItemDetails ?: selectedItem!!,
+            isLoading = isFetchingDetails,
+            onDismiss = { 
+                selectedItem = null
+                selectedItemDetails = null
+            },
             onAddToLibrary = {
-                libraryViewModel.addExploreItem(selectedItem!!, exploreRepository)
+                val itemToAdd = selectedItemDetails ?: selectedItem!!
+                libraryViewModel.addExploreItem(itemToAdd, exploreRepository)
                 scope.launch {
                     snackbarHostState.showSnackbar("Adding to library...")
                 }
                 selectedItem = null
+                selectedItemDetails = null
             }
         )
     }
@@ -249,6 +268,7 @@ fun ExploreItemCard(item: ExploreItem, onClick: () -> Unit) {
 @Composable
 fun ExploreItemDetailDialog(
     item: ExploreItem,
+    isLoading: Boolean = false,
     onDismiss: () -> Unit,
     onAddToLibrary: () -> Unit
 ) {
@@ -256,31 +276,44 @@ fun ExploreItemDetailDialog(
         onDismissRequest = onDismiss,
         title = { Text(item.title) },
         text = {
-            Column {
-                 AsyncImage(
-                    model = item.coverUrl,
-                    contentDescription = item.title,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp)
-                        .padding(bottom = 8.dp),
-                    contentScale = ContentScale.Fit
-                )
-                if (item.author != null) {
-                    Text("Author: ${item.author}", style = MaterialTheme.typography.bodyMedium)
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
                 }
-                Text("Source: ${item.source}", style = MaterialTheme.typography.bodyMedium)
-                if (item.chapterCount > 0) {
-                    Text("Chapters: ${item.chapterCount}", style = MaterialTheme.typography.bodyMedium)
-                }
-                if (item.summary != null) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = item.summary,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 10,
-                        overflow = TextOverflow.Ellipsis
+            } else {
+                Column {
+                     AsyncImage(
+                        model = item.coverUrl,
+                        contentDescription = item.title,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .padding(bottom = 8.dp),
+                        contentScale = ContentScale.Fit
                     )
+                    if (item.author != null) {
+                        Text("Author: ${item.author}", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Text("Source: ${item.source}", style = MaterialTheme.typography.bodyMedium)
+                    if (item.chapterCount > 0) {
+                        Text("Chapters: ${item.chapterCount}", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    if (item.summary != null && item.summary!!.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = item.summary!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 10,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    } else {
+                         Spacer(modifier = Modifier.height(8.dp))
+                         Text(
+                            text = "No summary available.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
                 }
             }
         },

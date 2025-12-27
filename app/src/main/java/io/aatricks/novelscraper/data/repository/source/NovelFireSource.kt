@@ -3,6 +3,7 @@ package io.aatricks.novelscraper.data.repository.source
 import io.aatricks.novelscraper.data.model.ExploreItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import org.jsoup.Jsoup
 import java.net.URLEncoder
 
@@ -67,16 +68,17 @@ class NovelFireSource : NovelSource {
             // Avoid empty titles or "Read Now" links if they exist
             if (title.isNotBlank() && !title.equals("Read Now", ignoreCase = true) && !title.contains("Chapter", ignoreCase = true)) {
                  // Try to find image nearby
-                 val parent = link.parent()?.parent() // Traverse up to find container
+                 val parent = link.closest(".novel-item, .item, .book-item") ?: link.parent()?.parent()
                  val img = parent?.select("img")?.first()
-                 val coverUrl = img?.attr("src")?.ifEmpty { img.attr("data-src") }
+                 var coverUrl = img?.attr("data-src")?.ifEmpty { img.attr("src") } ?: ""
+                 if (coverUrl.startsWith("/")) coverUrl = "$baseUrl$coverUrl"
 
                  // Deduplicate by URL
                  if (items.none { it.url == "$baseUrl$href" }) {
                      items.add(ExploreItem(
                          title = title,
                          url = "$baseUrl$href",
-                         coverUrl = coverUrl,
+                         coverUrl = if (coverUrl.isBlank()) null else coverUrl,
                          source = name
                      ))
                  }
@@ -92,37 +94,70 @@ class NovelFireSource : NovelSource {
 
     override suspend fun searchNovels(query: String, page: Int): List<ExploreItem> = withContext(Dispatchers.IO) {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
-        // Use sort-popular to improve relevance of search results
-        val url = "$baseUrl/genre-all/sort-popular/status-all/all-novel?keyword=$encodedQuery&page=$page"
-        val document = Jsoup.connect(url)
-            .userAgent("Mozilla/5.0")
-            .timeout(10000)
-            .get()
+        // NovelFire uses an AJAX endpoint for live search
+        val url = "$baseUrl/ajax/searchLive?inputContent=$encodedQuery"
+        
+        try {
+            val response = Jsoup.connect(url)
+                .userAgent("Mozilla/5.0")
+                .ignoreContentType(true)
+                .execute()
+                .body()
+            
+            // The response is JSON: {"status":200,"data":[{"title":"...","slug":"...","image":"...","rank":...}]}
+            val json = org.json.JSONObject(response)
+            val data = json.getJSONArray("data")
+            val items = mutableListOf<ExploreItem>()
+            
+            for (i in 0 until data.length()) {
+                val obj = data.getJSONObject(i)
+                val title = obj.getString("title")
+                val slug = obj.getString("slug")
+                val image = obj.getString("image")
+                
+                items.add(ExploreItem(
+                    title = title,
+                    url = "$baseUrl/book/$slug",
+                    coverUrl = if (image.startsWith("http")) image else "$baseUrl/$image",
+                    source = name,
+                    rank = obj.optInt("rank").toString(),
+                    chapterCount = obj.optInt("total_chapter")
+                ))
+            }
+            return@withContext items
+        } catch (e: Exception) {
+            // Fallback to old search if AJAX fails or returns something else
+            val fallbackUrl = "$baseUrl/genre-all/sort-popular/status-all/all-novel?keyword=$encodedQuery&page=$page"
+            val document = Jsoup.connect(fallbackUrl)
+                .userAgent("Mozilla/5.0")
+                .timeout(10000)
+                .get()
 
-        val items = mutableListOf<ExploreItem>()
-        // Same logic as popular, hoping structure is similar
-        val bookLinks = document.select("a[href^='/book/']")
+            val items = mutableListOf<ExploreItem>()
+            val bookLinks = document.select("a[href^='/book/']")
 
-        bookLinks.forEach { link ->
-            val title = link.text()
-            val href = link.attr("href")
+            bookLinks.forEach { link ->
+                val title = link.text()
+                val href = link.attr("href")
 
-             if (title.isNotBlank() && !title.equals("Read Now", ignoreCase = true) && !title.contains("Chapter", ignoreCase = true)) {
-                 val parent = link.parent()?.parent()
-                 val img = parent?.select("img")?.first()
-                 val coverUrl = img?.attr("src")?.ifEmpty { img.attr("data-src") }
+                 if (title.isNotBlank() && !title.equals("Read Now", ignoreCase = true) && !title.contains("Chapter", ignoreCase = true)) {
+                     val parent = link.closest(".novel-item, .item, .book-item") ?: link.parent()?.parent()
+                     val img = parent?.select("img")?.first()
+                     var coverUrl = img?.attr("data-src")?.ifEmpty { img.attr("src") } ?: ""
+                     if (coverUrl.startsWith("/")) coverUrl = "$baseUrl$coverUrl"
 
-                 if (items.none { it.url == "$baseUrl$href" }) {
-                     items.add(ExploreItem(
-                         title = title,
-                         url = "$baseUrl$href",
-                         coverUrl = coverUrl,
-                         source = name
-                     ))
+                     if (items.none { it.url == "$baseUrl$href" }) {
+                         items.add(ExploreItem(
+                             title = title,
+                             url = "$baseUrl$href",
+                             coverUrl = if (coverUrl.isBlank()) null else coverUrl,
+                             source = name
+                         ))
+                     }
                  }
-             }
+            }
+            return@withContext items
         }
-        items
     }
 
     override suspend fun getNovelDetails(url: String): ExploreItem = withContext(Dispatchers.IO) {
@@ -133,9 +168,20 @@ class NovelFireSource : NovelSource {
 
         val title = document.select("h1, .novel-title").first()?.text() ?: "Unknown Title"
         val author = document.select(".author a, .author").first()?.text()
-        val summary = document.select(".summary .content, #summary, .description").text()
-        val coverUrl = document.select(".book-cover img, .novel-cover img").attr("src")
-            .ifEmpty { document.select(".book-cover img, .novel-cover img").attr("data-src") }
+        
+        // Refined summary selector based on observed HTML
+        val summaryElement = document.select(".summary .content p, .summary .content, #summary, .description").first()
+        val summary = if (summaryElement != null) {
+            document.select(".summary .content p").joinToString("\n\n") { it.text() }
+                .ifEmpty { summaryElement.text() }
+        } else null
+        
+        var coverUrl = document.select(".fixed-img .cover img, .book-cover img, .novel-cover img").attr("src")
+            .ifEmpty { document.select(".fixed-img .cover img, .book-cover img, .novel-cover img").attr("data-src") }
+        
+        if (coverUrl.isNotBlank() && !coverUrl.startsWith("http")) {
+            coverUrl = "$baseUrl${if (coverUrl.startsWith("/")) "" else "/"}$coverUrl"
+        }
 
         // Chapter count from text like "2724Chapters"
         val infoText = document.text()
