@@ -194,7 +194,7 @@ class ContentRepository(private val context: Context) {
                 if (elements.isNotEmpty()) {
                     elements.forEach { element ->
                         // Preserve line breaks by replacing <br> tags with a placeholder
-                        val html = element.html().replace(Regex("(?i)<br\\s*/?>"), "[[LINE_BREAK]]")
+                        val html = element.html().replace(Regex("(?i)<br\\s*/?>"), "[[LINE_BREAK]][[LINE_BREAK]]")
                         val text = Jsoup.parseBodyFragment(html).text().replace("[[LINE_BREAK]]", "\n")
 
                         // Keep any non-blank paragraph here; small fragments like
@@ -274,7 +274,8 @@ class ContentRepository(private val context: Context) {
                             val wordCount = cur.split(Regex("\\s+")).size
 
                             val shouldMerge = (lastChar != null && !sentenceEnders.contains(lastChar)) &&
-                                    (wordCount <= 8 || lastW in continuationWords || lastW.length <= 4)
+                                    (wordCount <= 8 || lastW in continuationWords || lastW.length <= 4) &&
+                                    !(cur.contains(':') && next.contains(':'))
 
                             if (shouldMerge) {
                                 cur = (cur + " " + next).replace(Regex(" +"), " ")
