@@ -6,11 +6,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -89,12 +93,33 @@ fun LibraryDrawerContent(
         )
         
         // URL Input Section
+        val onSubmit = {
+            if (urlInput.isNotBlank()) {
+                // Fetch title asynchronously and add
+                libraryViewModel.fetchAndAdd(urlInput)
+                urlInput = ""
+            }
+        }
+
         OutlinedTextField(
             value = urlInput,
             onValueChange = { urlInput = it },
             label = { Text("Novel URL", color = Color.Gray) },
             placeholder = { Text("Enter novel URL...", color = Color.DarkGray) },
             modifier = Modifier.fillMaxWidth(),
+            trailingIcon = {
+                if (urlInput.isNotEmpty()) {
+                    IconButton(onClick = { urlInput = "" }) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Clear URL",
+                            tint = Color.Gray
+                        )
+                    }
+                }
+            },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+            keyboardActions = KeyboardActions(onGo = { onSubmit() }),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = Color.White,
                 unfocusedTextColor = Color.White,
@@ -114,13 +139,7 @@ fun LibraryDrawerContent(
         ) {
             // Add Button
             Button(
-                onClick = {
-                    if (urlInput.isNotBlank()) {
-                        // Fetch title asynchronously and add
-                        libraryViewModel.fetchAndAdd(urlInput)
-                        urlInput = ""
-                    }
-                },
+                onClick = onSubmit,
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF4CAF50),
