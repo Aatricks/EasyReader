@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
  * Manages library items, selection mode, filtering, and search.
  */
 class LibraryViewModel(
-    private val libraryRepository: LibraryRepository,
+    val repository: LibraryRepository,
     private val contentRepository: ContentRepository? = null
 ) : ViewModel() {
 
@@ -37,6 +37,9 @@ class LibraryViewModel(
     // Sort mode
     private val _sortMode = MutableStateFlow(SortMode.LAST_READ)
     val sortMode: StateFlow<SortMode> = _sortMode.asStateFlow()
+
+    // Expose repository for legacy access (e.g. from ExploreScreen)
+    val libraryRepository: LibraryRepository get() = repository
 
     init {
         observeLibraryChanges()

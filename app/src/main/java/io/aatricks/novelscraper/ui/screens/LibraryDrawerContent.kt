@@ -63,7 +63,8 @@ fun LibraryDrawerContent(
     libraryViewModel: io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel,
     readerViewModel: io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel,
     onOpenFilePicker: () -> Unit,
-    onCloseDrawer: () -> Unit
+    onCloseDrawer: () -> Unit,
+    onExploreClick: () -> Unit = {}
 ) {
     val libraryUiState by libraryViewModel.uiState.collectAsState()
     val readerUiState by readerViewModel.uiState.collectAsState()
@@ -168,6 +169,22 @@ fun LibraryDrawerContent(
             ) {
                 Text("Open PDF", color = Color.White, fontWeight = FontWeight.SemiBold)
             }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Explore Button
+        Button(
+            onClick = onExploreClick,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF2196F3)
+            ),
+            shape = RoundedCornerShape(24.dp)
+        ) {
+            Icon(Icons.Default.Image, contentDescription = "Explore") // Use Image or Search icon
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Explore Online", color = Color.White, fontWeight = FontWeight.SemiBold)
         }
 
         Spacer(modifier = Modifier.height(16.dp))

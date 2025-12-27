@@ -36,6 +36,8 @@ import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import io.aatricks.novelscraper.ui.screens.explore.ExploreScreen
+import io.aatricks.novelscraper.data.repository.ExploreRepository
 
 /**
  * Main reading screen with drawer layout for library management.
@@ -62,6 +64,8 @@ fun ReaderScreen(
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    var showExplore by remember { mutableStateOf(false) }
+    val exploreRepository = remember { ExploreRepository() }
 
     // Collect state from ViewModel
     val uiState by readerViewModel.uiState.collectAsState()
@@ -91,57 +95,69 @@ fun ReaderScreen(
         }
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        modifier = modifier,
-        drawerContent = {
-            ModalDrawerSheet(
-                drawerContainerColor = Color.Black,
-                modifier = Modifier.width(320.dp)
-            ) {
-                LibraryDrawerContent(
-                    libraryViewModel = libraryViewModel,
-                    readerViewModel = readerViewModel,
-                    onOpenFilePicker = onOpenFilePicker,
-                    onCloseDrawer = {
-                        scope.launch { drawerState.close() }
-                    }
-                )
+    if (showExplore) {
+        ExploreScreen(
+            exploreRepository = exploreRepository,
+            libraryRepository = libraryViewModel.repository,
+            onNavigateBack = { showExplore = false }
+        )
+    } else {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            modifier = modifier,
+            drawerContent = {
+                ModalDrawerSheet(
+                    drawerContainerColor = Color.Black,
+                    modifier = Modifier.width(320.dp)
+                ) {
+                    LibraryDrawerContent(
+                        libraryViewModel = libraryViewModel,
+                        readerViewModel = readerViewModel,
+                        onOpenFilePicker = onOpenFilePicker,
+                        onCloseDrawer = {
+                            scope.launch { drawerState.close() }
+                        },
+                        onExploreClick = {
+                            scope.launch { drawerState.close() }
+                            showExplore = true
+                        }
+                    )
+                }
             }
-        }
-    ) {
-        Scaffold(
-            containerColor = Color.Black
-        ) { paddingValues ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-            ) {
-                when {
-                    uiState.isLoading -> {
-                        LoadingState()
-                    }
+        ) {
+            Scaffold(
+                containerColor = Color.Black
+            ) { paddingValues ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues)
+                ) {
+                    when {
+                        uiState.isLoading -> {
+                            LoadingState()
+                        }
 
-                    uiState.error != null -> {
-                        ErrorState(
-                            error = uiState.error!!,
-                            onRetry = { readerViewModel.retryLoad() }
-                        )
-                    }
+                        uiState.error != null -> {
+                            ErrorState(
+                                error = uiState.error!!,
+                                onRetry = { readerViewModel.retryLoad() }
+                            )
+                        }
 
-                    uiState.content == null -> {
-                        EmptyState(onOpenLibrary = {
-                            scope.launch { drawerState.open() }
-                        })
-                    }
+                        uiState.content == null -> {
+                            EmptyState(onOpenLibrary = {
+                                scope.launch { drawerState.open() }
+                            })
+                        }
 
-                    else -> {
-                        ContentArea(
-                            content = uiState.content!!,
-                            readerViewModel = readerViewModel,
-                            onLibraryClick = { scope.launch { drawerState.open() } }
-                        )
+                        else -> {
+                            ContentArea(
+                                content = uiState.content!!,
+                                readerViewModel = readerViewModel,
+                                onLibraryClick = { scope.launch { drawerState.open() } }
+                            )
+                        }
                     }
                 }
             }
