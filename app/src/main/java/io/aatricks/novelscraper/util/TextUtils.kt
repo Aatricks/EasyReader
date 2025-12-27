@@ -409,7 +409,8 @@ object TextUtils {
                     val wordCount = cur.split(Regex("\\s+")).size
 
                     val shouldMerge = (lastChar != null && !sentenceEnders.contains(lastChar)) &&
-                            (wordCount <= 8 || lastW in continuationWords || lastW.length <= 4)
+                            (wordCount <= 8 || lastW in continuationWords || lastW.length <= 4) &&
+                            !(cur.contains(':') && next.contains(':'))
 
                         // If the next paragraph looks like a heading (short, starts with uppercase),
                         // avoid merging as it likely indicates an intentional paragraph break.
@@ -476,7 +477,8 @@ object TextUtils {
                     (nxt.uppercase() == nxt || nxt.trimEnd().endsWith(":"))
 
                 val shouldMergeAggressive = (lastChar != null && !sentenceEnders.contains(lastChar)) &&
-                    (wordCount <= 10 || lastW in continuationWords || lastW.length <= 4) && !looksLikeHeadingAgg
+                    (wordCount <= 10 || lastW in continuationWords || lastW.length <= 4) && !looksLikeHeadingAgg &&
+                    !(cur.contains(':') && nxt.contains(':'))
 
                 if (shouldMergeAggressive) {
                     cur = (cur + " " + nxt).replace(Regex(" +"), " ")
