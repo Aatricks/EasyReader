@@ -1,6 +1,8 @@
 package io.aatricks.novelscraper.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -58,6 +60,7 @@ import kotlinx.coroutines.launch
  * @param onOpenFilePicker Callback to open file picker
  * @param onCloseDrawer Callback to close the drawer
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryDrawerContent(
     libraryViewModel: io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel,
@@ -251,25 +254,29 @@ fun LibraryDrawerContent(
                                             Column(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .pointerInput(Unit) {
-                                                        detectTapGestures(
-                                                            onTap = {
-                                                                // On tap load current/last unfinished chapter
-                                                                val current = items.find { it.isCurrentlyReading }
+                                                    .combinedClickable(
+                                                        onClick = {
+                                                            // On tap load current/last unfinished chapter
+                                                            val current =
+                                                                items.find { it.isCurrentlyReading }
                                                                     ?: items.maxByOrNull { it.progress }
                                                                     ?: items.first()
-                                                                val loadUrl =
-                                                                    if (current.currentChapterUrl.isNotBlank()) current.currentChapterUrl else current.url
-                                                                readerViewModel.loadContent(loadUrl, current.id)
-                                                                libraryViewModel.markAsCurrentlyReading(current.id)
-                                                                onCloseDrawer()
-                                                            },
-                                                            onLongPress = {
-                                                                // On long press, delete the entire group
-                                                                libraryViewModel.removeGroup(groupTitle)
-                                                            }
-                                                        )
-                                                    }
+                                                            val loadUrl =
+                                                                if (current.currentChapterUrl.isNotBlank()) current.currentChapterUrl else current.url
+                                                            readerViewModel.loadContent(
+                                                                loadUrl,
+                                                                current.id
+                                                            )
+                                                            libraryViewModel.markAsCurrentlyReading(
+                                                                current.id
+                                                            )
+                                                            onCloseDrawer()
+                                                        },
+                                                        onLongClick = {
+                                                            // On long press, delete the entire group
+                                                            libraryViewModel.removeGroup(groupTitle)
+                                                        }
+                                                    )
                                             ) {
                                                 Text(
                                                     text = groupTitle,
@@ -326,26 +333,26 @@ fun LibraryDrawerContent(
                                                     Row(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
-                                                            .pointerInput(Unit) {
-                                                                detectTapGestures(
-                                                                    onTap = {
-                                                                        val loadUrl =
-                                                                            if (chapterItem.currentChapterUrl.isNotBlank()) chapterItem.currentChapterUrl else chapterItem.url
-                                                                        readerViewModel.loadContent(
-                                                                            loadUrl,
-                                                                            chapterItem.id
-                                                                        )
-                                                                        libraryViewModel.markAsCurrentlyReading(
-                                                                            chapterItem.id
-                                                                        )
-                                                                        onCloseDrawer()
-                                                                    },
-                                                                    onLongPress = {
-                                                                        // On long press, delete this chapter
-                                                                        libraryViewModel.removeItem(chapterItem.id)
-                                                                    }
-                                                                )
-                                                            }
+                                                            .combinedClickable(
+                                                                onClick = {
+                                                                    val loadUrl =
+                                                                        if (chapterItem.currentChapterUrl.isNotBlank()) chapterItem.currentChapterUrl else chapterItem.url
+                                                                    readerViewModel.loadContent(
+                                                                        loadUrl,
+                                                                        chapterItem.id
+                                                                    )
+                                                                    libraryViewModel.markAsCurrentlyReading(
+                                                                        chapterItem.id
+                                                                    )
+                                                                    onCloseDrawer()
+                                                                },
+                                                                onLongClick = {
+                                                                    // On long press, delete this chapter
+                                                                    libraryViewModel.removeItem(
+                                                                        chapterItem.id
+                                                                    )
+                                                                }
+                                                            )
                                                             .padding(vertical = 6.dp),
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
@@ -555,6 +562,7 @@ private fun EmptyLibraryState() {
 /**
  * Render EPUB item with hierarchical TOC
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun EpubItemCard(
     item: LibraryItem,
@@ -595,25 +603,27 @@ private fun EpubItemCard(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = {
-                                    // Load first chapter
-                                    epubBook?.let { book ->
-                                        val firstHref = book.spine.firstOrNull()
-                                        if (firstHref != null) {
-                                            readerViewModel.loadEpubChapter(item.url, firstHref, item.id)
-                                            libraryViewModel.markAsCurrentlyReading(item.id)
-                                            onCloseDrawer()
-                                        }
+                        .combinedClickable(
+                            onClick = {
+                                // Load first chapter
+                                epubBook?.let { book ->
+                                    val firstHref = book.spine.firstOrNull()
+                                    if (firstHref != null) {
+                                        readerViewModel.loadEpubChapter(
+                                            item.url,
+                                            firstHref,
+                                            item.id
+                                        )
+                                        libraryViewModel.markAsCurrentlyReading(item.id)
+                                        onCloseDrawer()
                                     }
-                                },
-                                onLongPress = {
-                                    // Delete item
-                                    libraryViewModel.removeItem(item.id)
                                 }
-                            )
-                        }
+                            },
+                            onLongClick = {
+                                // Delete item
+                                libraryViewModel.removeItem(item.id)
+                            }
+                        )
                 ) {
                     Text(
                         text = item.title,
@@ -665,6 +675,7 @@ private fun EpubItemCard(
 /**
  * Recursive TOC item view with indentation for hierarchy
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun EpubTocItemView(
     tocItem: EpubTocItem,
@@ -688,16 +699,14 @@ private fun EpubTocItemView(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = {
-                            // Load this chapter
-                            readerViewModel.loadEpubChapter(epubPath, tocItem.href, itemId)
-                            libraryViewModel.markAsCurrentlyReading(itemId)
-                            onCloseDrawer()
-                        }
-                    )
-                }
+                .combinedClickable(
+                    onClick = {
+                        // Load this chapter
+                        readerViewModel.loadEpubChapter(epubPath, tocItem.href, itemId)
+                        libraryViewModel.markAsCurrentlyReading(itemId)
+                        onCloseDrawer()
+                    }
+                )
                 .padding(start = startPadding, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
