@@ -1148,11 +1148,36 @@ class ContentRepository(private val context: Context) {
     }
 
     /**
-     * Fetch title for EPUB or other content
+     * Clear cache for a specific URL (HTML or EPUB)
      */
     suspend fun clearCache(url: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            getCachedFile(url).delete()
+            if (url.endsWith(".epub", ignoreCase = true) || url.contains("epub")) {
+                clearEpubCache(url)
+            } else {
+                getCachedFile(url).delete()
+            }
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Clear EPUB-specific cache (images and memory)
+     */
+    suspend fun clearEpubCache(filePath: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            // Remove from memory cache
+            epubBookCache.remove(filePath)
+
+            // Remove from disk cache
+            val bookId = filePath.hashCode().toString()
+            val bookCacheDir = File(epubCacheDir, bookId)
+            if (bookCacheDir.exists()) {
+                bookCacheDir.deleteRecursively()
+            }
+            true
         } catch (e: Exception) {
             false
         }
@@ -1163,7 +1188,13 @@ class ContentRepository(private val context: Context) {
      */
     suspend fun clearAllCache(): Boolean = withContext(Dispatchers.IO) {
         try {
-            cacheDir.listFiles()?.forEach { it.delete() }
+            cacheDir.deleteRecursively()
+            epubCacheDir.deleteRecursively()
+            epubBookCache.clear()
+            
+            // Re-create directories
+            cacheDir.mkdirs()
+            epubCacheDir.mkdirs()
             true
         } catch (e: Exception) {
             false

@@ -655,12 +655,40 @@ class LibraryViewModel(
     }
 
     /**
+     * Remove all currently selected items from library
+     */
+    fun removeSelectedItems() {
+        viewModelScope.launch {
+            try {
+                val selectedItems = libraryRepository.getSelectedItems()
+                if (selectedItems.isNotEmpty()) {
+                    // Clear cache for each item (best-effort)
+                    selectedItems.forEach { item ->
+                        try {
+                            contentRepository?.clearCache(item.url)
+                        } catch (_: Exception) {}
+                    }
+
+                    val ids = selectedItems.map { it.id }.toSet()
+                    libraryRepository.removeItems(ids)
+                    libraryRepository.clearSelection()
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(error = "Failed to remove selected items: ${e.message}")
+                }
+            }
+        }
+    }
+
+    /**
      * Clear entire library
      */
     fun clearLibrary() {
         viewModelScope.launch {
             try {
                 libraryRepository.clearLibrary()
+                contentRepository?.clearAllCache()
                 _uiState.update { it.copy(error = null) }
             } catch (e: Exception) {
                 _uiState.update {
