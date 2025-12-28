@@ -1,6 +1,8 @@
 package io.aatricks.novelscraper.data.repository
 
 import io.aatricks.novelscraper.data.model.ExploreItem
+import io.aatricks.novelscraper.data.repository.source.MangaBatSource
+import io.aatricks.novelscraper.data.repository.source.MangaDemonSource
 import io.aatricks.novelscraper.data.repository.source.NovelFireSource
 import io.aatricks.novelscraper.data.repository.source.NovelSource
 import kotlinx.coroutines.async
@@ -10,7 +12,9 @@ import kotlinx.coroutines.coroutineScope
 class ExploreRepository {
 
     private val sources: List<NovelSource> = listOf(
-        NovelFireSource()
+        NovelFireSource(),
+        MangaBatSource(),
+        MangaDemonSource()
     )
 
     suspend fun getPopularNovels(page: Int = 1): List<ExploreItem> = coroutineScope {

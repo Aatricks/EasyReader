@@ -281,7 +281,7 @@ private fun ContentArea(
                     }
 
                     is ContentElement.Image -> {
-                        EpubImageView(
+                        ContentImageView(
                             imageUrl = element.url,
                             altText = element.altText,
                             readerViewModel = readerViewModel
@@ -531,67 +531,91 @@ private fun BottomNavigationBar(
 }
 
 /**
- * Display EPUB image
+ * Display image content (Web or EPUB)
  */
 @Composable
-private fun EpubImageView(
+private fun ContentImageView(
     imageUrl: String,
     altText: String?,
     readerViewModel: ReaderViewModel
 ) {
-    var imageData by remember(imageUrl) { mutableStateOf<android.graphics.Bitmap?>(null) }
-    var isLoading by remember(imageUrl) { mutableStateOf(true) }
-    var hasError by remember(imageUrl) { mutableStateOf(false) }
-
-    LaunchedEffect(imageUrl) {
-        try {
-            isLoading = true
-            hasError = false
-            val bytes = readerViewModel.contentRepository.getEpubImage(imageUrl)
-            if (bytes != null) {
-                imageData = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-            } else {
-                hasError = true
-            }
-        } catch (e: Exception) {
-            hasError = true
-        } finally {
-            isLoading = false
+    // Handle Web Images
+    if (imageUrl.startsWith("http")) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.Black),
+            contentAlignment = Alignment.Center
+        ) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = altText,
+                modifier = Modifier.fillMaxWidth(),
+                contentScale = ContentScale.FillWidth,
+                onLoading = {
+                    // Could show loading indicator here if needed
+                },
+                onError = {
+                    // Could handle error here
+                }
+            )
         }
-    }
+    } else {
+        // Handle EPUB Images
+        var imageData by remember(imageUrl) { mutableStateOf<android.graphics.Bitmap?>(null) }
+        var isLoading by remember(imageUrl) { mutableStateOf(true) }
+        var hasError by remember(imageUrl) { mutableStateOf(false) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.Black),
-        contentAlignment = Alignment.Center
-    ) {
-        when {
-            isLoading -> {
-                CircularProgressIndicator(
-                    color = Color.Gray,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .padding(16.dp)
-                )
+        LaunchedEffect(imageUrl) {
+            try {
+                isLoading = true
+                hasError = false
+                val bytes = readerViewModel.contentRepository.getEpubImage(imageUrl)
+                if (bytes != null) {
+                    imageData = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                } else {
+                    hasError = true
+                }
+            } catch (e: Exception) {
+                hasError = true
+            } finally {
+                isLoading = false
             }
+        }
 
-            hasError -> {
-                Text(
-                    text = altText ?: "Image unavailable",
-                    color = Color.Gray,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.Black),
+            contentAlignment = Alignment.Center
+        ) {
+            when {
+                isLoading -> {
+                    CircularProgressIndicator(
+                        color = Color.Gray,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .padding(16.dp)
+                    )
+                }
 
-            imageData != null -> {
-                androidx.compose.foundation.Image(
-                    bitmap = imageData!!.asImageBitmap(),
-                    contentDescription = altText,
-                    modifier = Modifier.fillMaxWidth(),
-                    contentScale = ContentScale.FillWidth
-                )
+                hasError -> {
+                    Text(
+                        text = altText ?: "Image unavailable",
+                        color = Color.Gray,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+
+                imageData != null -> {
+                    androidx.compose.foundation.Image(
+                        bitmap = imageData!!.asImageBitmap(),
+                        contentDescription = altText,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.FillWidth
+                    )
+                }
             }
         }
     }

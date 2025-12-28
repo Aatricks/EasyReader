@@ -53,7 +53,8 @@ class ContentRepository(private val context: Context) {
         data class Success(
             val paragraphs: List<String>,
             val title: String? = null,
-            val url: String
+            val url: String,
+            val contentElements: List<ContentElement>? = null
         ) : ContentResult()
 
         data class Error(
@@ -174,6 +175,48 @@ class ContentRepository(private val context: Context) {
         try {
             // Extract title
             val title = document.title().takeIf { it.isNotBlank() }
+
+            // Check for Manga/Manhwa Image Content First
+            val imageSelectors = listOf(
+                ".reading-content img",
+                ".container-chapter-reader img",
+                "#readerarea img",
+                ".vung-doc img",
+                ".read-content img",
+                ".chapter-content img",
+                "#chapter-content img",
+                ".page-chapter img",
+                ".chapter-images img",
+                "div[id^='image-'] img",
+                "img.chapter-img"
+            )
+
+            for (selector in imageSelectors) {
+                val images = document.select(selector)
+                if (images.size >= 3) { // Threshold to consider it an image-heavy chapter
+                    val contentElements = images.mapNotNull { img ->
+                        val src = img.attr("data-src").ifEmpty { img.attr("src") }
+                        if (src.isNotBlank()) {
+                            ContentElement.Image(
+                                url = if (src.startsWith("/")) {
+                                    val baseUrl = URL(url)
+                                    "${baseUrl.protocol}://${baseUrl.host}$src"
+                                } else src,
+                                altText = img.attr("alt")
+                            )
+                        } else null
+                    }
+
+                    if (contentElements.isNotEmpty()) {
+                        return ContentResult.Success(
+                            paragraphs = emptyList(), // No text paragraphs
+                            title = title,
+                            url = url,
+                            contentElements = contentElements
+                        )
+                    }
+                }
+            }
 
             // Extract paragraphs from various possible containers
             val paragraphs = mutableListOf<String>()
@@ -329,10 +372,13 @@ class ContentRepository(private val context: Context) {
                 }
             }
 
+            val contentElements = formattedParagraphs.map { ContentElement.Text(it) }
+
             return ContentResult.Success(
                 paragraphs = formattedParagraphs,
                 title = title,
-                url = url
+                url = url,
+                contentElements = contentElements
             )
         } catch (e: Exception) {
             return ContentResult.Error("Failed to parse HTML: ${e.message}", e)
