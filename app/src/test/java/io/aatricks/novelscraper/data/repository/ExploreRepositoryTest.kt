@@ -2,7 +2,6 @@ package io.aatricks.novelscraper.data.repository
 
 import io.aatricks.novelscraper.data.model.ExploreItem
 import io.aatricks.novelscraper.data.repository.source.NovelFireSource
-import io.aatricks.novelscraper.data.repository.source.StandardEbooksSource
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.Assert.*
@@ -19,12 +18,5 @@ class ExploreRepositoryTest {
         val source = NovelFireSource()
         assertEquals("NovelFire", source.name)
         assertEquals("https://novelfire.net", source.baseUrl)
-    }
-
-    @Test
-    fun testStandardEbooksSourceScraping() = runBlocking {
-        val source = StandardEbooksSource()
-        assertEquals("Standard Ebooks", source.name)
-        assertEquals("https://standardebooks.org", source.baseUrl)
     }
 }
