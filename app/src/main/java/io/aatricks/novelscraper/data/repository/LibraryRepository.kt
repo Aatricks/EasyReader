@@ -307,6 +307,24 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
         currentSelection.remove(itemId)
         _selectedItems.value = currentSelection
     }
+
+    /**
+     * Select multiple items
+     */
+    fun selectItems(itemIds: List<String>) {
+        val currentSelection = _selectedItems.value.toMutableSet()
+        currentSelection.addAll(itemIds)
+        _selectedItems.value = currentSelection
+    }
+
+    /**
+     * Deselect multiple items
+     */
+    fun deselectItems(itemIds: List<String>) {
+        val currentSelection = _selectedItems.value.toMutableSet()
+        currentSelection.removeAll(itemIds)
+        _selectedItems.value = currentSelection
+    }
     
     /**
      * Select all items

@@ -140,34 +140,71 @@ fun LibraryDrawerContent(
         ) {
             val buttonHeight = 48.dp
 
-            // Add Button
-            Button(
-                onClick = onSubmit,
-                modifier = Modifier.weight(1f).height(buttonHeight),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF4CAF50),
-                    disabledContainerColor = Color.DarkGray
-                ),
-                enabled = urlInput.isNotBlank(),
-                shape = RoundedCornerShape(24.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Add,
-                    contentDescription = "Add",
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Add", color = Color.White, fontWeight = FontWeight.SemiBold)
-            }
+            if (libraryUiState.isSelectionMode) {
+                // Delete Button
+                Button(
+                    onClick = { libraryViewModel.removeSelectedItems() },
+                    modifier = Modifier.weight(1f).height(buttonHeight),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.Red,
+                        disabledContainerColor = Color.DarkGray
+                    ),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = "Delete",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Delete (${libraryUiState.selectedCount})", color = Color.White, fontWeight = FontWeight.SemiBold)
+                }
 
-            // Open PDF button
-            Button(
-                onClick = { onOpenFilePicker() },
-                modifier = Modifier.weight(1f).height(buttonHeight),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF795548)),
-                shape = RoundedCornerShape(24.dp)
-            ) {
-                Text("Open PDF", color = Color.White, fontWeight = FontWeight.SemiBold)
+                // Cancel Selection Button
+                Button(
+                    onClick = { libraryViewModel.exitSelectionMode() },
+                    modifier = Modifier.weight(1f).height(buttonHeight),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Cancel",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Cancel", color = Color.White, fontWeight = FontWeight.SemiBold)
+                }
+            } else {
+                // Add Button
+                Button(
+                    onClick = onSubmit,
+                    modifier = Modifier.weight(1f).height(buttonHeight),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF4CAF50),
+                        disabledContainerColor = Color.DarkGray
+                    ),
+                    enabled = urlInput.isNotBlank(),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = "Add",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Add", color = Color.White, fontWeight = FontWeight.SemiBold)
+                }
+
+                // Open PDF button
+                Button(
+                    onClick = { onOpenFilePicker() },
+                    modifier = Modifier.weight(1f).height(buttonHeight),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF795548)),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Text("Open PDF", color = Color.White, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
 
@@ -232,12 +269,16 @@ fun LibraryDrawerContent(
                             // Default to expanded when a group has multiple chapters so users
                             // can see downloaded chapters without having to manually expand.
                             val isExpanded = expandedState.getOrPut(groupTitle) { items.size > 1 }
+                            val isGroupSelected = libraryViewModel.isGroupSelected(groupTitle)
+                            val isSelectionMode = libraryUiState.isSelectionMode
 
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp)),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF0D0D0D))
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isGroupSelected) Color(0xFF1E3A8A) else Color(0xFF0D0D0D)
+                                )
                             ) {
                                 Column(modifier = Modifier.padding(12.dp)) {
                                     // Header row: title and current chapter / expand arrow
@@ -251,22 +292,26 @@ fun LibraryDrawerContent(
                                             Column(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .pointerInput(Unit) {
+                                                    .pointerInput(isSelectionMode) {
                                                         detectTapGestures(
                                                             onTap = {
-                                                                // On tap load current/last unfinished chapter
-                                                                val current = items.find { it.isCurrentlyReading }
-                                                                    ?: items.maxByOrNull { it.progress }
-                                                                    ?: items.first()
-                                                                val loadUrl =
-                                                                    if (current.currentChapterUrl.isNotBlank()) current.currentChapterUrl else current.url
-                                                                readerViewModel.loadContent(loadUrl, current.id)
-                                                                libraryViewModel.markAsCurrentlyReading(current.id)
-                                                                onCloseDrawer()
+                                                                if (isSelectionMode) {
+                                                                    libraryViewModel.toggleGroupSelection(groupTitle)
+                                                                } else {
+                                                                    // On tap load current/last unfinished chapter
+                                                                    val current = items.find { it.isCurrentlyReading }
+                                                                        ?: items.maxByOrNull { it.progress }
+                                                                        ?: items.first()
+                                                                    val loadUrl =
+                                                                        if (current.currentChapterUrl.isNotBlank()) current.currentChapterUrl else current.url
+                                                                    readerViewModel.loadContent(loadUrl, current.id)
+                                                                    libraryViewModel.markAsCurrentlyReading(current.id)
+                                                                    onCloseDrawer()
+                                                                }
                                                             },
                                                             onLongPress = {
-                                                                // On long press, delete the entire group
-                                                                libraryViewModel.removeGroup(groupTitle)
+                                                                // On long press, enter selection mode or toggle group selection
+                                                                libraryViewModel.toggleGroupSelection(groupTitle)
                                                             }
                                                         )
                                                     }
@@ -322,31 +367,41 @@ fun LibraryDrawerContent(
                                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                             items.forEach { chapterItem ->
                                                 Column(modifier = Modifier.fillMaxWidth()) {
+                                                    val isSelected = libraryUiState.selectedIds.contains(chapterItem.id)
+
                                                     // Chapter row
                                                     Row(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
-                                                            .pointerInput(Unit) {
+                                                            .background(
+                                                                if (isSelected) Color(0xFF1E3A8A).copy(alpha = 0.5f) else Color.Transparent,
+                                                                shape = RoundedCornerShape(4.dp)
+                                                            )
+                                                            .pointerInput(isSelectionMode) {
                                                                 detectTapGestures(
                                                                     onTap = {
-                                                                        val loadUrl =
-                                                                            if (chapterItem.currentChapterUrl.isNotBlank()) chapterItem.currentChapterUrl else chapterItem.url
-                                                                        readerViewModel.loadContent(
-                                                                            loadUrl,
-                                                                            chapterItem.id
-                                                                        )
-                                                                        libraryViewModel.markAsCurrentlyReading(
-                                                                            chapterItem.id
-                                                                        )
-                                                                        onCloseDrawer()
+                                                                        if (isSelectionMode) {
+                                                                            libraryViewModel.toggleSelection(chapterItem.id)
+                                                                        } else {
+                                                                            val loadUrl =
+                                                                                if (chapterItem.currentChapterUrl.isNotBlank()) chapterItem.currentChapterUrl else chapterItem.url
+                                                                            readerViewModel.loadContent(
+                                                                                loadUrl,
+                                                                                chapterItem.id
+                                                                            )
+                                                                            libraryViewModel.markAsCurrentlyReading(
+                                                                                chapterItem.id
+                                                                            )
+                                                                            onCloseDrawer()
+                                                                        }
                                                                     },
                                                                     onLongPress = {
-                                                                        // On long press, delete this chapter
-                                                                        libraryViewModel.removeItem(chapterItem.id)
+                                                                        // On long press, toggle selection
+                                                                        libraryViewModel.toggleSelection(chapterItem.id)
                                                                     }
                                                                 )
                                                             }
-                                                            .padding(vertical = 6.dp),
+                                                            .padding(vertical = 6.dp, horizontal = 4.dp),
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
                                                         Text(
@@ -355,7 +410,7 @@ fun LibraryDrawerContent(
                                                                     ?: extractChapterLabelFromUrl(chapterItem.url)
                                                                     ?: "Chapter 1"
                                                             },
-                                                            color = Color.White,
+                                                            color = if (isSelected) Color(0xFF90CAF9) else Color.White,
                                                             style = MaterialTheme.typography.bodyMedium
                                                         )
                                                     }
