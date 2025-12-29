@@ -62,6 +62,7 @@ fun ChapterSummaryDropdown(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(4.dp))
                     .clickable { 
                         if (summary == null && !isGenerating) {
                             onGenerateSummary()

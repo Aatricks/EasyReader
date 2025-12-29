@@ -1,6 +1,9 @@
 package io.aatricks.novelscraper.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,8 +20,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
@@ -58,6 +59,7 @@ import kotlinx.coroutines.launch
  * @param onOpenFilePicker Callback to open file picker
  * @param onCloseDrawer Callback to close the drawer
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryDrawerContent(
     libraryViewModel: io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel,
@@ -292,29 +294,27 @@ fun LibraryDrawerContent(
                                             Column(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .pointerInput(isSelectionMode) {
-                                                        detectTapGestures(
-                                                            onTap = {
-                                                                if (isSelectionMode) {
-                                                                    libraryViewModel.toggleGroupSelection(groupTitle)
-                                                                } else {
-                                                                    // On tap load current/last unfinished chapter
-                                                                    val current = items.find { it.isCurrentlyReading }
-                                                                        ?: items.maxByOrNull { it.progress }
-                                                                        ?: items.first()
-                                                                    val loadUrl =
-                                                                        if (current.currentChapterUrl.isNotBlank()) current.currentChapterUrl else current.url
-                                                                    readerViewModel.loadContent(loadUrl, current.id)
-                                                                    libraryViewModel.markAsCurrentlyReading(current.id)
-                                                                    onCloseDrawer()
-                                                                }
-                                                            },
-                                                            onLongPress = {
-                                                                // On long press, enter selection mode or toggle group selection
+                                                    .combinedClickable(
+                                                        onClick = {
+                                                            if (isSelectionMode) {
                                                                 libraryViewModel.toggleGroupSelection(groupTitle)
+                                                            } else {
+                                                                // On tap load current/last unfinished chapter
+                                                                val current = items.find { it.isCurrentlyReading }
+                                                                    ?: items.maxByOrNull { it.progress }
+                                                                    ?: items.first()
+                                                                val loadUrl =
+                                                                    if (current.currentChapterUrl.isNotBlank()) current.currentChapterUrl else current.url
+                                                                readerViewModel.loadContent(loadUrl, current.id)
+                                                                libraryViewModel.markAsCurrentlyReading(current.id)
+                                                                onCloseDrawer()
                                                             }
-                                                        )
-                                                    }
+                                                        },
+                                                        onLongClick = {
+                                                            // On long press, enter selection mode or toggle group selection
+                                                            libraryViewModel.toggleGroupSelection(groupTitle)
+                                                        }
+                                                    )
                                             ) {
                                                 Text(
                                                     text = groupTitle,
@@ -377,30 +377,28 @@ fun LibraryDrawerContent(
                                                                 if (isSelected) Color(0xFF1E3A8A).copy(alpha = 0.5f) else Color.Transparent,
                                                                 shape = RoundedCornerShape(4.dp)
                                                             )
-                                                            .pointerInput(isSelectionMode) {
-                                                                detectTapGestures(
-                                                                    onTap = {
-                                                                        if (isSelectionMode) {
-                                                                            libraryViewModel.toggleSelection(chapterItem.id)
-                                                                        } else {
-                                                                            val loadUrl =
-                                                                                if (chapterItem.currentChapterUrl.isNotBlank()) chapterItem.currentChapterUrl else chapterItem.url
-                                                                            readerViewModel.loadContent(
-                                                                                loadUrl,
-                                                                                chapterItem.id
-                                                                            )
-                                                                            libraryViewModel.markAsCurrentlyReading(
-                                                                                chapterItem.id
-                                                                            )
-                                                                            onCloseDrawer()
-                                                                        }
-                                                                    },
-                                                                    onLongPress = {
-                                                                        // On long press, toggle selection
+                                                            .combinedClickable(
+                                                                onClick = {
+                                                                    if (isSelectionMode) {
                                                                         libraryViewModel.toggleSelection(chapterItem.id)
+                                                                    } else {
+                                                                        val loadUrl =
+                                                                            if (chapterItem.currentChapterUrl.isNotBlank()) chapterItem.currentChapterUrl else chapterItem.url
+                                                                        readerViewModel.loadContent(
+                                                                            loadUrl,
+                                                                            chapterItem.id
+                                                                        )
+                                                                        libraryViewModel.markAsCurrentlyReading(
+                                                                            chapterItem.id
+                                                                        )
+                                                                        onCloseDrawer()
                                                                     }
-                                                                )
-                                                            }
+                                                                },
+                                                                onLongClick = {
+                                                                    // On long press, toggle selection
+                                                                    libraryViewModel.toggleSelection(chapterItem.id)
+                                                                }
+                                                            )
                                                             .padding(vertical = 6.dp, horizontal = 4.dp),
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
@@ -610,6 +608,7 @@ private fun EmptyLibraryState() {
 /**
  * Render EPUB item with hierarchical TOC
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun EpubItemCard(
     item: LibraryItem,
@@ -650,25 +649,23 @@ private fun EpubItemCard(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = {
-                                    // Load first chapter
-                                    epubBook?.let { book ->
-                                        val firstHref = book.spine.firstOrNull()
-                                        if (firstHref != null) {
-                                            readerViewModel.loadEpubChapter(item.url, firstHref, item.id)
-                                            libraryViewModel.markAsCurrentlyReading(item.id)
-                                            onCloseDrawer()
-                                        }
+                        .combinedClickable(
+                            onClick = {
+                                // Load first chapter
+                                epubBook?.let { book ->
+                                    val firstHref = book.spine.firstOrNull()
+                                    if (firstHref != null) {
+                                        readerViewModel.loadEpubChapter(item.url, firstHref, item.id)
+                                        libraryViewModel.markAsCurrentlyReading(item.id)
+                                        onCloseDrawer()
                                     }
-                                },
-                                onLongPress = {
-                                    // Delete item
-                                    libraryViewModel.removeItem(item.id)
                                 }
-                            )
-                        }
+                            },
+                            onLongClick = {
+                                // Delete item
+                                libraryViewModel.removeItem(item.id)
+                            }
+                        )
                 ) {
                     Text(
                         text = item.title,
@@ -743,16 +740,14 @@ private fun EpubTocItemView(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = {
-                            // Load this chapter
-                            readerViewModel.loadEpubChapter(epubPath, tocItem.href, itemId)
-                            libraryViewModel.markAsCurrentlyReading(itemId)
-                            onCloseDrawer()
-                        }
-                    )
-                }
+                .clickable(
+                    onClick = {
+                        // Load this chapter
+                        readerViewModel.loadEpubChapter(epubPath, tocItem.href, itemId)
+                        libraryViewModel.markAsCurrentlyReading(itemId)
+                        onCloseDrawer()
+                    }
+                )
                 .padding(start = startPadding, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

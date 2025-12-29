@@ -221,10 +221,10 @@ fun ExploreScreen(
 @Composable
 fun ExploreItemCard(item: ExploreItem, onClick: () -> Unit) {
     Card(
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .height(260.dp)
-            .clickable(onClick = onClick),
+            .height(260.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column {

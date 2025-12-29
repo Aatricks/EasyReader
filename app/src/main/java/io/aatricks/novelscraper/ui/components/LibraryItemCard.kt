@@ -1,5 +1,7 @@
 package io.aatricks.novelscraper.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,17 +49,29 @@ fun LibraryItemCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val backgroundColor = when {
+    val targetBackgroundColor = when {
         isSelected -> Color(0xFF2C2C2C)
         isCurrent -> Color(0xFF1A1A1A)
         else -> Color(0xFF0D0D0D)
     }
     
-    val borderColor = when {
+    val targetBorderColor = when {
         isSelected -> Color(0xFF4CAF50)
         isCurrent -> Color(0xFF4CAF50).copy(alpha = 0.5f)
         else -> Color.Transparent
     }
+
+    val backgroundColor by animateColorAsState(
+        targetValue = targetBackgroundColor,
+        animationSpec = tween(durationMillis = 300),
+        label = "backgroundColor"
+    )
+    
+    val borderColor by animateColorAsState(
+        targetValue = targetBorderColor,
+        animationSpec = tween(durationMillis = 300),
+        label = "borderColor"
+    )
     
     Card(
         modifier = Modifier
