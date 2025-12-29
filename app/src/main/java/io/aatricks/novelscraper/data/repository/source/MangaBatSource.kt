@@ -16,11 +16,21 @@ class MangaBatSource : NovelSource {
     override suspend fun getPopularNovels(page: Int): List<ExploreItem> = withContext(Dispatchers.IO) {
         val url = "https://m.mangabat.com/manga-list-all/$page"
         try {
-            val document = Jsoup.connect(url)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                .timeout(10000)
-                .get()
+            val requestBuilder = okhttp3.Request.Builder().url(url)
+            io.aatricks.novelscraper.util.NetworkUtils.getHeaders().forEach { (name, value) ->
+                requestBuilder.addHeader(name, value)
+            }
+            
+            val response = io.aatricks.novelscraper.util.NetworkUtils.okHttpClient.newCall(requestBuilder.build()).execute()
+            val html = response.body?.string() ?: ""
+            
+            if (io.aatricks.novelscraper.util.NetworkUtils.isCloudflareChallenge(html)) {
+                // We don't have a direct way to trigger UI from here easily without changing interface, 
+                // but usually the first request that fails will be caught by ContentRepository
+                return@withContext emptyList()
+            }
 
+            val document = org.jsoup.Jsoup.parse(html, url)
             val items = mutableListOf<ExploreItem>()
             val elements = document.select(".list-story-item")
 
@@ -52,11 +62,19 @@ class MangaBatSource : NovelSource {
         val url = "https://m.mangabat.com/search/manga/$encodedQuery"
 
         try {
-            val document = Jsoup.connect(url)
-                .userAgent("Mozilla/5.0")
-                .timeout(10000)
-                .get()
+            val requestBuilder = okhttp3.Request.Builder().url(url)
+            io.aatricks.novelscraper.util.NetworkUtils.getHeaders().forEach { (name, value) ->
+                requestBuilder.addHeader(name, value)
+            }
+            
+            val response = io.aatricks.novelscraper.util.NetworkUtils.okHttpClient.newCall(requestBuilder.build()).execute()
+            val html = response.body?.string() ?: ""
+            
+            if (io.aatricks.novelscraper.util.NetworkUtils.isCloudflareChallenge(html)) {
+                return@withContext emptyList()
+            }
 
+            val document = org.jsoup.Jsoup.parse(html, url)
             val items = mutableListOf<ExploreItem>()
             val elements = document.select(".list-story-item")
 
@@ -84,10 +102,21 @@ class MangaBatSource : NovelSource {
     }
 
     override suspend fun getNovelDetails(url: String): ExploreItem = withContext(Dispatchers.IO) {
-        val document = Jsoup.connect(url)
-            .userAgent("Mozilla/5.0")
-            .timeout(10000)
-            .get()
+        val requestBuilder = okhttp3.Request.Builder().url(url)
+        io.aatricks.novelscraper.util.NetworkUtils.getHeaders().forEach { (name, value) ->
+            requestBuilder.addHeader(name, value)
+        }
+        
+        val response = io.aatricks.novelscraper.util.NetworkUtils.okHttpClient.newCall(requestBuilder.build()).execute()
+        val html = response.body?.string() ?: ""
+        
+        if (io.aatricks.novelscraper.util.NetworkUtils.isCloudflareChallenge(html)) {
+            // This is problematic because we can't return details if challenged here.
+            // But if it's already in library, ReaderViewModel will handle it.
+            throw Exception("Cloudflare challenge detected")
+        }
+
+        val document = org.jsoup.Jsoup.parse(html, url)
 
         val title = document.select(".story-info-right h1").text()
         val coverUrl = document.select(".story-info-left .info-image img").attr("src")

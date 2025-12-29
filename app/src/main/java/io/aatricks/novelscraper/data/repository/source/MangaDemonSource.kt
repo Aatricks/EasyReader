@@ -13,11 +13,19 @@ class MangaDemonSource : NovelSource {
     override suspend fun getPopularNovels(page: Int): List<ExploreItem> = withContext(Dispatchers.IO) {
         val url = "$baseUrl/updates.php?page=$page" // Assuming updates page is a good proxy for content
         try {
-            val document = Jsoup.connect(url)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                .timeout(10000)
-                .get()
+            val requestBuilder = okhttp3.Request.Builder().url(url)
+            io.aatricks.novelscraper.util.NetworkUtils.getHeaders().forEach { (name, value) ->
+                requestBuilder.addHeader(name, value)
+            }
+            
+            val response = io.aatricks.novelscraper.util.NetworkUtils.okHttpClient.newCall(requestBuilder.build()).execute()
+            val html = response.body?.string() ?: ""
+            
+            if (io.aatricks.novelscraper.util.NetworkUtils.isCloudflareChallenge(html)) {
+                return@withContext emptyList()
+            }
 
+            val document = org.jsoup.Jsoup.parse(html, url)
             val items = mutableListOf<ExploreItem>()
             // Using generic selectors common for MangaDemon if specific ones aren't known
             // Often lists are in grid items
@@ -68,11 +76,19 @@ class MangaDemonSource : NovelSource {
         val url = "$baseUrl/search.php?keyword=$encodedQuery"
 
         try {
-            val document = Jsoup.connect(url)
-                .userAgent("Mozilla/5.0")
-                .timeout(10000)
-                .get()
+            val requestBuilder = okhttp3.Request.Builder().url(url)
+            io.aatricks.novelscraper.util.NetworkUtils.getHeaders().forEach { (name, value) ->
+                requestBuilder.addHeader(name, value)
+            }
+            
+            val response = io.aatricks.novelscraper.util.NetworkUtils.okHttpClient.newCall(requestBuilder.build()).execute()
+            val html = response.body?.string() ?: ""
+            
+            if (io.aatricks.novelscraper.util.NetworkUtils.isCloudflareChallenge(html)) {
+                return@withContext emptyList()
+            }
 
+            val document = org.jsoup.Jsoup.parse(html, url)
             val items = mutableListOf<ExploreItem>()
             val elements = document.select("a[href*='/manga/']")
 
@@ -100,10 +116,19 @@ class MangaDemonSource : NovelSource {
     }
 
     override suspend fun getNovelDetails(url: String): ExploreItem = withContext(Dispatchers.IO) {
-        val document = Jsoup.connect(url)
-            .userAgent("Mozilla/5.0")
-            .timeout(10000)
-            .get()
+        val requestBuilder = okhttp3.Request.Builder().url(url)
+        io.aatricks.novelscraper.util.NetworkUtils.getHeaders().forEach { (name, value) ->
+            requestBuilder.addHeader(name, value)
+        }
+        
+        val response = io.aatricks.novelscraper.util.NetworkUtils.okHttpClient.newCall(requestBuilder.build()).execute()
+        val html = response.body?.string() ?: ""
+        
+        if (io.aatricks.novelscraper.util.NetworkUtils.isCloudflareChallenge(html)) {
+            throw Exception("Cloudflare challenge detected")
+        }
+
+        val document = org.jsoup.Jsoup.parse(html, url)
 
         val title = document.select("h1").text()
         val coverUrl = document.select("img.rounded").attr("src") // Common class for cover

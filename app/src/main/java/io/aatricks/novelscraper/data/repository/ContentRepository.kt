@@ -28,10 +28,7 @@ class ContentRepository(private val context: Context) {
 
     private val TAG = "ContentRepository"
 
-    private val okHttpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .build()
+    private val okHttpClient = io.aatricks.novelscraper.util.NetworkUtils.okHttpClient
 
     private val cacheDir: File
         get() = File(context.cacheDir, "html_cache").apply {
@@ -56,6 +53,8 @@ class ContentRepository(private val context: Context) {
             val url: String,
             val contentElements: List<ContentElement>? = null
         ) : ContentResult()
+
+        data class CloudflareChallenge(val url: String) : ContentResult()
 
         data class Error(
             val message: String,
@@ -111,10 +110,25 @@ class ContentRepository(private val context: Context) {
             // Check cache first
             val cachedFile = getCachedFile(url)
             val document = if (cachedFile.exists()) {
-                Jsoup.parse(cachedFile, "UTF-8", url)
+                val html = cachedFile.readText()
+                if (io.aatricks.novelscraper.util.NetworkUtils.isCloudflareChallenge(html)) {
+                    // Cache has a challenge, delete and retry download
+                    cachedFile.delete()
+                    val newHtml = downloadHtml(url)
+                    if (io.aatricks.novelscraper.util.NetworkUtils.isCloudflareChallenge(newHtml)) {
+                        return@withContext ContentResult.CloudflareChallenge(url)
+                    }
+                    cachedFile.writeText(newHtml)
+                    Jsoup.parse(newHtml, url)
+                } else {
+                    Jsoup.parse(html, url)
+                }
             } else {
                 // Download and cache
                 val html = downloadHtml(url)
+                if (io.aatricks.novelscraper.util.NetworkUtils.isCloudflareChallenge(html)) {
+                    return@withContext ContentResult.CloudflareChallenge(url)
+                }
                 cachedFile.writeText(html)
                 Jsoup.parse(html, url)
             }
@@ -129,16 +143,22 @@ class ContentRepository(private val context: Context) {
      * Download HTML using OkHttp
      */
     private fun downloadHtml(url: String): String {
-        val request = Request.Builder()
-            .url(url)
-            .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-            .build()
+        val requestBuilder = Request.Builder().url(url)
+        
+        // Add headers from NetworkUtils
+        io.aatricks.novelscraper.util.NetworkUtils.getHeaders().forEach { (name, value) ->
+            requestBuilder.addHeader(name, value)
+        }
+
+        val request = requestBuilder.build()
 
         okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
+            // Cloudflare often returns 403 or 503 for challenges
+            val body = response.body?.string() ?: ""
+            if (!response.isSuccessful && !io.aatricks.novelscraper.util.NetworkUtils.isCloudflareChallenge(body)) {
                 throw Exception("HTTP ${response.code}: ${response.message}")
             }
-            return response.body?.string() ?: throw Exception("Empty response body")
+            return body
         }
     }
 

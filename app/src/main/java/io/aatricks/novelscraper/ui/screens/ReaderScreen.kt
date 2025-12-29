@@ -59,13 +59,14 @@ import io.aatricks.novelscraper.data.repository.ExploreRepository
 fun ReaderScreen(
     readerViewModel: ReaderViewModel,
     libraryViewModel: LibraryViewModel,
+    exploreViewModel: io.aatricks.novelscraper.ui.viewmodel.ExploreViewModel,
+    exploreRepository: ExploreRepository,
     onOpenFilePicker: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var showExplore by remember { mutableStateOf(false) }
-    val exploreRepository = remember { ExploreRepository() }
 
     // Collect state from ViewModel
     val uiState by readerViewModel.uiState.collectAsState()
@@ -97,6 +98,7 @@ fun ReaderScreen(
 
     if (showExplore) {
         ExploreScreen(
+            exploreViewModel = exploreViewModel,
             exploreRepository = exploreRepository,
             libraryViewModel = libraryViewModel,
             onNavigateBack = { showExplore = false }

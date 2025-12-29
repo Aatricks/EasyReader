@@ -42,10 +42,12 @@ class MainActivity : ComponentActivity() {
     // ViewModels
     private lateinit var readerViewModel: ReaderViewModel
     private lateinit var libraryViewModel: LibraryViewModel
+    private lateinit var exploreViewModel: io.aatricks.novelscraper.ui.viewmodel.ExploreViewModel
 
     // Repositories
     private lateinit var contentRepository: ContentRepository
     private lateinit var libraryRepository: LibraryRepository
+    private lateinit var exploreRepository: io.aatricks.novelscraper.data.repository.ExploreRepository
 
     // File picker launcher
     private val filePickerLauncher = registerForActivityResult(
@@ -87,12 +89,26 @@ class MainActivity : ComponentActivity() {
                 darkTheme = true, // Force dark theme for reading
                 dynamicColor = false // Disable dynamic colors for consistent theme
             ) {
+                val uiState by readerViewModel.uiState.collectAsState()
+                val preferencesManager = remember { io.aatricks.novelscraper.data.local.PreferencesManager(applicationContext) }
+
                 ReaderScreen(
                     readerViewModel = readerViewModel,
                     libraryViewModel = libraryViewModel,
+                    exploreViewModel = exploreViewModel,
+                    exploreRepository = exploreRepository,
                     onOpenFilePicker = { checkPermissionsAndOpenFilePicker() },
                     modifier = Modifier.fillMaxSize()
                 )
+
+                uiState.cloudflareChallengeUrl?.let { url ->
+                    io.aatricks.novelscraper.ui.components.CloudflareBypassDialog(
+                        url = url,
+                        onDismiss = { readerViewModel.onCloudflareBypassed() }, // Clear URL
+                        onBypassed = { readerViewModel.onCloudflareBypassed() },
+                        preferencesManager = preferencesManager
+                    )
+                }
             }
         }
 
@@ -119,7 +135,9 @@ class MainActivity : ComponentActivity() {
     private fun initializeRepositories() {
         contentRepository = ContentRepository(applicationContext)
         val preferencesManager = io.aatricks.novelscraper.data.local.PreferencesManager(applicationContext)
+        io.aatricks.novelscraper.util.NetworkUtils.initialize(preferencesManager)
         libraryRepository = LibraryRepository(preferencesManager)
+        exploreRepository = io.aatricks.novelscraper.data.repository.ExploreRepository()
     }
 
     /**
@@ -139,6 +157,9 @@ class MainActivity : ComponentActivity() {
                     modelClass.isAssignableFrom(LibraryViewModel::class.java) -> {
                         LibraryViewModel(libraryRepository, contentRepository) as T
                     }
+                    modelClass.isAssignableFrom(io.aatricks.novelscraper.ui.viewmodel.ExploreViewModel::class.java) -> {
+                        io.aatricks.novelscraper.ui.viewmodel.ExploreViewModel(exploreRepository) as T
+                    }
                     else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
                 }
             }
@@ -147,6 +168,7 @@ class MainActivity : ComponentActivity() {
         // Initialize ViewModels
         readerViewModel = ViewModelProvider(this, factory)[ReaderViewModel::class.java]
         libraryViewModel = ViewModelProvider(this, factory)[LibraryViewModel::class.java]
+        exploreViewModel = ViewModelProvider(this, factory)[io.aatricks.novelscraper.ui.viewmodel.ExploreViewModel::class.java]
     }
 
     /**
