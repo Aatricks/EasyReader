@@ -55,6 +55,7 @@ class LibraryViewModel(
         val isLoading: Boolean = false,
         val error: String? = null,
         val isSelectionMode: Boolean = false,
+        val selectedIds: Set<String> = emptySet(),
         val selectedCount: Int = 0,
         val isEmpty: Boolean = true,
         val currentlyReading: LibraryItem? = null
@@ -110,6 +111,7 @@ class LibraryViewModel(
                         filteredItems = filteredItems,
                         groupedItems = libraryRepository.getGroupedByTitle(),
                         isSelectionMode = selectedIds.isNotEmpty(),
+                        selectedIds = selectedIds,
                         selectedCount = selectedIds.size,
                         isEmpty = items.isEmpty(),
                         currentlyReading = libraryRepository.getCurrentlyReading()
@@ -565,6 +567,57 @@ class LibraryViewModel(
      */
     fun deselectItem(itemId: String) {
         libraryRepository.deselectItem(itemId)
+    }
+
+    /**
+     * Select all items in a group
+     */
+    fun selectGroup(baseTitle: String) {
+        viewModelScope.launch {
+            val groupItems = uiState.value.groupedItems[baseTitle] ?: emptyList()
+            val itemIds = groupItems.map { it.id }
+            libraryRepository.selectItems(itemIds)
+        }
+    }
+
+    /**
+     * Deselect all items in a group
+     */
+    fun deselectGroup(baseTitle: String) {
+        viewModelScope.launch {
+            val groupItems = uiState.value.groupedItems[baseTitle] ?: emptyList()
+            val itemIds = groupItems.map { it.id }
+            libraryRepository.deselectItems(itemIds)
+        }
+    }
+
+    /**
+     * Toggle selection for all items in a group
+     * If all are selected, deselect all. Otherwise, select all.
+     */
+    fun toggleGroupSelection(baseTitle: String) {
+        viewModelScope.launch {
+            val groupItems = uiState.value.groupedItems[baseTitle] ?: emptyList()
+            val selectedIds = uiState.value.selectedIds
+            val allSelected = groupItems.all { it.id in selectedIds }
+            val itemIds = groupItems.map { it.id }
+
+            if (allSelected) {
+                libraryRepository.deselectItems(itemIds)
+            } else {
+                libraryRepository.selectItems(itemIds)
+            }
+        }
+    }
+
+    /**
+     * Check if a group is fully selected
+     */
+    fun isGroupSelected(baseTitle: String): Boolean {
+        val groupItems = uiState.value.groupedItems[baseTitle] ?: return false
+        if (groupItems.isEmpty()) return false
+        val selectedIds = uiState.value.selectedIds
+        return groupItems.all { it.id in selectedIds }
     }
 
     /**
