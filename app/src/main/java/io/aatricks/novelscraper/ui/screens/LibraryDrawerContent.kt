@@ -228,6 +228,7 @@ fun LibraryDrawerContent(
                                 contentRepository = contentRepository,
                                 readerViewModel = readerViewModel,
                                 libraryViewModel = libraryViewModel,
+                                isSelectionMode = libraryUiState.isSelectionMode,
                                 onCloseDrawer = onCloseDrawer
                             )
                         } else {
@@ -256,25 +257,29 @@ fun LibraryDrawerContent(
                                                     .fillMaxWidth()
                                                     .combinedClickable(
                                                         onClick = {
-                                                            // On tap load current/last unfinished chapter
-                                                            val current =
-                                                                items.find { it.isCurrentlyReading }
+                                                            if (libraryUiState.isSelectionMode) {
+                                                                // Smart group selection: if all selected, deselect all. Otherwise, select all.
+                                                                val allSelected = items.all { libraryViewModel.isSelected(it.id) }
+                                                                if (allSelected) {
+                                                                    items.forEach { libraryViewModel.deselectItem(it.id) }
+                                                                } else {
+                                                                    items.forEach { libraryViewModel.selectItem(it.id) }
+                                                                }
+                                                            } else {
+                                                                // On tap load current/last unfinished chapter
+                                                                val current = items.find { it.isCurrentlyReading }
                                                                     ?: items.maxByOrNull { it.progress }
                                                                     ?: items.first()
-                                                            val loadUrl =
-                                                                if (current.currentChapterUrl.isNotBlank()) current.currentChapterUrl else current.url
-                                                            readerViewModel.loadContent(
-                                                                loadUrl,
-                                                                current.id
-                                                            )
-                                                            libraryViewModel.markAsCurrentlyReading(
-                                                                current.id
-                                                            )
-                                                            onCloseDrawer()
+                                                                val loadUrl =
+                                                                    if (current.currentChapterUrl.isNotBlank()) current.currentChapterUrl else current.url
+                                                                readerViewModel.loadContent(loadUrl, current.id)
+                                                                libraryViewModel.markAsCurrentlyReading(current.id)
+                                                                onCloseDrawer()
+                                                            }
                                                         },
                                                         onLongClick = {
-                                                            // On long press, delete the entire group
-                                                            libraryViewModel.removeGroup(groupTitle)
+                                                            // On long press, enter selection mode and select all in group
+                                                            items.forEach { libraryViewModel.selectItem(it.id) }
                                                         }
                                                     )
                                             ) {
@@ -335,27 +340,45 @@ fun LibraryDrawerContent(
                                                             .fillMaxWidth()
                                                             .combinedClickable(
                                                                 onClick = {
-                                                                    val loadUrl =
-                                                                        if (chapterItem.currentChapterUrl.isNotBlank()) chapterItem.currentChapterUrl else chapterItem.url
-                                                                    readerViewModel.loadContent(
-                                                                        loadUrl,
-                                                                        chapterItem.id
-                                                                    )
-                                                                    libraryViewModel.markAsCurrentlyReading(
-                                                                        chapterItem.id
-                                                                    )
-                                                                    onCloseDrawer()
+                                                                    if (libraryUiState.isSelectionMode) {
+                                                                        libraryViewModel.toggleSelection(chapterItem.id)
+                                                                    } else {
+                                                                        val loadUrl =
+                                                                            if (chapterItem.currentChapterUrl.isNotBlank()) chapterItem.currentChapterUrl else chapterItem.url
+                                                                        readerViewModel.loadContent(
+                                                                            loadUrl,
+                                                                            chapterItem.id
+                                                                        )
+                                                                        libraryViewModel.markAsCurrentlyReading(
+                                                                            chapterItem.id
+                                                                        )
+                                                                        onCloseDrawer()
+                                                                    }
                                                                 },
                                                                 onLongClick = {
-                                                                    // On long press, delete this chapter
-                                                                    libraryViewModel.removeItem(
-                                                                        chapterItem.id
-                                                                    )
+                                                                    // On long press, toggle selection
+                                                                    libraryViewModel.toggleSelection(chapterItem.id)
                                                                 }
+                                                            )
+                                                            .background(
+                                                                if (libraryViewModel.isSelected(chapterItem.id)) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent
                                                             )
                                                             .padding(vertical = 6.dp),
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
+                                                        // Selection Checkbox (visible in selection mode)
+                                                        if (libraryUiState.isSelectionMode) {
+                                                            Checkbox(
+                                                                checked = libraryViewModel.isSelected(chapterItem.id),
+                                                                onCheckedChange = { libraryViewModel.toggleSelection(chapterItem.id) },
+                                                                colors = CheckboxDefaults.colors(
+                                                                    checkedColor = MaterialTheme.colorScheme.primary,
+                                                                    uncheckedColor = Color.Gray
+                                                                ),
+                                                                modifier = Modifier.padding(end = 8.dp)
+                                                            )
+                                                        }
+
                                                         Text(
                                                             text = chapterItem.currentChapter.ifBlank {
                                                                 extractChapterLabelFromTitle(chapterItem.title)
@@ -569,6 +592,7 @@ private fun EpubItemCard(
     contentRepository: ContentRepository,
     readerViewModel: ReaderViewModel,
     libraryViewModel: LibraryViewModel,
+    isSelectionMode: Boolean,
     onCloseDrawer: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -605,24 +629,31 @@ private fun EpubItemCard(
                         .weight(1f)
                         .combinedClickable(
                             onClick = {
-                                // Load first chapter
-                                epubBook?.let { book ->
-                                    val firstHref = book.spine.firstOrNull()
-                                    if (firstHref != null) {
-                                        readerViewModel.loadEpubChapter(
-                                            item.url,
-                                            firstHref,
-                                            item.id
-                                        )
-                                        libraryViewModel.markAsCurrentlyReading(item.id)
-                                        onCloseDrawer()
+                                if (libraryViewModel.isSelected(item.id) || isSelectionMode) {
+                                    libraryViewModel.toggleSelection(item.id)
+                                } else {
+                                    // Load first chapter
+                                    epubBook?.let { book ->
+                                        val firstHref = book.spine.firstOrNull()
+                                        if (firstHref != null) {
+                                            readerViewModel.loadEpubChapter(
+                                                item.url,
+                                                firstHref,
+                                                item.id
+                                            )
+                                            libraryViewModel.markAsCurrentlyReading(item.id)
+                                            onCloseDrawer()
+                                        }
                                     }
                                 }
                             },
                             onLongClick = {
-                                // Delete item
-                                libraryViewModel.removeItem(item.id)
+                                // Toggle selection
+                                libraryViewModel.toggleSelection(item.id)
                             }
+                        )
+                        .background(
+                             if (libraryViewModel.isSelected(item.id)) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent
                         )
                 ) {
                     Text(
