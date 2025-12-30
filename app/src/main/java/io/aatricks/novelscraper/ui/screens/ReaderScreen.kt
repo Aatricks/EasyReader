@@ -35,6 +35,8 @@ import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import io.aatricks.novelscraper.ui.screens.explore.ExploreScreen
 import io.aatricks.novelscraper.data.repository.ExploreRepository
@@ -549,7 +551,11 @@ private fun EpubImageView(
             hasError = false
             val bytes = readerViewModel.contentRepository.getEpubImage(imageUrl)
             if (bytes != null) {
-                imageData = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                // Bolt Optimization: Decode bitmap on IO thread to prevent UI jank
+                val bitmap = withContext(Dispatchers.IO) {
+                    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                }
+                imageData = bitmap
             } else {
                 hasError = true
             }
