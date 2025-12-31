@@ -61,8 +61,7 @@ class ReaderViewModel(
         val canNavigatePrevious: Boolean = false,
         val showControls: Boolean = false, // Show/hide bottom navigation bar
         val novelName: String = "", // Novel/book title
-        val chapterTitle: String = "", // Current chapter title
-        val cloudflareChallengeUrl: String? = null // URL triggering Cloudflare challenge
+        val chapterTitle: String = "" // Current chapter title
     )
 
     /**
@@ -165,14 +164,6 @@ class ReaderViewModel(
                         
                         // Reset explicit navigation flag
                         isExplicitNavigation = false
-                    }
-                    is ContentRepository.ContentResult.CloudflareChallenge -> {
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                cloudflareChallengeUrl = result.url
-                            )
-                        }
                     }
                     is ContentRepository.ContentResult.Error -> {
                         _uiState.update {
@@ -579,17 +570,6 @@ class ReaderViewModel(
             } catch (e: Exception) {
                 // Silently fail progress updates to not interrupt reading
             }
-        }
-    }
-
-    /**
-     * Call when Cloudflare challenge is bypassed via WebView
-     */
-    fun onCloudflareBypassed() {
-        val url = _uiState.value.cloudflareChallengeUrl
-        _uiState.update { it.copy(cloudflareChallengeUrl = null) }
-        if (url != null) {
-            loadContent(url, currentLibraryItemId)
         }
     }
 

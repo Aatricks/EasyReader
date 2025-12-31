@@ -102,15 +102,6 @@ class PreferencesManager(context: Context) {
     var currentTitle: String?
         get() = prefs.getString(KEY_CURRENT_TITLE, null)
         set(value) = prefs.edit().putString(KEY_CURRENT_TITLE, value).apply()
-
-    // Network configuration
-    var userAgent: String?
-        get() = prefs.getString(KEY_USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        set(value) = prefs.edit().putString(KEY_USER_AGENT, value).apply()
-
-    var cookies: String?
-        get() = prefs.getString(KEY_COOKIES, null)
-        set(value) = prefs.edit().putString(KEY_COOKIES, value).apply()
     
     // Clear all preferences
     fun clearAll() {
@@ -133,7 +124,5 @@ class PreferencesManager(context: Context) {
         private const val KEY_SCROLL_POSITION = "scroll_position"
         private const val KEY_LIBRARY_ITEMS = "library_items"
         private const val KEY_CURRENT_TITLE = "current_title"
-        private const val KEY_USER_AGENT = "user_agent"
-        private const val KEY_COOKIES = "cookies"
     }
 }

@@ -30,7 +30,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
@@ -59,14 +61,13 @@ import io.aatricks.novelscraper.data.repository.ExploreRepository
 fun ReaderScreen(
     readerViewModel: ReaderViewModel,
     libraryViewModel: LibraryViewModel,
-    exploreViewModel: io.aatricks.novelscraper.ui.viewmodel.ExploreViewModel,
-    exploreRepository: ExploreRepository,
     onOpenFilePicker: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var showExplore by remember { mutableStateOf(false) }
+    val exploreRepository = remember { ExploreRepository() }
 
     // Collect state from ViewModel
     val uiState by readerViewModel.uiState.collectAsState()
@@ -98,7 +99,6 @@ fun ReaderScreen(
 
     if (showExplore) {
         ExploreScreen(
-            exploreViewModel = exploreViewModel,
             exploreRepository = exploreRepository,
             libraryViewModel = libraryViewModel,
             onNavigateBack = { showExplore = false }
@@ -543,6 +543,9 @@ private fun ContentImageView(
 ) {
     // Handle Web Images
     if (imageUrl.startsWith("http")) {
+        var isLoading by remember { mutableStateOf(true) }
+        var hasError by remember { mutableStateOf(false) }
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -550,17 +553,50 @@ private fun ContentImageView(
             contentAlignment = Alignment.Center
         ) {
             AsyncImage(
-                model = imageUrl,
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(imageUrl)
+                    .crossfade(true)
+                    .listener(
+                        onStart = { isLoading = true; hasError = false },
+                        onSuccess = { _, _ -> isLoading = false },
+                        onError = { _, _ -> isLoading = false; hasError = true }
+                    )
+                    // Important: Add Referer header to bypass anti-hotlinking
+                    // We try to determine the best referer. Ideally it's the chapter URL,
+                    // but base URL of the image often works for sites like MangaBat.
+                    .addHeader("Referer", "https://readmangabat.com/")
+                    .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    .build(),
                 contentDescription = altText,
                 modifier = Modifier.fillMaxWidth(),
-                contentScale = ContentScale.FillWidth,
-                onLoading = {
-                    // Could show loading indicator here if needed
-                },
-                onError = {
-                    // Could handle error here
-                }
+                contentScale = ContentScale.FillWidth
             )
+
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = Color.Gray,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .padding(16.dp)
+                )
+            }
+
+            if (hasError) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Filled.Warning,
+                        contentDescription = "Image Error",
+                        tint = Color.Red,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                    Text(
+                        text = "Failed to load image",
+                        color = Color.Gray,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+            }
         }
     } else {
         // Handle EPUB Images

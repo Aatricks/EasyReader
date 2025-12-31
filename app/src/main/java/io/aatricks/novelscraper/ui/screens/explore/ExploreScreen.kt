@@ -2,9 +2,11 @@ package io.aatricks.novelscraper.ui.screens.explore
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
@@ -20,8 +22,9 @@ import coil.compose.AsyncImage
 import io.aatricks.novelscraper.data.model.ExploreItem
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import kotlinx.coroutines.launch
-import io.aatricks.novelscraper.data.local.PreferencesManager
-import io.aatricks.novelscraper.ui.components.CloudflareBypassDialog
+import androidx.lifecycle.viewmodel.compose.viewModel
+import io.aatricks.novelscraper.data.repository.LibraryRepository
+import io.aatricks.novelscraper.data.model.ContentType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -29,46 +32,63 @@ import androidx.compose.foundation.text.KeyboardOptions
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExploreScreen(
-    exploreViewModel: io.aatricks.novelscraper.ui.viewmodel.ExploreViewModel,
     exploreRepository: ExploreRepository,
     libraryViewModel: io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel,
     onNavigateBack: () -> Unit
 ) {
-    val uiState by exploreViewModel.uiState.collectAsState()
+    var searchQuery by remember { mutableStateOf("") }
     var isSearching by remember { mutableStateOf(false) }
+    var exploreItems by remember { mutableStateOf<List<ExploreItem>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
     var selectedItem by remember { mutableStateOf<ExploreItem?>(null) }
     var selectedItemDetails by remember { mutableStateOf<ExploreItem?>(null) }
     var isFetchingDetails by remember { mutableStateOf(false) }
+    var page by remember { mutableStateOf(1) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val context = LocalContext.current
 
     fun fetchDetails(item: ExploreItem) {
         selectedItem = item
         selectedItemDetails = null
         isFetchingDetails = true
         scope.launch {
-            try {
-                val details = exploreRepository.getNovelDetails(item.url, item.source)
-                selectedItemDetails = details ?: item
-            } catch (e: Exception) {
-                if (e.message?.contains("Cloudflare", ignoreCase = true) == true) {
-                    exploreViewModel.triggerCloudflareChallenge(item.url)
-                } else {
-                    selectedItemDetails = item
-                }
-            } finally {
-                isFetchingDetails = false
-            }
+            val details = exploreRepository.getNovelDetails(item.url, item.source)
+            selectedItemDetails = details ?: item
+            isFetchingDetails = false
         }
     }
 
     fun loadMore() {
-        if (uiState.isLoading) return
-        if (uiState.searchQuery.isBlank()) {
-            exploreViewModel.loadPopularNovels(uiState.page + 1)
-        } else {
-            exploreViewModel.searchNovels(uiState.searchQuery, uiState.page + 1)
+        if (isLoading) return
+        scope.launch {
+            isLoading = true
+            val newItems = if (searchQuery.isBlank()) {
+                exploreRepository.getPopularNovels(page + 1)
+            } else {
+                exploreRepository.searchNovels(searchQuery, page + 1)
+            }
+            if (newItems.isNotEmpty()) {
+                exploreItems = exploreItems + newItems
+                page++
+            }
+            isLoading = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        isLoading = true
+        exploreItems = exploreRepository.getPopularNovels(1)
+        page = 1
+        isLoading = false
+    }
+
+    fun performSearch() {
+        if (searchQuery.isBlank()) return
+        scope.launch {
+            isLoading = true
+            page = 1
+            exploreItems = exploreRepository.searchNovels(searchQuery, 1)
+            isLoading = false
         }
     }
 
@@ -78,29 +98,36 @@ fun ExploreScreen(
                 title = {
                     if (isSearching) {
                         TextField(
-                            value = uiState.searchQuery,
-                            onValueChange = { exploreViewModel.searchNovels(it, 1) },
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
                             placeholder = { Text("Search novels...") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = MaterialTheme.colorScheme.surface,
                                 unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                                focusedIndicatorColor =  MaterialTheme.colorScheme.primary,
+                                focusedIndicatorColor =  MaterialTheme.colorScheme.primary, // Transparent or matching color
                                 unfocusedIndicatorColor = MaterialTheme.colorScheme.onSurfaceVariant
                             ),
                             trailingIcon = {
-                                if (uiState.searchQuery.isNotEmpty()) {
+                                if (searchQuery.isNotEmpty()) {
                                     IconButton(onClick = {
-                                        exploreViewModel.loadPopularNovels(1)
+                                        searchQuery = ""
+                                        // Reset to popular when clearing
                                         isSearching = false
+                                        scope.launch {
+                                            isLoading = true
+                                            page = 1
+                                            exploreItems = exploreRepository.getPopularNovels(1)
+                                            isLoading = false
+                                        }
                                     }) {
                                         Icon(Icons.Default.Close, contentDescription = "Clear")
                                     }
                                 }
                             },
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                            keyboardActions = KeyboardActions(onSearch = { exploreViewModel.searchNovels(uiState.searchQuery, 1) })
+                            keyboardActions = KeyboardActions(onSearch = { performSearch() })
                         )
                     } else {
                         Text("Explore")
@@ -110,7 +137,14 @@ fun ExploreScreen(
                     IconButton(onClick = {
                         if (isSearching) {
                             isSearching = false
-                            exploreViewModel.loadPopularNovels(1)
+                            searchQuery = ""
+                            // Reload popular
+                            scope.launch {
+                                isLoading = true
+                                page = 1
+                                exploreItems = exploreRepository.getPopularNovels(1)
+                                isLoading = false
+                            }
                         } else {
                             isSearching = true
                         }
@@ -131,20 +165,11 @@ fun ExploreScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         Box(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
-            if (uiState.isLoading && uiState.items.isEmpty()) {
+            if (isLoading && exploreItems.isEmpty()) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             } else {
-                if (uiState.items.isEmpty()) {
-                    Column(
-                        modifier = Modifier.align(Alignment.Center),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("No items found.")
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(onClick = { exploreViewModel.loadPopularNovels(1) }) {
-                            Text("Retry / Refresh")
-                        }
-                    }
+                if (exploreItems.isEmpty()) {
+                    Text("No items found.", modifier = Modifier.align(Alignment.Center))
                 } else {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = 120.dp),
@@ -152,7 +177,7 @@ fun ExploreScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(uiState.items) { item ->
+                        items(exploreItems) { item ->
                             ExploreItemCard(item = item, onClick = { fetchDetails(item) })
                         }
 
@@ -160,7 +185,7 @@ fun ExploreScreen(
                             LaunchedEffect(true) {
                                 loadMore()
                             }
-                            if (uiState.isLoading) {
+                            if (isLoading) {
                                 Box(modifier = Modifier.fillMaxWidth().height(50.dp), contentAlignment = Alignment.Center) {
                                     CircularProgressIndicator(modifier = Modifier.size(24.dp))
                                 }
@@ -189,16 +214,6 @@ fun ExploreScreen(
                 selectedItem = null
                 selectedItemDetails = null
             }
-        )
-    }
-
-    uiState.cloudflareChallengeUrl?.let { url ->
-        val preferencesManager = remember { PreferencesManager(context) }
-        CloudflareBypassDialog(
-            url = url,
-            onDismiss = { exploreViewModel.onCloudflareBypassed() },
-            onBypassed = { exploreViewModel.onCloudflareBypassed() },
-            preferencesManager = preferencesManager
         )
     }
 }
