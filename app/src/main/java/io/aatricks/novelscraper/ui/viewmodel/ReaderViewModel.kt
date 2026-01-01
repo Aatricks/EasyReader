@@ -112,7 +112,7 @@ class ReaderViewModel(
                 when (val result = contentRepository.loadContent(url)) {
                     is ContentRepository.ContentResult.Success -> {
                         val content = ChapterContent(
-                            paragraphs = result.paragraphs.map { ContentElement.Text(it) },
+                            paragraphs = result.elements,
                             title = result.title,
                             url = result.url,
                             nextChapterUrl = contentRepository.incrementChapterUrl(result.url),

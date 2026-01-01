@@ -30,7 +30,13 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
@@ -41,21 +47,6 @@ import kotlin.math.abs
 import io.aatricks.novelscraper.ui.screens.explore.ExploreScreen
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 
-/**
- * Main reading screen with drawer layout for library management.
- *
- * Features:
- * - Left drawer with library content
- * - Scrollable main content area displaying text and images
- * - Automatic scroll position tracking
- * - Security scroll detection for chapter navigation
- * - Loading and error state handling
- *
- * @param readerViewModel ViewModel managing reader state and content
- * @param libraryViewModel ViewModel managing library
- * @param onOpenFilePicker Callback to open file picker
- * @param modifier Modifier for customization
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderScreen(
@@ -67,10 +58,24 @@ fun ReaderScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var showExplore by remember { mutableStateOf(false) }
-    val exploreRepository = remember { ExploreRepository() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val exploreRepository = remember { io.aatricks.novelscraper.data.repository.ExploreRepository(context) }
+    
+    var showCloudflareWebView by remember { mutableStateOf(false) }
+    var cloudflareUrl by remember { mutableStateOf("") }
 
     // Collect state from ViewModel
     val uiState by readerViewModel.uiState.collectAsState()
+    
+    // Check for Cloudflare/403 errors
+    LaunchedEffect(uiState.error) {
+        if (uiState.error?.contains("403") == true || uiState.error?.contains("503") == true) {
+            cloudflareUrl = uiState.content?.url ?: ""
+            if (cloudflareUrl.startsWith("http")) {
+                showCloudflareWebView = true
+            }
+        }
+    }
 
     // Manage Status Bar Visibility
     val view = LocalView.current
@@ -95,6 +100,47 @@ fun ReaderScreen(
                 WindowCompat.getInsetsController(it, view).show(WindowInsetsCompat.Type.statusBars())
             }
         }
+    }
+
+    if (showCloudflareWebView) {
+        AlertDialog(
+            onDismissRequest = { showCloudflareWebView = false },
+            title = { Text("Solve Challenge") },
+            text = {
+                Column {
+                    Text("Please solve the challenge to continue reading.", style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(modifier = Modifier.fillMaxWidth().height(400.dp)) {
+                        AndroidView(factory = { ctx ->
+                            WebView(ctx).apply {
+                                settings.javaScriptEnabled = true
+                                settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                                webViewClient = object : WebViewClient() {
+                                    override fun onPageFinished(view: WebView?, url: String?) {
+                                        super.onPageFinished(view, url)
+                                        // If page finished and it's not a challenge page, maybe we are done
+                                    }
+                                }
+                                loadUrl(cloudflareUrl)
+                            }
+                        })
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { 
+                    showCloudflareWebView = false
+                    readerViewModel.retryLoad()
+                }) {
+                    Text("Done")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCloudflareWebView = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showExplore) {
@@ -242,6 +288,10 @@ private fun ContentArea(
         }
     }
 
+    val isManhwa = remember(content) {
+        content.getImageCount() > content.getTextCount() && content.getImageCount() > 2
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
@@ -263,8 +313,8 @@ private fun ContentArea(
                         }
                     }
                 },
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+            contentPadding = if (isManhwa) PaddingValues(0.dp) else PaddingValues(16.dp),
+            verticalArrangement = if (isManhwa) Arrangement.spacedBy(0.dp) else Arrangement.spacedBy(24.dp)
         ) {
             // Use indexed keys that include the chapter URL to ensure uniqueness across
             // chapters and prevent IllegalArgumentException when the same element values
@@ -283,10 +333,11 @@ private fun ContentArea(
                     }
 
                     is ContentElement.Image -> {
-                        EpubImageView(
+                        ReaderImageView(
                             imageUrl = element.url,
                             altText = element.altText,
-                            readerViewModel = readerViewModel
+                            readerViewModel = readerViewModel,
+                            pageUrl = content.url
                         )
                     }
                 }
@@ -533,71 +584,104 @@ private fun BottomNavigationBar(
 }
 
 /**
- * Display EPUB image
+ * Display reader image (supports EPUB internal images and web URLs)
  */
 @Composable
-private fun EpubImageView(
+private fun ReaderImageView(
     imageUrl: String,
     altText: String?,
-    readerViewModel: ReaderViewModel
+    readerViewModel: ReaderViewModel,
+    pageUrl: String
 ) {
-    var imageData by remember(imageUrl) { mutableStateOf<android.graphics.Bitmap?>(null) }
-    var isLoading by remember(imageUrl) { mutableStateOf(true) }
-    var hasError by remember(imageUrl) { mutableStateOf(false) }
-
-    LaunchedEffect(imageUrl) {
-        try {
-            isLoading = true
-            hasError = false
-            val bytes = readerViewModel.contentRepository.getEpubImage(imageUrl)
-            if (bytes != null) {
-                // Bolt Optimization: Decode bitmap on IO thread to prevent UI jank
-                val bitmap = withContext(Dispatchers.IO) {
-                    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                }
-                imageData = bitmap
-            } else {
-                hasError = true
-            }
-        } catch (e: Exception) {
-            hasError = true
-        } finally {
-            isLoading = false
+    if (imageUrl.startsWith("http")) {
+        // Web image - Add Referer header to bypass hotlinking protection
+        val context = LocalContext.current
+        val imageRequest = remember(imageUrl, pageUrl) {
+            val uri = try { java.net.URI(pageUrl) } catch (e: Exception) { null }
+            val referer = if (uri != null) "${uri.scheme}://${uri.host}/" else pageUrl
+            ImageRequest.Builder(context)
+                .data(imageUrl)
+                .addHeader("Referer", referer)
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .crossfade(true)
+                .build()
         }
-    }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.Black),
-        contentAlignment = Alignment.Center
-    ) {
-        when {
-            isLoading -> {
-                CircularProgressIndicator(
-                    color = Color.Gray,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .padding(16.dp)
-                )
+        SubcomposeAsyncImage(
+            model = imageRequest,
+            contentDescription = altText,
+            modifier = Modifier.fillMaxWidth(),
+            contentScale = ContentScale.FillWidth,
+            loading = {
+                Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Color.Gray, modifier = Modifier.size(32.dp))
+                }
+            },
+            error = {
+                Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    Text(text = altText ?: "Image unavailable", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                }
             }
+        )
+    } else {
+        // Local/EPUB image
+        var imageData by remember(imageUrl) { mutableStateOf<android.graphics.Bitmap?>(null) }
+        var isLoading by remember(imageUrl) { mutableStateOf(true) }
+        var hasError by remember(imageUrl) { mutableStateOf(false) }
 
-            hasError -> {
-                Text(
-                    text = altText ?: "Image unavailable",
-                    color = Color.Gray,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(16.dp)
-                )
+        LaunchedEffect(imageUrl) {
+            try {
+                isLoading = true
+                hasError = false
+                val bytes = readerViewModel.contentRepository.getEpubImage(imageUrl)
+                if (bytes != null) {
+                    val bitmap = withContext(Dispatchers.IO) {
+                        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    }
+                    imageData = bitmap
+                } else {
+                    hasError = true
+                }
+            } catch (e: Exception) {
+                hasError = true
+            } finally {
+                isLoading = false
             }
+        }
 
-            imageData != null -> {
-                androidx.compose.foundation.Image(
-                    bitmap = imageData!!.asImageBitmap(),
-                    contentDescription = altText,
-                    modifier = Modifier.fillMaxWidth(),
-                    contentScale = ContentScale.FillWidth
-                )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.Black),
+            contentAlignment = Alignment.Center
+        ) {
+            when {
+                isLoading -> {
+                    CircularProgressIndicator(
+                        color = Color.Gray,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .padding(16.dp)
+                    )
+                }
+
+                hasError -> {
+                    Text(
+                        text = altText ?: "Image unavailable",
+                        color = Color.Gray,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+
+                imageData != null -> {
+                    androidx.compose.foundation.Image(
+                        bitmap = imageData!!.asImageBitmap(),
+                        contentDescription = altText,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.FillWidth
+                    )
+                }
             }
         }
     }

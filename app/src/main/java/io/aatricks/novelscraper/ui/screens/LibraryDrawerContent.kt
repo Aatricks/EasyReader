@@ -434,7 +434,7 @@ fun LibraryDrawerContent(
                                                                     summaryViewModel.generateSummary(
                                                                         chapterUrl = chapterUrl,
                                                                         chapterTitle = chapterItem.currentChapter.ifBlank { chapterItem.title },
-                                                                        content = result.paragraphs
+                                                                        content = result.elements.filterIsInstance<io.aatricks.novelscraper.data.model.ContentElement.Text>().map { it.content }
                                                                     ) { summary ->
                                                                         // Save summary to library item
                                                                         libraryViewModel.updateChapterSummary(
