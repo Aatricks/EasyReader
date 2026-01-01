@@ -261,9 +261,8 @@ fun ReaderScreen(
                                     scope.launch {
                                         bottomSheetState.hide()
                                         showChapterList = false
-                                        // Load from source or library
-                                        val existing = libraryViewModel.repository.getItemByUrl(chapter.url)
-                                        readerViewModel.loadContent(chapter.url, existing?.id)
+                                        // Use navigateToChapter to ensure library is updated
+                                        readerViewModel.navigateToChapter(chapter.url, chapter.title)
                                     }
                                 },
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent)

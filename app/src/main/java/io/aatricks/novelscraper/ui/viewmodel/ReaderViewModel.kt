@@ -818,6 +818,55 @@ class ReaderViewModel(
     }
 
     /**
+     * Navigate to a specific chapter (e.g. from the chapter list)
+     * Automatically adds to library and inherits metadata
+     */
+    fun navigateToChapter(url: String, title: String) {
+        viewModelScope.launch {
+            // Mark as explicit navigation to prevent scroll restoration
+            isExplicitNavigation = true
+            
+            // Get current library item to extract metadata
+            val currentItem = currentLibraryItemId?.let { libraryRepository.getItemById(it) }
+            
+            // Check if selected chapter already exists in library
+            val existingItem = libraryRepository.getItemByUrl(url)
+            
+            val itemId = if (existingItem != null) {
+                // Chapter already exists, use its ID
+                existingItem.id
+            } else if (currentItem != null && currentItem.contentType == ContentType.WEB) {
+                // Add new chapter to library with same metadata as current novel
+                try {
+                    val chapterLabel = extractChapterLabel(title) 
+                        ?: extractChapterLabelFromUrl(url) 
+                        ?: title
+                    
+                    val newItem = libraryRepository.addItem(
+                        title = title.trim(),
+                        url = url,
+                        contentType = ContentType.WEB,
+                        currentChapter = chapterLabel,
+                        baseTitle = currentItem.baseTitle,
+                        baseNovelUrl = currentItem.baseNovelUrl,
+                        sourceName = currentItem.sourceName
+                    )
+                    // Inherit reading mode
+                    libraryRepository.updateReadingMode(newItem.id, currentItem.readingMode)
+                    newItem.id
+                } catch (e: Exception) {
+                    null
+                }
+            } else {
+                null
+            }
+            
+            // Load the selected chapter content
+            loadContent(url, itemId)
+        }
+    }
+
+    /**
      * Load full chapter list for the novel from the source
      */
     fun loadFullChapterList(baseUrl: String, sourceName: String) {
