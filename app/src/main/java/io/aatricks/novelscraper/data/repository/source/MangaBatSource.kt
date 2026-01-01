@@ -127,10 +127,17 @@ class MangaBatSource : NovelSource {
 
         val chapters = document.select(".chapter-name, .chapter-list a, .row a[href*='/chapter-']")
         val chapterCount = chapters.size
-        // First chapter is usually the last one in the list for mangabat
-        val readingUrl = chapters.lastOrNull()?.attr("href")?.let {
-            if (it.startsWith("http")) it else "$baseUrl$it"
+        
+        val chapterList = chapters.map { element ->
+            val chapterUrl = element.attr("href").let { if (it.startsWith("http")) it else "$baseUrl$it" }
+            io.aatricks.novelscraper.data.model.ChapterInfo(
+                title = element.text(),
+                url = chapterUrl
+            )
         }
+
+        // First chapter is usually the last one in the list for mangabat
+        val readingUrl = chapterList.lastOrNull()?.url
 
         ExploreItem(
             title = title,
@@ -140,7 +147,8 @@ class MangaBatSource : NovelSource {
             summary = summary,
             chapterCount = chapterCount,
             source = name,
-            readingUrl = readingUrl
+            readingUrl = readingUrl,
+            chapters = chapterList
         )
     }
 }

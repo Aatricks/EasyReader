@@ -65,6 +65,14 @@ class SmartScraperSource(override val baseUrl: String) : NovelSource {
             
         val readingUrl = chapterLink?.absUrl("href")
 
+        // Find all chapter links
+        val chapters = document.select("a[href*='chapter'], a[href*='ch-'], a[href*='ep-']").map { element ->
+            io.aatricks.novelscraper.data.model.ChapterInfo(
+                title = element.text(),
+                url = element.absUrl("href")
+            )
+        }.distinctBy { it.url }
+
         ExploreItem(
             title = title,
             url = url,
@@ -72,7 +80,8 @@ class SmartScraperSource(override val baseUrl: String) : NovelSource {
             author = author,
             summary = summary,
             source = name,
-            readingUrl = readingUrl
+            readingUrl = readingUrl,
+            chapters = chapters
         )
     }
 }

@@ -10,5 +10,6 @@ data class ExploreItem(
     val rank: String? = null,
     val rating: String? = null,
     val source: String,
-    val readingUrl: String? = null
+    val readingUrl: String? = null,
+    val chapters: List<ChapterInfo> = emptyList()
 )

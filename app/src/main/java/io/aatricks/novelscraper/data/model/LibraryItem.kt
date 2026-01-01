@@ -32,7 +32,10 @@ data class LibraryItem(
     val lastReadIndex: Int = 0,
     val lastReadOffset: Int = 0,
     val chapterSummaries: Map<String, String>? = emptyMap(), // chapter URL -> AI-generated summary (nullable for Gson backward compatibility)
-    val baseTitle: String = "" // Base title without chapter markers - used for grouping (empty for backward compatibility)
+    val baseTitle: String = "", // Base title without chapter markers - used for grouping (empty for backward compatibility)
+    val readingMode: ReadingMode = ReadingMode.VERTICAL,
+    val baseNovelUrl: String = "", // URL of the novel main page
+    val sourceName: String = "" // Name of the source (e.g., MangaBat)
 ) {
     init {
         require(title.isNotBlank()) { "Title cannot be blank" }

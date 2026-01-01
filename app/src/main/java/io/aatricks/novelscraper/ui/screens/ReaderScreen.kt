@@ -16,11 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,11 +28,20 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material.icons.automirrored.filled.*
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
@@ -58,11 +63,14 @@ fun ReaderScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var showExplore by remember { mutableStateOf(false) }
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val exploreRepository = remember { io.aatricks.novelscraper.data.repository.ExploreRepository(context) }
+    val context = LocalContext.current
+    val exploreRepository = remember { ExploreRepository(context) }
     
     var showCloudflareWebView by remember { mutableStateOf(false) }
     var cloudflareUrl by remember { mutableStateOf("") }
+
+    var showChapterList by remember { mutableStateOf(false) }
+    val bottomSheetState = rememberModalBottomSheetState()
 
     // Collect state from ViewModel
     val uiState by readerViewModel.uiState.collectAsState()
@@ -118,7 +126,6 @@ fun ReaderScreen(
                                 webViewClient = object : WebViewClient() {
                                     override fun onPageFinished(view: WebView?, url: String?) {
                                         super.onPageFinished(view, url)
-                                        // If page finished and it's not a challenge page, maybe we are done
                                     }
                                 }
                                 loadUrl(cloudflareUrl)
@@ -203,7 +210,9 @@ fun ReaderScreen(
                             ContentArea(
                                 content = uiState.content!!,
                                 readerViewModel = readerViewModel,
-                                onLibraryClick = { scope.launch { drawerState.open() } }
+                                libraryViewModel = libraryViewModel,
+                                onLibraryClick = { scope.launch { drawerState.open() } },
+                                onShowChapterList = { showChapterList = true }
                             )
                         }
                     }
@@ -211,80 +220,152 @@ fun ReaderScreen(
             }
         }
     }
+
+    if (showChapterList) {
+        ModalBottomSheet(
+            onDismissRequest = { showChapterList = false },
+            sheetState = bottomSheetState,
+            containerColor = Color(0xFF1A1A1A),
+            contentColor = Color.White
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                Text(
+                    text = "Chapters",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                
+                if (uiState.isChaptersLoading && uiState.fullChapterList.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Color(0xFF4CAF50))
+                    }
+                } else {
+                    val chapters = uiState.fullChapterList.ifEmpty {
+                        // Fallback to library chapters if source list failed
+                        libraryViewModel.uiState.value.groupedItems[uiState.baseTitle]?.map { 
+                            io.aatricks.novelscraper.data.model.ChapterInfo(it.currentChapter.ifBlank { it.title }, it.url)
+                        }?.reversed() ?: emptyList()
+                    }
+                    
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
+                        items(chapters) { chapter ->
+                            ListItem(
+                                headlineContent = { 
+                                    Text(
+                                        text = chapter.title,
+                                        color = if (chapter.url == uiState.content?.url) Color(0xFF4CAF50) else Color.White
+                                    ) 
+                                },
+                                modifier = Modifier.clickable {
+                                    scope.launch {
+                                        bottomSheetState.hide()
+                                        showChapterList = false
+                                        // Load from source or library
+                                        val existing = libraryViewModel.repository.getItemByUrl(chapter.url)
+                                        readerViewModel.loadContent(chapter.url, existing?.id)
+                                    }
+                                },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                            )
+                            HorizontalDivider(color = Color.DarkGray)
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(32.dp))
+            }
+        }
+    }
 }
 
 /**
  * Main content area displaying scrollable text and images.
- * Tracks scroll position for progress and chapter navigation.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ContentArea(
     content: io.aatricks.novelscraper.data.model.ChapterContent,
     readerViewModel: ReaderViewModel,
-    onLibraryClick: () -> Unit
+    libraryViewModel: LibraryViewModel,
+    onLibraryClick: () -> Unit,
+    onShowChapterList: () -> Unit
 ) {
     val listState = rememberLazyListState()
     val uiState by readerViewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
+    
+    val pagerState = rememberPagerState(
+        initialPage = 0,
+        initialPageOffsetFraction = 0f
+    ) {
+        content.paragraphs.size
+    }
 
-    // Remember whether we've applied a restored scroll for this content URL
     val appliedRestore = remember(content.url) { mutableStateOf(false) }
 
-    // If there's a saved percent scroll position in the ViewModel, apply it once when content loads.
     LaunchedEffect(content.url, uiState.scrollPosition, uiState.scrollIndex) {
         if (!appliedRestore.value && content.paragraphs.isNotEmpty()) {
-            // Try precise restoration first
-            if (uiState.scrollIndex > 0 || uiState.scrollOffset > 0) {
-                try {
-                    listState.scrollToItem(uiState.scrollIndex, uiState.scrollOffset)
-                    appliedRestore.value = true
-                } catch (_: Exception) {
-                    // Fallback or ignore
-                }
-            } else if (uiState.scrollPosition > 0f) {
-                // Fallback to percentage-based restoration (backward compatibility)
-                // Map percent -> item index + offset
-                val totalItems = content.paragraphs.size
-                val percent = uiState.scrollPosition.coerceIn(0f, 100f) / 100f
-
-                // Use same approximations as progress calculation below
-                val itemHeight = 100f
-                val targetPosition = percent * totalItems
-                val index = targetPosition.toInt().coerceIn(0, totalItems - 1)
-                val offsetFraction = targetPosition - index
-                val pixelOffset = (offsetFraction * itemHeight).toInt()
-
-                // Programmatic scroll to approximate position
-                try {
-                    listState.scrollToItem(index, pixelOffset)
-                } catch (_: Exception) {
-                    // ignore failures to avoid crashing UI
-                }
-
+            if (uiState.isPagedMode) {
+                val page = uiState.scrollIndex.coerceIn(0, content.paragraphs.size - 1)
+                pagerState.scrollToPage(page)
                 appliedRestore.value = true
+            } else {
+                if (uiState.scrollIndex > 0 || uiState.scrollOffset > 0) {
+                    try {
+                        listState.scrollToItem(uiState.scrollIndex, uiState.scrollOffset)
+                        appliedRestore.value = true
+                    } catch (_: Exception) {}
+                } else if (uiState.scrollPosition > 0f) {
+                    val totalItems = content.paragraphs.size
+                    val percent = uiState.scrollPosition.coerceIn(0f, 100f) / 100f
+                    val itemHeight = 100f
+                    val targetPosition = percent * totalItems
+                    val index = targetPosition.toInt().coerceIn(0, totalItems - 1)
+                    val offsetFraction = targetPosition - index
+                    val pixelOffset = (offsetFraction * itemHeight).toInt()
+
+                    try {
+                        listState.scrollToItem(index, pixelOffset)
+                    } catch (_: Exception) {}
+                    appliedRestore.value = true
+                }
             }
         }
     }
 
-    // Track scroll position for progress (keeps same logic as before)
-    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
-        if (content.paragraphs.isNotEmpty()) {
+    if (uiState.isPagedMode) {
+        LaunchedEffect(pagerState.currentPage) {
             val totalItems = content.paragraphs.size
-            val currentItem = listState.firstVisibleItemIndex
-
-            // Calculate scroll offset
-            val itemHeight = 100f // Approximate item height
-            val maxScrollOffset = totalItems * itemHeight
-            val currentScrollOffset = currentItem * itemHeight + listState.firstVisibleItemScrollOffset
-            val viewportHeight = 800f // Approximate viewport height
-
+            val currentItem = pagerState.currentPage
+            val progress = if (totalItems > 0) ((currentItem.toFloat() / totalItems) * 100f).coerceIn(0f, 100f) else 0f
+            
             readerViewModel.updateScrollPosition(
-                scrollOffset = currentScrollOffset,
-                maxScrollOffset = maxScrollOffset,
-                viewportHeight = viewportHeight,
-                index = listState.firstVisibleItemIndex,
-                offset = listState.firstVisibleItemScrollOffset
+                scrollOffset = progress,
+                maxScrollOffset = 100f,
+                viewportHeight = 1f,
+                index = currentItem,
+                offset = 0
             )
+        }
+    } else {
+        LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
+            if (content.paragraphs.isNotEmpty()) {
+                val totalItems = content.paragraphs.size
+                val currentItem = listState.firstVisibleItemIndex
+                val itemHeight = 100f
+                val maxScrollOffset = totalItems * itemHeight
+                val currentScrollOffset = currentItem * itemHeight + listState.firstVisibleItemScrollOffset
+                val viewportHeight = 800f
+
+                readerViewModel.updateScrollPosition(
+                    scrollOffset = currentScrollOffset,
+                    maxScrollOffset = maxScrollOffset,
+                    viewportHeight = viewportHeight,
+                    index = listState.firstVisibleItemIndex,
+                    offset = listState.firstVisibleItemScrollOffset
+                )
+            }
         }
     }
 
@@ -293,94 +374,111 @@ private fun ContentArea(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = {
-                            readerViewModel.toggleControls()
-                        }
-                    )
-                }
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures { _, dragAmount ->
-                        // Hide controls on any vertical swipe
-                        if (abs(dragAmount) > 10f) {
-                            readerViewModel.hideControls()
-                        }
+        if (uiState.isPagedMode) {
+            HorizontalPager(
+                state = pagerState,
+                reverseLayout = uiState.isRtl,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+                    .pointerInput(Unit) {
+                        detectTapGestures(onTap = { readerViewModel.toggleControls() })
                     }
-                },
-            contentPadding = if (isManhwa) PaddingValues(0.dp) else PaddingValues(16.dp),
-            verticalArrangement = if (isManhwa) Arrangement.spacedBy(0.dp) else Arrangement.spacedBy(24.dp)
-        ) {
-            // Use indexed keys that include the chapter URL to ensure uniqueness across
-            // chapters and prevent IllegalArgumentException when the same element values
-            // (and thus identical hashCodes) appear in multiple chapters.
-            itemsIndexed(
-                content.paragraphs,
-                key = { index: Int, _: ContentElement -> "${content.url}_$index" }) { index: Int, element: ContentElement ->
-                when (element) {
-                    is ContentElement.Text -> {
-                        Text(
-                            text = element.content,
-                            color = Color.White,
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
-                    is ContentElement.Image -> {
-                        ReaderImageView(
-                            imageUrl = element.url,
-                            altText = element.altText,
-                            readerViewModel = readerViewModel,
-                            pageUrl = content.url
-                        )
+            ) { page ->
+                val element = content.paragraphs.getOrNull(page)
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    if (element != null) {
+                        when (element) {
+                            is ContentElement.Text -> {
+                                Box(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                                    Text(
+                                        text = element.content,
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        modifier = Modifier.padding(16.dp).fillMaxWidth()
+                                    )
+                                }
+                            }
+                            is ContentElement.Image -> {
+                                ReaderImageView(
+                                    imageUrl = element.url,
+                                    altText = element.altText,
+                                    readerViewModel = readerViewModel,
+                                    pageUrl = content.url,
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                        }
                     }
                 }
             }
-
-            // Navigation buttons at the end of content
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 32.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    // Previous chapter button
-                    if (content.hasPreviousChapter()) {
-                        Button(
-                            onClick = { readerViewModel.navigateToPreviousChapter() },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF1A1A1A),
-                                contentColor = Color.White
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+                    .pointerInput(Unit) {
+                        detectTapGestures(onTap = { readerViewModel.toggleControls() })
+                    }
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures { _, dragAmount ->
+                            if (abs(dragAmount) > 10f) readerViewModel.hideControls()
+                        }
+                    },
+                contentPadding = if (isManhwa) PaddingValues(0.dp) else PaddingValues(16.dp),
+                verticalArrangement = if (isManhwa) Arrangement.spacedBy(0.dp) else Arrangement.spacedBy(24.dp)
+            ) {
+                itemsIndexed(
+                    content.paragraphs,
+                    key = { index: Int, _: ContentElement -> "${content.url}_$index" }) { index: Int, element: ContentElement ->
+                    when (element) {
+                        is ContentElement.Text -> {
+                            Text(
+                                text = element.content,
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.fillMaxWidth()
                             )
-                        ) {
-                            Text("← Previous Chapter")
+                        }
+                        is ContentElement.Image -> {
+                            ReaderImageView(
+                                imageUrl = element.url,
+                                altText = element.altText,
+                                readerViewModel = readerViewModel,
+                                pageUrl = content.url,
+                                contentScale = ContentScale.FillWidth
+                            )
                         }
                     }
+                }
 
-                    // Next chapter button
-                    if (content.hasNextChapter()) {
-                        Button(
-                            onClick = { readerViewModel.navigateToNextChapter() },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF1A1A1A),
-                                contentColor = Color.White
-                            )
-                        ) {
-                            Text("Next Chapter →")
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        if (content.hasPreviousChapter()) {
+                            Button(
+                                onClick = { readerViewModel.navigateToPreviousChapter() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A1A1A), contentColor = Color.White)
+                            ) {
+                                Text("← Previous Chapter")
+                            }
+                        }
+                        if (content.hasNextChapter()) {
+                            Button(
+                                onClick = { readerViewModel.navigateToNextChapter() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A1A1A), contentColor = Color.White)
+                            ) {
+                                Text("Next Chapter →")
+                            }
                         }
                     }
                 }
             }
         }
 
-        // Animated top bar with novel name and chapter
         AnimatedVisibility(
             visible = uiState.showControls,
             enter = slideInVertically(initialOffsetY = { -it }),
@@ -390,11 +488,15 @@ private fun ContentArea(
             TopInfoBar(
                 novelName = uiState.novelName,
                 chapterTitle = uiState.chapterTitle,
-                onLibraryClick = onLibraryClick
+                isPagedMode = uiState.isPagedMode,
+                isRtl = uiState.isRtl,
+                onLibraryClick = onLibraryClick,
+                onToggleMode = { readerViewModel.toggleReadingMode() },
+                onToggleRtl = { readerViewModel.toggleRtl() },
+                onShowChapterList = onShowChapterList
             )
         }
 
-        // Animated bottom navigation bar
         AnimatedVisibility(
             visible = uiState.showControls,
             enter = slideInVertically(initialOffsetY = { it }),
@@ -412,75 +514,53 @@ private fun ContentArea(
     }
 }
 
-/**
- * Top info bar with novel name and chapter title
- */
 @Composable
 private fun TopInfoBar(
     novelName: String,
     chapterTitle: String,
-    onLibraryClick: () -> Unit
+    isPagedMode: Boolean,
+    isRtl: Boolean,
+    onLibraryClick: () -> Unit,
+    onToggleMode: () -> Unit,
+    onToggleRtl: () -> Unit,
+    onShowChapterList: () -> Unit
 ) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(0.dp),
-        color = Color(0xE6000000), // Semi-transparent black
+        modifier = Modifier.fillMaxWidth(),
+        color = Color(0xE6000000),
         shadowElevation = 8.dp
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Library button
-            IconButton(
-                onClick = onLibraryClick,
-                modifier = Modifier.size(40.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Menu,
-                    contentDescription = "Open Library",
-                    tint = Color.White
-                )
+            IconButton(onClick = onLibraryClick, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Filled.Menu, contentDescription = "Open Library", tint = Color.White)
             }
-
             Spacer(modifier = Modifier.width(8.dp))
-
-            // Novel name and chapter title
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-                // Novel name
+            Column(modifier = Modifier.weight(1f)) {
                 if (novelName.isNotBlank()) {
-                    Text(
-                        text = novelName,
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Text(text = novelName, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-
-                // Chapter title
                 if (chapterTitle.isNotBlank()) {
-                    Text(
-                        text = chapterTitle,
-                        color = Color(0xFFAAAAAA),
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Text(text = chapterTitle, color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            IconButton(onClick = onShowChapterList, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Filled.List, contentDescription = "Chapter List", tint = Color.White)
+            }
+            IconButton(onClick = onToggleMode, modifier = Modifier.size(40.dp)) {
+                Icon(imageVector = if (isPagedMode) Icons.Filled.ViewCarousel else Icons.Filled.ViewStream, contentDescription = "Toggle Mode", tint = Color.White)
+            }
+            if (isPagedMode) {
+                IconButton(onClick = onToggleRtl, modifier = Modifier.size(40.dp)) {
+                    Text(text = if (isRtl) "RTL" else "LTR", color = Color.White, style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
     }
 }
 
-/**
- * Bottom navigation bar with chapter navigation and progress
- */
 @Composable
 private fun BottomNavigationBar(
     progress: Int,
@@ -490,111 +570,49 @@ private fun BottomNavigationBar(
     onNextClick: () -> Unit
 ) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(0.dp),
-        color = Color(0xE6000000), // Semi-transparent black
+        modifier = Modifier.fillMaxWidth(),
+        color = Color(0xE6000000),
         shadowElevation = 8.dp
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-        ) {
-            // Progress bar
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Progress",
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Text(
-                    text = "$progress%",
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodySmall
-                )
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(text = "Progress", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                Text(text = "$progress%", color = Color.White, style = MaterialTheme.typography.bodySmall)
             }
-
             Spacer(modifier = Modifier.height(4.dp))
-
             LinearProgressIndicator(
                 progress = { progress / 100f },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp),
+                modifier = Modifier.fillMaxWidth().height(4.dp),
                 color = Color(0xFF4CAF50),
                 trackColor = Color(0xFF2A2A2A)
             )
-
             Spacer(modifier = Modifier.height(12.dp))
-
-            // Navigation buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                // Previous button
-                Button(
-                    onClick = onPreviousClick,
-                    enabled = canNavigatePrevious,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF1A1A1A),
-                        contentColor = Color.White,
-                        disabledContainerColor = Color(0xFF0D0D0D),
-                        disabledContentColor = Color(0xFF555555)
-                    ),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.ArrowBack,
-                        contentDescription = "Previous Chapter",
-                        modifier = Modifier.size(18.dp)
-                    )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                Button(onClick = onPreviousClick, enabled = canNavigatePrevious, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A1A1A), contentColor = Color.White)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Previous")
                 }
-
                 Spacer(modifier = Modifier.width(16.dp))
-
-                // Next button
-                Button(
-                    onClick = onNextClick,
-                    enabled = canNavigateNext,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF1A1A1A),
-                        contentColor = Color.White,
-                        disabledContainerColor = Color(0xFF0D0D0D),
-                        disabledContentColor = Color(0xFF555555)
-                    ),
-                    modifier = Modifier.weight(1f)
-                ) {
+                Button(onClick = onNextClick, enabled = canNavigateNext, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A1A1A), contentColor = Color.White)) {
                     Text("Next")
                     Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        imageVector = Icons.Filled.ArrowForward,
-                        contentDescription = "Next Chapter",
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
                 }
             }
         }
     }
 }
 
-/**
- * Display reader image (supports EPUB internal images and web URLs)
- */
 @Composable
 private fun ReaderImageView(
     imageUrl: String,
     altText: String?,
     readerViewModel: ReaderViewModel,
-    pageUrl: String
+    pageUrl: String,
+    contentScale: ContentScale = ContentScale.FillWidth
 ) {
     if (imageUrl.startsWith("http")) {
-        // Web image - Add Referer header to bypass hotlinking protection
         val context = LocalContext.current
         val imageRequest = remember(imageUrl, pageUrl) {
             val uri = try { java.net.URI(pageUrl) } catch (e: Exception) { null }
@@ -602,216 +620,94 @@ private fun ReaderImageView(
             ImageRequest.Builder(context)
                 .data(imageUrl)
                 .addHeader("Referer", referer)
-                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 .crossfade(true)
                 .build()
         }
-
         SubcomposeAsyncImage(
             model = imageRequest,
             contentDescription = altText,
             modifier = Modifier.fillMaxWidth(),
-            contentScale = ContentScale.FillWidth,
-            loading = {
-                Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color.Gray, modifier = Modifier.size(32.dp))
-                }
-            },
-            error = {
-                Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                    Text(text = altText ?: "Image unavailable", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                }
-            }
+            contentScale = contentScale,
+            loading = { Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color.Gray, modifier = Modifier.size(32.dp)) } },
+            error = { Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { Text(text = altText ?: "Image unavailable", color = Color.Gray, style = MaterialTheme.typography.bodySmall) } }
         )
     } else {
-        // Local/EPUB image
         var imageData by remember(imageUrl) { mutableStateOf<android.graphics.Bitmap?>(null) }
         var isLoading by remember(imageUrl) { mutableStateOf(true) }
         var hasError by remember(imageUrl) { mutableStateOf(false) }
-
         LaunchedEffect(imageUrl) {
             try {
-                isLoading = true
-                hasError = false
+                isLoading = true; hasError = false
                 val bytes = readerViewModel.contentRepository.getEpubImage(imageUrl)
                 if (bytes != null) {
-                    val bitmap = withContext(Dispatchers.IO) {
-                        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    }
+                    val bitmap = withContext(Dispatchers.IO) { android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
                     imageData = bitmap
-                } else {
-                    hasError = true
-                }
-            } catch (e: Exception) {
-                hasError = true
-            } finally {
-                isLoading = false
-            }
+                } else hasError = true
+            } catch (e: Exception) { hasError = true } finally { isLoading = false }
         }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color.Black),
-            contentAlignment = Alignment.Center
-        ) {
+        Box(modifier = Modifier.fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
             when {
-                isLoading -> {
-                    CircularProgressIndicator(
-                        color = Color.Gray,
-                        modifier = Modifier
-                            .size(32.dp)
-                            .padding(16.dp)
-                    )
-                }
-
-                hasError -> {
-                    Text(
-                        text = altText ?: "Image unavailable",
-                        color = Color.Gray,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(16.dp)
-                    )
-                }
-
-                imageData != null -> {
-                    androidx.compose.foundation.Image(
-                        bitmap = imageData!!.asImageBitmap(),
-                        contentDescription = altText,
-                        modifier = Modifier.fillMaxWidth(),
-                        contentScale = ContentScale.FillWidth
-                    )
-                }
+                isLoading -> CircularProgressIndicator(color = Color.Gray, modifier = Modifier.size(32.dp).padding(16.dp))
+                hasError -> Text(text = altText ?: "Image unavailable", color = Color.Gray, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
+                imageData != null -> androidx.compose.foundation.Image(bitmap = imageData!!.asImageBitmap(), contentDescription = altText, modifier = Modifier.fillMaxWidth(), contentScale = contentScale)
             }
         }
     }
 }
 
-/**
- * Loading state display
- */
 @Composable
 private fun LoadingState() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            CircularProgressIndicator(
-                color = Color(0xFF4CAF50),
-                modifier = Modifier.size(48.dp)
-            )
-            Text(
-                text = "Loading content...",
-                color = Color.White,
-                style = MaterialTheme.typography.bodyLarge
-            )
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            CircularProgressIndicator(color = Color(0xFF4CAF50), modifier = Modifier.size(48.dp))
+            Text(text = "Loading content...", color = Color.White, style = MaterialTheme.typography.bodyLarge)
         }
     }
 }
 
-/**
- * Error state display with retry option
- */
 @Composable
-private fun ErrorState(
-    error: String,
-    onRetry: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(32.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Warning,
-                contentDescription = "Error",
-                tint = Color(0xFFFF5252),
-                modifier = Modifier.size(64.dp)
-            )
-            Text(
-                text = "Error loading content",
-                color = Color.White,
-                style = MaterialTheme.typography.headlineSmall
-            )
-            Text(
-                text = error,
-                color = Color.Gray,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Button(
-                onClick = onRetry,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF4CAF50)
-                )
-            ) {
-                Text("Retry", color = Color.White)
-            }
+
+private fun ErrorState(error: String, onRetry: () -> Unit) {
+
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(32.dp)) {
+
+            Icon(imageVector = Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFF5252), modifier = Modifier.size(64.dp))
+
+            Text(text = "Error loading content", color = Color.White, style = MaterialTheme.typography.headlineSmall)
+
+            Text(text = error, color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
+
+            Button(onClick = onRetry, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) { Text("Retry", color = Color.White) }
+
         }
+
     }
+
 }
 
-/**
- * Empty state display when no content is available
- */
+
+
 @Composable
+
 private fun EmptyState(onOpenLibrary: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(32.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.MenuBook,
-                contentDescription = "Empty",
-                tint = Color.Gray,
-                modifier = Modifier.size(64.dp)
-            )
-            Text(
-                text = "No content available",
-                color = Color.White,
-                style = MaterialTheme.typography.headlineSmall
-            )
-            Text(
-                text = "Add a novel from the library",
-                color = Color.Gray,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Button(
-                onClick = onOpenLibrary,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF4CAF50)
-                )
-            ) {
-                Text("Open Library", color = Color.White)
-            }
-        }
-    }
-}
 
-/**
- * UI state data class for reader screen
- */
-data class ReaderUiState(
-    val isLoading: Boolean = false,
-    val error: String? = null,
-    val currentChapter: Int = 0,
-    val totalChapters: Int = 0
-)
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(32.dp)) {
+
+            Icon(imageVector = Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(64.dp))
+
+            Text(text = "No content available", color = Color.White, style = MaterialTheme.typography.headlineSmall)
+
+            Text(text = "Add a novel from the library", color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
+
+            Button(onClick = onOpenLibrary, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) { Text("Open Library", color = Color.White) }
+
+        }
+
+    }
+
+}

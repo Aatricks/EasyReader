@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
     // Repositories
     private lateinit var contentRepository: ContentRepository
     private lateinit var libraryRepository: LibraryRepository
+    private lateinit var exploreRepository: io.aatricks.novelscraper.data.repository.ExploreRepository
 
     // File picker launcher
     private val filePickerLauncher = registerForActivityResult(
@@ -120,6 +121,7 @@ class MainActivity : ComponentActivity() {
         contentRepository = ContentRepository(applicationContext)
         val preferencesManager = io.aatricks.novelscraper.data.local.PreferencesManager(applicationContext)
         libraryRepository = LibraryRepository(preferencesManager)
+        exploreRepository = io.aatricks.novelscraper.data.repository.ExploreRepository(applicationContext)
     }
 
     /**
@@ -134,7 +136,7 @@ class MainActivity : ComponentActivity() {
             ): T {
                 return when {
                     modelClass.isAssignableFrom(ReaderViewModel::class.java) -> {
-                        ReaderViewModel(contentRepository, libraryRepository) as T
+                        ReaderViewModel(contentRepository, libraryRepository, exploreRepository) as T
                     }
                     modelClass.isAssignableFrom(LibraryViewModel::class.java) -> {
                         LibraryViewModel(libraryRepository, contentRepository) as T

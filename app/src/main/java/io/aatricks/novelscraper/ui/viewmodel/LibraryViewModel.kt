@@ -236,7 +236,9 @@ class LibraryViewModel(
                         url = readingUrl,
                         contentType = ContentType.WEB,
                         currentChapter = extractChapterLabel(chapterTitle) ?: "Chapter 1",
-                        baseTitle = item.title
+                        baseTitle = item.title,
+                        baseNovelUrl = item.url,
+                        sourceName = item.source
                     )
 
                     // Try to add next chapters
@@ -252,7 +254,9 @@ class LibraryViewModel(
                         url = readingUrl,
                         contentType = contentType,
                         currentChapter = "Chapter 1",
-                        baseTitle = item.title
+                        baseTitle = item.title,
+                        baseNovelUrl = item.url,
+                        sourceName = item.source
                     )
                 }
 
@@ -311,7 +315,9 @@ class LibraryViewModel(
                         url = url.trim(),
                         contentType = ContentType.EPUB,
                         currentChapter = "Chapter 1",
-                        baseTitle = fetchedTitle.trim().ifBlank { url } // EPUB doesn't group, so baseTitle = title
+                        baseTitle = fetchedTitle.trim().ifBlank { url }, // EPUB doesn't group, so baseTitle = title
+                        baseNovelUrl = url,
+                        sourceName = "EPUB"
                     )
                 } else {
                     // For WEB content, extract baseTitle once and store it
@@ -324,7 +330,9 @@ class LibraryViewModel(
                         url = url.trim(),
                         contentType = contentType,
                         currentChapter = chapterLabel,
-                        baseTitle = baseTitle
+                        baseTitle = baseTitle,
+                        baseNovelUrl = url, // Best effort if added directly
+                        sourceName = "Web"
                     )
                 }
 
