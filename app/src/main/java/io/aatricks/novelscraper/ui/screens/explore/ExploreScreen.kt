@@ -240,6 +240,31 @@ fun ExploreScreen(
     }
 
     if (showCustomUrlDialog) {
+        val onDiscover = {
+            if (customUrl.isNotBlank()) {
+                val finalUrl = if (!customUrl.startsWith("http")) "https://$customUrl" else customUrl
+                showCustomUrlDialog = false
+                isLoading = true
+                scope.launch {
+                    try {
+                        val scraper = SmartScraperSource(finalUrl)
+                        val items = scraper.getPopularNovels(1)
+                        if (items.isNotEmpty()) {
+                            exploreItems = items
+                            // Save to SourceManager
+                            io.aatricks.novelscraper.data.local.SourceManager(context).addSource(finalUrl)
+                        } else {
+                            snackbarHostState.showSnackbar("No items found at this URL.")
+                        }
+                    } catch (e: Exception) {
+                        snackbarHostState.showSnackbar("Error: ${e.message}")
+                    } finally {
+                        isLoading = false
+                    }
+                }
+            }
+        }
+
         AlertDialog(
             onDismissRequest = { showCustomUrlDialog = false },
             title = { Text("Add Custom Source") },
@@ -252,35 +277,21 @@ fun ExploreScreen(
                         onValueChange = { customUrl = it },
                         placeholder = { Text("https://example.com") },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = if (customUrl.isNotEmpty()) {
+                            {
+                                IconButton(onClick = { customUrl = "" }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear")
+                                }
+                            }
+                        } else null,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                        keyboardActions = KeyboardActions(onGo = { onDiscover() })
                     )
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    if (customUrl.isNotBlank()) {
-                        val finalUrl = if (!customUrl.startsWith("http")) "https://$customUrl" else customUrl
-                        showCustomUrlDialog = false
-                        isLoading = true
-                        scope.launch {
-                            try {
-                                val scraper = SmartScraperSource(finalUrl)
-                                val items = scraper.getPopularNovels(1)
-                                if (items.isNotEmpty()) {
-                                    exploreItems = items
-                                    // Save to SourceManager
-                                    io.aatricks.novelscraper.data.local.SourceManager(context).addSource(finalUrl)
-                                } else {
-                                    snackbarHostState.showSnackbar("No items found at this URL.")
-                                }
-                            } catch (e: Exception) {
-                                snackbarHostState.showSnackbar("Error: ${e.message}")
-                            } finally {
-                                isLoading = false
-                            }
-                        }
-                    }
-                }) {
+                Button(onClick = onDiscover) {
                     Text("Discover")
                 }
             },
