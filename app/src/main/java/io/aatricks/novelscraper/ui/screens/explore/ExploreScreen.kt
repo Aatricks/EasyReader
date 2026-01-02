@@ -32,6 +32,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 
 import androidx.compose.material.icons.filled.Add
 import io.aatricks.novelscraper.data.repository.source.SmartScraperSource
+import androidx.activity.compose.BackHandler
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +55,21 @@ fun ExploreScreen(
     
     var showCustomUrlDialog by remember { mutableStateOf(false) }
     var customUrl by remember { mutableStateOf("") }
+
+    BackHandler {
+        if (isSearching) {
+            isSearching = false
+            searchQuery = ""
+            scope.launch {
+                isLoading = true
+                page = 1
+                exploreItems = exploreRepository.getPopularNovels(1)
+                isLoading = false
+            }
+        } else {
+            onNavigateBack()
+        }
+    }
 
     fun fetchDetails(item: ExploreItem) {
         selectedItem = item

@@ -45,6 +45,7 @@ import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.automirrored.filled.*
+import androidx.activity.compose.BackHandler
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
@@ -77,6 +78,16 @@ fun ReaderScreen(
 
     // Collect state from ViewModel
     val uiState by readerViewModel.uiState.collectAsState()
+
+    // Handle back button for drawer
+    BackHandler(enabled = drawerState.isOpen && !showExplore) {
+        scope.launch { drawerState.close() }
+    }
+
+    // Handle back button to open drawer if closed and not in explore
+    BackHandler(enabled = !drawerState.isOpen && !showExplore && uiState.content != null) {
+        scope.launch { drawerState.open() }
+    }
     
     // Check for Cloudflare/403 errors
     LaunchedEffect(uiState.error) {
