@@ -209,6 +209,15 @@ class NovelFireSource : NovelSource {
             }
         }
 
+        // Fetch full chapter list
+        val chapters = document.select(".chapter-list a, ul.chapters a, .chapters a").map { element ->
+            val chapterUrl = element.attr("href").let { if (it.startsWith("http")) it else "$baseUrl$it" }
+            io.aatricks.novelscraper.data.model.ChapterInfo(
+                title = element.text(),
+                url = chapterUrl
+            )
+        }
+
         ExploreItem(
             title = title,
             url = url,
@@ -219,7 +228,8 @@ class NovelFireSource : NovelSource {
             rank = rank,
             rating = rating,
             source = name,
-            readingUrl = readingUrl
+            readingUrl = readingUrl,
+            chapters = chapters
         )
     }
 }

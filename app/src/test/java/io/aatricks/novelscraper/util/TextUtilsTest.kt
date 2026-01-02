@@ -1,6 +1,7 @@
 package io.aatricks.novelscraper.util
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TextUtilsTest {
@@ -36,10 +37,65 @@ class TextUtilsTest {
         val input6 = "‘No.’<br><br>I processed a dozen responses to Fate’s simple statement.<br><br>Then a dozen likely answers to each response. And my counter to each of<br><br>Fate’s answers."
         val expected6 = "‘No.’\n\nI processed a dozen responses to Fate’s simple statement.\n\nThen a dozen likely answers to each response. And my counter to each of\n\nFate’s answers."
         val formattedWithBr = input6.replace("<br>", "\n")
-        val debug = TextUtils.debugGetParagraphsWithSeparators(formattedWithBr)
-        println("Paragraphs with sep: $debug")
         val actual6 = TextUtils.formatChapterText(formattedWithBr)
-        println("Actual formatted6: <<$actual6>>")
         assertEquals(expected6, actual6)
+    }
+
+    @Test
+    fun testUrlNavigation() {
+        val url = "https://novelfire.net/book/novel-title/chapter-5"
+        assertEquals("https://novelfire.net/book/novel-title/chapter-6", TextUtils.incrementChapterInUrl(url))
+        assertEquals("https://novelfire.net/book/novel-title/chapter-4", TextUtils.decrementChapterInUrl(url))
+        
+        val urlWithDots = "https://example.com/123.html"
+        assertEquals("https://example.com/124.html", TextUtils.incrementChapterInUrl(urlWithDots))
+        
+        val urlAtOne = "https://example.com/ch-1"
+        assertEquals("https://example.com/ch-2", TextUtils.incrementChapterInUrl(urlAtOne))
+        assertEquals("https://example.com/ch-1", TextUtils.decrementChapterInUrl(urlAtOne))
+    }
+
+    @Test
+    fun testExtractTitleFromUrl() {
+        assertEquals("Novel Title", TextUtils.extractTitleFromUrl("https://novelfire.net/book/novel-title"))
+        assertEquals("Mercenary Enrollment", TextUtils.extractTitleFromUrl("https://www.mangabats.com/manga/mercenary-enrollment"))
+        assertEquals("Chapter 5", TextUtils.extractTitleFromUrl("https://example.com/chapter-5/"))
+    }
+
+    @Test
+    fun testExtractChapterNumber() {
+        assertEquals(5, TextUtils.extractChapterNumber("Chapter 5: The Battle"))
+        assertEquals(123, TextUtils.extractChapterNumber("https://example.com/manga/123"))
+        assertEquals(1, TextUtils.extractChapterNumber("CH 1"))
+        assertEquals(null, TextUtils.extractChapterNumber("No Number Here"))
+    }
+
+    @Test
+    fun testRemovePageNumbers() {
+        val pdfText = "Line one\n123\nLine two"
+        // PDF filtering is aggressive, might remove numbers in the middle
+        assertTrue(TextUtils.removePageNumbers(pdfText, true).contains("Line one"))
+        assertTrue(TextUtils.removePageNumbers(pdfText, true).contains("Line two"))
+        
+        val pageWordText = "Page | 123 Some content"
+        assertEquals("123 Some content", TextUtils.removePageWord(pageWordText))
+    }
+
+    @Test
+    fun testWordCountAndReadingTime() {
+        val text = "This is a simple sentence with seven words."
+        assertEquals(8, TextUtils.countWords(text))
+        assertEquals(1, TextUtils.estimateReadingTime(text))
+        
+        val longText = (1..400).joinToString(" ") { "word" }
+        assertEquals(400, TextUtils.countWords(longText))
+        assertEquals(2, TextUtils.estimateReadingTime(longText))
+    }
+
+    @Test
+    fun testCleanHtmlEntities() {
+        assertEquals("&", TextUtils.cleanHtmlEntities("&amp;"))
+        assertEquals("\"Quote\"", TextUtils.cleanHtmlEntities("&quot;Quote&quot;"))
+        assertEquals("—", TextUtils.cleanHtmlEntities("&mdash;"))
     }
 }

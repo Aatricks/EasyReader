@@ -19,6 +19,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import io.aatricks.novelscraper.data.model.ExploreItem
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import kotlinx.coroutines.launch
@@ -28,6 +29,9 @@ import io.aatricks.novelscraper.data.model.ContentType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+
+import androidx.compose.material.icons.filled.Add
+import io.aatricks.novelscraper.data.repository.source.SmartScraperSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,13 +50,27 @@ fun ExploreScreen(
     var page by remember { mutableStateOf(1) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    
+    var showCustomUrlDialog by remember { mutableStateOf(false) }
+    var customUrl by remember { mutableStateOf("") }
 
     fun fetchDetails(item: ExploreItem) {
         selectedItem = item
         selectedItemDetails = null
         isFetchingDetails = true
         scope.launch {
-            val details = exploreRepository.getNovelDetails(item.url, item.source)
+            // Check if it's a smart scraper source
+            val source = if (item.source.contains(".")) {
+                SmartScraperSource(item.url.substringBefore("/", item.url.substringAfter("://").substringBefore("/"))) 
+                // This is a bit hacky, better to have a way to find source by name or store it
+            } else null
+            
+            val details = if (source != null) {
+                try { source.getNovelDetails(item.url) } catch (e: Exception) { null }
+            } else {
+                exploreRepository.getNovelDetails(item.url, item.source)
+            }
             selectedItemDetails = details ?: item
             isFetchingDetails = false
         }
@@ -67,8 +85,13 @@ fun ExploreScreen(
             } else {
                 exploreRepository.searchNovels(searchQuery, page + 1)
             }
-            if (newItems.isNotEmpty()) {
-                exploreItems = exploreItems + newItems
+            // Check if new items are already present to avoid infinite loops with sources that redirect to page 1
+            val distinctNewItems = newItems.filter { newItem -> 
+                exploreItems.none { it.url == newItem.url }
+            }
+            
+            if (distinctNewItems.isNotEmpty()) {
+                exploreItems = exploreItems + distinctNewItems
                 page++
             }
             isLoading = false
@@ -134,6 +157,9 @@ fun ExploreScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showCustomUrlDialog = true }) {
+                        Icon(Icons.Default.Add, contentDescription = "Add Custom URL")
+                    }
                     IconButton(onClick = {
                         if (isSearching) {
                             isSearching = false
@@ -197,6 +223,59 @@ fun ExploreScreen(
         }
     }
 
+    if (showCustomUrlDialog) {
+        AlertDialog(
+            onDismissRequest = { showCustomUrlDialog = false },
+            title = { Text("Add Custom Source") },
+            text = {
+                Column {
+                    Text("Enter the URL of a novel or manhwa website to discover content.")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextField(
+                        value = customUrl,
+                        onValueChange = { customUrl = it },
+                        placeholder = { Text("https://example.com") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (customUrl.isNotBlank()) {
+                        val finalUrl = if (!customUrl.startsWith("http")) "https://$customUrl" else customUrl
+                        showCustomUrlDialog = false
+                        isLoading = true
+                        scope.launch {
+                            try {
+                                val scraper = SmartScraperSource(finalUrl)
+                                val items = scraper.getPopularNovels(1)
+                                if (items.isNotEmpty()) {
+                                    exploreItems = items
+                                    // Save to SourceManager
+                                    io.aatricks.novelscraper.data.local.SourceManager(context).addSource(finalUrl)
+                                } else {
+                                    snackbarHostState.showSnackbar("No items found at this URL.")
+                                }
+                            } catch (e: Exception) {
+                                snackbarHostState.showSnackbar("Error: ${e.message}")
+                            } finally {
+                                isLoading = false
+                            }
+                        }
+                    }
+                }) {
+                    Text("Discover")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomUrlDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     if (selectedItem != null) {
         ExploreItemDetailDialog(
             item = selectedItemDetails ?: selectedItem!!,
@@ -220,6 +299,17 @@ fun ExploreScreen(
 
 @Composable
 fun ExploreItemCard(item: ExploreItem, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val imageRequest = remember(item.coverUrl) {
+        val uri = try { java.net.URI(item.url) } catch (e: Exception) { null }
+        val referer = if (uri != null) "${uri.scheme}://${uri.host}/" else item.url
+        ImageRequest.Builder(context)
+            .data(item.coverUrl)
+            .addHeader("Referer", referer)
+            .crossfade(true)
+            .build()
+    }
+
     Card(
         onClick = onClick,
         modifier = Modifier
@@ -229,7 +319,7 @@ fun ExploreItemCard(item: ExploreItem, onClick: () -> Unit) {
     ) {
         Column {
             AsyncImage(
-                model = item.coverUrl,
+                model = imageRequest,
                 contentDescription = item.title,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -272,6 +362,17 @@ fun ExploreItemDetailDialog(
     onDismiss: () -> Unit,
     onAddToLibrary: () -> Unit
 ) {
+    val context = LocalContext.current
+    val imageRequest = remember(item.coverUrl) {
+        val uri = try { java.net.URI(item.url) } catch (e: Exception) { null }
+        val referer = if (uri != null) "${uri.scheme}://${uri.host}/" else item.url
+        ImageRequest.Builder(context)
+            .data(item.coverUrl)
+            .addHeader("Referer", referer)
+            .crossfade(true)
+            .build()
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(item.title) },
@@ -283,7 +384,7 @@ fun ExploreItemDetailDialog(
             } else {
                 Column {
                      AsyncImage(
-                        model = item.coverUrl,
+                        model = imageRequest,
                         contentDescription = item.title,
                         modifier = Modifier
                             .fillMaxWidth()

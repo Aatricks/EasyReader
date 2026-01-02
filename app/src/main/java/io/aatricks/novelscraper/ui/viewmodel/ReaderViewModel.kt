@@ -23,7 +23,8 @@ import kotlin.math.abs
  */
 class ReaderViewModel(
     val contentRepository: ContentRepository,
-    private val libraryRepository: LibraryRepository
+    private val libraryRepository: LibraryRepository,
+    private val exploreRepository: io.aatricks.novelscraper.data.repository.ExploreRepository
 ) : ViewModel() {
 
     // UI State
@@ -61,7 +62,15 @@ class ReaderViewModel(
         val canNavigatePrevious: Boolean = false,
         val showControls: Boolean = false, // Show/hide bottom navigation bar
         val novelName: String = "", // Novel/book title
-        val chapterTitle: String = "" // Current chapter title
+        val chapterTitle: String = "", // Current chapter title
+        val baseTitle: String = "", // Base title for chapter lookup
+        val baseNovelUrl: String = "", // URL of the novel main page
+        val sourceName: String = "", // Name of the source
+        val isPagedMode: Boolean = false, // Toggle between vertical scroll and horizontal paging
+        val isRtl: Boolean = true, // Right-to-Left swipe for paged mode
+        val fullChapterList: List<io.aatricks.novelscraper.data.model.ChapterInfo> = emptyList(),
+        val isChaptersLoading: Boolean = false,
+        val seekTrigger: Long = 0L // Timestamp to trigger seek in UI
     )
 
     /**
@@ -112,7 +121,7 @@ class ReaderViewModel(
                 when (val result = contentRepository.loadContent(url)) {
                     is ContentRepository.ContentResult.Success -> {
                         val content = ChapterContent(
-                            paragraphs = result.paragraphs.map { ContentElement.Text(it) },
+                            paragraphs = result.elements,
                             title = result.title,
                             url = result.url,
                             nextChapterUrl = contentRepository.incrementChapterUrl(result.url),
@@ -123,7 +132,18 @@ class ReaderViewModel(
                         val libraryItem = libraryItemId?.let { libraryRepository.getItemById(it) }
                         val novelName = libraryItem?.baseTitle?.ifBlank { libraryItem.title } ?: content.title ?: ""
                         val chapterTitle = content.title ?: libraryItem?.currentChapter ?: ""
+                        val baseTitle = libraryItem?.baseTitle ?: extractBaseTitle(novelName, ContentType.WEB)
+                        val baseNovelUrl = libraryItem?.baseNovelUrl ?: ""
+                        val sourceName = libraryItem?.sourceName ?: ""
                         
+                        // Determine reading mode: Priority to saved preference, then guess
+                        val savedMode = libraryItem?.readingMode
+                        val isPaged = if (savedMode != null) {
+                            savedMode == io.aatricks.novelscraper.data.model.ReadingMode.PAGED
+                        } else {
+                            guessIsPaged(content)
+                        }
+
                         _uiState.update {
                             it.copy(
                                 content = content,
@@ -137,8 +157,19 @@ class ReaderViewModel(
                                 scrollOffset = 0,
                                 hasReachedQuarterScreen = false,
                                 novelName = novelName,
-                                chapterTitle = chapterTitle
+                                chapterTitle = chapterTitle,
+                                baseTitle = baseTitle,
+                                baseNovelUrl = baseNovelUrl,
+                                sourceName = sourceName,
+                                isPagedMode = isPaged
                             )
+                        }
+
+                        // Load full chapter list if available
+                        libraryItem?.let { item ->
+                            if (item.baseNovelUrl.isNotBlank() && item.sourceName.isNotBlank()) {
+                                loadFullChapterList(item.baseNovelUrl, item.sourceName)
+                            }
                         }
 
                         // Mark as currently reading in library and restore saved progress if not explicit navigation
@@ -229,8 +260,12 @@ class ReaderViewModel(
                             url = nextUrl,
                             contentType = ContentType.WEB,
                             currentChapter = chapterLabel,
-                            baseTitle = baseTitle
+                            baseTitle = baseTitle,
+                            baseNovelUrl = currentItem.baseNovelUrl,
+                            sourceName = currentItem.sourceName
                         )
+                        // Inherit reading mode
+                        libraryRepository.updateReadingMode(newItem.id, currentItem.readingMode)
                         newItem.id
                     } catch (e: Exception) {
                         // Failed to add, load without library tracking
@@ -287,8 +322,12 @@ class ReaderViewModel(
                             url = prevUrl,
                             contentType = ContentType.WEB,
                             currentChapter = chapterLabel,
-                            baseTitle = baseTitle
+                            baseTitle = baseTitle,
+                            baseNovelUrl = currentItem.baseNovelUrl,
+                            sourceName = currentItem.sourceName
                         )
+                        // Inherit reading mode
+                        libraryRepository.updateReadingMode(newItem.id, currentItem.readingMode)
                         newItem.id
                     } catch (e: Exception) {
                         // Failed to add, load without library tracking
@@ -684,6 +723,21 @@ class ReaderViewModel(
         return _uiState.value.scrollPosition
     }
 
+    /**
+     * Seek to a specific progress percentage (0-100)
+     */
+    fun seekToProgress(progress: Int) {
+        val targetPercent = progress.coerceIn(0, 100).toFloat()
+        _uiState.update { it.copy(
+            scrollPosition = targetPercent, 
+            scrollProgress = progress,
+            seekTrigger = System.currentTimeMillis()
+        ) }
+        
+        // When seeking via slider, we should update reading progress in library
+        updateReadingProgress(progress)
+    }
+
     override fun onCleared() {
         super.onCleared()
         // Save final reading progress before clearing
@@ -736,5 +790,131 @@ class ReaderViewModel(
      */
     fun hideControls() {
         _uiState.update { it.copy(showControls = false) }
+    }
+
+    /**
+     * Toggle reading mode (Vertical Scroll vs Paged)
+     */
+    fun toggleReadingMode() {
+        val newMode = !uiState.value.isPagedMode
+        _uiState.update { it.copy(isPagedMode = newMode) }
+        
+        // Save preference to library
+        currentLibraryItemId?.let { id ->
+            viewModelScope.launch {
+                libraryRepository.updateReadingMode(
+                    id, 
+                    if (newMode) io.aatricks.novelscraper.data.model.ReadingMode.PAGED 
+                    else io.aatricks.novelscraper.data.model.ReadingMode.VERTICAL
+                )
+            }
+        }
+    }
+
+    /**
+     * Toggle RTL direction
+     */
+    fun toggleRtl() {
+        _uiState.update { it.copy(isRtl = !it.isRtl) }
+    }
+
+    /**
+     * Guess if the content should be read in Paged mode (Manga) or Vertical mode (Novel/Manhwa)
+     */
+    private fun guessIsPaged(content: ChapterContent): Boolean {
+        val imageCount = content.getImageCount()
+        val textCount = content.getTextCount()
+        
+        // 1. If mostly text -> Vertical (Light Novel)
+        if (textCount > imageCount * 2) return false
+        
+        // 2. If it's mostly images
+        if (imageCount > 0) {
+            // Heuristic: Manhwas (Vertical) often have a VERY high number of images (long strips split into many files)
+            // or the images themselves are very long (hard to know here).
+            // Mangas (Paged) typically have 15-50 pages.
+            // If image count is in the "manga range" and text is low -> Paged
+            if (imageCount in 5..60 && textCount < 10) return true
+            
+            // If image count is very high -> likely Manhwa (Vertical)
+            if (imageCount > 60) return false
+        }
+        
+        return false
+    }
+
+    /**
+     * Navigate to a specific chapter (e.g. from the chapter list)
+     * Automatically adds to library and inherits metadata
+     */
+    fun navigateToChapter(url: String, title: String) {
+        viewModelScope.launch {
+            // Mark as explicit navigation to prevent scroll restoration
+            isExplicitNavigation = true
+            
+            // Get current library item to extract metadata
+            val currentItem = currentLibraryItemId?.let { libraryRepository.getItemById(it) }
+            
+            // Check if selected chapter already exists in library
+            val existingItem = libraryRepository.getItemByUrl(url)
+            
+            val itemId = if (existingItem != null) {
+                // Chapter already exists, use its ID
+                existingItem.id
+            } else if (currentItem != null && currentItem.contentType == ContentType.WEB) {
+                // Add new chapter to library with same metadata as current novel
+                try {
+                    val chapterLabel = extractChapterLabel(title) 
+                        ?: extractChapterLabelFromUrl(url) 
+                        ?: title
+                    
+                    val newItem = libraryRepository.addItem(
+                        title = title.trim(),
+                        url = url,
+                        contentType = ContentType.WEB,
+                        currentChapter = chapterLabel,
+                        baseTitle = currentItem.baseTitle,
+                        baseNovelUrl = currentItem.baseNovelUrl,
+                        sourceName = currentItem.sourceName
+                    )
+                    // Inherit reading mode
+                    libraryRepository.updateReadingMode(newItem.id, currentItem.readingMode)
+                    newItem.id
+                } catch (e: Exception) {
+                    null
+                }
+            } else {
+                null
+            }
+            
+            // Load the selected chapter content
+            loadContent(url, itemId)
+        }
+    }
+
+    /**
+     * Load full chapter list for the novel from the source
+     */
+    fun loadFullChapterList(baseUrl: String, sourceName: String) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isChaptersLoading = true) }
+                
+                val details = exploreRepository.getNovelDetails(baseUrl, sourceName)
+                
+                if (details != null && details.chapters.isNotEmpty()) {
+                    _uiState.update { 
+                        it.copy(
+                            fullChapterList = details.chapters,
+                            isChaptersLoading = false
+                        ) 
+                    }
+                } else {
+                    _uiState.update { it.copy(isChaptersLoading = false) }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isChaptersLoading = false) }
+            }
+        }
     }
 }

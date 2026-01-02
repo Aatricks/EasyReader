@@ -38,6 +38,11 @@ class ContentRepository(private val context: Context) {
             if (!exists()) mkdirs()
         }
 
+    private val mediaCacheDir: File
+        get() = File(context.cacheDir, "media_cache").apply {
+            if (!exists()) mkdirs()
+        }
+
     private val epubCacheDir: File
         get() = File(context.cacheDir, "epub_cache").apply {
             if (!exists()) mkdirs()
@@ -51,7 +56,7 @@ class ContentRepository(private val context: Context) {
      */
     sealed class ContentResult {
         data class Success(
-            val paragraphs: List<String>,
+            val elements: List<ContentElement>,
             val title: String? = null,
             val url: String
         ) : ContentResult()
@@ -118,19 +123,75 @@ class ContentRepository(private val context: Context) {
                 Jsoup.parse(html, url)
             }
 
-            parseHtmlDocument(document, url)
+            val result = parseHtmlDocument(document, url)
+            
+            // If successfully parsed and not from cache (or even if from cache, ensure images are cached), 
+            // trigger image prefetching in background
+            if (result is ContentResult.Success) {
+                result.elements.filterIsInstance<ContentElement.Image>().forEach { image ->
+                    // We don't wait for each image to download here to keep loading fast,
+                    // but we do ensure they start caching.
+                    try { downloadAndCacheImage(image.url, url) } catch (_: Exception) {}
+                }
+            }
+            
+            result
         } catch (e: Exception) {
             ContentResult.Error("Failed to load web content: ${e.message}", e)
         }
     }
 
     /**
+     * Download and cache an image
+     */
+    suspend fun downloadAndCacheImage(imageUrl: String, pageUrl: String): File? = withContext(Dispatchers.IO) {
+        try {
+            if (!imageUrl.startsWith("http")) return@withContext null
+            
+            val cachedFile = getCachedMediaFile(imageUrl)
+            if (cachedFile.exists()) return@withContext cachedFile
+
+            val uri = try { java.net.URI(pageUrl) } catch (e: Exception) { null }
+            val referer = if (uri != null) "${uri.scheme}://${uri.host}/" else pageUrl
+
+            val request = Request.Builder()
+                .url(imageUrl)
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                .addHeader("Referer", referer)
+                .build()
+
+            okHttpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body ?: return@withContext null
+                    cachedFile.writeBytes(body.bytes())
+                    return@withContext cachedFile
+                }
+            }
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Get cached media file for URL
+     */
+    fun getCachedMediaFile(url: String): File {
+        val filename = url.hashCode().toString()
+        return File(mediaCacheDir, filename)
+    }
+
+    /**
      * Download HTML using OkHttp
      */
     private fun downloadHtml(url: String): String {
+        val uri = try { java.net.URI(url) } catch (e: Exception) { null }
+        val referer = if (uri != null) "${uri.scheme}://${uri.host}/" else url
+        
         val request = Request.Builder()
             .url(url)
             .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .addHeader("Referer", referer)
             .build()
 
         okHttpClient.newCall(request).execute().use { response ->
@@ -175,10 +236,52 @@ class ContentRepository(private val context: Context) {
             // Extract title
             val title = document.title().takeIf { it.isNotBlank() }
 
+            // Extract content elements (text and images)
+            val contentElements = mutableListOf<ContentElement>()
+
+            // Try common image container selectors for manga/manhwa
+            val imageSelectors = listOf(
+                ".container-chapter-reader img",
+                ".vung-doc img",
+                ".reader-content img",
+                ".chapter-content img",
+                ".chapter-img img",
+                ".read-content img",
+                "div.page-break img"
+            )
+
+            var foundImages = false
+            val imagesFromSelectors = mutableListOf<ContentElement.Image>()
+            for (selector in imageSelectors) {
+                val elements = document.select(selector)
+                if (elements.isNotEmpty()) {
+                    elements.forEach { element ->
+                        val src = element.attr("data-src")
+                            .ifEmpty { element.attr("data-original") }
+                            .ifEmpty { element.attr("src") }
+                        
+                        if (src.isNotBlank()) {
+                            val absoluteUrl = if (src.startsWith("http")) src else {
+                                val domain = try { URL(url).let { "${it.protocol}://${it.host}" } } catch (e: Exception) { "" }
+                                if (src.startsWith("/")) {
+                                    "$domain$src"
+                                } else {
+                                    val base = url.substringBeforeLast("/")
+                                    "$base/$src"
+                                }
+                            }
+                            imagesFromSelectors.add(ContentElement.Image(url = absoluteUrl))
+                        }
+                    }
+                    if (imagesFromSelectors.size > 2) { // Found significant number of images in a known container
+                        foundImages = true
+                        break
+                    }
+                }
+            }
+
             // Extract paragraphs from various possible containers
             val paragraphs = mutableListOf<String>()
-
-            // Try common content selectors
             val contentSelectors = listOf(
                 "article p",
                 ".content p",
@@ -186,151 +289,123 @@ class ContentRepository(private val context: Context) {
                 ".entry-content p",
                 "#content p",
                 "main p",
-                "p"
+                "div.chapter-c p"
+                // Removed generic "p" from first pass to avoid noise
             )
 
             for (selector in contentSelectors) {
                 val elements = document.select(selector)
                 if (elements.isNotEmpty()) {
                     elements.forEach { element ->
-                        // Preserve line breaks by replacing <br> tags with a placeholder
                         val html = element.html().replace(Regex("(?i)<br\\s*/?>"), "[[LINE_BREAK]][[LINE_BREAK]]")
                         val text = Jsoup.parseBodyFragment(html).text().replace("[[LINE_BREAK]]", "\n")
-
-                        // Keep any non-blank paragraph here; small fragments like
-                        // single-word or short dialogue lines (e.g., "'No.'") are
-                        // meaningful and will be filtered later if they match
-                        // heading/pagination patterns.
                         if (text.isNotBlank()) {
                             paragraphs.add(text)
                         }
                     }
                     if (paragraphs.isNotEmpty()) break
                 }
-
-                // Remove paragraphs that look like chapter headings/titles. These
-                // often appear as a standalone <p> containing "Chapter 123: Title"
-                // or just the chapter number. If left in they may be merged with
-                // the first real paragraph causing the UI to show the chapter
-                // title inline with content. We deliberately drop those here.
-                if (paragraphs.isNotEmpty()) {
-                    val filtered = paragraphs.filter { raw ->
-                        val p = raw.trim()
-                        if (p.isEmpty()) return@filter false
-
-                        // Pure numeric (page/chapter number)
-                        if (p.matches(Regex("^\\d+"))) return@filter false
-
-                        // Common chapter heading patterns: "Chapter 123", "Ch. 123",
-                        // "CHAPTER 1 - Title", etc.
-                        val chapterPattern = Regex("(?i)^(?:chapter|chap|ch|ch\\.)[\\s:\\-\\.]*\\d+\\b.*")
-                        if (chapterPattern.containsMatchIn(p)) return@filter false
-
-                        // Also drop short lines that contain the word "chapter" and a digit
-                        if (p.length <= 80 && p.contains(Regex("(?i)chapter")) && p.any { it.isDigit() }) return@filter false
-
-                        // Drop if paragraph exactly equals or starts with the document title
-                        // (some sites repeat the full title as the first paragraph)
-                        if (title != null) {
-                            val tnorm = title.trim()
-                            if (tnorm.isNotBlank() && (p.equals(tnorm, ignoreCase = true) || p.startsWith(tnorm))) return@filter false
-                        }
-
-                        // Otherwise keep
-                        true
+            }
+            
+            // If no specific content container found, fallback to all p tags but only if we didn't find many images
+            if (paragraphs.isEmpty() && imagesFromSelectors.size <= 5) {
+                val elements = document.select("p")
+                elements.forEach { element ->
+                    val html = element.html().replace(Regex("(?i)<br\\s*/?>"), "[[LINE_BREAK]][[LINE_BREAK]]")
+                    val text = Jsoup.parseBodyFragment(html).text().replace("[[LINE_BREAK]]", "\n")
+                    if (text.isNotBlank()) {
+                        paragraphs.add(text)
                     }
-
-                    paragraphs.clear()
-                    paragraphs.addAll(filtered)
                 }
             }
 
-            // Merge adjacent paragraphs that are likely accidental splits produced by
-            // the source HTML using multiple <p> tags for a single logical sentence.
-            // Heuristics:
-            // - If a paragraph does NOT end with a sentence terminator and is short
-            //   (<= 8 words) or ends with a continuation word (of, to, for, etc.),
-            //   merge it with the next paragraph.
-            if (paragraphs.size > 1) {
-                val merged = mutableListOf<String>()
-                var idx = 0
-                val sentenceEnders = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
-                val continuationWords = setOf("of", "to", "for", "and", "but", "or", "the", "a", "an", "my", "his", "her", "their", "its", "in", "on", "at", "from", "with")
-
-                fun lastWord(s: String): String {
-                    val parts = s.trim().split(Regex("\\s+"))
-                    return parts.lastOrNull() ?: ""
+            // Filter paragraphs
+            val filteredParagraphs = paragraphs.filter { raw ->
+                val p = raw.trim()
+                if (p.isEmpty()) return@filter false
+                if (p.matches(Regex("^\\d+"))) return@filter false
+                val chapterPattern = Regex("(?i)^(?:chapter|chap|ch|ch\\.)[\\s:\\-\\.]*\\d+\\b.*")
+                if (chapterPattern.containsMatchIn(p)) return@filter false
+                if (p.length <= 80 && p.contains(Regex("(?i)chapter")) && p.any { it.isDigit() }) return@filter false
+                if (title != null) {
+                    val tnorm = title.trim()
+                    if (tnorm.isNotBlank() && (p.equals(tnorm, ignoreCase = true) || p.startsWith(tnorm))) return@filter false
                 }
-
-                while (idx < paragraphs.size) {
-                    var cur = paragraphs[idx].trim()
-                    if (cur.isEmpty()) { idx++; continue }
-
-                    if (idx + 1 < paragraphs.size) {
-                        val next = paragraphs[idx + 1].trim()
-                        if (next.isNotEmpty()) {
-                            val lastChar = cur.lastOrNull()
-                            val lastW = lastWord(cur).lowercase()
-                            val wordCount = cur.split(Regex("\\s+")).size
-
-                            val shouldMerge = (lastChar != null && !sentenceEnders.contains(lastChar)) &&
-                                    (wordCount <= 8 || lastW in continuationWords || lastW.length <= 4) &&
-                                    !(cur.contains(':') && next.contains(':'))
-
-                            if (shouldMerge) {
-                                cur = (cur + " " + next).replace(Regex(" +"), " ")
-                                idx += 2
-                                // merge multiple accidental splits
-                                while (idx < paragraphs.size) {
-                                    val peek = paragraphs[idx].trim()
-                                    if (peek.isEmpty()) { idx++; continue }
-                                    val peekFirst = peek.firstOrNull()
-                                    if (peekFirst != null && peekFirst.isUpperCase() && cur.trim().lastOrNull()?.let { sentenceEnders.contains(it) } == true) break
-                                    cur = (cur + " " + peek).replace(Regex(" +"), " ")
-                                    idx++
-                                }
-                                merged.add(cur)
-                                continue
-                            }
-                        }
-                    }
-
-                    merged.add(cur)
-                    idx++
-                }
-
-                paragraphs.clear()
-                paragraphs.addAll(merged)
+                true
             }
 
-            if (paragraphs.isEmpty()) {
+            // If we have many images and little text, OR many images from a manga-specific selector, it's manga/manhwa
+            if (imagesFromSelectors.size > 5 || (foundImages && filteredParagraphs.size < 10)) {
+                return ContentResult.Success(
+                    elements = imagesFromSelectors,
+                    title = title,
+                    url = url
+                )
+            }
+
+            // Otherwise, treat as novel and merge paragraphs
+            if (filteredParagraphs.isEmpty()) {
+                if (foundImages) {
+                    return ContentResult.Success(elements = imagesFromSelectors, title = title, url = url)
+                }
                 return ContentResult.Error("No content found in document")
             }
 
-            // Apply in-paragraph formatting to the chapter as a whole so that
-            // soft line-breaks and hyphenation fixes are consistent whether
-            // viewed in the preview/test harness or inside the app UI. The
-            // formatter expects a block of text where logical paragraphs are
-            // separated by a blank line, so join and re-split after formatting.
-            val joined = paragraphs.distinct().joinToString("\n\n")
-            val formatted = TextUtils.formatChapterText(joined)
-            var formattedParagraphs = formatted.split(Regex("\\n\\s*\\n")).map { it.trim() }.filter { it.isNotBlank() }
+            // Merge adjacent paragraphs
+            val merged = mutableListOf<String>()
+            var idx = 0
+            val sentenceEnders = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
+            val continuationWords = setOf("of", "to", "for", "and", "but", "or", "the", "a", "an", "my", "his", "her", "their", "its", "in", "on", "at", "from", "with")
 
-            // If the first paragraph looks like a chapter heading/title
-            // (e.g., "Chapter 525: Title" or just a number), drop it so it
-            // doesn't appear inline with the content in the UI.
-            if (formattedParagraphs.isNotEmpty()) {
-                val first = formattedParagraphs.first()
-                val headingPattern = Regex("(?i)^\\s*(?:chapter|chap|ch|ch\\.)[\\s:\\-\\.]*\\d+\\b.*")
-                val numericOnly = Regex("^\\s*\\d{1,5}\\s*$")
-                // Drop if matches heading pattern or is numeric only
-                if (headingPattern.containsMatchIn(first) || numericOnly.matches(first)) {
-                    formattedParagraphs = formattedParagraphs.drop(1)
-                }
+            fun lastWord(s: String): String {
+                val parts = s.trim().split(Regex("\\s+"))
+                return parts.lastOrNull() ?: ""
             }
 
+            while (idx < filteredParagraphs.size) {
+                var cur = filteredParagraphs[idx].trim()
+                if (cur.isEmpty()) { idx++; continue }
+
+                if (idx + 1 < filteredParagraphs.size) {
+                    val next = filteredParagraphs[idx + 1].trim()
+                    if (next.isNotEmpty()) {
+                        val lastChar = cur.lastOrNull()
+                        val lastW = lastWord(cur).lowercase()
+                        val wordCount = cur.split(Regex("\\s+")).size
+
+                        val shouldMerge = (lastChar != null && !sentenceEnders.contains(lastChar)) &&
+                                (wordCount <= 8 || lastW in continuationWords || lastW.length <= 4) &&
+                                !(cur.contains(':') && next.contains(':'))
+
+                        if (shouldMerge) {
+                            cur = (cur + " " + next).replace(Regex(" +"), " ")
+                            idx += 2
+                            while (idx < filteredParagraphs.size) {
+                                val peek = filteredParagraphs[idx].trim()
+                                if (peek.isEmpty()) { idx++; continue }
+                                val peekFirst = peek.firstOrNull()
+                                if (peekFirst != null && peekFirst.isUpperCase() && cur.trim().lastOrNull()?.let { sentenceEnders.contains(it) } == true) break
+                                cur = (cur + " " + peek).replace(Regex(" +"), " ")
+                                idx++
+                            }
+                            merged.add(cur)
+                            continue
+                        }
+                    }
+                }
+                merged.add(cur)
+                idx++
+            }
+
+            val joined = merged.distinct().joinToString("\n\n")
+            val formatted = TextUtils.formatChapterText(joined)
+            val finalParagraphs = formatted.split(Regex("\\n\\s*\\n"))
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .map { ContentElement.Text(it) }
+
             return ContentResult.Success(
-                paragraphs = formattedParagraphs,
+                elements = finalParagraphs,
                 title = title,
                 url = url
             )
@@ -398,7 +473,7 @@ class ContentRepository(private val context: Context) {
             }
 
             ContentResult.Success(
-                paragraphs = paragraphs,
+                elements = paragraphs.map { ContentElement.Text(it) },
                 title = title,
                 url = filePath
             )
@@ -423,7 +498,7 @@ class ContentRepository(private val context: Context) {
             val chapter = loadEpubChapter(filePath, epubBook, href)
 
             ContentResult.Success(
-                paragraphs = chapter.content.filterIsInstance<ContentElement.Text>().map { it.content },
+                elements = chapter.content,
                 title = chapter.title ?: epubBook.metadata.title,
                 url = "$filePath#$href"
             )
@@ -978,12 +1053,22 @@ class ContentRepository(private val context: Context) {
     /**
      * Prefetch and cache a web URL (download HTML to cache) or cache a file path.
      * For EPUB files, extract and cache images.
+     * For WEB chapters, also prefetch all images found in the HTML.
      */
     suspend fun prefetch(url: String): Boolean = withContext(Dispatchers.IO) {
         try {
             if (url.startsWith("http")) {
                 val html = downloadHtml(url)
                 getCachedFile(url).writeText(html)
+                
+                // Parse HTML to find and prefetch images
+                val doc = Jsoup.parse(html, url)
+                val result = parseHtmlDocument(doc, url)
+                if (result is ContentResult.Success) {
+                    result.elements.filterIsInstance<ContentElement.Image>().forEach { image ->
+                        downloadAndCacheImage(image.url, url)
+                    }
+                }
                 true
             } else if (url.endsWith(".epub", ignoreCase = true) || url.contains("epub")) {
                 // For EPUB, parse and cache images
@@ -1189,11 +1274,13 @@ class ContentRepository(private val context: Context) {
     suspend fun clearAllCache(): Boolean = withContext(Dispatchers.IO) {
         try {
             cacheDir.deleteRecursively()
+            mediaCacheDir.deleteRecursively()
             epubCacheDir.deleteRecursively()
             epubBookCache.clear()
             
             // Re-create directories
             cacheDir.mkdirs()
+            mediaCacheDir.mkdirs()
             epubCacheDir.mkdirs()
             true
         } catch (e: Exception) {
@@ -1206,7 +1293,10 @@ class ContentRepository(private val context: Context) {
      */
     suspend fun getCacheSize(): Long = withContext(Dispatchers.IO) {
         try {
-            cacheDir.listFiles()?.sumOf { it.length() } ?: 0L
+            val htmlSize = cacheDir.listFiles()?.sumOf { it.length() } ?: 0L
+            val mediaSize = mediaCacheDir.listFiles()?.sumOf { it.length() } ?: 0L
+            val epubSize = epubCacheDir.listFiles()?.sumOf { it.length() } ?: 0L
+            htmlSize + mediaSize + epubSize
         } catch (e: Exception) {
             0L
         }

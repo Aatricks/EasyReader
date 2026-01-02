@@ -57,21 +57,57 @@ class PreferencesManager(context: Context) {
             try {
                 val type = object : TypeToken<List<LibraryItem>>() {}.type
                 val items: List<LibraryItem> = gson.fromJson(json, type)
-                // Migration: ensure chapterSummaries is never null and baseTitle is set
+                // Migration: ensure all fields are properly initialized even if missing in JSON
                 items.map { item ->
-                    val migratedItem = if (item.chapterSummaries == null) {
-                        item.copy(chapterSummaries = emptyMap())
+                    // Use a temporary variable to handle potential nulls from Gson deserialization
+                    // of non-nullable Kotlin fields
+                    @Suppress("SENSELESS_COMPARISON")
+                    val isInvalid = item.id == null ||
+                                   item.title == null ||
+                                   item.url == null ||
+                                   item.chapterSummaries == null || 
+                                   item.baseTitle == null || 
+                                   item.readingMode == null ||
+                                   item.baseNovelUrl == null ||
+                                   item.sourceName == null
+                    
+                    if (isInvalid) {
+                        val safeTitle = item.title ?: "Unknown"
+                        val safeUrl = item.url ?: ""
+                        // Reconstruct the item to ensure default values are used for missing fields
+                        LibraryItem(
+                            id = item.id ?: System.currentTimeMillis().toString(),
+                            title = safeTitle,
+                            url = safeUrl,
+                            timestamp = item.timestamp,
+                            type = item.type ?: ContentType.WEB,
+                            progress = item.progress,
+                            isCurrentlyReading = item.isCurrentlyReading,
+                            isSelected = item.isSelected,
+                            currentChapter = item.currentChapter ?: "",
+                            currentChapterUrl = item.currentChapterUrl ?: "",
+                            totalChapters = item.totalChapters,
+                            contentType = item.contentType ?: ContentType.WEB,
+                            dateAdded = item.dateAdded,
+                            lastRead = item.lastRead,
+                            isDownloading = item.isDownloading,
+                            lastScrollPosition = item.lastScrollPosition,
+                            lastReadIndex = item.lastReadIndex,
+                            lastReadOffset = item.lastReadOffset,
+                            chapterSummaries = item.chapterSummaries ?: emptyMap(),
+                            baseTitle = if (item.baseTitle == null || item.baseTitle.isEmpty()) 
+                                extractBaseTitle(safeTitle, item.contentType ?: ContentType.WEB) 
+                                else item.baseTitle,
+                            readingMode = if (item.readingMode == null) io.aatricks.novelscraper.data.model.ReadingMode.VERTICAL else item.readingMode,
+                            baseNovelUrl = item.baseNovelUrl ?: "",
+                            sourceName = item.sourceName ?: ""
+                        )
                     } else {
                         item
                     }
-                    // Migration: if baseTitle is empty/missing, extract it from title
-                    if (migratedItem.baseTitle.isBlank()) {
-                        migratedItem.copy(baseTitle = extractBaseTitle(migratedItem.title, migratedItem.contentType))
-                    } else {
-                        migratedItem
-                    }
                 }
             } catch (e: Exception) {
+                android.util.Log.e("PreferencesManager", "Failed to load library items", e)
                 emptyList()
             }
         } else {

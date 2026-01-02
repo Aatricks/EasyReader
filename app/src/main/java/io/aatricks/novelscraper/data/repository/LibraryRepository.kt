@@ -36,7 +36,9 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
         url: String,
         contentType: ContentType,
         currentChapter: String = "Chapter 1",
-        baseTitle: String = title // Default to full title if not provided
+        baseTitle: String = title, // Default to full title if not provided
+        baseNovelUrl: String = "",
+        sourceName: String = ""
     ): LibraryItem = withContext(Dispatchers.IO) {
         val newItem = LibraryItem(
             id = UUID.randomUUID().toString(),
@@ -47,7 +49,9 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
             dateAdded = System.currentTimeMillis(),
             lastRead = System.currentTimeMillis(),
             isCurrentlyReading = false,
-            baseTitle = baseTitle
+            baseTitle = baseTitle,
+            baseNovelUrl = baseNovelUrl,
+            sourceName = sourceName
         )
         
         val currentItems = _libraryItems.value.toMutableList()
@@ -104,6 +108,54 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
         }
     }
     
+    /**
+     * Update reading mode for an item and all items with the same baseTitle
+     */
+    suspend fun updateReadingMode(itemId: String, readingMode: io.aatricks.novelscraper.data.model.ReadingMode): Boolean = withContext(Dispatchers.IO) {
+        val currentItems = _libraryItems.value.toMutableList()
+        val index = currentItems.indexOfFirst { it.id == itemId }
+        
+        if (index != -1) {
+            val baseTitle = currentItems[index].baseTitle
+            // Update all items sharing the same baseTitle
+            for (i in currentItems.indices) {
+                if (currentItems[i].baseTitle == baseTitle) {
+                    currentItems[i] = currentItems[i].copy(readingMode = readingMode)
+                }
+            }
+            _libraryItems.value = currentItems
+            saveToPreferences()
+            true
+        } else {
+            false
+        }
+    }
+
+    /**
+     * Update baseNovelUrl and sourceName for an item and its group
+     */
+    suspend fun updateNovelInfo(itemId: String, baseNovelUrl: String, sourceName: String): Boolean = withContext(Dispatchers.IO) {
+        val currentItems = _libraryItems.value.toMutableList()
+        val index = currentItems.indexOfFirst { it.id == itemId }
+        
+        if (index != -1) {
+            val baseTitle = currentItems[index].baseTitle
+            for (i in currentItems.indices) {
+                if (currentItems[i].baseTitle == baseTitle) {
+                    currentItems[i] = currentItems[i].copy(
+                        baseNovelUrl = baseNovelUrl,
+                        sourceName = sourceName
+                    )
+                }
+            }
+            _libraryItems.value = currentItems
+            saveToPreferences()
+            true
+        } else {
+            false
+        }
+    }
+
     /**
      * Update reading progress
      */
