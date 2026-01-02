@@ -5,7 +5,7 @@
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-1.7.6-brightgreen.svg)](https://developer.android.com/jetpack/compose)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
-**A lightweight, distraction-free Android reader for web novels, PDFs, and local documents** — built with modern Kotlin and Jetpack Compose for speed, simplicity, and offline-first reading.
+**A lightweight, all-in-one Android reader for web novels, manga, manhwa, and local documents** — built with modern Kotlin and Jetpack Compose for a seamless, distraction-free reading experience.
 
 <img src="HomeImage.png" alt="EasyReader Screenshot" width="300" />
 
@@ -13,80 +13,48 @@
 
 ## Overview
 
-EasyReader is a complete Kotlin rewrite of the original Java NovelScraper app, designed for readers who want a clean, focused environment to consume web novels and local documents. With intelligent content caching, automatic progress tracking, and seamless chapter navigation.
+EasyReader is a clean, focused environment for consuming digital content. Whether you're catching up on the latest light novel chapters, reading high-resolution manga, or parsing local PDFs, EasyReader handles it all with intelligent caching, automatic progress tracking, and AI-powered insights.
 
 **Why EasyReader?**
-- **Offline-first**: Pre-fetch and cache entire novels for uninterrupted reading
-- **Distraction-free**: Immersive dark theme with edge-to-edge display
-- **Smart content handling**: Automatic page number removal, HTML cleaning, and title extraction
-- **Modern architecture**: Built with MVVM, Kotlin Coroutines, and StateFlow for smooth performance
-- **AI-powered summaries**: Integrated llmedge for chapter summarization
+- **Discovery Hub**: Integrated exploration of popular sources like MangaBat and NovelFire.
+- **Smart Scraping**: "Smart Scraper" engine that extracts content from almost any web source.
+- **Offline-first**: Pre-fetch and cache entire series for uninterrupted reading anywhere.
+- **Distraction-free**: Immersive Material3 design with edge-to-edge display and dark theme.
+- **AI-powered**: On-device LLM integration for instant chapter summaries.
 
 ---
 
 ## Features
 
-### **Multi-Format Support**
-- **Web novels**: Scrape and read directly from URLs (JSoup-powered)
-- **PDFs**: Extract text with iText7, remove page numbers automatically
-- **HTML/EPUB**: Parse local files with intelligent content extraction
-- **Images**: Inline image support with Coil-powered loading
+### **Content Discovery**
+- **Unified Explore**: Browse popular titles or search across multiple novel and manga sources simultaneously.
+- **Extensible Sources**: Native support for major platforms with a generic fallback for unknown sites.
+- **Detailed Previews**: View summaries, author info, and chapter lists before adding to your library.
+
+### **Multi-Format Reading**
+- **Web Novels**: Clean, text-focused reading.
+- **Manga & Manhwa**: High-performance image rendering.
+- **Local Documents**: Support for PDF, EPUB, and HTML files with automatic formatting.
+- **Deep Link Support**: Add content directly by pasting a URL into the app.
 
 ### **Reading Experience**
-- **Immersive UI**: Edge-to-edge display with Material3 dark theme
-- **Smart navigation**: Swipe gestures to jump chapters, auto-restore scroll position
-- **Lazy rendering**: Smooth scrolling even with massive chapters
-- **Progress tracking**: Automatic save points for every novel
+- **Immersive UI**: Full-screen, edge-to-edge display with Material3 dynamic colors.
+- **Smart Navigation**: Fluid swipe gestures to navigate chapters and auto-restore scroll position.
+- **Intelligent Formatting**: Automatic removal of page numbers, ads, and HTML noise.
+- **AI Summaries**: Generate concise summaries of long chapters using on-device [`llmedge`](https://github.com/Aatricks/EasyReader).
 
-### **Library Management**
-- **Multi-source**: Add by URL, file picker, or deep link
-- **Batch operations**: Multi-select delete, currently-reading markers
-- **Progress indicators**: Visual progress bars and reading state
-- **Smart grouping**: Auto-detect and group chapters by base title
-
-### **Content Processing**
-- **PDF cleanup**: Strip page numbers, decode entities, format text
-- **URL intelligence**: Extract titles and chapter numbers from URLs
-- **Caching**: Download and cache chapters for offline access
-- **Background prefetch**: Queue multiple chapters for seamless reading
+### **Library & Management**
+- **Cloud-free Caching**: Store everything locally for privacy and speed.
+- **Progress Tracking**: Visual indicators and "Currently Reading" markers for every item.
+- **Batch Operations**: Easily manage your collection with multi-select delete and bulk updates.
 
 ---
 
-## Tech Stack
-
-### Core Android
-| Component | Version | Purpose |
-|-----------|---------|---------|
-| **Kotlin** | 2.1.0 | Modern, null-safe language |
-| **Jetpack Compose** | 1.7.6 | Declarative UI framework |
-| **Material3** | 1.3.1 | Latest Material Design |
-| **Coroutines** | 1.7.3 | Async/concurrency |
-
-### Content Processing
-| Library | Version | Purpose |
-|---------|---------|---------|
-| **JSoup** | 1.17.2 | HTML parsing, web scraping |
-| **iText7** | 7.2.5 | PDF text extraction |
-| **OkHttp** | 4.12.0 | HTTP client |
-| **Gson** | 2.10.1 | JSON serialization |
-| **Coil** | 2.5.0 | Image loading for Compose |
-| **llmedge** | 0.1.0 | AI-powered summaries |
-
-### Jetpack Libraries
-- **ViewModel** - Lifecycle-aware state management
-- **Lifecycle Runtime** - Compose integration
-- **Activity Compose** - Activity ↔ Compose bridge
-- **Navigation Compose** - Type-safe navigation
-
----
-
-## 📦 Installation
+## Installation
 
 ### Prerequisites
-- **Android Studio**
-- **JDK 11+**
-- **Android SDK** API 30+ (Android 11+)
-- **Gradle 8.0+**
+- **JDK 17+**
+- **Android SDK**
 
 ### Quick Start
 
@@ -97,125 +65,35 @@ cd EasyReader
 ```
 
 **2. Build and run**
+- Open the project in Android Studio.
+- Sync Gradle and click the **Run** button.
+- Alternatively, use CLI:
 ```bash
-# Build debug APK
-./gradlew :app:assembleDebug
-
-# Install to connected device
-./gradlew :app:installDebug
-```
-
-**3. Launch on device**
-- Connect Android device (API 30+) or start emulator
-- APK will be installed at `app/build/outputs/apk/debug/app-debug.apk`
-- Or click **Run** in Android Studio
-
-### Configuration
-
-**Minimum Requirements:**
-- **Min SDK**: API 30 (Android 11)
-- **Target SDK**: API 36 (Android 14+)
-- **Compile SDK**: API 36
-
-**Required Permissions:**
-```xml
-<uses-permission android:name="android.permission.INTERNET" />
-<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
-                 android:maxSdkVersion="32" />
-<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+./gradlew :app:installRelease
 ```
 
 ---
 
 ## Usage
 
-### Adding Content
+### Discovering Content
+1. Open the **Explore** tab from the side drawer.
+2. Browse popular items or use the search bar to find specific titles across all supported sources.
+3. Tap on an item to see details and click "Add to Library" or "Start Reading".
 
-**Option 1: Web Novel URL**
-1. Open drawer (swipe from left or tap menu)
-2. Paste novel URL in text field
-3. Tap "Add from URL"
-4. Novel will be fetched and added to library
+### Adding via URL
+1. Copy any novel or manga chapter URL from your browser.
+2. Open EasyReader's drawer and paste the URL.
+3. The **Smart Scraper** will analyze the page and import the content automatically.
 
-**Option 2: Local Files**
-1. Open drawer
-2. Tap "Pick File"
-3. Select PDF/HTML/EPUB file
-4. File will be imported to library
-
-### Library Management
-
-- **Multi-select**: Long-press any item to enter selection mode
-- **Delete**: Select items → tap delete icon
-- **Resume reading**: Tap any library item card
-- **Progress**: Displayed as progress bar + percentage on each card
+### AI Summaries
+- While reading a chapter, tap the summary icon in the library header.
+- The on-device LLM will analyze the text and provide a concise overview of the chapter's events.
 
 ---
 
-## Key Components
+## Support
 
-### ContentRepository
-**Central content loading hub** — handles web scraping, PDF parsing, HTML extraction, and caching.
-
-**Core Methods:**
-```kotlin
-suspend fun loadContent(url: String, contentType: ContentType): ContentResult
-suspend fun fetchTitle(url: String): String?
-suspend fun prefetch(item: LibraryItem, cacheDir: File)
-fun incrementChapterUrl(url: String): String?
-```
-
-### LibraryRepository
-**In-memory model + persistence boundary** — manages library state and delegates to `PreferencesManager`.
-
-**Core Methods:**
-```kotlin
-fun addItem(item: LibraryItem)
-fun removeItem(id: String)
-fun updateItem(item: LibraryItem)
-val libraryItems: StateFlow<List<LibraryItem>>
-```
-
-### PreferencesManager
-**Single source of truth for persistence** — uses SharedPreferences + Gson for serialization.
-
-**Migration Logic:**
-- Handles data shape changes via default values
-- Uses enums for `ContentType` (JSON-friendly)
-- Validates on load, migrates on save
-
-### ReaderViewModel
-**Orchestrates reading experience** — manages content loading, scroll position, chapter navigation.
-
-**Key State:**
-```kotlin
-data class ReaderUiState(
-    val content: ChapterContent? = null,
-    val isLoading: Boolean = false,
-    val error: String? = null,
-    val scrollPosition: Int = 0
-)
-```
-
----
-
-## 🚀 Performance Optimizations
-
-| Optimization | Impact | Implementation |
-|--------------|--------|----------------|
-| **LazyColumn** | ~80% memory reduction | Virtualized list rendering |
-| **Coil caching** | 3x faster image loads | Disk + memory cache |
-| **Content prefetch** | Instant chapter loads | Background coroutine queue |
-
----
-
-## 🌟 Support
-
-If this project helps you, please consider:
-- ⭐ **Starring** the repository
-- 🐛 **Reporting issues** via [GitHub Issues](https://github.com/Aatricks/Novel-Scrape/issues)
-- 🔀 **Contributing** via Pull Requests
-- 📢 **Sharing** with the community
-
-**Built for readers, by readers. Happy reading! 📖**
+If you find EasyReader useful, please consider:
+- **Starring** the repository
+- **Contributing** with new sources or feature enhancements
