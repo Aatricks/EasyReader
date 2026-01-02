@@ -37,6 +37,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
@@ -228,28 +229,76 @@ fun ReaderScreen(
             containerColor = Color(0xFF1A1A1A),
             contentColor = Color.White
         ) {
+            var selectedChapter by remember { mutableStateOf<io.aatricks.novelscraper.data.model.ChapterInfo?>(null) }
+            val chapters = uiState.fullChapterList.ifEmpty {
+                libraryViewModel.uiState.value.groupedItems[uiState.baseTitle]?.map {
+                    io.aatricks.novelscraper.data.model.ChapterInfo(it.currentChapter.ifBlank { it.title }, it.url)
+                }?.reversed() ?: emptyList()
+            }
+
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                Text(
-                    text = "Chapters",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = Color.White,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (selectedChapter != null) "Selected Chapter" else "Chapters",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White
+                    )
+
+                    if (selectedChapter != null) {
+                        val isDownloaded = libraryViewModel.uiState.value.groupedItems[uiState.baseTitle]?.any { it.url == selectedChapter!!.url } == true
+
+                        Row {
+                            if (isDownloaded) {
+                                IconButton(onClick = {
+                                    val item = libraryViewModel.uiState.value.groupedItems[uiState.baseTitle]?.find { it.url == selectedChapter!!.url }
+                                    if (item != null) {
+                                        libraryViewModel.removeItem(item.id)
+                                        selectedChapter = null
+                                    }
+                                }) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color.Red)
+                                }
+                            } else {
+                                IconButton(onClick = {
+                                    scope.launch {
+                                        bottomSheetState.hide()
+                                        showChapterList = false
+                                        readerViewModel.navigateToChapter(selectedChapter!!.url, selectedChapter!!.title)
+                                    }
+                                }) {
+                                    Icon(Icons.Filled.Download, contentDescription = "Download", tint = Color(0xFF4CAF50))
+                                }
+                            }
+                            IconButton(onClick = { selectedChapter = null }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Cancel", tint = Color.Gray)
+                            }
+                        }
+                    }
+                }
                 
                 if (uiState.isChaptersLoading && uiState.fullChapterList.isEmpty()) {
                     Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = Color(0xFF4CAF50))
                     }
                 } else {
-                    val chapters = uiState.fullChapterList.ifEmpty {
-                        // Fallback to library chapters if source list failed
-                        libraryViewModel.uiState.value.groupedItems[uiState.baseTitle]?.map { 
-                            io.aatricks.novelscraper.data.model.ChapterInfo(it.currentChapter.ifBlank { it.title }, it.url)
-                        }?.reversed() ?: emptyList()
-                    }
-                    
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
-                        items(chapters) { chapter ->
+                        val filteredChapters = if (selectedChapter != null) {
+                            val isSelDownloaded = libraryViewModel.uiState.value.groupedItems[uiState.baseTitle]?.any { it.url == selectedChapter!!.url } == true
+                            chapters.filter { ch ->
+                                val isDownloaded = libraryViewModel.uiState.value.groupedItems[uiState.baseTitle]?.any { it.url == ch.url } == true
+                                isDownloaded == isSelDownloaded
+                            }
+                        } else {
+                            chapters
+                        }
+
+                        items(filteredChapters) { chapter ->
+                            val isDownloaded = libraryViewModel.uiState.value.groupedItems[uiState.baseTitle]?.any { it.url == chapter.url } == true
+
                             ListItem(
                                 headlineContent = { 
                                     Text(
@@ -257,15 +306,30 @@ fun ReaderScreen(
                                         color = if (chapter.url == uiState.content?.url) Color(0xFF4CAF50) else Color.White
                                     ) 
                                 },
-                                modifier = Modifier.clickable {
-                                    scope.launch {
-                                        bottomSheetState.hide()
-                                        showChapterList = false
-                                        // Use navigateToChapter to ensure library is updated
-                                        readerViewModel.navigateToChapter(chapter.url, chapter.title)
+                                trailingContent = {
+                                    if (isDownloaded) {
+                                        Icon(Icons.Filled.CheckCircle, contentDescription = "Downloaded", tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
                                     }
                                 },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                                modifier = Modifier.combinedClickable(
+                                    onClick = {
+                                        if (selectedChapter != null) {
+                                            selectedChapter = if (selectedChapter == chapter) null else chapter
+                                        } else {
+                                            scope.launch {
+                                                bottomSheetState.hide()
+                                                showChapterList = false
+                                                readerViewModel.navigateToChapter(chapter.url, chapter.title)
+                                            }
+                                        }
+                                    },
+                                    onLongClick = {
+                                        selectedChapter = chapter
+                                    }
+                                ),
+                                colors = ListItemDefaults.colors(
+                                    containerColor = if (selectedChapter == chapter) Color(0xFF1E3A8A).copy(alpha = 0.5f) else Color.Transparent
+                                )
                             )
                             HorizontalDivider(color = Color.DarkGray)
                         }
@@ -507,7 +571,15 @@ private fun ContentArea(
                 canNavigatePrevious = uiState.canNavigatePrevious,
                 canNavigateNext = uiState.canNavigateNext,
                 onPreviousClick = { readerViewModel.navigateToPreviousChapter() },
-                onNextClick = { readerViewModel.navigateToNextChapter() }
+                onNextClick = { readerViewModel.navigateToNextChapter() },
+                onSeek = { readerViewModel.updateScrollPosition(
+                    scrollOffset = it * uiState.scrollOffset.toFloat() / (uiState.scrollPosition.takeIf { p -> p > 0 } ?: 1f), // approximate
+                    maxScrollOffset = 100f,
+                    viewportHeight = 1f,
+                    index = 0,
+                    offset = 0
+                )},
+                readerViewModel = readerViewModel
             )
         }
     }
@@ -566,7 +638,9 @@ private fun BottomNavigationBar(
     canNavigatePrevious: Boolean,
     canNavigateNext: Boolean,
     onPreviousClick: () -> Unit,
-    onNextClick: () -> Unit
+    onNextClick: () -> Unit,
+    onSeek: (Float) -> Unit,
+    readerViewModel: ReaderViewModel
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -579,12 +653,24 @@ private fun BottomNavigationBar(
                 Text(text = "$progress%", color = Color.White, style = MaterialTheme.typography.bodySmall)
             }
             Spacer(modifier = Modifier.height(4.dp))
-            LinearProgressIndicator(
-                progress = { progress / 100f },
-                modifier = Modifier.fillMaxWidth().height(4.dp),
-                color = Color(0xFF4CAF50),
-                trackColor = Color(0xFF2A2A2A)
+
+            Slider(
+                value = progress.toFloat(),
+                onValueChange = {
+                     readerViewModel.saveScrollPosition(it)
+                },
+                onValueChangeFinished = {
+                    onSeek(readerViewModel.getScrollPosition())
+                },
+                valueRange = 0f..100f,
+                colors = SliderDefaults.colors(
+                    thumbColor = Color(0xFF4CAF50),
+                    activeTrackColor = Color(0xFF4CAF50),
+                    inactiveTrackColor = Color(0xFF2A2A2A)
+                ),
+                modifier = Modifier.fillMaxWidth()
             )
+
             Spacer(modifier = Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 Button(onClick = onPreviousClick, enabled = canNavigatePrevious, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A1A1A), contentColor = Color.White)) {

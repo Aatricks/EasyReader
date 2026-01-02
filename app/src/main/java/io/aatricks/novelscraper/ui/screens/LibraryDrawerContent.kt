@@ -270,7 +270,7 @@ fun LibraryDrawerContent(
                             // Render regular grouped items (WEB, PDF, HTML)
                             // Default to expanded when a group has multiple chapters so users
                             // can see downloaded chapters without having to manually expand.
-                            val isExpanded = expandedState.getOrPut(groupTitle) { items.size > 1 }
+                            val isExpanded = expandedState.getOrPut(groupTitle) { false }
                             val isGroupSelected = libraryViewModel.isGroupSelected(groupTitle)
                             val isSelectionMode = libraryUiState.isSelectionMode
 
