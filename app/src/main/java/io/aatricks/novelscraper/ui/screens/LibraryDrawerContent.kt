@@ -267,11 +267,11 @@ fun LibraryDrawerContent(
                                 onCloseDrawer = onCloseDrawer
                             )
                         } else {
-                            // Render regular grouped items (WEB, PDF, HTML)
-                            // Default to expanded when a group has multiple chapters so users
-                            // can see downloaded chapters without having to manually expand.
-                            val isExpanded = expandedState.getOrPut(groupTitle) { items.size > 1 }
-                            val isGroupSelected = libraryViewModel.isGroupSelected(groupTitle)
+                                                    // Render regular grouped items (WEB, PDF, HTML)
+                                                    // Default to collapsed.
+                                                    val isExpanded = expandedState.getOrPut(groupTitle) { false }
+                                                    val isGroupSelected = libraryViewModel.isGroupSelected(groupTitle)
+                            
                             val isSelectionMode = libraryUiState.isSelectionMode
 
                             Card(
@@ -350,7 +350,7 @@ fun LibraryDrawerContent(
                                         }
 
                                         IconButton(onClick = {
-                                            val current = expandedState[groupTitle] ?: (items.size > 1)
+                                            val current = expandedState[groupTitle] ?: false
                                             expandedState[groupTitle] = !current
                                         }) {
                                             Icon(

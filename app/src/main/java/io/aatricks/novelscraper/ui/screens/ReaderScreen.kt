@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -37,6 +38,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.background
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
@@ -52,7 +55,7 @@ import kotlin.math.abs
 import io.aatricks.novelscraper.ui.screens.explore.ExploreScreen
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ReaderScreen(
     readerViewModel: ReaderViewModel,
@@ -222,50 +225,159 @@ fun ReaderScreen(
     }
 
     if (showChapterList) {
+        var isSelectionMode by remember { mutableStateOf(false) }
+        val selectedChapterUrls = remember { mutableStateListOf<String>() }
+        // true if selecting downloaded chapters for deletion, false if selecting source chapters for download
+        var isDeleteMode by remember { mutableStateOf(false) }
+
         ModalBottomSheet(
-            onDismissRequest = { showChapterList = false },
+            onDismissRequest = { 
+                showChapterList = false
+                isSelectionMode = false
+                selectedChapterUrls.clear()
+            },
             sheetState = bottomSheetState,
             containerColor = Color(0xFF1A1A1A),
             contentColor = Color.White
         ) {
+            val libraryItemsInGroup = libraryViewModel.uiState.value.groupedItems[uiState.baseTitle] ?: emptyList()
+            val downloadedUrls = libraryItemsInGroup.map { it.url }.toSet()
+            
+            val allChapters = uiState.fullChapterList.ifEmpty {
+                libraryItemsInGroup.map { 
+                    io.aatricks.novelscraper.data.model.ChapterInfo(it.currentChapter.ifBlank { it.title }, it.url)
+                }.reversed()
+            }
+
+            val filteredChapters = if (isSelectionMode) {
+                if (isDeleteMode) {
+                    allChapters.filter { it.url in downloadedUrls }
+                } else {
+                    allChapters.filter { it.url !in downloadedUrls }
+                }
+            } else {
+                allChapters
+            }
+
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                Text(
-                    text = "Chapters",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = Color.White,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isSelectionMode) {
+                            if (isDeleteMode) "Delete Chapters (${selectedChapterUrls.size})" 
+                            else "Download Chapters (${selectedChapterUrls.size})"
+                        } else "Chapters",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White
+                    )
+
+                    if (isSelectionMode) {
+                        Row {
+                            IconButton(onClick = {
+                                if (isDeleteMode) {
+                                    // Delete selected chapters in batch
+                                    val idsToRemove = selectedChapterUrls.mapNotNull { url ->
+                                        libraryItemsInGroup.find { it.url == url }?.id
+                                    }.toSet()
+                                    if (idsToRemove.isNotEmpty()) {
+                                        libraryViewModel.removeItems(idsToRemove)
+                                    }
+                                } else {
+                                    // Download selected chapters
+                                    val chaptersToDownload = selectedChapterUrls.mapNotNull { url ->
+                                        allChapters.find { it.url == url }
+                                    }
+                                    if (chaptersToDownload.isNotEmpty()) {
+                                        libraryViewModel.addChapters(
+                                            chapters = chaptersToDownload,
+                                            baseTitle = uiState.baseTitle,
+                                            baseNovelUrl = uiState.baseNovelUrl,
+                                            sourceName = uiState.sourceName
+                                        )
+                                    }
+                                }
+                                isSelectionMode = false
+                                selectedChapterUrls.clear()
+                            }) {
+                                Icon(
+                                    imageVector = if (isDeleteMode) Icons.Default.Delete else Icons.Default.Download,
+                                    contentDescription = if (isDeleteMode) "Delete" else "Download",
+                                    tint = if (isDeleteMode) Color.Red else Color(0xFF4CAF50)
+                                )
+                            }
+                            IconButton(onClick = {
+                                isSelectionMode = false
+                                selectedChapterUrls.clear()
+                            }) {
+                                Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color.Gray)
+                            }
+                        }
+                    }
+                }
                 
                 if (uiState.isChaptersLoading && uiState.fullChapterList.isEmpty()) {
                     Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = Color(0xFF4CAF50))
                     }
                 } else {
-                    val chapters = uiState.fullChapterList.ifEmpty {
-                        // Fallback to library chapters if source list failed
-                        libraryViewModel.uiState.value.groupedItems[uiState.baseTitle]?.map { 
-                            io.aatricks.novelscraper.data.model.ChapterInfo(it.currentChapter.ifBlank { it.title }, it.url)
-                        }?.reversed() ?: emptyList()
-                    }
-                    
-                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
-                        items(chapters) { chapter ->
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 450.dp)) {
+                        items(filteredChapters) { chapter ->
+                            val isDownloaded = chapter.url in downloadedUrls
+                            val isSelected = chapter.url in selectedChapterUrls
+
                             ListItem(
                                 headlineContent = { 
                                     Text(
                                         text = chapter.title,
-                                        color = if (chapter.url == uiState.content?.url) Color(0xFF4CAF50) else Color.White
+                                        color = when {
+                                            isSelected -> Color(0xFF90CAF9)
+                                            chapter.url == uiState.content?.url -> Color(0xFF4CAF50)
+                                            else -> Color.White
+                                        }
                                     ) 
                                 },
-                                modifier = Modifier.clickable {
-                                    scope.launch {
-                                        bottomSheetState.hide()
-                                        showChapterList = false
-                                        // Use navigateToChapter to ensure library is updated
-                                        readerViewModel.navigateToChapter(chapter.url, chapter.title)
+                                trailingContent = {
+                                    if (!isSelectionMode && isDownloaded) {
+                                        Icon(Icons.Default.Check, contentDescription = "Downloaded", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                    } else if (isSelectionMode) {
+                                        Checkbox(
+                                            checked = isSelected,
+                                            onCheckedChange = { checked ->
+                                                if (checked) selectedChapterUrls.add(chapter.url)
+                                                else selectedChapterUrls.remove(chapter.url)
+                                            },
+                                            colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4CAF50))
+                                        )
                                     }
                                 },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                                modifier = Modifier
+                                    .combinedClickable(
+                                        onClick = {
+                                            if (isSelectionMode) {
+                                                if (chapter.url in selectedChapterUrls) selectedChapterUrls.remove(chapter.url)
+                                                else selectedChapterUrls.add(chapter.url)
+                                            } else {
+                                                scope.launch {
+                                                    bottomSheetState.hide()
+                                                    showChapterList = false
+                                                    readerViewModel.navigateToChapter(chapter.url, chapter.title)
+                                                }
+                                            }
+                                        },
+                                        onLongClick = {
+                                            if (!isSelectionMode) {
+                                                isSelectionMode = true
+                                                isDeleteMode = isDownloaded
+                                                selectedChapterUrls.add(chapter.url)
+                                            }
+                                        }
+                                    ),
+                                colors = ListItemDefaults.colors(
+                                    containerColor = if (isSelected) Color(0xFF1E3A8A).copy(alpha = 0.3f) else Color.Transparent
+                                )
                             )
                             HorizontalDivider(color = Color.DarkGray)
                         }
@@ -303,32 +415,41 @@ private fun ContentArea(
 
     val appliedRestore = remember(content.url) { mutableStateOf(false) }
 
-    LaunchedEffect(content.url, uiState.scrollPosition, uiState.scrollIndex) {
-        if (!appliedRestore.value && content.paragraphs.isNotEmpty()) {
-            if (uiState.isPagedMode) {
-                val page = uiState.scrollIndex.coerceIn(0, content.paragraphs.size - 1)
-                pagerState.scrollToPage(page)
-                appliedRestore.value = true
-            } else {
-                if (uiState.scrollIndex > 0 || uiState.scrollOffset > 0) {
-                    try {
-                        listState.scrollToItem(uiState.scrollIndex, uiState.scrollOffset)
-                        appliedRestore.value = true
-                    } catch (_: Exception) {}
-                } else if (uiState.scrollPosition > 0f) {
-                    val totalItems = content.paragraphs.size
-                    val percent = uiState.scrollPosition.coerceIn(0f, 100f) / 100f
-                    val itemHeight = 100f
-                    val targetPosition = percent * totalItems
-                    val index = targetPosition.toInt().coerceIn(0, totalItems - 1)
-                    val offsetFraction = targetPosition - index
-                    val pixelOffset = (offsetFraction * itemHeight).toInt()
+    // Handle initial restore AND manual seek requests
+    LaunchedEffect(content.url, uiState.seekTrigger) {
+        if (content.paragraphs.isNotEmpty()) {
+            val isInitialRestore = !appliedRestore.value
+            val isManualSeek = uiState.seekTrigger > 0L
+            
+            if (isInitialRestore || isManualSeek) {
+                if (uiState.isPagedMode) {
+                    val page = if (isInitialRestore) {
+                        uiState.scrollIndex.coerceIn(0, content.paragraphs.size - 1)
+                    } else {
+                        ((uiState.scrollPosition / 100f) * content.paragraphs.size).toInt()
+                            .coerceIn(0, content.paragraphs.size - 1)
+                    }
+                    pagerState.scrollToPage(page)
+                } else {
+                    if (isInitialRestore && (uiState.scrollIndex > 0 || uiState.scrollOffset > 0)) {
+                        try {
+                            listState.scrollToItem(uiState.scrollIndex, uiState.scrollOffset)
+                        } catch (_: Exception) {}
+                    } else {
+                        val totalItems = content.paragraphs.size
+                        val percent = uiState.scrollPosition.coerceIn(0f, 100f) / 100f
+                        val itemHeight = 100f // estimated
+                        val targetPosition = percent * totalItems
+                        val index = targetPosition.toInt().coerceIn(0, totalItems - 1)
+                        val offsetFraction = targetPosition - index
+                        val pixelOffset = (offsetFraction * itemHeight).toInt()
 
-                    try {
-                        listState.scrollToItem(index, pixelOffset)
-                    } catch (_: Exception) {}
-                    appliedRestore.value = true
+                        try {
+                            listState.scrollToItem(index, pixelOffset)
+                        } catch (_: Exception) {}
+                    }
                 }
+                if (isInitialRestore) appliedRestore.value = true
             }
         }
     }
@@ -507,7 +628,8 @@ private fun ContentArea(
                 canNavigatePrevious = uiState.canNavigatePrevious,
                 canNavigateNext = uiState.canNavigateNext,
                 onPreviousClick = { readerViewModel.navigateToPreviousChapter() },
-                onNextClick = { readerViewModel.navigateToNextChapter() }
+                onNextClick = { readerViewModel.navigateToNextChapter() },
+                onProgressChange = { readerViewModel.seekToProgress(it) }
             )
         }
     }
@@ -566,7 +688,8 @@ private fun BottomNavigationBar(
     canNavigatePrevious: Boolean,
     canNavigateNext: Boolean,
     onPreviousClick: () -> Unit,
-    onNextClick: () -> Unit
+    onNextClick: () -> Unit,
+    onProgressChange: (Int) -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -574,16 +697,23 @@ private fun BottomNavigationBar(
         shadowElevation = 8.dp
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            var sliderValue by remember(progress) { mutableFloatStateOf(progress.toFloat()) }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(text = "Progress", color = Color.White, style = MaterialTheme.typography.bodySmall)
-                Text(text = "$progress%", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                Text(text = "${sliderValue.toInt()}%", color = Color.White, style = MaterialTheme.typography.bodySmall)
             }
             Spacer(modifier = Modifier.height(4.dp))
-            LinearProgressIndicator(
-                progress = { progress / 100f },
-                modifier = Modifier.fillMaxWidth().height(4.dp),
-                color = Color(0xFF4CAF50),
-                trackColor = Color(0xFF2A2A2A)
+            Slider(
+                value = sliderValue,
+                onValueChange = { sliderValue = it },
+                onValueChangeFinished = { onProgressChange(sliderValue.toInt()) },
+                valueRange = 0f..100f,
+                colors = SliderDefaults.colors(
+                    thumbColor = Color(0xFF4CAF50),
+                    activeTrackColor = Color(0xFF4CAF50),
+                    inactiveTrackColor = Color(0xFF2A2A2A)
+                ),
+                modifier = Modifier.fillMaxWidth().height(24.dp)
             )
             Spacer(modifier = Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -613,11 +743,18 @@ private fun ReaderImageView(
 ) {
     if (imageUrl.startsWith("http")) {
         val context = LocalContext.current
+        
+        // Check for cached image file
+        val cachedFile = remember(imageUrl) { 
+            readerViewModel.contentRepository.getCachedMediaFile(imageUrl) 
+        }
+        
         val imageRequest = remember(imageUrl, pageUrl) {
             val uri = try { java.net.URI(pageUrl) } catch (e: Exception) { null }
             val referer = if (uri != null) "${uri.scheme}://${uri.host}/" else pageUrl
+            
             ImageRequest.Builder(context)
-                .data(imageUrl)
+                .data(if (cachedFile.exists()) cachedFile else imageUrl)
                 .addHeader("Referer", referer)
                 .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 .crossfade(true)

@@ -268,6 +268,37 @@ class LibraryViewModel(
     }
 
     /**
+     * Add multiple chapters to the library with consistent metadata for grouping.
+     */
+    fun addChapters(
+        chapters: List<io.aatricks.novelscraper.data.model.ChapterInfo>,
+        baseTitle: String,
+        baseNovelUrl: String,
+        sourceName: String
+    ) {
+        viewModelScope.launch {
+            chapters.forEach { chapter ->
+                try {
+                    // Check if URL already exists
+                    if (libraryRepository.getItemByUrl(chapter.url) == null) {
+                        libraryRepository.addItem(
+                            title = chapter.title,
+                            url = chapter.url,
+                            contentType = ContentType.WEB,
+                            currentChapter = extractChapterLabel(chapter.title) ?: extractChapterLabelFromUrl(chapter.url) ?: chapter.title,
+                            baseTitle = baseTitle,
+                            baseNovelUrl = baseNovelUrl,
+                            sourceName = sourceName
+                        )
+                        // Prefetch content to cache it for offline use
+                        contentRepository?.prefetch(chapter.url)
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    /**
      * Fetch title asynchronously then add item to library. Falls back to URL if title not found.
      * For WEB content, also try to add next chapters.
      * For EPUB content, parse structure and add to library with TOC.
@@ -473,6 +504,31 @@ class LibraryViewModel(
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(error = "Failed to remove item: ${e.message}")
+                }
+            }
+        }
+    }
+
+    /**
+     * Remove multiple items from library by their IDs
+     */
+    fun removeItems(itemIds: Set<String>) {
+        viewModelScope.launch {
+            try {
+                // Clear cache for each item (best-effort)
+                itemIds.forEach { id ->
+                    try {
+                        val item = libraryRepository.getItemById(id)
+                        if (item != null) {
+                            contentRepository?.clearCache(item.url)
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                libraryRepository.removeItems(itemIds)
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(error = "Failed to remove items: ${e.message}")
                 }
             }
         }

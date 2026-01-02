@@ -64,10 +64,13 @@ class ReaderViewModel(
         val novelName: String = "", // Novel/book title
         val chapterTitle: String = "", // Current chapter title
         val baseTitle: String = "", // Base title for chapter lookup
+        val baseNovelUrl: String = "", // URL of the novel main page
+        val sourceName: String = "", // Name of the source
         val isPagedMode: Boolean = false, // Toggle between vertical scroll and horizontal paging
         val isRtl: Boolean = true, // Right-to-Left swipe for paged mode
         val fullChapterList: List<io.aatricks.novelscraper.data.model.ChapterInfo> = emptyList(),
-        val isChaptersLoading: Boolean = false
+        val isChaptersLoading: Boolean = false,
+        val seekTrigger: Long = 0L // Timestamp to trigger seek in UI
     )
 
     /**
@@ -130,6 +133,8 @@ class ReaderViewModel(
                         val novelName = libraryItem?.baseTitle?.ifBlank { libraryItem.title } ?: content.title ?: ""
                         val chapterTitle = content.title ?: libraryItem?.currentChapter ?: ""
                         val baseTitle = libraryItem?.baseTitle ?: extractBaseTitle(novelName, ContentType.WEB)
+                        val baseNovelUrl = libraryItem?.baseNovelUrl ?: ""
+                        val sourceName = libraryItem?.sourceName ?: ""
                         
                         // Determine reading mode: Priority to saved preference, then guess
                         val savedMode = libraryItem?.readingMode
@@ -154,6 +159,8 @@ class ReaderViewModel(
                                 novelName = novelName,
                                 chapterTitle = chapterTitle,
                                 baseTitle = baseTitle,
+                                baseNovelUrl = baseNovelUrl,
+                                sourceName = sourceName,
                                 isPagedMode = isPaged
                             )
                         }
@@ -253,7 +260,9 @@ class ReaderViewModel(
                             url = nextUrl,
                             contentType = ContentType.WEB,
                             currentChapter = chapterLabel,
-                            baseTitle = baseTitle
+                            baseTitle = baseTitle,
+                            baseNovelUrl = currentItem.baseNovelUrl,
+                            sourceName = currentItem.sourceName
                         )
                         // Inherit reading mode
                         libraryRepository.updateReadingMode(newItem.id, currentItem.readingMode)
@@ -313,7 +322,9 @@ class ReaderViewModel(
                             url = prevUrl,
                             contentType = ContentType.WEB,
                             currentChapter = chapterLabel,
-                            baseTitle = baseTitle
+                            baseTitle = baseTitle,
+                            baseNovelUrl = currentItem.baseNovelUrl,
+                            sourceName = currentItem.sourceName
                         )
                         // Inherit reading mode
                         libraryRepository.updateReadingMode(newItem.id, currentItem.readingMode)
@@ -710,6 +721,21 @@ class ReaderViewModel(
      */
     fun getScrollPosition(): Float {
         return _uiState.value.scrollPosition
+    }
+
+    /**
+     * Seek to a specific progress percentage (0-100)
+     */
+    fun seekToProgress(progress: Int) {
+        val targetPercent = progress.coerceIn(0, 100).toFloat()
+        _uiState.update { it.copy(
+            scrollPosition = targetPercent, 
+            scrollProgress = progress,
+            seekTrigger = System.currentTimeMillis()
+        ) }
+        
+        // When seeking via slider, we should update reading progress in library
+        updateReadingProgress(progress)
     }
 
     override fun onCleared() {

@@ -38,6 +38,11 @@ class ContentRepository(private val context: Context) {
             if (!exists()) mkdirs()
         }
 
+    private val mediaCacheDir: File
+        get() = File(context.cacheDir, "media_cache").apply {
+            if (!exists()) mkdirs()
+        }
+
     private val epubCacheDir: File
         get() = File(context.cacheDir, "epub_cache").apply {
             if (!exists()) mkdirs()
@@ -118,10 +123,62 @@ class ContentRepository(private val context: Context) {
                 Jsoup.parse(html, url)
             }
 
-            parseHtmlDocument(document, url)
+            val result = parseHtmlDocument(document, url)
+            
+            // If successfully parsed and not from cache (or even if from cache, ensure images are cached), 
+            // trigger image prefetching in background
+            if (result is ContentResult.Success) {
+                result.elements.filterIsInstance<ContentElement.Image>().forEach { image ->
+                    // We don't wait for each image to download here to keep loading fast,
+                    // but we do ensure they start caching.
+                    try { downloadAndCacheImage(image.url, url) } catch (_: Exception) {}
+                }
+            }
+            
+            result
         } catch (e: Exception) {
             ContentResult.Error("Failed to load web content: ${e.message}", e)
         }
+    }
+
+    /**
+     * Download and cache an image
+     */
+    suspend fun downloadAndCacheImage(imageUrl: String, pageUrl: String): File? = withContext(Dispatchers.IO) {
+        try {
+            if (!imageUrl.startsWith("http")) return@withContext null
+            
+            val cachedFile = getCachedMediaFile(imageUrl)
+            if (cachedFile.exists()) return@withContext cachedFile
+
+            val uri = try { java.net.URI(pageUrl) } catch (e: Exception) { null }
+            val referer = if (uri != null) "${uri.scheme}://${uri.host}/" else pageUrl
+
+            val request = Request.Builder()
+                .url(imageUrl)
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                .addHeader("Referer", referer)
+                .build()
+
+            okHttpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body ?: return@withContext null
+                    cachedFile.writeBytes(body.bytes())
+                    return@withContext cachedFile
+                }
+            }
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Get cached media file for URL
+     */
+    fun getCachedMediaFile(url: String): File {
+        val filename = url.hashCode().toString()
+        return File(mediaCacheDir, filename)
     }
 
     /**
@@ -996,12 +1053,22 @@ class ContentRepository(private val context: Context) {
     /**
      * Prefetch and cache a web URL (download HTML to cache) or cache a file path.
      * For EPUB files, extract and cache images.
+     * For WEB chapters, also prefetch all images found in the HTML.
      */
     suspend fun prefetch(url: String): Boolean = withContext(Dispatchers.IO) {
         try {
             if (url.startsWith("http")) {
                 val html = downloadHtml(url)
                 getCachedFile(url).writeText(html)
+                
+                // Parse HTML to find and prefetch images
+                val doc = Jsoup.parse(html, url)
+                val result = parseHtmlDocument(doc, url)
+                if (result is ContentResult.Success) {
+                    result.elements.filterIsInstance<ContentElement.Image>().forEach { image ->
+                        downloadAndCacheImage(image.url, url)
+                    }
+                }
                 true
             } else if (url.endsWith(".epub", ignoreCase = true) || url.contains("epub")) {
                 // For EPUB, parse and cache images
@@ -1207,11 +1274,13 @@ class ContentRepository(private val context: Context) {
     suspend fun clearAllCache(): Boolean = withContext(Dispatchers.IO) {
         try {
             cacheDir.deleteRecursively()
+            mediaCacheDir.deleteRecursively()
             epubCacheDir.deleteRecursively()
             epubBookCache.clear()
             
             // Re-create directories
             cacheDir.mkdirs()
+            mediaCacheDir.mkdirs()
             epubCacheDir.mkdirs()
             true
         } catch (e: Exception) {
@@ -1224,7 +1293,10 @@ class ContentRepository(private val context: Context) {
      */
     suspend fun getCacheSize(): Long = withContext(Dispatchers.IO) {
         try {
-            cacheDir.listFiles()?.sumOf { it.length() } ?: 0L
+            val htmlSize = cacheDir.listFiles()?.sumOf { it.length() } ?: 0L
+            val mediaSize = mediaCacheDir.listFiles()?.sumOf { it.length() } ?: 0L
+            val epubSize = epubCacheDir.listFiles()?.sumOf { it.length() } ?: 0L
+            htmlSize + mediaSize + epubSize
         } catch (e: Exception) {
             0L
         }
