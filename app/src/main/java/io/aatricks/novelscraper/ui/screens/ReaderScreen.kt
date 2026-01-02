@@ -430,38 +430,26 @@ private fun ContentArea(
     LaunchedEffect(content.url, uiState.seekTrigger) {
         if (content.paragraphs.isNotEmpty()) {
             val isInitialRestore = !appliedRestore.value
-            val isManualSeek = uiState.seekTrigger > 0L
             
-            if (isInitialRestore || isManualSeek) {
-                if (uiState.isPagedMode) {
-                    val page = if (isInitialRestore) {
-                        uiState.scrollIndex.coerceIn(0, content.paragraphs.size - 1)
-                    } else {
-                        ((uiState.scrollPosition / 100f) * content.paragraphs.size).toInt()
-                            .coerceIn(0, content.paragraphs.size - 1)
-                    }
-                    pagerState.scrollToPage(page)
-                } else {
-                    if (isInitialRestore && (uiState.scrollIndex > 0 || uiState.scrollOffset > 0)) {
-                        try {
-                            listState.scrollToItem(uiState.scrollIndex, uiState.scrollOffset)
-                        } catch (_: Exception) {}
-                    } else {
+            if (uiState.isPagedMode) {
+                val page = uiState.scrollIndex.coerceIn(0, content.paragraphs.size - 1)
+                pagerState.scrollToPage(page)
+            } else {
+                // For vertical mode, try to use index/offset if they seem valid
+                // During a manual seek from slider, scrollIndex is set to a rough value and scrollOffset to 0
+                if (uiState.scrollIndex >= 0) {
+                    try {
+                        listState.scrollToItem(uiState.scrollIndex, uiState.scrollOffset)
+                    } catch (_: Exception) {
+                        // Fallback to percentage if scrollToItem fails
                         val totalItems = content.paragraphs.size
                         val percent = uiState.scrollPosition.coerceIn(0f, 100f) / 100f
-                        val itemHeight = 100f // estimated
-                        val targetPosition = percent * totalItems
-                        val index = targetPosition.toInt().coerceIn(0, totalItems - 1)
-                        val offsetFraction = targetPosition - index
-                        val pixelOffset = (offsetFraction * itemHeight).toInt()
-
-                        try {
-                            listState.scrollToItem(index, pixelOffset)
-                        } catch (_: Exception) {}
+                        val index = (percent * totalItems).toInt().coerceIn(0, totalItems - 1)
+                        listState.scrollToItem(index, 0)
                     }
                 }
-                if (isInitialRestore) appliedRestore.value = true
             }
+            if (isInitialRestore) appliedRestore.value = true
         }
     }
 

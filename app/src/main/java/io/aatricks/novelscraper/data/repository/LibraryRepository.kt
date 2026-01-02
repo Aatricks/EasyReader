@@ -1,11 +1,14 @@
 package io.aatricks.novelscraper.data.repository
 
 import io.aatricks.novelscraper.util.TextUtils
-
 import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.model.LibraryItem
 import io.aatricks.novelscraper.data.model.ContentType
+
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,6 +20,7 @@ import java.util.UUID
  */
 class LibraryRepository(private val preferencesManager: PreferencesManager) {
     
+    private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val _libraryItems = MutableStateFlow<List<LibraryItem>>(emptyList())
     val libraryItems: StateFlow<List<LibraryItem>> = _libraryItems.asStateFlow()
     
@@ -153,6 +157,31 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
             true
         } else {
             false
+        }
+    }
+
+    /**
+     * Update reading progress (non-suspending version that uses repositoryScope)
+     */
+    fun saveProgress(
+        itemId: String,
+        currentChapter: String,
+        progress: Int,
+        currentChapterUrl: String? = null,
+        lastScrollProgress: Int? = null,
+        lastReadIndex: Int? = null,
+        lastReadOffset: Int? = null
+    ) {
+        repositoryScope.launch {
+            updateProgress(
+                itemId,
+                currentChapter,
+                progress,
+                currentChapterUrl,
+                lastScrollProgress,
+                lastReadIndex,
+                lastReadOffset
+            )
         }
     }
 

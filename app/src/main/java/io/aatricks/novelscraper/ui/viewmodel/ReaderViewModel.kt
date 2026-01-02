@@ -588,27 +588,25 @@ class ReaderViewModel(
      * @param progress Progress percentage (0-100)
      */
     fun updateReadingProgress(progress: Int) {
-        viewModelScope.launch {
-            try {
-                currentLibraryItemId?.let { itemId ->
-                    val currentChapterUrl = _uiState.value.content?.url ?: ""
-                    val lastScroll = _uiState.value.scrollPosition.toInt()
-                    val index = _uiState.value.scrollIndex
-                    val offset = _uiState.value.scrollOffset
+        try {
+            currentLibraryItemId?.let { itemId ->
+                val currentChapterUrl = _uiState.value.content?.url ?: ""
+                val lastScroll = _uiState.value.scrollPosition.toInt()
+                val index = _uiState.value.scrollIndex
+                val offset = _uiState.value.scrollOffset
 
-                    libraryRepository.updateProgress(
-                        itemId = itemId,
-                        currentChapter = "", // Don't update currentChapter label
-                        progress = progress,
-                        currentChapterUrl = currentChapterUrl,
-                        lastScrollProgress = lastScroll,
-                        lastReadIndex = index,
-                        lastReadOffset = offset
-                    )
-                }
-            } catch (e: Exception) {
-                // Silently fail progress updates to not interrupt reading
+                libraryRepository.saveProgress(
+                    itemId = itemId,
+                    currentChapter = "", // Don't update currentChapter label
+                    progress = progress,
+                    currentChapterUrl = currentChapterUrl,
+                    lastScrollProgress = lastScroll,
+                    lastReadIndex = index,
+                    lastReadOffset = offset
+                )
             }
+        } catch (e: Exception) {
+            // Silently fail progress updates to not interrupt reading
         }
     }
 
@@ -728,9 +726,16 @@ class ReaderViewModel(
      */
     fun seekToProgress(progress: Int) {
         val targetPercent = progress.coerceIn(0, 100).toFloat()
+        val totalItems = _uiState.value.content?.paragraphs?.size ?: 0
+        val roughIndex = if (totalItems > 0) {
+            ((targetPercent / 100f) * totalItems).toInt().coerceIn(0, totalItems - 1)
+        } else 0
+
         _uiState.update { it.copy(
             scrollPosition = targetPercent, 
             scrollProgress = progress,
+            scrollIndex = roughIndex,
+            scrollOffset = 0,
             seekTrigger = System.currentTimeMillis()
         ) }
         
