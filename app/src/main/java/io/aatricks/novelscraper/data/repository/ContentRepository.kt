@@ -21,6 +21,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.TextNode
+import org.jsoup.nodes.Element
 
 /** Repository for content operations including web scraping, HTML/PDF parsing, and caching */
 class ContentRepository(private val context: Context) {
@@ -330,14 +332,7 @@ class ContentRepository(private val context: Context) {
                 val elements = document.select(selector)
                 if (elements.isNotEmpty()) {
                     elements.forEach { element ->
-                        val html =
-                                element.html()
-                                        .replace(
-                                                Regex("(?i)<br\\s*/?>"),
-                                                "[[LINE_BREAK]][[LINE_BREAK]]"
-                                        )
-                        val text =
-                                Jsoup.parseBodyFragment(html).text().replace("[[LINE_BREAK]]", "\n")
+                        val text = extractTextPreservingLineBreaks(element)
                         if (text.isNotBlank()) {
                             paragraphs.add(text)
                         }
@@ -351,13 +346,7 @@ class ContentRepository(private val context: Context) {
             if (paragraphs.isEmpty() && imagesFromSelectors.size <= 5) {
                 val elements = document.select("p")
                 elements.forEach { element ->
-                    val html =
-                            element.html()
-                                    .replace(
-                                            Regex("(?i)<br\\s*/?>"),
-                                            "[[LINE_BREAK]][[LINE_BREAK]]"
-                                    )
-                    val text = Jsoup.parseBodyFragment(html).text().replace("[[LINE_BREAK]]", "\n")
+                    val text = extractTextPreservingLineBreaks(element)
                     if (text.isNotBlank()) {
                         paragraphs.add(text)
                     }
@@ -1428,4 +1417,21 @@ class ContentRepository(private val context: Context) {
                     0L
                 }
             }
+
+    /**
+     * Extracts text from an element while preserving <br> tags as newlines.
+     * Optimized to avoid expensive HTML serialization and re-parsing.
+     */
+    private fun extractTextPreservingLineBreaks(element: Element): String {
+        val brs = element.select("br")
+        if (brs.isEmpty()) {
+            return element.text()
+        }
+
+        // Clone element to avoid modifying the original document structure
+        // This is crucial because fallback logic might re-process elements if the first pass fails
+        val clone = element.clone()
+        clone.select("br").forEach { it.replaceWith(TextNode("[[LINE_BREAK]][[LINE_BREAK]]")) }
+        return clone.text().replace("[[LINE_BREAK]]", "\n")
+    }
 }
