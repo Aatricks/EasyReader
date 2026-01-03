@@ -25,18 +25,27 @@ class ExploreRepository(context: Context? = null) {
 
     fun getAllSources(): List<NovelSource> = sources
 
-    suspend fun getPopularNovels(page: Int = 1, sourceName: String? = null): List<ExploreItem> = coroutineScope {
+    suspend fun getPopularNovels(page: Int = 1, sourceName: String? = null, tag: String? = null): List<ExploreItem> = coroutineScope {
         val activeSources = if (sourceName == null) sources else sources.filter { it.name == sourceName }
         
         activeSources.map { source ->
             async {
                 try {
-                    source.getPopularNovels(page)
+                    source.getPopularNovels(page, tag)
                 } catch (e: Exception) {
                     emptyList()
                 }
             }
         }.awaitAll().flatten().let { if (sourceName == null) it.shuffled() else it }
+    }
+    
+    suspend fun getTags(sourceName: String?): List<String> = coroutineScope {
+        if (sourceName != null) {
+            sources.find { it.name == sourceName }?.getTags() ?: emptyList()
+        } else {
+            // Aggregate tags from all sources and deduplicate
+            sources.map { async { it.getTags() } }.awaitAll().flatten().distinct().sorted()
+        }
     }
     
     suspend fun searchNovels(query: String, page: Int = 1, sourceName: String? = null): List<ExploreItem> = coroutineScope {

@@ -11,8 +11,13 @@ class NovelFireSource : NovelSource {
     override val name = "NovelFire"
     override val baseUrl = "https://novelfire.net"
 
-    override suspend fun getPopularNovels(page: Int): List<ExploreItem> = withContext(Dispatchers.IO) {
-        val url = "$baseUrl/genre-all/sort-popular/status-all/all-novel?page=$page"
+    override suspend fun getPopularNovels(page: Int, tag: String?): List<ExploreItem> = withContext(Dispatchers.IO) {
+        val url = if (tag != null) {
+            val tagSlug = tag.lowercase().replace(" ", "-")
+            "$baseUrl/genre/$tagSlug/sort-popular/status-all/all-novel?page=$page"
+        } else {
+            "$baseUrl/genre-all/sort-popular/status-all/all-novel?page=$page"
+        }
         val document = Jsoup.connect(url)
             .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .timeout(10000)
@@ -232,4 +237,10 @@ class NovelFireSource : NovelSource {
             chapters = chapters
         )
     }
+
+    override suspend fun getTags(): List<String> = listOf(
+        "Action", "Adventure", "Comedy", "Drama", "Ecchi", "Fantasy", "Gender Bender", "Harem", "Historical",
+        "Horror", "Josei", "Martial Arts", "Mature", "Mystery", "Psychological", "Romance", "School Life",
+        "Sci-fi", "Seinen", "Shoujo", "Shounen", "Slice of Life", "Smut", "Sports", "Supernatural", "Tragedy", "Wuxia", "Xuanhuan"
+    )
 }

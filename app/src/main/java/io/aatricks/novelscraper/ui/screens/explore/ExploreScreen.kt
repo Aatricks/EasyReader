@@ -47,6 +47,8 @@ fun ExploreScreen(
     var exploreItems by remember { mutableStateOf<List<ExploreItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var selectedSource by remember { mutableStateOf<String?>(null) }
+    var selectedTag by remember { mutableStateOf<String?>(null) }
+    var availableTags by remember { mutableStateOf<List<String>>(emptyList()) }
     var selectedItem by remember { mutableStateOf<ExploreItem?>(null) }
     var selectedItemDetails by remember { mutableStateOf<ExploreItem?>(null) }
     var isFetchingDetails by remember { mutableStateOf(false) }
@@ -59,6 +61,11 @@ fun ExploreScreen(
     var showSourceDialog by remember { mutableStateOf(false) }
     var customUrl by remember { mutableStateOf("") }
 
+    LaunchedEffect(selectedSource) {
+        availableTags = exploreRepository.getTags(selectedSource)
+        selectedTag = null // Reset tag when source changes
+    }
+
     BackHandler {
         if (isSearching) {
             isSearching = false
@@ -66,7 +73,7 @@ fun ExploreScreen(
             scope.launch {
                 isLoading = true
                 page = 1
-                exploreItems = exploreRepository.getPopularNovels(1, selectedSource)
+                exploreItems = exploreRepository.getPopularNovels(1, selectedSource, selectedTag)
                 isLoading = false
             }
         } else {
@@ -100,7 +107,7 @@ fun ExploreScreen(
         scope.launch {
             isLoading = true
             val newItems = if (searchQuery.isBlank()) {
-                exploreRepository.getPopularNovels(page + 1, selectedSource)
+                exploreRepository.getPopularNovels(page + 1, selectedSource, selectedTag)
             } else {
                 exploreRepository.searchNovels(searchQuery, page + 1, selectedSource)
             }
@@ -117,9 +124,9 @@ fun ExploreScreen(
         }
     }
 
-    LaunchedEffect(selectedSource) {
+    LaunchedEffect(selectedSource, selectedTag) {
         isLoading = true
-        exploreItems = exploreRepository.getPopularNovels(1, selectedSource)
+        exploreItems = exploreRepository.getPopularNovels(1, selectedSource, selectedTag)
         page = 1
         isLoading = false
     }
@@ -194,7 +201,7 @@ fun ExploreScreen(
                             scope.launch {
                                 isLoading = true
                                 page = 1
-                                exploreItems = exploreRepository.getPopularNovels(1, selectedSource)
+                                exploreItems = exploreRepository.getPopularNovels(1, selectedSource, selectedTag)
                                 isLoading = false
                             }
                         } else {
@@ -216,30 +223,56 @@ fun ExploreScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
-        Box(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
-            if (isLoading && exploreItems.isEmpty()) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            } else {
-                if (exploreItems.isEmpty()) {
-                    Text("No items found.", modifier = Modifier.align(Alignment.Center))
-                } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 120.dp),
-                        contentPadding = PaddingValues(8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(exploreItems) { item ->
-                            ExploreItemCard(item = item, onClick = { fetchDetails(item) })
-                        }
+        Column(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
+            if (availableTags.isNotEmpty() && !isSearching) {
+                ScrollableTabRow(
+                    selectedTabIndex = if (selectedTag == null) 0 else availableTags.indexOf(selectedTag) + 1,
+                    edgePadding = 8.dp,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    divider = {},
+                    indicator = {}
+                ) {
+                    Tab(
+                        selected = selectedTag == null,
+                        onClick = { selectedTag = null },
+                        text = { Text("All") }
+                    )
+                    availableTags.forEach { tag ->
+                        Tab(
+                            selected = selectedTag == tag,
+                            onClick = { selectedTag = tag },
+                            text = { Text(tag) }
+                        )
+                    }
+                }
+            }
 
-                        item {
-                            LaunchedEffect(true) {
-                                loadMore()
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                if (isLoading && exploreItems.isEmpty()) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                } else {
+                    if (exploreItems.isEmpty()) {
+                        Text("No items found.", modifier = Modifier.align(Alignment.Center))
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(minSize = 120.dp),
+                            contentPadding = PaddingValues(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(exploreItems) { item ->
+                                ExploreItemCard(item = item, onClick = { fetchDetails(item) })
                             }
-                            if (isLoading) {
-                                Box(modifier = Modifier.fillMaxWidth().height(50.dp), contentAlignment = Alignment.Center) {
-                                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+
+                            item {
+                                LaunchedEffect(true) {
+                                    loadMore()
+                                }
+                                if (isLoading) {
+                                    Box(modifier = Modifier.fillMaxWidth().height(50.dp), contentAlignment = Alignment.Center) {
+                                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                    }
                                 }
                             }
                         }

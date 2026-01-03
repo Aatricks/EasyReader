@@ -11,7 +11,7 @@ class SmartScraperSource(override val baseUrl: String) : NovelSource {
 
     private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-    override suspend fun getPopularNovels(page: Int): List<ExploreItem> = withContext(Dispatchers.IO) {
+    override suspend fun getPopularNovels(page: Int, tag: String?): List<ExploreItem> = withContext(Dispatchers.IO) {
         val document = Jsoup.connect(baseUrl)
             .userAgent(userAgent)
             .referrer(baseUrl)

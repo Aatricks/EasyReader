@@ -12,8 +12,13 @@ class MangaBatSource : NovelSource {
 
     private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-    override suspend fun getPopularNovels(page: Int): List<ExploreItem> = withContext(Dispatchers.IO) {
-        val url = "$baseUrl/manga-list/hot-manga?page=$page"
+    override suspend fun getPopularNovels(page: Int, tag: String?): List<ExploreItem> = withContext(Dispatchers.IO) {
+        val url = if (tag != null) {
+            val tagSlug = tag.lowercase().replace(" ", "-")
+            "$baseUrl/genre/$tagSlug?page=$page"
+        } else {
+            "$baseUrl/manga-list/hot-manga?page=$page"
+        }
         val document = Jsoup.connect(url)
             .userAgent(userAgent)
             .referrer(baseUrl)
@@ -22,7 +27,7 @@ class MangaBatSource : NovelSource {
 
         val items = mutableListOf<ExploreItem>()
         // Add .itemupdate for the main page style list
-        val elements = document.select(".list-story-item, .item-story, .story_item, .itemupdate")
+        val elements = document.select(".list-story-item, .item-story, .story_item, .itemupdate, .list-comic-item-wrap")
 
         elements.forEach { element ->
             // Try to find the title element - prioritize h3 a or specific title classes
@@ -34,10 +39,10 @@ class MangaBatSource : NovelSource {
             
             // Find the image - it might be in a different link than the title
             val img = element.select("img").first()
-            var coverUrl = img?.attr("data-src")?.ifEmpty { 
-                img?.attr("data-original")?.ifEmpty {
-                    img?.attr("data-lazy-src")?.ifEmpty {
-                        img?.attr("src")
+            var coverUrl = img?.attr("src")?.ifEmpty { 
+                img?.attr("data-src")?.ifEmpty {
+                    img?.attr("data-original")?.ifEmpty {
+                        img?.attr("data-lazy-src")?.ifEmpty { "" }
                     }
                 }
             } ?: ""
@@ -184,16 +189,46 @@ class MangaBatSource : NovelSource {
         // First chapter is usually the last one in the list for mangabat
         val readingUrl = chapterList.lastOrNull()?.url
 
-        ExploreItem(
-            title = title,
-            url = url,
-            coverUrl = if (coverUrl.isBlank()) null else coverUrl,
-            author = author,
-            summary = summary,
-            chapterCount = chapterCount,
-            source = name,
-            readingUrl = readingUrl,
-            chapters = chapterList
-        )
-    }
-}
+                ExploreItem(
+
+                    title = title,
+
+                    url = url,
+
+                    coverUrl = if (coverUrl.isBlank()) null else coverUrl,
+
+                    author = author,
+
+                    summary = summary,
+
+                    chapterCount = chapterCount,
+
+                    source = name,
+
+                    readingUrl = readingUrl,
+
+                    chapters = chapterList
+
+                )
+
+            }
+
+        
+
+            override suspend fun getTags(): List<String> = listOf(
+
+                "Action", "Adult", "Adventure", "Comedy", "Cooking", "Doujinshi", "Drama", "Ecchi", "Fantasy", 
+
+                "Gender bender", "Harem", "Historical", "Horror", "Isekai", "Josei", "Manhua", "Manhwa", 
+
+                "Martial arts", "Mature", "Mecha", "Medical", "Mystery", "One shot", "Psychological", "Romance", 
+
+                "School life", "Sci fi", "Seinen", "Shoujo", "Shoujo ai", "Shounen", "Shounen ai", "Slice of life", 
+
+                "Smut", "Sports", "Supernatural", "Tragedy", "Webtoons", "Yaoi", "Yuri"
+
+            )
+
+        }
+
+        
