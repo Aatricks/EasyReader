@@ -327,9 +327,16 @@ fun ExploreScreen(
 @Composable
 fun ExploreItemCard(item: ExploreItem, onClick: () -> Unit) {
     val context = LocalContext.current
-    val imageRequest = remember(item.coverUrl) {
+    val imageRequest = remember(item.coverUrl, item.url) {
         val uri = try { java.net.URI(item.url) } catch (e: Exception) { null }
-        val referer = if (uri != null) "${uri.scheme}://${uri.host}/" else item.url
+        var referer = if (uri != null) "${uri.scheme}://${uri.host}/" else item.url
+        
+        // Special case for MangaBat/Manganato - images often require this referer
+        // Special case for MangaBat/Manganato - images often require this referer
+        if (item.source == "MangaBat" || referer.contains("mangabat") || referer.contains("manganato")) {
+            referer = "https://manganato.com/"
+        }
+
         ImageRequest.Builder(context)
             .data(item.coverUrl)
             .addHeader("Referer", referer)
@@ -390,9 +397,16 @@ fun ExploreItemDetailDialog(
     onAddToLibrary: () -> Unit
 ) {
     val context = LocalContext.current
-    val imageRequest = remember(item.coverUrl) {
+    val imageRequest = remember(item.coverUrl, item.url) {
         val uri = try { java.net.URI(item.url) } catch (e: Exception) { null }
-        val referer = if (uri != null) "${uri.scheme}://${uri.host}/" else item.url
+        var referer = if (uri != null) "${uri.scheme}://${uri.host}/" else item.url
+        
+        // Special case for MangaBat/Manganato
+        // Special case for MangaBat/Manganato - images often require this referer
+        if (item.source == "MangaBat" || referer.contains("mangabat") || referer.contains("manganato")) {
+            referer = "https://manganato.com/"
+        }
+
         ImageRequest.Builder(context)
             .data(item.coverUrl)
             .addHeader("Referer", referer)

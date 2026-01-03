@@ -25,17 +25,31 @@ class MangaBatSource : NovelSource {
         val elements = document.select(".list-story-item, .item-story, .story_item, .itemupdate")
 
         elements.forEach { element ->
-            val titleElement = element.select("h3 a, .item-title, .story_name a, .tooltip").first()
+            // Try to find the title element - prioritize h3 a or specific title classes
+            val titleElement = element.select("h3 a, .item-title, .story_name a").first() 
+                ?: element.select("a").firstOrNull { it.text().isNotBlank() }
+            
             val title = titleElement?.text() ?: ""
             val href = titleElement?.attr("href") ?: ""
+            
+            // Find the image - it might be in a different link than the title
             val img = element.select("img").first()
-            var coverUrl = img?.attr("data-src")?.ifEmpty { img.attr("src") } ?: ""
+            var coverUrl = img?.attr("data-src")?.ifEmpty { 
+                img?.attr("data-original")?.ifEmpty {
+                    img?.attr("data-lazy-src")?.ifEmpty {
+                        img?.attr("src")
+                    }
+                }
+            } ?: ""
 
             if (title.isNotBlank() && href.isNotBlank()) {
-                val absoluteUrl = if (href.startsWith("http")) href else "$baseUrl$href"
-                if (coverUrl.isNotBlank() && !coverUrl.startsWith("http")) coverUrl = "$baseUrl$coverUrl"
+                val absoluteUrl = if (href.startsWith("http")) href else "$baseUrl${if (href.startsWith("/")) "" else "/"}$href"
+                if (coverUrl.isNotBlank()) {
+                    if (coverUrl.startsWith("//")) coverUrl = "https:$coverUrl"
+                    else if (!coverUrl.startsWith("http")) coverUrl = "$baseUrl${if (coverUrl.startsWith("/")) "" else "/"}$coverUrl"
+                }
                 items.add(ExploreItem(
-                    title = title,
+                    title = title.trim(),
                     url = absoluteUrl,
                     coverUrl = if (coverUrl.isBlank()) null else coverUrl,
                     source = name
@@ -51,10 +65,17 @@ class MangaBatSource : NovelSource {
                 if (title.length > 5 && !title.contains("Chapter", ignoreCase = true) && items.none { it.url.contains(href) }) {
                     val absoluteUrl = if (href.startsWith("http")) href else "$baseUrl$href"
                     val img = link.parent()?.select("img")?.first() ?: link.closest("div")?.select("img")?.first()
+                    var coverUrl = img?.attr("data-src")?.ifEmpty { img?.attr("src") } ?: ""
+                    
+                    if (coverUrl.isNotBlank()) {
+                        if (coverUrl.startsWith("//")) coverUrl = "https:$coverUrl"
+                        else if (!coverUrl.startsWith("http")) coverUrl = "$baseUrl${if (coverUrl.startsWith("/")) "" else "/"}$coverUrl"
+                    }
+
                     items.add(ExploreItem(
                         title = title,
                         url = absoluteUrl,
-                        coverUrl = img?.attr("src"),
+                        coverUrl = if (coverUrl.isBlank()) null else coverUrl,
                         source = name
                     ))
                 }
@@ -79,17 +100,31 @@ class MangaBatSource : NovelSource {
         val elements = document.select(".list-story-item, .item-story, .story_item, .itemupdate")
 
         elements.forEach { element ->
-            val titleElement = element.select("h3 a, .item-title, .story_name a, .tooltip").first()
+            // Try to find the title element - prioritize h3 a or specific title classes
+            val titleElement = element.select("h3 a, .item-title, .story_name a").first() 
+                ?: element.select("a").firstOrNull { it.text().isNotBlank() }
+            
             val title = titleElement?.text() ?: ""
             val href = titleElement?.attr("href") ?: ""
+            
+            // Find the image - it might be in a different link than the title
             val img = element.select("img").first()
-            var coverUrl = img?.attr("data-src")?.ifEmpty { img.attr("src") } ?: ""
+            var coverUrl = img?.attr("data-src")?.ifEmpty { 
+                img?.attr("data-original")?.ifEmpty {
+                    img?.attr("data-lazy-src")?.ifEmpty {
+                        img?.attr("src")
+                    }
+                }
+            } ?: ""
 
             if (title.isNotBlank() && href.isNotBlank()) {
-                val absoluteUrl = if (href.startsWith("http")) href else "$baseUrl$href"
-                if (coverUrl.isNotBlank() && !coverUrl.startsWith("http")) coverUrl = "$baseUrl$coverUrl"
+                val absoluteUrl = if (href.startsWith("http")) href else "$baseUrl${if (href.startsWith("/")) "" else "/"}$href"
+                if (coverUrl.isNotBlank()) {
+                    if (coverUrl.startsWith("//")) coverUrl = "https:$coverUrl"
+                    else if (!coverUrl.startsWith("http")) coverUrl = "$baseUrl${if (coverUrl.startsWith("/")) "" else "/"}$coverUrl"
+                }
                 items.add(ExploreItem(
-                    title = title,
+                    title = title.trim(),
                     url = absoluteUrl,
                     coverUrl = if (coverUrl.isBlank()) null else coverUrl,
                     source = name
@@ -120,10 +155,20 @@ class MangaBatSource : NovelSource {
         val summary = summaryElement?.text()?.replace("Description :", "")?.replace(Regex(".*summary: ", RegexOption.IGNORE_CASE), "")?.trim()
         
         // Improved coverUrl selector using OpenGraph or specific image alt
+        val coverImg = document.select(".info-image img, .story-info-left img, .manga-info-pic img").first()
         var coverUrl = document.select("meta[property='og:image']").attr("content")
-            .ifBlank { document.select(".info-image img, .story-info-left img, .manga-info-pic img").attr("src") }
+            .ifBlank { 
+                coverImg?.attr("data-src")?.ifEmpty {
+                    coverImg?.attr("data-original")?.ifEmpty {
+                        coverImg?.attr("src")
+                    }
+                } ?: ""
+            }
         
-        if (coverUrl.isNotBlank() && !coverUrl.startsWith("http")) coverUrl = "$baseUrl$coverUrl"
+        if (coverUrl.isNotBlank()) {
+            if (coverUrl.startsWith("//")) coverUrl = "https:$coverUrl"
+            else if (!coverUrl.startsWith("http")) coverUrl = "$baseUrl${if (coverUrl.startsWith("/")) "" else "/"}$coverUrl"
+        }
 
         val chapters = document.select(".chapter-name, .chapter-list a, .row a[href*='/chapter-']")
         val chapterCount = chapters.size
