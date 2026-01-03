@@ -42,7 +42,8 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
         currentChapter: String = "Chapter 1",
         baseTitle: String = title, // Default to full title if not provided
         baseNovelUrl: String = "",
-        sourceName: String = ""
+        sourceName: String = "",
+        totalChapters: Int = 0
     ): LibraryItem = withContext(Dispatchers.IO) {
         val newItem = LibraryItem(
             id = UUID.randomUUID().toString(),
@@ -55,7 +56,8 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
             isCurrentlyReading = false,
             baseTitle = baseTitle,
             baseNovelUrl = baseNovelUrl,
-            sourceName = sourceName
+            sourceName = sourceName,
+            totalChapters = totalChapters
         )
         
         val currentItems = _libraryItems.value.toMutableList()
@@ -229,10 +231,11 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
         
         for (i in currentItems.indices) {
             val item = currentItems[i]
-            if (item.id == itemId && !item.isCurrentlyReading) {
+            if (item.id == itemId && (!item.isCurrentlyReading || item.hasUpdates)) {
                 currentItems[i] = item.copy(
                     isCurrentlyReading = true,
-                    lastRead = System.currentTimeMillis()
+                    lastRead = System.currentTimeMillis(),
+                    hasUpdates = false
                 )
                 updated = true
             } else if (item.id != itemId && item.isCurrentlyReading) {
@@ -463,6 +466,86 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
         _libraryItems.value = emptyList()
         _selectedItems.value = emptySet()
         saveToPreferences()
+    }
+
+    /**
+     * Check for updates for all novels in the library.
+     * Only checks novels that are at the last known chapter.
+     */
+    suspend fun refreshLibraryUpdates(exploreRepository: ExploreRepository) = withContext(Dispatchers.IO) {
+        val currentItems = _libraryItems.value.toMutableList()
+        val groupedItems = getGroupedByTitle()
+        var updated = false
+
+        for ((baseTitle, items) in groupedItems) {
+            if (items.isEmpty()) continue
+            
+            // The first item in the sorted list is the latest chapter we have in library
+            val latestInLibrary = items.first()
+            
+            // Only check if it has source info
+            if (latestInLibrary.baseNovelUrl.isBlank() || latestInLibrary.sourceName.isBlank()) continue
+
+            // Check if it's "at the last known chapter" 
+            // We'll check if the most recent chapter in library has been reached/read
+            // Or more simply, just check if we can find MORE chapters on the source than what we have.
+            
+            try {
+                val details = exploreRepository.getNovelDetails(latestInLibrary.baseNovelUrl, latestInLibrary.sourceName)
+                if (details != null && details.chapters.isNotEmpty()) {
+                    val latestOnSource = details.chapters.lastOrNull() // Usually chapters are listed in order, last is newest? 
+                    // Wait, ExploreItem.chapters order depends on source. 
+                    // Let's check NovelFireSource or MangaBatSource to see chapter order.
+                    
+                    // Most sources have newest chapter at the TOP of the list or BOTTOM.
+                    // Let's assume for now we compare the latest chapter URL we have with what's available.
+                    
+                    val sourceChapterUrls = details.chapters.map { it.url }
+                    val libraryChapterUrlsForThisNovel = items.map { it.url }.toSet()
+                    
+                    val hasNewChapters = sourceChapterUrls.any { it !in libraryChapterUrlsForThisNovel }
+                    
+                    if (hasNewChapters || latestInLibrary.totalChapters != details.chapters.size) {
+                        // Mark the latest item in library as having updates
+                        val index = currentItems.indexOfFirst { it.id == latestInLibrary.id }
+                        if (index != -1) {
+                            var newItem = currentItems[index].copy(totalChapters = details.chapters.size)
+                            if (hasNewChapters && !newItem.hasUpdates) {
+                                newItem = newItem.copy(hasUpdates = true)
+                            }
+                            if (newItem != currentItems[index]) {
+                                currentItems[index] = newItem
+                                updated = true
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore errors for individual novels
+            }
+        }
+
+        if (updated) {
+            _libraryItems.value = currentItems
+            saveToPreferences()
+        }
+    }
+
+    /**
+     * Clear update indicator for an item
+     */
+    suspend fun clearUpdateIndicator(itemId: String): Boolean = withContext(Dispatchers.IO) {
+        val currentItems = _libraryItems.value.toMutableList()
+        val index = currentItems.indexOfFirst { it.id == itemId }
+        
+        if (index != -1 && currentItems[index].hasUpdates) {
+            currentItems[index] = currentItems[index].copy(hasUpdates = false)
+            _libraryItems.value = currentItems
+            saveToPreferences()
+            true
+        } else {
+            false
+        }
     }
     
     /**

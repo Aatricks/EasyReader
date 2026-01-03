@@ -31,6 +31,7 @@ data class LibraryItem(
     val lastScrollPosition: Int = 0,
     val lastReadIndex: Int = 0,
     val lastReadOffset: Int = 0,
+    val hasUpdates: Boolean = false,
     val chapterSummaries: Map<String, String>? = emptyMap(), // chapter URL -> AI-generated summary (nullable for Gson backward compatibility)
     val baseTitle: String = "", // Base title without chapter markers - used for grouping (empty for backward compatibility)
     val readingMode: ReadingMode = ReadingMode.VERTICAL,

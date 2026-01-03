@@ -238,7 +238,8 @@ class LibraryViewModel(
                         currentChapter = extractChapterLabel(chapterTitle) ?: "Chapter 1",
                         baseTitle = item.title,
                         baseNovelUrl = item.url,
-                        sourceName = item.source
+                        sourceName = item.source,
+                        totalChapters = item.chapterCount
                     )
 
                     // Try to add next chapters
@@ -256,7 +257,8 @@ class LibraryViewModel(
                         currentChapter = "Chapter 1",
                         baseTitle = item.title,
                         baseNovelUrl = item.url,
-                        sourceName = item.source
+                        sourceName = item.source,
+                        totalChapters = item.chapterCount
                     )
                 }
 

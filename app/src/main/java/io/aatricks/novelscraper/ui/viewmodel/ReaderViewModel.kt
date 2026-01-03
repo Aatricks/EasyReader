@@ -914,6 +914,14 @@ class ReaderViewModel(
                             isChaptersLoading = false
                         ) 
                     }
+                    
+                    // Also update totalChapters in the library item
+                    currentLibraryItemId?.let { id ->
+                        val item = libraryRepository.getItemById(id)
+                        if (item != null && item.totalChapters != details.chapters.size) {
+                            libraryRepository.updateItem(item.copy(totalChapters = details.chapters.size))
+                        }
+                    }
                 } else {
                     _uiState.update { it.copy(isChaptersLoading = false) }
                 }

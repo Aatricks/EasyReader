@@ -69,7 +69,9 @@ class PreferencesManager(context: Context) {
                                    item.baseTitle == null || 
                                    item.readingMode == null ||
                                    item.baseNovelUrl == null ||
-                                   item.sourceName == null
+                                   item.sourceName == null ||
+                                   @Suppress("SENSELESS_COMPARISON")
+                                   (item.hasUpdates == null as Any?)
                     
                     if (isInvalid) {
                         val safeTitle = item.title ?: "Unknown"
@@ -94,6 +96,7 @@ class PreferencesManager(context: Context) {
                             lastScrollPosition = item.lastScrollPosition,
                             lastReadIndex = item.lastReadIndex,
                             lastReadOffset = item.lastReadOffset,
+                            hasUpdates = item.hasUpdates,
                             chapterSummaries = item.chapterSummaries ?: emptyMap(),
                             baseTitle = if (item.baseTitle == null || item.baseTitle.isEmpty()) 
                                 extractBaseTitle(safeTitle, item.contentType ?: ContentType.WEB) 
@@ -138,6 +141,11 @@ class PreferencesManager(context: Context) {
     var currentTitle: String?
         get() = prefs.getString(KEY_CURRENT_TITLE, null)
         set(value) = prefs.edit().putString(KEY_CURRENT_TITLE, value).apply()
+
+    // Last update check time
+    var lastUpdateCheckTime: Long
+        get() = prefs.getLong(KEY_LAST_UPDATE_CHECK, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_UPDATE_CHECK, value).apply()
     
     // Clear all preferences
     fun clearAll() {
@@ -160,5 +168,6 @@ class PreferencesManager(context: Context) {
         private const val KEY_SCROLL_POSITION = "scroll_position"
         private const val KEY_LIBRARY_ITEMS = "library_items"
         private const val KEY_CURRENT_TITLE = "current_title"
+        private const val KEY_LAST_UPDATE_CHECK = "last_update_check"
     }
 }

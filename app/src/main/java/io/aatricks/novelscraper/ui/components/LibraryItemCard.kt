@@ -126,6 +126,17 @@ fun LibraryItemCard(
                             color = Color.Black
                         )
                     }
+                } else if (item.hasUpdates) {
+                    Badge(
+                        containerColor = Color(0xFFFF9800),
+                        modifier = Modifier.padding(start = 8.dp)
+                    ) {
+                        Text(
+                            text = "NEW",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.Black
+                        )
+                    }
                 }
                 
                 // Selection indicator
