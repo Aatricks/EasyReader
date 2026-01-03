@@ -84,8 +84,13 @@ fun ReaderScreen(
         scope.launch { drawerState.close() }
     }
 
-    // Handle back button to open drawer if closed and not in explore
-    BackHandler(enabled = !drawerState.isOpen && !showExplore && uiState.content != null) {
+    // Handle back button for controls
+    BackHandler(enabled = !drawerState.isOpen && uiState.showControls && !showExplore) {
+        readerViewModel.hideControls()
+    }
+
+    // Handle back button to open drawer if closed, controls hidden and not in explore
+    BackHandler(enabled = !drawerState.isOpen && !uiState.showControls && !showExplore && uiState.content != null) {
         scope.launch { drawerState.open() }
     }
     
@@ -497,6 +502,7 @@ private fun ContentArea(
             HorizontalPager(
                 state = pagerState,
                 reverseLayout = uiState.isRtl,
+                userScrollEnabled = !uiState.showControls,
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black)
