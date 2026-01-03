@@ -12,8 +12,9 @@ class MangaBatSource : NovelSource {
 
     private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-    override suspend fun getPopularNovels(page: Int, tag: String?): List<ExploreItem> = withContext(Dispatchers.IO) {
-        val url = if (tag != null) {
+    override suspend fun getPopularNovels(page: Int, tags: List<String>): List<ExploreItem> = withContext(Dispatchers.IO) {
+        val url = if (tags.isNotEmpty()) {
+            val tag = tags.first() // MangaBat only supports one tag in URL
             val tagSlug = tag.lowercase().replace(" ", "-")
             "$baseUrl/genre/$tagSlug?page=$page"
         } else {

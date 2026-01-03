@@ -25,13 +25,13 @@ class ExploreRepository(context: Context? = null) {
 
     fun getAllSources(): List<NovelSource> = sources
 
-    suspend fun getPopularNovels(page: Int = 1, sourceName: String? = null, tag: String? = null): List<ExploreItem> = coroutineScope {
+    suspend fun getPopularNovels(page: Int = 1, sourceName: String? = null, tags: List<String> = emptyList()): List<ExploreItem> = coroutineScope {
         val activeSources = if (sourceName == null) sources else sources.filter { it.name == sourceName }
         
         activeSources.map { source ->
             async {
                 try {
-                    source.getPopularNovels(page, tag)
+                    source.getPopularNovels(page, tags)
                 } catch (e: Exception) {
                     emptyList()
                 }

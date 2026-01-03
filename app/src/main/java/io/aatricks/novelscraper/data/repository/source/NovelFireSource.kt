@@ -11,10 +11,11 @@ class NovelFireSource : NovelSource {
     override val name = "NovelFire"
     override val baseUrl = "https://novelfire.net"
 
-    override suspend fun getPopularNovels(page: Int, tag: String?): List<ExploreItem> = withContext(Dispatchers.IO) {
-        val url = if (tag != null) {
+    override suspend fun getPopularNovels(page: Int, tags: List<String>): List<ExploreItem> = withContext(Dispatchers.IO) {
+        val url = if (tags.isNotEmpty()) {
+            val tag = tags.first() // Use first tag for now
             val tagSlug = tag.lowercase().replace(" ", "-")
-            "$baseUrl/genre/$tagSlug/sort-popular/status-all/all-novel?page=$page"
+            "$baseUrl/genre-$tagSlug/sort-popular/status-all/all-novel?page=$page"
         } else {
             "$baseUrl/genre-all/sort-popular/status-all/all-novel?page=$page"
         }

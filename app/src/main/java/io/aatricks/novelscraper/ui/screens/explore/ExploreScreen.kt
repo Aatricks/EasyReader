@@ -3,6 +3,7 @@ package io.aatricks.novelscraper.ui.screens.explore
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -47,7 +48,7 @@ fun ExploreScreen(
     var exploreItems by remember { mutableStateOf<List<ExploreItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var selectedSource by remember { mutableStateOf<String?>(null) }
-    var selectedTag by remember { mutableStateOf<String?>(null) }
+    var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
     var availableTags by remember { mutableStateOf<List<String>>(emptyList()) }
     var selectedItem by remember { mutableStateOf<ExploreItem?>(null) }
     var selectedItemDetails by remember { mutableStateOf<ExploreItem?>(null) }
@@ -63,7 +64,7 @@ fun ExploreScreen(
 
     LaunchedEffect(selectedSource) {
         availableTags = exploreRepository.getTags(selectedSource)
-        selectedTag = null // Reset tag when source changes
+        selectedTags = emptySet() // Reset tags when source changes
     }
 
     BackHandler {
@@ -73,7 +74,7 @@ fun ExploreScreen(
             scope.launch {
                 isLoading = true
                 page = 1
-                exploreItems = exploreRepository.getPopularNovels(1, selectedSource, selectedTag)
+                exploreItems = exploreRepository.getPopularNovels(1, selectedSource, selectedTags.toList())
                 isLoading = false
             }
         } else {
@@ -107,7 +108,7 @@ fun ExploreScreen(
         scope.launch {
             isLoading = true
             val newItems = if (searchQuery.isBlank()) {
-                exploreRepository.getPopularNovels(page + 1, selectedSource, selectedTag)
+                exploreRepository.getPopularNovels(page + 1, selectedSource, selectedTags.toList())
             } else {
                 exploreRepository.searchNovels(searchQuery, page + 1, selectedSource)
             }
@@ -124,9 +125,9 @@ fun ExploreScreen(
         }
     }
 
-    LaunchedEffect(selectedSource, selectedTag) {
+    LaunchedEffect(selectedSource, selectedTags) {
         isLoading = true
-        exploreItems = exploreRepository.getPopularNovels(1, selectedSource, selectedTag)
+        exploreItems = exploreRepository.getPopularNovels(1, selectedSource, selectedTags.toList())
         page = 1
         isLoading = false
     }
@@ -201,7 +202,7 @@ fun ExploreScreen(
                             scope.launch {
                                 isLoading = true
                                 page = 1
-                                exploreItems = exploreRepository.getPopularNovels(1, selectedSource, selectedTag)
+                                exploreItems = exploreRepository.getPopularNovels(1, selectedSource, selectedTags.toList())
                                 isLoading = false
                             }
                         } else {
@@ -225,24 +226,29 @@ fun ExploreScreen(
     ) { paddingValues ->
         Column(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
             if (availableTags.isNotEmpty() && !isSearching) {
-                ScrollableTabRow(
-                    selectedTabIndex = if (selectedTag == null) 0 else availableTags.indexOf(selectedTag) + 1,
-                    edgePadding = 8.dp,
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.primary,
-                    divider = {},
-                    indicator = {}
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Tab(
-                        selected = selectedTag == null,
-                        onClick = { selectedTag = null },
-                        text = { Text("All") }
-                    )
-                    availableTags.forEach { tag ->
-                        Tab(
-                            selected = selectedTag == tag,
-                            onClick = { selectedTag = tag },
-                            text = { Text(tag) }
+                    item {
+                        FilterChip(
+                            selected = selectedTags.isEmpty(),
+                            onClick = { selectedTags = emptySet() },
+                            label = { Text("All") }
+                        )
+                    }
+                    items(availableTags) { tag ->
+                        FilterChip(
+                            selected = selectedTags.contains(tag),
+                            onClick = {
+                                selectedTags = if (selectedTags.contains(tag)) {
+                                    selectedTags - tag
+                                } else {
+                                    selectedTags + tag
+                                }
+                            },
+                            label = { Text(tag) }
                         )
                     }
                 }
