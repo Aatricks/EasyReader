@@ -23,8 +23,12 @@ class ExploreRepository(context: Context? = null) {
     private val sources: List<NovelSource>
         get() = staticSources + (sourceManager?.getNovelSources() ?: emptyList())
 
-    suspend fun getPopularNovels(page: Int = 1): List<ExploreItem> = coroutineScope {
-        sources.map { source ->
+    fun getAllSources(): List<NovelSource> = sources
+
+    suspend fun getPopularNovels(page: Int = 1, sourceName: String? = null): List<ExploreItem> = coroutineScope {
+        val activeSources = if (sourceName == null) sources else sources.filter { it.name == sourceName }
+        
+        activeSources.map { source ->
             async {
                 try {
                     source.getPopularNovels(page)
@@ -32,11 +36,13 @@ class ExploreRepository(context: Context? = null) {
                     emptyList()
                 }
             }
-        }.awaitAll().flatten().shuffled() // Shuffle to mix sources
+        }.awaitAll().flatten().let { if (sourceName == null) it.shuffled() else it }
     }
     
-    suspend fun searchNovels(query: String, page: Int = 1): List<ExploreItem> = coroutineScope {
-        sources.map { source ->
+    suspend fun searchNovels(query: String, page: Int = 1, sourceName: String? = null): List<ExploreItem> = coroutineScope {
+        val activeSources = if (sourceName == null) sources else sources.filter { it.name == sourceName }
+
+        activeSources.map { source ->
             async {
                 try {
                     source.searchNovels(query, page)

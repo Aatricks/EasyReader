@@ -31,6 +31,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.FilterList
 import io.aatricks.novelscraper.data.repository.source.SmartScraperSource
 import androidx.activity.compose.BackHandler
 
@@ -45,6 +46,7 @@ fun ExploreScreen(
     var isSearching by remember { mutableStateOf(false) }
     var exploreItems by remember { mutableStateOf<List<ExploreItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var selectedSource by remember { mutableStateOf<String?>(null) }
     var selectedItem by remember { mutableStateOf<ExploreItem?>(null) }
     var selectedItemDetails by remember { mutableStateOf<ExploreItem?>(null) }
     var isFetchingDetails by remember { mutableStateOf(false) }
@@ -54,6 +56,7 @@ fun ExploreScreen(
     val context = LocalContext.current
     
     var showCustomUrlDialog by remember { mutableStateOf(false) }
+    var showSourceDialog by remember { mutableStateOf(false) }
     var customUrl by remember { mutableStateOf("") }
 
     BackHandler {
@@ -63,7 +66,7 @@ fun ExploreScreen(
             scope.launch {
                 isLoading = true
                 page = 1
-                exploreItems = exploreRepository.getPopularNovels(1)
+                exploreItems = exploreRepository.getPopularNovels(1, selectedSource)
                 isLoading = false
             }
         } else {
@@ -97,9 +100,9 @@ fun ExploreScreen(
         scope.launch {
             isLoading = true
             val newItems = if (searchQuery.isBlank()) {
-                exploreRepository.getPopularNovels(page + 1)
+                exploreRepository.getPopularNovels(page + 1, selectedSource)
             } else {
-                exploreRepository.searchNovels(searchQuery, page + 1)
+                exploreRepository.searchNovels(searchQuery, page + 1, selectedSource)
             }
             // Check if new items are already present to avoid infinite loops with sources that redirect to page 1
             val distinctNewItems = newItems.filter { newItem -> 
@@ -114,9 +117,9 @@ fun ExploreScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(selectedSource) {
         isLoading = true
-        exploreItems = exploreRepository.getPopularNovels(1)
+        exploreItems = exploreRepository.getPopularNovels(1, selectedSource)
         page = 1
         isLoading = false
     }
@@ -126,7 +129,7 @@ fun ExploreScreen(
         scope.launch {
             isLoading = true
             page = 1
-            exploreItems = exploreRepository.searchNovels(searchQuery, 1)
+            exploreItems = exploreRepository.searchNovels(searchQuery, 1, selectedSource)
             isLoading = false
         }
     }
@@ -173,6 +176,13 @@ fun ExploreScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showSourceDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Default.FilterList,
+                            contentDescription = "Select Source",
+                            tint = if (selectedSource != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                     IconButton(onClick = { showCustomUrlDialog = true }) {
                         Icon(Icons.Default.Add, contentDescription = "Add Custom URL")
                     }
@@ -184,7 +194,7 @@ fun ExploreScreen(
                             scope.launch {
                                 isLoading = true
                                 page = 1
-                                exploreItems = exploreRepository.getPopularNovels(1)
+                                exploreItems = exploreRepository.getPopularNovels(1, selectedSource)
                                 isLoading = false
                             }
                         } else {
@@ -237,6 +247,51 @@ fun ExploreScreen(
                 }
             }
         }
+    }
+
+    if (showSourceDialog) {
+        AlertDialog(
+            onDismissRequest = { showSourceDialog = false },
+            title = { Text("Select Source") },
+            text = {
+                val sources = exploreRepository.getAllSources()
+                LazyColumn {
+                    item {
+                        ListItem(
+                            headlineContent = { Text("All Sources") },
+                            modifier = Modifier.clickable {
+                                selectedSource = null
+                                showSourceDialog = false
+                            },
+                            trailingContent = {
+                                if (selectedSource == null) {
+                                    RadioButton(selected = true, onClick = null)
+                                }
+                            }
+                        )
+                    }
+                    items(sources) { source ->
+                        ListItem(
+                            headlineContent = { Text(source.name) },
+                            modifier = Modifier.clickable {
+                                selectedSource = source.name
+                                showSourceDialog = false
+                            },
+                            trailingContent = {
+                                if (selectedSource == source.name) {
+                                    RadioButton(selected = true, onClick = null)
+                                }
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSourceDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
     }
 
     if (showCustomUrlDialog) {
