@@ -423,6 +423,10 @@ class ReaderViewModel(
                             flushTextBuffer()
                             formattedElements.add(el)
                         }
+                        is ContentElement.ImageGroup -> {
+                            flushTextBuffer()
+                            formattedElements.add(el)
+                        }
                     }
                 }
                 flushTextBuffer()

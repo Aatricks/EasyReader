@@ -20,15 +20,31 @@ sealed class ContentElement {
      * @property url The URL or path to the image
      * @property altText Optional alternative text for accessibility
      * @property caption Optional image caption
+     * @property width Image width in pixels (0 if unknown)
+     * @property height Image height in pixels (0 if unknown)
      */
     data class Image(
         val url: String,
         val altText: String? = null,
         val caption: String? = null,
-        val description: String? = null
+        val description: String? = null,
+        val width: Int = 0,
+        val height: Int = 0
     ) : ContentElement() {
         init {
             require(url.isNotBlank()) { "Image URL cannot be blank" }
+        }
+    }
+
+    /**
+     * Group of images that should be displayed together as a single page
+     * @property images List of images in the group
+     */
+    data class ImageGroup(
+        val images: List<Image>
+    ) : ContentElement() {
+        init {
+            require(images.isNotEmpty()) { "Image group cannot be empty" }
         }
     }
     
@@ -40,5 +56,5 @@ sealed class ContentElement {
     /**
      * Returns true if this element is image content
      */
-    fun isImage(): Boolean = this is Image
+    fun isImage(): Boolean = this is Image || this is ImageGroup
 }

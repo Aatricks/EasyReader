@@ -38,7 +38,13 @@ data class ChapterContent(
     /**
      * Returns the number of image elements in the chapter
      */
-    fun getImageCount(): Int = paragraphs.count { it is ContentElement.Image }
+    fun getImageCount(): Int = paragraphs.sumOf { 
+        when (it) {
+            is ContentElement.Image -> 1
+            is ContentElement.ImageGroup -> it.images.size
+            else -> 0
+        }
+    }
     
     /**
      * Returns true if there is a next chapter available
@@ -62,7 +68,11 @@ data class ChapterContent(
     /**
      * Get all image URLs
      */
-    fun getAllImageUrls(): List<String> = paragraphs
-        .filterIsInstance<ContentElement.Image>()
-        .map { it.url }
+    fun getAllImageUrls(): List<String> = paragraphs.flatMap { 
+        when (it) {
+            is ContentElement.Image -> listOf(it.url)
+            is ContentElement.ImageGroup -> it.images.map { img -> img.url }
+            else -> emptyList()
+        }
+    }
 }

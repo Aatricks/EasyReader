@@ -527,6 +527,23 @@ private fun ContentArea(
                                     contentScale = ContentScale.Fit
                                 )
                             }
+                            is ContentElement.ImageGroup -> {
+                                Column(
+                                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    element.images.forEach { img ->
+                                        ReaderImageView(
+                                            imageUrl = img.url,
+                                            altText = img.altText,
+                                            readerViewModel = readerViewModel,
+                                            pageUrl = content.url,
+                                            contentScale = ContentScale.FillWidth
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -568,6 +585,22 @@ private fun ContentArea(
                                 pageUrl = content.url,
                                 contentScale = ContentScale.FillWidth
                             )
+                        }
+                        is ContentElement.ImageGroup -> {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                element.images.forEach { img ->
+                                    ReaderImageView(
+                                        imageUrl = img.url,
+                                        altText = img.altText,
+                                        readerViewModel = readerViewModel,
+                                        pageUrl = content.url,
+                                        contentScale = ContentScale.FillWidth
+                                    )
+                                }
+                            }
                         }
                     }
                 }

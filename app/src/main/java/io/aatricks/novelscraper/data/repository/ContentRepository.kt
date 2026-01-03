@@ -5,6 +5,7 @@ import android.net.Uri
 import com.itextpdf.kernel.pdf.PdfDocument
 import com.itextpdf.kernel.pdf.PdfReader
 import com.itextpdf.kernel.pdf.canvas.parser.PdfTextExtractor
+import android.graphics.BitmapFactory
 import io.aatricks.novelscraper.data.model.*
 import io.aatricks.novelscraper.util.TextUtils
 import java.io.File
@@ -15,6 +16,8 @@ import java.util.zip.ZipInputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -255,7 +258,7 @@ class ContentRepository(private val context: Context) {
             }
 
     /** Parse HTML document and extract content */
-    private fun parseHtmlDocument(document: Document, url: String): ContentResult {
+    private suspend fun parseHtmlDocument(document: Document, url: String): ContentResult {
         try {
             // Extract title
             val title = document.title().takeIf { it.isNotBlank() }
@@ -381,8 +384,63 @@ class ContentRepository(private val context: Context) {
             // If we have many images and little text, OR many images from a manga-specific
             // selector, it's manga/manhwa
             if (imagesFromSelectors.size > 5 || (foundImages && filteredParagraphs.size < 10)) {
+                // Post-process images to group split pages by checking dimensions
+                val processedElements = mutableListOf<ContentElement>()
+                val imagesWithDims = withContext(Dispatchers.IO) {
+                    imagesFromSelectors.map { img ->
+                        async {
+                            val dims = fetchImageDimensions(img.url, url)
+                            if (dims != null) img.copy(width = dims.first, height = dims.second) else img
+                        }
+                    }.awaitAll()
+                }
+
+                var i = 0
+                while (i < imagesWithDims.size) {
+                    val current = imagesWithDims[i]
+                    
+                    if (processedElements.isNotEmpty()) {
+                        val last = processedElements.last()
+                        if (last is ContentElement.Image && last.width > 0 && current.width > 0 && last.width == current.width) {
+                            val lastRatio = last.height.toFloat() / last.width
+                            val currentRatio = current.height.toFloat() / current.width
+                            
+                            // Group if one is a fragment (short) and combined they are not too tall
+                            val totalRatio = lastRatio + currentRatio
+                            val shouldGroup = (currentRatio < 0.8f || lastRatio < 0.8f) && totalRatio < 2.1f
+                                             
+                            if (shouldGroup) {
+                                processedElements.removeAt(processedElements.size - 1)
+                                processedElements.add(ContentElement.ImageGroup(listOf(last, current)))
+                                i++
+                                continue
+                            }
+                        } else if (last is ContentElement.ImageGroup) {
+                            val lastInGroup = last.images.last()
+                            if (lastInGroup.width > 0 && current.width > 0 && lastInGroup.width == current.width) {
+                                val groupHeight = last.images.sumOf { it.height }
+                                val groupRatio = groupHeight.toFloat() / lastInGroup.width
+                                val currentRatio = current.height.toFloat() / current.width
+                                
+                                val totalRatio = groupRatio + currentRatio
+                                val shouldGroup = currentRatio < 0.8f && totalRatio < 2.1f
+                                
+                                if (shouldGroup) {
+                                    processedElements.removeAt(processedElements.size - 1)
+                                    processedElements.add(ContentElement.ImageGroup(last.images + current))
+                                    i++
+                                    continue
+                                }
+                            }
+                        }
+                    }
+                    
+                    processedElements.add(current)
+                    i++
+                }
+
                 return ContentResult.Success(
-                        elements = imagesFromSelectors,
+                        elements = processedElements,
                         title = title,
                         url = url
                 )
@@ -1433,5 +1491,60 @@ class ContentRepository(private val context: Context) {
         val clone = element.clone()
         clone.select("br").forEach { it.replaceWith(TextNode("[[LINE_BREAK]][[LINE_BREAK]]")) }
         return clone.text().replace("[[LINE_BREAK]]", "\n")
+    }
+
+    /**
+     * Fetch image dimensions from URL without downloading the whole file.
+     */
+    private suspend fun fetchImageDimensions(imageUrl: String, pageUrl: String): Pair<Int, Int>? = withContext(Dispatchers.IO) {
+        try {
+            if (!imageUrl.startsWith("http")) return@withContext null
+
+            val uri = try { java.net.URI(pageUrl) } catch (e: Exception) { null }
+            val referer = if (uri != null) "${uri.scheme}://${uri.host}/" else pageUrl
+
+            val request = Request.Builder()
+                .url(imageUrl)
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                .addHeader("Referer", referer)
+                .addHeader("Range", "bytes=0-16383")
+                .build()
+
+            okHttpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val inputStream = response.body?.byteStream() ?: return@withContext null
+                    val options = BitmapFactory.Options().apply {
+                        inJustDecodeBounds = true
+                    }
+                    BitmapFactory.decodeStream(inputStream, null, options)
+                    if (options.outWidth > 0 && options.outHeight > 0) {
+                        return@withContext Pair(options.outWidth, options.outHeight)
+                    }
+                } else if (response.code == 416 || response.code == 403) {
+                    // Range not supported or Forbidden with Range, try full download
+                    val fullRequest = Request.Builder()
+                        .url(imageUrl)
+                        .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                        .addHeader("Referer", referer)
+                        .build()
+                    
+                    okHttpClient.newCall(fullRequest).execute().use { fullResponse ->
+                        if (fullResponse.isSuccessful) {
+                            val inputStream = fullResponse.body?.byteStream() ?: return@withContext null
+                            val options = BitmapFactory.Options().apply {
+                                inJustDecodeBounds = true
+                            }
+                            BitmapFactory.decodeStream(inputStream, null, options)
+                            if (options.outWidth > 0 && options.outHeight > 0) {
+                                return@withContext Pair(options.outWidth, options.outHeight)
+                            }
+                        }
+                    }
+                }
+            }
+            null
+        } catch (e: Exception) {
+            null
+        }
     }
 }

@@ -41,6 +41,16 @@ fun ContentRenderer(element: ContentElement) {
         is ContentElement.Image -> {
             ImageContent(imageUrl = element.url, description = element.description)
         }
+        is ContentElement.ImageGroup -> {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                element.images.forEach { image ->
+                    ImageContent(imageUrl = image.url, description = image.description)
+                }
+            }
+        }
     }
 }
 

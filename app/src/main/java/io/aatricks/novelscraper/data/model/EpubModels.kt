@@ -79,9 +79,13 @@ data class EpubChapter(
     /**
      * Get all image URLs
      */
-    fun getAllImageUrls(): List<String> = content
-        .filterIsInstance<ContentElement.Image>()
-        .map { it.url }
+    fun getAllImageUrls(): List<String> = content.flatMap { 
+        when (it) {
+            is ContentElement.Image -> listOf(it.url)
+            is ContentElement.ImageGroup -> it.images.map { img -> img.url }
+            else -> emptyList()
+        }
+    }
 }
 
 /**
