@@ -1500,6 +1500,18 @@ class ContentRepository(private val context: Context) {
         try {
             if (!imageUrl.startsWith("http")) return@withContext null
 
+            // Check if already cached locally first - this is the fastest way
+            val cachedFile = getCachedMediaFile(imageUrl)
+            if (cachedFile.exists()) {
+                val options = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                BitmapFactory.decodeFile(cachedFile.absolutePath, options)
+                if (options.outWidth > 0 && options.outHeight > 0) {
+                    return@withContext Pair(options.outWidth, options.outHeight)
+                }
+            }
+
             val uri = try { java.net.URI(pageUrl) } catch (e: Exception) { null }
             val referer = if (uri != null) "${uri.scheme}://${uri.host}/" else pageUrl
 
