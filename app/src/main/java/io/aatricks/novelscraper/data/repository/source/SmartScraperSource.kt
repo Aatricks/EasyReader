@@ -39,7 +39,7 @@ class SmartScraperSource(override val baseUrl: String) : NovelSource {
                 }
             }
         }
-        items.take(20)
+        items
     }
 
     override suspend fun searchNovels(query: String, page: Int): List<ExploreItem> {

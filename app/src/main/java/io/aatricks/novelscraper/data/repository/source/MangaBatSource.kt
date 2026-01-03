@@ -82,7 +82,7 @@ class MangaBatSource : NovelSource {
             }
         }
         
-        items.distinctBy { it.url }.take(24)
+        items.distinctBy { it.url }
     }
 
     override suspend fun searchNovels(query: String, page: Int): List<ExploreItem> = withContext(Dispatchers.IO) {

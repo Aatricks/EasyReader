@@ -89,7 +89,7 @@ class NovelFireSource : NovelSource {
         // The text dump showed "[23]Shadow Slave-[24][gif...]"
         // This implies an image link then a text link.
 
-        items.take(20)
+        items
     }
 
     override suspend fun searchNovels(query: String, page: Int): List<ExploreItem> = withContext(Dispatchers.IO) {
