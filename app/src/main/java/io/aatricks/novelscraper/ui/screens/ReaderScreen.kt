@@ -114,6 +114,14 @@ fun ReaderScreen(
         }
     }
 
+    // Handle Toast messages
+    LaunchedEffect(uiState.toastMessage) {
+        uiState.toastMessage?.let { message ->
+            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+            readerViewModel.clearToast()
+        }
+    }
+
     // Manage Status Bar Visibility
     val view = LocalView.current
     val window = (view.context as? Activity)?.window
@@ -243,6 +251,18 @@ fun ReaderScreen(
                                 onLibraryClick = { scope.launch { drawerState.open() } },
                                 onShowChapterList = { showChapterList = true }
                             )
+                        }
+                    }
+
+                    if (uiState.isNavigating) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.3f))
+                                .pointerInput(Unit) {}, // Consume touches
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = Color(0xFF4CAF50))
                         }
                     }
                 }

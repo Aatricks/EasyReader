@@ -51,7 +51,9 @@ class ReaderViewModel(
     data class ReaderUiState(
         val content: ChapterContent? = null,
         val isLoading: Boolean = false,
+        val isNavigating: Boolean = false, // Loading next/prev chapter in background
         val error: String? = null,
+        val toastMessage: String? = null, // Temporary message to show (Toast/Snackbar)
         val scrollPosition: Float = 0f,
         val scrollProgress: Int = 0, // 0-100 percentage
         val scrollIndex: Int = 0, // First visible item index
@@ -74,12 +76,20 @@ class ReaderViewModel(
     )
 
     /**
+     * Clear the current toast message
+     */
+    fun clearToast() {
+        _uiState.update { it.copy(toastMessage = null) }
+    }
+
+    /**
      * Load content from URL or file path
      * @param url The URL or file path to load content from
      * @param libraryItemId Optional library item ID to track reading progress
      * @param fromBottom If true, initialize scroll position at the end of the content
+     * @param isSilent If true, don't show full-screen loading state (keep current content)
      */
-    fun loadContent(url: String, libraryItemId: String? = null, fromBottom: Boolean = false) {
+    fun loadContent(url: String, libraryItemId: String? = null, fromBottom: Boolean = false, isSilent: Boolean = false) {
         viewModelScope.launch {
             try {
                 // Check if this is an EPUB URL with href fragment (format: path#href or content://...#href)
@@ -90,7 +100,7 @@ class ReaderViewModel(
                         val href = parts[1]
                         // Check if base path looks like an EPUB (content URI or .epub file)
                         if (basePath.startsWith("content://") || basePath.endsWith(".epub", ignoreCase = true) || basePath.contains("epub")) {
-                            loadEpubChapter(basePath, href, libraryItemId, fromBottom)
+                            loadEpubChapter(basePath, href, libraryItemId, fromBottom, isSilent)
                             return@launch
                         }
                     }
@@ -113,7 +123,11 @@ class ReaderViewModel(
                     } catch (_: Exception) {}
                 }
 
-                _uiState.update { it.copy(isLoading = true, error = null) }
+                if (!isSilent) {
+                    _uiState.update { it.copy(isLoading = true, error = null) }
+                } else {
+                    _uiState.update { it.copy(error = null) }
+                }
                 currentLibraryItemId = libraryItemId
 
                 when (val result = contentRepository.loadContent(url)) {
@@ -150,6 +164,7 @@ class ReaderViewModel(
                             it.copy(
                                 content = content,
                                 isLoading = false,
+                                isNavigating = false,
                                 error = null,
                                 canNavigateNext = content.hasNextChapter(),
                                 canNavigatePrevious = content.hasPreviousChapter(),
@@ -202,6 +217,7 @@ class ReaderViewModel(
                         _uiState.update {
                             it.copy(
                                 isLoading = false,
+                                isNavigating = false,
                                 error = result.message
                             )
                         }
@@ -213,6 +229,7 @@ class ReaderViewModel(
                 _uiState.update {
                     it.copy(
                         isLoading = false,
+                        isNavigating = false,
                         error = "Failed to load content: ${e.message}"
                     )
                 }
@@ -227,59 +244,36 @@ class ReaderViewModel(
      * Automatically adds the chapter to library if it doesn't exist
      */
     fun navigateToNextChapter() {
-        val nextUrl = _uiState.value.content?.nextChapterUrl
-        if (nextUrl != null) {
-            viewModelScope.launch {
-                // Mark as explicit navigation to prevent scroll restoration
-                isExplicitNavigation = true
-                
-                // Get current library item to extract baseTitle and other metadata
-                val currentItem = currentLibraryItemId?.let { libraryRepository.getItemById(it) }
-                
-                // Check if next chapter already exists in library
-                val existingNextItem = libraryRepository.getItemByUrl(nextUrl)
-                
-                val nextItemId = if (existingNextItem != null) {
-                    // Chapter already exists, use its ID
-                    existingNextItem.id
-                } else if (currentItem != null && currentItem.contentType == ContentType.WEB) {
-                    // Add new chapter to library with same baseTitle as current chapter
-                    try {
-                        val fetchedTitle = contentRepository.fetchTitle(nextUrl) ?: nextUrl
-                        val chapterLabel = extractChapterLabel(fetchedTitle) 
-                            ?: extractChapterLabelFromUrl(nextUrl) 
-                            ?: "Chapter ${extractChapterNumber(currentItem.currentChapter)?.plus(1) ?: 1}"
-                        
-                        // Get base title from current item, or extract it if empty
-                        val baseTitle = if (currentItem.baseTitle.isNotBlank()) {
-                            currentItem.baseTitle
-                        } else {
-                            extractBaseTitle(currentItem.title, ContentType.WEB)
-                        }
-                        
-                        val newItem = libraryRepository.addItem(
-                            title = fetchedTitle.trim().ifBlank { "$baseTitle - $chapterLabel" },
-                            url = nextUrl,
-                            contentType = ContentType.WEB,
-                            currentChapter = chapterLabel,
-                            baseTitle = baseTitle,
-                            baseNovelUrl = currentItem.baseNovelUrl,
-                            sourceName = currentItem.sourceName
-                        )
-                        // Inherit reading mode
-                        libraryRepository.updateReadingMode(newItem.id, currentItem.readingMode)
-                        newItem.id
-                    } catch (e: Exception) {
-                        // Failed to add, load without library tracking
-                        null
-                    }
-                } else {
-                    // Not a WEB item or no current item, load without library tracking
-                    null
+        val nextUrl = _uiState.value.content?.nextChapterUrl ?: return
+        viewModelScope.launch {
+            // Mark as explicit navigation to prevent scroll restoration
+            isExplicitNavigation = true
+            
+            // Check if next chapter already exists in library
+            val existingNextItem = libraryRepository.getItemByUrl(nextUrl)
+            if (existingNextItem != null) {
+                loadContent(nextUrl, existingNextItem.id)
+                return@launch
+            }
+
+            // Not in library, check if it's 404 before adding
+            _uiState.update { it.copy(isNavigating = true) }
+            val result = contentRepository.loadContent(nextUrl)
+            _uiState.update { it.copy(isNavigating = false) }
+
+            when (result) {
+                is ContentRepository.ContentResult.Success -> {
+                    val nextItemId = addChapterToLibrary(nextUrl, result.title, isNext = true)
+                    loadContent(nextUrl, nextItemId, isSilent = true)
                 }
-                
-                // Load the next chapter content
-                loadContent(nextUrl, nextItemId)
+                is ContentRepository.ContentResult.Error -> {
+                    if (result.message.contains("404")) {
+                        _uiState.update { it.copy(toastMessage = "Next chapter not found (404)") }
+                    } else {
+                        // For other errors (403, etc.), proceed to show error state/Cloudflare webview
+                        loadContent(nextUrl, isSilent = false)
+                    }
+                }
             }
         }
     }
@@ -290,60 +284,73 @@ class ReaderViewModel(
      * @param fromBottom If true, initialize scroll position at the end of the content
      */
     fun navigateToPreviousChapter(fromBottom: Boolean = false) {
-        val prevUrl = _uiState.value.content?.previousChapterUrl
-        if (prevUrl != null) {
-            viewModelScope.launch {
-                // Mark as explicit navigation to prevent scroll restoration
-                isExplicitNavigation = true
-                
-                // Get current library item to extract baseTitle and other metadata
-                val currentItem = currentLibraryItemId?.let { libraryRepository.getItemById(it) }
-                
-                // Check if previous chapter already exists in library
-                val existingPrevItem = libraryRepository.getItemByUrl(prevUrl)
-                
-                val prevItemId = if (existingPrevItem != null) {
-                    // Chapter already exists, use its ID
-                    existingPrevItem.id
-                } else if (currentItem != null && currentItem.contentType == ContentType.WEB) {
-                    // Add new chapter to library with same baseTitle as current chapter
-                    try {
-                        val fetchedTitle = contentRepository.fetchTitle(prevUrl) ?: prevUrl
-                        val chapterLabel = extractChapterLabel(fetchedTitle) 
-                            ?: extractChapterLabelFromUrl(prevUrl) 
-                            ?: "Chapter ${extractChapterNumber(currentItem.currentChapter)?.minus(1) ?: 1}"
-                        
-                        // Get base title from current item, or extract it if empty
-                        val baseTitle = if (currentItem.baseTitle.isNotBlank()) {
-                            currentItem.baseTitle
-                        } else {
-                            extractBaseTitle(currentItem.title, ContentType.WEB)
-                        }
-                        
-                        val newItem = libraryRepository.addItem(
-                            title = fetchedTitle.trim().ifBlank { "$baseTitle - $chapterLabel" },
-                            url = prevUrl,
-                            contentType = ContentType.WEB,
-                            currentChapter = chapterLabel,
-                            baseTitle = baseTitle,
-                            baseNovelUrl = currentItem.baseNovelUrl,
-                            sourceName = currentItem.sourceName
-                        )
-                        // Inherit reading mode
-                        libraryRepository.updateReadingMode(newItem.id, currentItem.readingMode)
-                        newItem.id
-                    } catch (e: Exception) {
-                        // Failed to add, load without library tracking
-                        null
-                    }
-                } else {
-                    // Not a WEB item or no current item, load without library tracking
-                    null
-                }
-                
-                // Load the previous chapter content
-                loadContent(prevUrl, prevItemId, fromBottom = fromBottom)
+        val prevUrl = _uiState.value.content?.previousChapterUrl ?: return
+        viewModelScope.launch {
+            // Mark as explicit navigation to prevent scroll restoration
+            isExplicitNavigation = true
+            
+            // Check if previous chapter already exists in library
+            val existingPrevItem = libraryRepository.getItemByUrl(prevUrl)
+            if (existingPrevItem != null) {
+                loadContent(prevUrl, existingPrevItem.id, fromBottom = fromBottom, isSilent = true)
+                return@launch
             }
+
+            // Not in library, check if it's 404 before adding
+            _uiState.update { it.copy(isNavigating = true) }
+            val result = contentRepository.loadContent(prevUrl)
+            _uiState.update { it.copy(isNavigating = false) }
+
+            when (result) {
+                is ContentRepository.ContentResult.Success -> {
+                    val prevItemId = addChapterToLibrary(prevUrl, result.title, isNext = false)
+                    loadContent(prevUrl, prevItemId, fromBottom = fromBottom, isSilent = true)
+                }
+                is ContentRepository.ContentResult.Error -> {
+                    if (result.message.contains("404")) {
+                        _uiState.update { it.copy(toastMessage = "Previous chapter not found (404)") }
+                    } else {
+                        // For other errors (403, etc.), proceed to show error state/Cloudflare webview
+                        loadContent(prevUrl, fromBottom = fromBottom, isSilent = false)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Helper to add a chapter to library inheriting metadata from current chapter
+     */
+    private suspend fun addChapterToLibrary(url: String, fetchedTitle: String?, isNext: Boolean): String? {
+        val currentItem = currentLibraryItemId?.let { libraryRepository.getItemById(it) }
+        if (currentItem == null || currentItem.contentType != ContentType.WEB) return null
+
+        return try {
+            val title = fetchedTitle ?: url
+            val chapterLabel = extractChapterLabel(title) 
+                ?: extractChapterLabelFromUrl(url) 
+                ?: (if (isNext) "Next Chapter" else "Previous Chapter")
+            
+            val baseTitle = if (currentItem.baseTitle.isNotBlank()) {
+                currentItem.baseTitle
+            } else {
+                extractBaseTitle(currentItem.title, ContentType.WEB)
+            }
+            
+            val newItem = libraryRepository.addItem(
+                title = title.trim().ifBlank { "$baseTitle - $chapterLabel" },
+                url = url,
+                contentType = ContentType.WEB,
+                currentChapter = chapterLabel,
+                baseTitle = baseTitle,
+                baseNovelUrl = currentItem.baseNovelUrl,
+                sourceName = currentItem.sourceName
+            )
+            // Inherit reading mode
+            libraryRepository.updateReadingMode(newItem.id, currentItem.readingMode)
+            newItem.id
+        } catch (e: Exception) {
+            null
         }
     }
     
@@ -353,8 +360,9 @@ class ReaderViewModel(
      * @param href The chapter href within the EPUB
      * @param libraryItemId Optional library item ID to track reading progress
      * @param fromBottom If true, initialize scroll position at the end of the content
+     * @param isSilent If true, don't show full-screen loading state
      */
-    fun loadEpubChapter(epubPath: String, href: String, libraryItemId: String? = null, fromBottom: Boolean = false) {
+    fun loadEpubChapter(epubPath: String, href: String, libraryItemId: String? = null, fromBottom: Boolean = false, isSilent: Boolean = false) {
         viewModelScope.launch {
             try {
                 // Save previous progress for the current library item before loading next
@@ -375,7 +383,11 @@ class ReaderViewModel(
                     } catch (_: Exception) {}
                 }
 
-                _uiState.update { it.copy(isLoading = true, error = null) }
+                if (!isSilent) {
+                    _uiState.update { it.copy(isLoading = true, error = null) }
+                } else {
+                    _uiState.update { it.copy(error = null) }
+                }
                 currentLibraryItemId = libraryItemId
 
                 // Get EPUB book structure
@@ -384,6 +396,7 @@ class ReaderViewModel(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
+                            isNavigating = false,
                             error = "Failed to load EPUB structure"
                         )
                     }
@@ -396,19 +409,17 @@ class ReaderViewModel(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
+                            isNavigating = false,
                             error = "Failed to load chapter content"
                         )
                     }
                     return@launch
                 }
                 
-                // Prefer the next/previous hrefs returned by the chapter loader (these
-                // account for merged chapters). Fall back to spine-based lookup if absent.
-                // Format text runs in EPUB chapter content so the UI sees the
-                // same formatted paragraphs as the preview generator. We need
-                // to preserve image positions, so we flush consecutive text
-                // runs through the formatter and emit images as-is.
+                // ...
                 val formattedElements = mutableListOf<ContentElement>()
+                // ...
+                // I'll use a larger block to avoid missing code
                 val textBuffer = mutableListOf<String>()
 
                 fun flushTextBuffer() {
@@ -458,6 +469,7 @@ class ReaderViewModel(
                     it.copy(
                         content = content,
                         isLoading = false,
+                        isNavigating = false,
                         error = null,
                         canNavigateNext = content.hasNextChapter(),
                         canNavigatePrevious = content.hasPreviousChapter(),
@@ -498,6 +510,7 @@ class ReaderViewModel(
                 _uiState.update {
                     it.copy(
                         isLoading = false,
+                        isNavigating = false,
                         error = "Failed to load EPUB chapter: ${e.message}"
                     )
                 }
@@ -869,43 +882,31 @@ class ReaderViewModel(
             // Mark as explicit navigation to prevent scroll restoration
             isExplicitNavigation = true
             
-            // Get current library item to extract metadata
-            val currentItem = currentLibraryItemId?.let { libraryRepository.getItemById(it) }
-            
             // Check if selected chapter already exists in library
             val existingItem = libraryRepository.getItemByUrl(url)
-            
-            val itemId = if (existingItem != null) {
-                // Chapter already exists, use its ID
-                existingItem.id
-            } else if (currentItem != null && currentItem.contentType == ContentType.WEB) {
-                // Add new chapter to library with same metadata as current novel
-                try {
-                    val chapterLabel = extractChapterLabel(title) 
-                        ?: extractChapterLabelFromUrl(url) 
-                        ?: title
-                    
-                    val newItem = libraryRepository.addItem(
-                        title = title.trim(),
-                        url = url,
-                        contentType = ContentType.WEB,
-                        currentChapter = chapterLabel,
-                        baseTitle = currentItem.baseTitle,
-                        baseNovelUrl = currentItem.baseNovelUrl,
-                        sourceName = currentItem.sourceName
-                    )
-                    // Inherit reading mode
-                    libraryRepository.updateReadingMode(newItem.id, currentItem.readingMode)
-                    newItem.id
-                } catch (e: Exception) {
-                    null
-                }
-            } else {
-                null
+            if (existingItem != null) {
+                loadContent(url, existingItem.id)
+                return@launch
             }
-            
-            // Load the selected chapter content
-            loadContent(url, itemId)
+
+            // Not in library, check if it's 404 before adding
+            _uiState.update { it.copy(isNavigating = true) }
+            val result = contentRepository.loadContent(url)
+            _uiState.update { it.copy(isNavigating = false) }
+
+            when (result) {
+                is ContentRepository.ContentResult.Success -> {
+                    val itemId = addChapterToLibrary(url, result.title, isNext = true)
+                    loadContent(url, itemId, isSilent = true)
+                }
+                is ContentRepository.ContentResult.Error -> {
+                    if (result.message.contains("404")) {
+                        _uiState.update { it.copy(toastMessage = "Chapter not found (404)") }
+                    } else {
+                        loadContent(url, isSilent = false)
+                    }
+                }
+            }
         }
     }
 
