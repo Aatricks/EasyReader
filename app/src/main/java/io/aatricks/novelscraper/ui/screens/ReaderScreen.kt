@@ -41,7 +41,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import coil.compose.AsyncImage
-import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.automirrored.filled.*
@@ -798,14 +797,40 @@ private fun ReaderImageView(
                 .crossfade(true)
                 .build()
         }
-        SubcomposeAsyncImage(
-            model = imageRequest,
-            contentDescription = altText,
-            modifier = Modifier.fillMaxWidth(),
-            contentScale = contentScale,
-            loading = { Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color.Gray, modifier = Modifier.size(32.dp)) } },
-            error = { Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { Text(text = altText ?: "Image unavailable", color = Color.Gray, style = MaterialTheme.typography.bodySmall) } }
-        )
+        var isLoading by remember(imageRequest) { mutableStateOf(true) }
+        var isError by remember(imageRequest) { mutableStateOf(false) }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (isLoading) Modifier.height(200.dp) else Modifier.wrapContentHeight()),
+            contentAlignment = Alignment.Center
+        ) {
+            AsyncImage(
+                model = imageRequest,
+                contentDescription = altText,
+                modifier = Modifier.fillMaxWidth(),
+                contentScale = contentScale,
+                onSuccess = { isLoading = false },
+                onError = {
+                    isLoading = false
+                    isError = true
+                }
+            )
+
+            if (isLoading) {
+                CircularProgressIndicator(color = Color.Gray, modifier = Modifier.size(32.dp))
+            }
+
+            if (isError) {
+                Text(
+                    text = altText ?: "Image unavailable",
+                    color = Color.Gray,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+        }
     } else {
         var imageData by remember(imageUrl) { mutableStateOf<android.graphics.Bitmap?>(null) }
         var isLoading by remember(imageUrl) { mutableStateOf(true) }
