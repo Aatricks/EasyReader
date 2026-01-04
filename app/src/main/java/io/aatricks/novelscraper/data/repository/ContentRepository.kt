@@ -26,11 +26,50 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.TextNode
 import org.jsoup.nodes.Element
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import org.jsoup.select.NodeVisitor
+import org.jsoup.nodes.Node
 
 /** Repository for content operations including web scraping, HTML/PDF parsing, and caching */
 class ContentRepository(private val context: Context) {
 
-    private val TAG = "ContentRepository"
+    companion object {
+        private const val TAG = "ContentRepository"
+        private val SENTENCE_ENDERS = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
+        private val CONTINUATION_WORDS = setOf(
+            "of", "to", "for", "and", "but", "or", "the", "a", "an", "my", "his", "her", "their", "its", "in", "on", "at", "from", "with"
+        )
+        private val WHITESPACE_REGEX = Regex("\\s+")
+        private val MULTIPLE_SPACES_REGEX = Regex(" +")
+        private val DOUBLE_NEWLINE_REGEX = Regex("\n\\s*\n")
+        private val CHAPTER_CLEANUP_PATTERN = Regex("(?i)^(?:chapter|chap|ch|ch\\.)[\\s:\\-\\.]*\\d+\\b.*")
+        private val CHAPTER_WORD_PATTERN = Regex("(?i)chapter")
+        private val DIGIT_ONLY_REGEX = Regex("^\\d+")
+        
+        private val MANGA_IMAGE_SELECTOR = listOf(
+            ".container-chapter-reader img",
+            ".vung-doc img",
+            ".reader-content img",
+            ".chapter-content img",
+            ".chapter-img img",
+            ".read-content img",
+            "div.page-break img"
+        ).joinToString(", ")
+
+        private val NOVEL_CONTENT_SELECTOR = listOf(
+            "article p",
+            ".content p",
+            ".post-content p",
+            ".entry-content p",
+            "#content p",
+            "main p",
+            "div.chapter-c p"
+        ).joinToString(", ")
+        
+        private val DIMENSION_SEMAPHORE = Semaphore(10)
+    }
+
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val okHttpClient =
@@ -267,80 +306,52 @@ class ContentRepository(private val context: Context) {
             val contentElements = mutableListOf<ContentElement>()
 
             // Try common image container selectors for manga/manhwa
-            val imageSelectors =
-                    listOf(
-                            ".container-chapter-reader img",
-                            ".vung-doc img",
-                            ".reader-content img",
-                            ".chapter-content img",
-                            ".chapter-img img",
-                            ".read-content img",
-                            "div.page-break img"
-                    )
-
-            var foundImages = false
             val imagesFromSelectors = mutableListOf<ContentElement.Image>()
-            for (selector in imageSelectors) {
-                val elements = document.select(selector)
-                if (elements.isNotEmpty()) {
-                    elements.forEach { element ->
-                        val src =
-                                element.attr("data-src")
-                                        .ifEmpty { element.attr("data-original") }
-                                        .ifEmpty { element.attr("src") }
+            val imageElements = document.select(MANGA_IMAGE_SELECTOR)
+            var foundImages = false
+            
+            if (imageElements.isNotEmpty()) {
+                imageElements.forEach { element ->
+                    val src =
+                            element.attr("data-src")
+                                    .ifEmpty { element.attr("data-original") }
+                                    .ifEmpty { element.attr("src") }
 
-                        if (src.isNotBlank()) {
-                            val absoluteUrl =
-                                    if (src.startsWith("http")) src
-                                    else {
-                                        val domain =
-                                                try {
-                                                    URL(url).let { "${it.protocol}://${it.host}" }
-                                                } catch (e: Exception) {
-                                                    ""
-                                                }
-                                        if (src.startsWith("/")) {
-                                            "$domain$src"
-                                        } else {
-                                            val base = url.substringBeforeLast("/")
-                                            "$base/$src"
-                                        }
+                    if (src.isNotBlank()) {
+                        val absoluteUrl =
+                                if (src.startsWith("http")) src
+                                else {
+                                    val domain =
+                                            try {
+                                                URL(url).let { "${it.protocol}://${it.host}" }
+                                            } catch (e: Exception) {
+                                                ""
+                                            }
+                                    if (src.startsWith("/")) {
+                                        "$domain$src"
+                                    } else {
+                                        val base = url.substringBeforeLast("/")
+                                        "$base/$src"
                                     }
-                            imagesFromSelectors.add(ContentElement.Image(url = absoluteUrl))
-                        }
+                                }
+                        imagesFromSelectors.add(ContentElement.Image(url = absoluteUrl))
                     }
-                    if (imagesFromSelectors.size > 2
-                    ) { // Found significant number of images in a known container
-                        foundImages = true
-                        break
-                    }
+                }
+                if (imagesFromSelectors.size > 2) { 
+                    foundImages = true
                 }
             }
 
             // Extract paragraphs from various possible containers
             val paragraphs = mutableListOf<String>()
-            val contentSelectors =
-                    listOf(
-                            "article p",
-                            ".content p",
-                            ".post-content p",
-                            ".entry-content p",
-                            "#content p",
-                            "main p",
-                            "div.chapter-c p"
-                            // Removed generic "p" from first pass to avoid noise
-                            )
-
-            for (selector in contentSelectors) {
-                val elements = document.select(selector)
-                if (elements.isNotEmpty()) {
-                    elements.forEach { element ->
-                        val text = extractTextPreservingLineBreaks(element)
-                        if (text.isNotBlank()) {
-                            paragraphs.add(text)
-                        }
+            val novelElements = document.select(NOVEL_CONTENT_SELECTOR)
+            
+            if (novelElements.isNotEmpty()) {
+                novelElements.forEach { element ->
+                    val text = extractTextPreservingLineBreaks(element)
+                    if (text.isNotBlank()) {
+                        paragraphs.add(text)
                     }
-                    if (paragraphs.isNotEmpty()) break
                 }
             }
 
@@ -361,12 +372,10 @@ class ContentRepository(private val context: Context) {
                     paragraphs.filter { raw ->
                         val p = raw.trim()
                         if (p.isEmpty()) return@filter false
-                        if (p.matches(Regex("^\\d+"))) return@filter false
-                        val chapterPattern =
-                                Regex("(?i)^(?:chapter|chap|ch|ch\\.)[\\s:\\-\\.]*\\d+\\b.*")
-                        if (chapterPattern.containsMatchIn(p)) return@filter false
+                        if (p.matches(DIGIT_ONLY_REGEX)) return@filter false
+                        if (CHAPTER_CLEANUP_PATTERN.containsMatchIn(p)) return@filter false
                         if (p.length <= 80 &&
-                                        p.contains(Regex("(?i)chapter")) &&
+                                        p.contains(CHAPTER_WORD_PATTERN) &&
                                         p.any { it.isDigit() }
                         )
                                 return@filter false
@@ -386,11 +395,14 @@ class ContentRepository(private val context: Context) {
             if (imagesFromSelectors.size > 5 || (foundImages && filteredParagraphs.size < 10)) {
                 // Post-process images to group split pages by checking dimensions
                 val processedElements = mutableListOf<ContentElement>()
-                val imagesWithDims = withContext(Dispatchers.IO) {
-                    imagesFromSelectors.map { img ->
+                val imagesWithDims: List<ContentElement.Image> = withContext(Dispatchers.IO) {
+                    imagesFromSelectors.map { img: ContentElement.Image ->
                         async {
-                            val dims = fetchImageDimensions(img.url, url)
-                            if (dims != null) img.copy(width = dims.first, height = dims.second) else img
+                            // Limit parallelism to avoid network congestion
+                            DIMENSION_SEMAPHORE.withPermit {
+                                val dims = fetchImageDimensions(img.url, url)
+                                if (dims != null) img.copy(width = dims.first, height = dims.second) else img
+                            }
                         }
                     }.awaitAll()
                 }
@@ -461,33 +473,9 @@ class ContentRepository(private val context: Context) {
             // Merge adjacent paragraphs
             val merged = mutableListOf<String>()
             var idx = 0
-            val sentenceEnders =
-                    setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
-            val continuationWords =
-                    setOf(
-                            "of",
-                            "to",
-                            "for",
-                            "and",
-                            "but",
-                            "or",
-                            "the",
-                            "a",
-                            "an",
-                            "my",
-                            "his",
-                            "her",
-                            "their",
-                            "its",
-                            "in",
-                            "on",
-                            "at",
-                            "from",
-                            "with"
-                    )
 
             fun lastWord(s: String): String {
-                val parts = s.trim().split(Regex("\\s+"))
+                val parts = s.trim().split(WHITESPACE_REGEX)
                 return parts.lastOrNull() ?: ""
             }
 
@@ -503,17 +491,17 @@ class ContentRepository(private val context: Context) {
                     if (next.isNotEmpty()) {
                         val lastChar = cur.lastOrNull()
                         val lastW = lastWord(cur).lowercase()
-                        val wordCount = cur.split(Regex("\\s+")).size
+                        val wordCount = cur.split(WHITESPACE_REGEX).size
 
                         val shouldMerge =
-                                (lastChar != null && !sentenceEnders.contains(lastChar)) &&
+                                (lastChar != null && !SENTENCE_ENDERS.contains(lastChar)) &&
                                         (wordCount <= 8 ||
-                                                lastW in continuationWords ||
+                                                lastW in CONTINUATION_WORDS ||
                                                 lastW.length <= 4) &&
                                         !(cur.contains(':') && next.contains(':'))
 
                         if (shouldMerge) {
-                            cur = (cur + " " + next).replace(Regex(" +"), " ")
+                            cur = (cur + " " + next).replace(MULTIPLE_SPACES_REGEX, " ")
                             idx += 2
                             while (idx < filteredParagraphs.size) {
                                 val peek = filteredParagraphs[idx].trim()
@@ -525,11 +513,11 @@ class ContentRepository(private val context: Context) {
                                 if (peekFirst != null &&
                                                 peekFirst.isUpperCase() &&
                                                 cur.trim().lastOrNull()?.let {
-                                                    sentenceEnders.contains(it)
+                                                    SENTENCE_ENDERS.contains(it)
                                                 } == true
                                 )
                                         break
-                                cur = (cur + " " + peek).replace(Regex(" +"), " ")
+                                cur = (cur + " " + peek).replace(MULTIPLE_SPACES_REGEX, " ")
                                 idx++
                             }
                             merged.add(cur)
@@ -545,7 +533,7 @@ class ContentRepository(private val context: Context) {
             val formatted = TextUtils.formatChapterText(joined)
             val finalParagraphs =
                     formatted
-                            .split(Regex("\\n\\s*\\n"))
+                            .split(DOUBLE_NEWLINE_REGEX)
                             .map { it.trim() }
                             .filter { it.isNotBlank() }
                             .map { ContentElement.Text(it) }
@@ -1481,16 +1469,23 @@ class ContentRepository(private val context: Context) {
      * Optimized to avoid expensive HTML serialization and re-parsing.
      */
     private fun extractTextPreservingLineBreaks(element: Element): String {
-        val brs = element.select("br")
-        if (brs.isEmpty()) {
+        // Fast path for elements without <br> tags
+        if (element.selectFirst("br") == null) {
             return element.text()
         }
 
-        // Clone element to avoid modifying the original document structure
-        // This is crucial because fallback logic might re-process elements if the first pass fails
-        val clone = element.clone()
-        clone.select("br").forEach { it.replaceWith(TextNode("[[LINE_BREAK]][[LINE_BREAK]]")) }
-        return clone.text().replace("[[LINE_BREAK]]", "\n")
+        val sb = StringBuilder()
+        element.traverse(object : NodeVisitor {
+            override fun head(node: Node, depth: Int) {
+                if (node is TextNode) {
+                    sb.append(node.text())
+                } else if (node is Element && node.tagName() == "br") {
+                    sb.append("\n")
+                }
+            }
+            override fun tail(node: Node, depth: Int) {}
+        })
+        return sb.toString()
     }
 
     /**

@@ -24,6 +24,14 @@ object TextUtils {
     private val SINGLE_NEWLINE_REGEX = Regex("(?<!\\n)\\n(?!\\n)")
     private val TWO_PLUS_SPACES_REGEX = Regex("[ ]{2,}")
 
+    private val SENTENCE_ENDERS = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
+    private val CONTINUATION_WORDS = setOf("of", "to", "for", "and", "but", "or", "the", "a", "an", "my", "his", "her", "their", "its", "in", "on", "at", "from", "with")
+
+    private fun lastWord(s: String): String {
+        val parts = s.trim().split(WHITESPACE_REGEX)
+        return parts.lastOrNull() ?: ""
+    }
+
     // Pre-compiled Patterns for repetitive usage
     private val CHAPTER_URL_PATTERN = Pattern.compile("(\\d+)(?!.*\\d)")
 
@@ -60,7 +68,8 @@ object TextUtils {
         if (url.isEmpty()) return url
         val matcher = CHAPTER_URL_PATTERN.matcher(url)
         return if (matcher.find()) {
-            val num = matcher.group(1).toInt()
+            val group = matcher.group(1) ?: return url
+            val num = group.toInt()
             matcher.replaceFirst((num + 1).toString())
         } else url
     }
@@ -72,14 +81,15 @@ object TextUtils {
         if (url.isEmpty()) return url
         val matcher = CHAPTER_URL_PATTERN.matcher(url)
         return if (matcher.find()) {
-            val num = matcher.group(1).toInt()
+            val group = matcher.group(1) ?: return url
+            val num = group.toInt()
             if (num > 1) matcher.replaceFirst((num - 1).toString()) else url
         } else url
     }
     /**
      * Extract title from URL path
      * Gets the last non-empty path segment and formats it
-     * 
+     *
      * @param url The URL to extract title from
      * @return Extracted and formatted title
      */
@@ -153,7 +163,7 @@ object TextUtils {
             // Remove spaces at line ends
             .replace(SPACE_PLUS_NEWLINE_REGEX, "\n")
             // Remove multiple consecutive newlines (keep max 3 for paragraph breaks)
-            .replace(FOUR_PLUS_NEWLINES_REGEX, "\n\n\n")
+            .replace(FOUR_PLUS_NEWLINES_REGEX, "\\n\\n\\n")
             .trim()
     }
 
@@ -166,16 +176,17 @@ object TextUtils {
     fun cleanHtmlEntities(text: String): String {
         if (text.isEmpty()) return text
         
-        return text
-            .replace("&nbsp;", " ")
-            .replace("&amp;", "&")
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-            .replace("&quot;", "\"")
-            .replace("&#39;", "'")
-            .replace("&mdash;", "—")
-            .replace("&ndash;", "–")
-            .replace("&hellip;", "…")
+        var result = text
+        result = result.replace("&nbsp;", " ")
+        result = result.replace("&amp;", "&")
+        result = result.replace("&lt;", "<")
+        result = result.replace("&gt;", ">")
+        result = result.replace("&quot;", "\"")
+        result = result.replace("&#39;", "'")
+        result = result.replace("&mdash;", "—")
+        result = result.replace("&ndash;", "–")
+        result = result.replace("&hellip;", "…")
+        return result
     }
 
     /**
@@ -257,19 +268,11 @@ object TextUtils {
                 }
                 if (next.isNotEmpty()) {
                     val lastChar = cur.lastOrNull()
-                    val sentenceEnders = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
-
-                    fun lastWord(s: String): String {
-                        val parts = s.trim().split(WHITESPACE_REGEX)
-                        return parts.lastOrNull() ?: ""
-                    }
-
-                    val continuationWords = setOf("of", "to", "for", "and", "but", "or", "the", "a", "an", "my", "his", "her", "their", "its", "in", "on", "at", "from", "with")
                     val lastW = lastWord(cur).lowercase()
                     val wordCount = cur.split(WHITESPACE_REGEX).size
 
-                    val shouldMerge = (lastChar != null && !sentenceEnders.contains(lastChar)) &&
-                            (wordCount <= 8 || lastW in continuationWords || lastW.length <= 4) &&
+                    val shouldMerge = (lastChar != null && !SENTENCE_ENDERS.contains(lastChar)) &&
+                            (wordCount <= 8 || lastW in CONTINUATION_WORDS || lastW.length <= 4) &&
                             !(cur.contains(':') && next.contains(':'))
 
                         // If the next paragraph looks like a heading (short, starts with uppercase),
@@ -289,7 +292,7 @@ object TextUtils {
                             if (peek.isEmpty()) { i++; continue }
                             // stop merging if peek looks like a proper paragraph start (starts with uppercase and current ends with sentence end)
                             val peekFirst = peek.firstOrNull()
-                            if (peekFirst != null && peekFirst.isUpperCase() && cur.trim().lastOrNull()?.let { sentenceEnders.contains(it) } == true) break
+                            if (peekFirst != null && peekFirst.isUpperCase() && cur.trim().lastOrNull()?.let { SENTENCE_ENDERS.contains(it) } == true) break
                             cur = (cur + " " + peek).replace(MULTIPLE_SPACES_REGEX, " ")
                             i++
                         }
@@ -306,9 +309,6 @@ object TextUtils {
         // Second, conservative pass: merge any remaining adjacent paragraphs that
         // still look like accidental splits. This helps catch cases where the
         // initial heuristics missed short fragments like "No sense" + "of honor.".
-        val sentenceEnders = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
-        val continuationWords = setOf("of", "to", "for", "and", "but", "or", "the", "a", "an", "my", "his", "her", "their", "its", "in", "on", "at", "from", "with")
-
         val compacted = mutableListOf<String>()
         var pi = 0
         while (pi < paragraphs.size) {
@@ -321,13 +321,9 @@ object TextUtils {
 
                 // If the original normalized text has a hard paragraph separation
                 // between cur and nxt, do not attempt to aggressively merge them.
-                if (normalized.contains("${cur}\n\n${nxt}")) break
+                if (normalized.contains(cur + "\n\n" + nxt)) break
 
                 val lastChar = cur.lastOrNull()
-                fun lastWord(s: String): String {
-                    val parts = s.trim().split(WHITESPACE_REGEX)
-                    return parts.lastOrNull() ?: ""
-                }
                 val lastW = lastWord(cur).lowercase()
                 val wordCount = cur.split(WHITESPACE_REGEX).size
 
@@ -336,8 +332,8 @@ object TextUtils {
                 val looksLikeHeadingAgg = nextFirst != null && nextFirst.isUpperCase() && nextWordCountAgg in 1..4 &&
                     (nxt.uppercase() == nxt || nxt.trimEnd().endsWith(":"))
 
-                val shouldMergeAggressive = (lastChar != null && !sentenceEnders.contains(lastChar)) &&
-                    (wordCount <= 10 || lastW in continuationWords || lastW.length <= 4) && !looksLikeHeadingAgg &&
+                val shouldMergeAggressive = (lastChar != null && !SENTENCE_ENDERS.contains(lastChar)) &&
+                    (wordCount <= 10 || lastW in CONTINUATION_WORDS || lastW.length <= 4) && !looksLikeHeadingAgg &&
                     !(cur.contains(':') && nxt.contains(':'))
 
                 if (shouldMergeAggressive) {
@@ -378,8 +374,6 @@ object TextUtils {
                     while (nextIndex < builder.length && builder[nextIndex].isWhitespace()) nextIndex++
                     val nextChar = if (nextIndex < builder.length) builder[nextIndex] else null
 
-                    val sentenceEnders = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
-
                     // Find the next line snippet (look ahead to the next newline or end)
                     val nextLineEnd = builder.indexOf('\n', nextIndex).let { if (it == -1) builder.length else it }
                     val nextLineSnippet = if (nextIndex < builder.length) builder.substring(nextIndex, minOf(nextLineEnd, nextIndex + 60)).trimStart() else ""
@@ -410,7 +404,7 @@ object TextUtils {
                             i = maxOf(0, prevIndex)
                             continue
                         }
-                        sentenceEnders.contains(prevChar) || preserveBecauseNextLine -> {
+                        SENTENCE_ENDERS.contains(prevChar) || preserveBecauseNextLine -> {
                             // keep paragraph style newline (convert to single newline)
                             // replace any whitespace around with a single newline
                             // remove any spaces before current pos
@@ -470,20 +464,15 @@ object TextUtils {
             if (left.isEmpty() || right.isEmpty()) { pi2++; continue }
 
             // Respect explicit paragraph separators in the original text
-            if (normalized.contains("${left}\n\n${right}")) { pi2++; continue }
+            if (normalized.contains(left + "\n\n" + right)) { pi2++; continue }
 
             val lastChar = left.lastOrNull()
-            fun lastWord(s: String): String {
-                val parts = s.trim().split(WHITESPACE_REGEX)
-                return parts.lastOrNull() ?: ""
-            }
             val lastW = lastWord(left).lowercase()
             val leftWordCount = left.split(WHITESPACE_REGEX).size
 
-            val sentenceEnders2 = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
             val continuationWords2 = setOf("of", "to", "for", "and", "but", "or", "the", "a", "an")
 
-            val shouldCollapseParagraph = (lastChar != null && !sentenceEnders2.contains(lastChar)) &&
+            val shouldCollapseParagraph = (lastChar != null && !SENTENCE_ENDERS.contains(lastChar)) &&
                     (leftWordCount <= 10 || lastW in continuationWords2 || lastW.length <= 4)
 
             if (shouldCollapseParagraph) {
@@ -510,17 +499,16 @@ object TextUtils {
             if (left.isEmpty() || right.isEmpty()) { idx++; continue }
 
             // Respect explicit paragraph separators in the original text
-            if (normalized.contains("${left}\n\n${right}")) { idx++; continue }
+            if (normalized.contains(left + "\n\n" + right)) { idx++; continue }
 
             val leftLast = left.lastOrNull()
             val rightFirst = right.firstOrNull()
-            val sentenceEnders3 = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
 
             // If right starts with lowercase or digit, and left does not end
             // with a sentence-ender, merge them. This aggressively collapses
             // accidental paragraph boundaries while preserving true breaks.
             val shouldMergeBecauseRightIsContinuation = (rightFirst != null && (rightFirst.isLowerCase() || rightFirst.isDigit())) &&
-                    (leftLast == null || !sentenceEnders3.contains(leftLast))
+                    (leftLast == null || !SENTENCE_ENDERS.contains(leftLast))
 
             if (shouldMergeBecauseRightIsContinuation) {
                 postParts[idx] = (left + " " + right).replace(MULTIPLE_SPACES_REGEX, " ")
