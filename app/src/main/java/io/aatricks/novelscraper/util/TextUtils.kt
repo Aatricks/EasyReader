@@ -9,6 +9,31 @@ import java.util.regex.Pattern
  */
 object TextUtils {
 
+    // Pre-compiled Regex patterns for performance
+    private val DIGIT_REGEX = Regex("\\d+")
+    private val PAGE_WORD_REGEX = Regex("Page \\|\\s*|Page\\s+")
+    private val WHITESPACE_REGEX = Regex("\\s+")
+    private val MULTIPLE_SPACES_REGEX = Regex(" +")
+    private val LINE_BREAK_REGEX = Regex("\\r\\n|\\r")
+    private val SPACE_PLUS_NEWLINE_REGEX = Regex(" +\n")
+    private val FOUR_PLUS_NEWLINES_REGEX = Regex("\n{4,}")
+    private val THREE_PLUS_NEWLINES_REGEX = Regex("\n{3,}")
+    private val PARAGRAPH_SPLIT_REGEX = Regex("(?s)(.*?)(\\n{2,}|$)")
+    private val LIST_MARKER_REGEX = Regex("^(\\d+\\.|[ivxIVX]+\\.|[-*•])\\s")
+    private val NEWLINE_BEFORE_LOWER_DIGIT_REGEX = Regex("\\n(?=[a-z0-9])")
+    private val SINGLE_NEWLINE_REGEX = Regex("(?<!\\n)\\n(?!\\n)")
+    private val TWO_PLUS_SPACES_REGEX = Regex("[ ]{2,}")
+
+    // Pre-compiled Patterns for repetitive usage
+    private val CHAPTER_URL_PATTERN = Pattern.compile("(\\d+)(?!.*\\d)")
+
+    private val CHAPTER_NUMBER_PATTERNS = listOf(
+        Pattern.compile("chapter[\\s-_]*?(\\d+)", Pattern.CASE_INSENSITIVE),
+        Pattern.compile("ch[\\s-_]*?(\\d+)", Pattern.CASE_INSENSITIVE),
+        Pattern.compile("c[\\s-_]*?(\\d+)", Pattern.CASE_INSENSITIVE),
+        Pattern.compile("(\\d+)(?!.*\\d)", Pattern.CASE_INSENSITIVE)
+    )
+
     /**
      * Remove page numbers from text content.
      */
@@ -17,7 +42,7 @@ object TextUtils {
         if (!isPdfContent) return text
 
         // Simplified logic: remove lines that are just numbers
-        return text.lines().filterNot { it.trim().matches(Regex("\\d+")) }.joinToString("\n")
+        return text.lines().filterNot { it.trim().matches(DIGIT_REGEX) }.joinToString("\n")
     }
 
     /**
@@ -25,7 +50,7 @@ object TextUtils {
      */
     fun removePageWord(text: String): String {
         if (text.isEmpty()) return text
-        return text.replace(Regex("Page \\|\\s*|Page\\s+"), "")
+        return text.replace(PAGE_WORD_REGEX, "")
     }
 
     /**
@@ -33,8 +58,7 @@ object TextUtils {
      */
     fun incrementChapterInUrl(url: String): String {
         if (url.isEmpty()) return url
-        val pattern = Pattern.compile("(\\d+)(?!.*\\d)")
-        val matcher = pattern.matcher(url)
+        val matcher = CHAPTER_URL_PATTERN.matcher(url)
         return if (matcher.find()) {
             val num = matcher.group(1).toInt()
             matcher.replaceFirst((num + 1).toString())
@@ -46,8 +70,7 @@ object TextUtils {
      */
     fun decrementChapterInUrl(url: String): String {
         if (url.isEmpty()) return url
-        val pattern = Pattern.compile("(\\d+)(?!.*\\d)")
-        val matcher = pattern.matcher(url)
+        val matcher = CHAPTER_URL_PATTERN.matcher(url)
         return if (matcher.find()) {
             val num = matcher.group(1).toInt()
             if (num > 1) matcher.replaceFirst((num - 1).toString()) else url
@@ -100,15 +123,7 @@ object TextUtils {
         if (text.isEmpty()) return null
         
         // Try to find chapter number with various patterns
-        val patterns = listOf(
-            "chapter[\\s-_]*?(\\d+)",
-            "ch[\\s-_]*?(\\d+)",
-            "c[\\s-_]*?(\\d+)",
-            "(\\d+)(?!.*\\d)" // Last number in text
-        )
-        
-        for (patternStr in patterns) {
-            val pattern = Pattern.compile(patternStr, Pattern.CASE_INSENSITIVE)
+        for (pattern in CHAPTER_NUMBER_PATTERNS) {
             val matcher = pattern.matcher(text)
             if (matcher.find()) {
                 return matcher.group(1)?.toIntOrNull()
@@ -132,13 +147,13 @@ object TextUtils {
         
         return text
             // Remove multiple spaces
-            .replace(Regex(" +"), " ")
+            .replace(MULTIPLE_SPACES_REGEX, " ")
             // Normalize line breaks
-            .replace(Regex("\\r\\n|\\r"), "\n")
+            .replace(LINE_BREAK_REGEX, "\n")
             // Remove spaces at line ends
-            .replace(Regex(" +\n"), "\n")
+            .replace(SPACE_PLUS_NEWLINE_REGEX, "\n")
             // Remove multiple consecutive newlines (keep max 3 for paragraph breaks)
-            .replace(Regex("\n{4,}"), "\n\n\n")
+            .replace(FOUR_PLUS_NEWLINES_REGEX, "\n\n\n")
             .trim()
     }
 
@@ -183,7 +198,7 @@ object TextUtils {
      */
     fun countWords(text: String): Int {
         if (text.isEmpty()) return 0
-        return text.trim().split(Regex("\\s+")).size
+        return text.trim().split(WHITESPACE_REGEX).size
     }
 
     /**
@@ -208,11 +223,11 @@ object TextUtils {
         if (text.isEmpty()) return text
 
         // Normalize line endings first
-        val normalized = text.trim().replace(Regex("\\r\\n|\\r"), "\n")
+        val normalized = text.trim().replace(LINE_BREAK_REGEX, "\n")
 
         // Split into paragraphs on 2+ newlines, keeping the separator length for each paragraph
         // so we can avoid merging paragraphs that were intentionally separated
-        val rawParagraphsWithSep = Regex("(?s)(.*?)(\\n{2,}|$)").findAll(normalized)
+        val rawParagraphsWithSep = PARAGRAPH_SPLIT_REGEX.findAll(normalized)
             .map { it.groupValues[1] to it.groupValues[2].length }
             .toList()
         var rawParagraphs = rawParagraphsWithSep.map { it.first }
@@ -245,13 +260,13 @@ object TextUtils {
                     val sentenceEnders = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
 
                     fun lastWord(s: String): String {
-                        val parts = s.trim().split(Regex("\\s+"))
+                        val parts = s.trim().split(WHITESPACE_REGEX)
                         return parts.lastOrNull() ?: ""
                     }
 
                     val continuationWords = setOf("of", "to", "for", "and", "but", "or", "the", "a", "an", "my", "his", "her", "their", "its", "in", "on", "at", "from", "with")
                     val lastW = lastWord(cur).lowercase()
-                    val wordCount = cur.split(Regex("\\s+")).size
+                    val wordCount = cur.split(WHITESPACE_REGEX).size
 
                     val shouldMerge = (lastChar != null && !sentenceEnders.contains(lastChar)) &&
                             (wordCount <= 8 || lastW in continuationWords || lastW.length <= 4) &&
@@ -260,13 +275,13 @@ object TextUtils {
                         // If the next paragraph looks like a heading (short, starts with uppercase),
                         // avoid merging as it likely indicates an intentional paragraph break.
                         val nextFirstChar = next.firstOrNull()
-                        val nextWordCount = next.split(Regex("\\s+")).filter { it.isNotBlank() }.size
+                        val nextWordCount = next.split(WHITESPACE_REGEX).filter { it.isNotBlank() }.size
                         val looksLikeHeading = nextFirstChar != null && nextFirstChar.isUpperCase() && nextWordCount in 1..4 &&
                             (next.uppercase() == next || next.trimEnd().endsWith(":"))
 
                         if (shouldMerge && !looksLikeHeading) {
                         // Merge current and next paragraph with a space (preserve spacing)
-                        cur = (cur + " " + next).replace(Regex(" +"), " ")
+                        cur = (cur + " " + next).replace(MULTIPLE_SPACES_REGEX, " ")
                         i += 2
                         // In case there are multiple accidental splits, keep merging
                         while (i < rawParagraphs.size) {
@@ -275,7 +290,7 @@ object TextUtils {
                             // stop merging if peek looks like a proper paragraph start (starts with uppercase and current ends with sentence end)
                             val peekFirst = peek.firstOrNull()
                             if (peekFirst != null && peekFirst.isUpperCase() && cur.trim().lastOrNull()?.let { sentenceEnders.contains(it) } == true) break
-                            cur = (cur + " " + peek).replace(Regex(" +"), " ")
+                            cur = (cur + " " + peek).replace(MULTIPLE_SPACES_REGEX, " ")
                             i++
                         }
                         paragraphs.add(cur)
@@ -310,14 +325,14 @@ object TextUtils {
 
                 val lastChar = cur.lastOrNull()
                 fun lastWord(s: String): String {
-                    val parts = s.trim().split(Regex("\\s+"))
+                    val parts = s.trim().split(WHITESPACE_REGEX)
                     return parts.lastOrNull() ?: ""
                 }
                 val lastW = lastWord(cur).lowercase()
-                val wordCount = cur.split(Regex("\\s+")).size
+                val wordCount = cur.split(WHITESPACE_REGEX).size
 
                 val nextFirst = nxt.firstOrNull()
-                val nextWordCountAgg = nxt.split(Regex("\\s+")).filter { it.isNotBlank() }.size
+                val nextWordCountAgg = nxt.split(WHITESPACE_REGEX).filter { it.isNotBlank() }.size
                 val looksLikeHeadingAgg = nextFirst != null && nextFirst.isUpperCase() && nextWordCountAgg in 1..4 &&
                     (nxt.uppercase() == nxt || nxt.trimEnd().endsWith(":"))
 
@@ -326,7 +341,7 @@ object TextUtils {
                     !(cur.contains(':') && nxt.contains(':'))
 
                 if (shouldMergeAggressive) {
-                    cur = (cur + " " + nxt).replace(Regex(" +"), " ")
+                    cur = (cur + " " + nxt).replace(MULTIPLE_SPACES_REGEX, " ")
                     pi++
                     continue
                 }
@@ -343,7 +358,7 @@ object TextUtils {
             if (p.isEmpty()) return@map ""
 
             // Replace multiple spaces with single space inside paragraph
-            var builder = StringBuilder(p.replace(Regex(" +"), " "))
+            var builder = StringBuilder(p.replace(MULTIPLE_SPACES_REGEX, " "))
 
             // Walk through and replace single newlines according to rules:
             // - If the character immediately before the newline is a sentence end (.?!…:;"'”»)) keep the newline
@@ -373,15 +388,14 @@ object TextUtils {
                     // - Next line starts with a list marker (e.g., '1.', 'i.', '-', '*', '•')
                     // - Next line looks like a heading (short and starts with uppercase)
                     // - Next line starts with a quote/em-dash which often marks dialogue
-                    val listMarkerRegex = Regex("^(\\d+\\.|[ivxIVX]+\\.|[-*•])\\s")
                     val startsWithQuoteOrDash = nextLineSnippet.startsWith("\"") || nextLineSnippet.startsWith("“") ||
                             nextLineSnippet.startsWith("—") || nextLineSnippet.startsWith("-") || nextLineSnippet.startsWith("'")
                         // Consider a heading only if the next line is very short (<=4 words)
                         // and either is in ALL CAPS/punctuation-heavy or ends with a colon.
-                        val nextLineWords = nextLineSnippet.split(Regex("\\s+")).filter { it.isNotBlank() }.size
+                        val nextLineWords = nextLineSnippet.split(WHITESPACE_REGEX).filter { it.isNotBlank() }.size
                         val looksLikeHeading = nextLineWords in 1..4 && nextLineSnippet.firstOrNull()?.isUpperCase() == true &&
                             (nextLineSnippet.uppercase() == nextLineSnippet || nextLineSnippet.trimEnd().endsWith(":"))
-                    val preserveBecauseNextLine = listMarkerRegex.containsMatchIn(nextLineSnippet) || startsWithQuoteOrDash || looksLikeHeading
+                    val preserveBecauseNextLine = LIST_MARKER_REGEX.containsMatchIn(nextLineSnippet) || startsWithQuoteOrDash || looksLikeHeading
 
                     when {
                         prevChar == null -> {
@@ -437,11 +451,11 @@ object TextUtils {
             // clearly start with a lowercase letter or digit (continuation lines).
             // This is conservative: we only join newlines followed by lowercase/digit
             // since headings and dialogue often start with uppercase or punctuation.
-            builder.toString().replace(Regex("\\n(?=[a-z0-9])"), " ")
+            builder.toString().replace(NEWLINE_BEFORE_LOWER_DIGIT_REGEX, " ")
         }
 
         // Re-join paragraphs with double newline and normalize multiple blank lines
-        val joined = processedParagraphs.joinToString("\n\n").replace(Regex("\n{3,}"), "\n\n")
+        val joined = processedParagraphs.joinToString("\n\n").replace(THREE_PLUS_NEWLINES_REGEX, "\n\n")
 
         // Next, consider collapsing accidental paragraph breaks (double
         // newlines) where the split looks like a line-wrap artifact rather
@@ -460,11 +474,11 @@ object TextUtils {
 
             val lastChar = left.lastOrNull()
             fun lastWord(s: String): String {
-                val parts = s.trim().split(Regex("\\s+"))
+                val parts = s.trim().split(WHITESPACE_REGEX)
                 return parts.lastOrNull() ?: ""
             }
             val lastW = lastWord(left).lowercase()
-            val leftWordCount = left.split(Regex("\\s+")).size
+            val leftWordCount = left.split(WHITESPACE_REGEX).size
 
             val sentenceEnders2 = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
             val continuationWords2 = setOf("of", "to", "for", "and", "but", "or", "the", "a", "an")
@@ -473,7 +487,7 @@ object TextUtils {
                     (leftWordCount <= 10 || lastW in continuationWords2 || lastW.length <= 4)
 
             if (shouldCollapseParagraph) {
-                parts[pi2] = (left + " " + right).replace(Regex(" +"), " ")
+                parts[pi2] = (left + " " + right).replace(MULTIPLE_SPACES_REGEX, " ")
                 parts.removeAt(pi2 + 1)
                 // stay on same index to see if we can collapse further
             } else {
@@ -509,7 +523,7 @@ object TextUtils {
                     (leftLast == null || !sentenceEnders3.contains(leftLast))
 
             if (shouldMergeBecauseRightIsContinuation) {
-                postParts[idx] = (left + " " + right).replace(Regex(" +"), " ")
+                postParts[idx] = (left + " " + right).replace(MULTIPLE_SPACES_REGEX, " ")
                 postParts.removeAt(idx + 1)
                 // do not increment idx so we can keep collapsing if needed
             } else {
@@ -520,18 +534,18 @@ object TextUtils {
         var finallyCollapsed = postParts.joinToString("\n\n")
 
         // Collapse accidental leftover single newlines into spaces while preserving paragraphs
-        val collapsedSingleNewlines = finallyCollapsed.replace(Regex("(?<!\\n)\\n(?!\\n)"), " ")
+        val collapsedSingleNewlines = finallyCollapsed.replace(SINGLE_NEWLINE_REGEX, " ")
 
         // Trim extra whitespace and return
-        return collapsedSingleNewlines.replace(Regex("[ ]{2,}"), " ").trim()
+        return collapsedSingleNewlines.replace(TWO_PLUS_SPACES_REGEX, " ").trim()
     }
 
     // Debug helper used in tests to inspect how paragraphs are split and
     // what separators (number of newlines) were found between them.
     fun debugGetParagraphsWithSeparators(text: String): List<Pair<String, Int>> {
         if (text.isEmpty()) return emptyList()
-        val normalized = text.trim().replace(Regex("\\r\\n|\\r"), "\n")
-        return Regex("(?s)(.*?)(\\n{2,}|$)").findAll(normalized)
+        val normalized = text.trim().replace(LINE_BREAK_REGEX, "\n")
+        return PARAGRAPH_SPLIT_REGEX.findAll(normalized)
             .map { it.groupValues[1].trim() to it.groupValues[2].length }
             .toList()
     }
