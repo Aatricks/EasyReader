@@ -607,7 +607,7 @@ private fun ContentArea(
                     }
 
                     if (isPrevious) {
-                        readerViewModel.navigateToPreviousChapter()
+                        readerViewModel.navigateToPreviousChapter(fromBottom = true)
                     } else {
                         readerViewModel.navigateToNextChapter()
                     }

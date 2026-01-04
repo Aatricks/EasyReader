@@ -287,8 +287,9 @@ class ReaderViewModel(
     /**
      * Navigate to the previous chapter
      * Automatically adds the chapter to library if it doesn't exist
+     * @param fromBottom If true, initialize scroll position at the end of the content
      */
-    fun navigateToPreviousChapter() {
+    fun navigateToPreviousChapter(fromBottom: Boolean = false) {
         val prevUrl = _uiState.value.content?.previousChapterUrl
         if (prevUrl != null) {
             viewModelScope.launch {
@@ -341,7 +342,7 @@ class ReaderViewModel(
                 }
                 
                 // Load the previous chapter content
-                loadContent(prevUrl, prevItemId, fromBottom = true)
+                loadContent(prevUrl, prevItemId, fromBottom = fromBottom)
             }
         }
     }
