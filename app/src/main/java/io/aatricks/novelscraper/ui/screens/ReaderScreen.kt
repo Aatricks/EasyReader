@@ -45,6 +45,17 @@ import coil.request.ImageRequest
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.alpha
+import io.aatricks.novelscraper.data.model.ChapterContent
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
@@ -496,7 +507,121 @@ private fun ContentArea(
         content.getImageCount() > content.getTextCount() && content.getImageCount() > 2
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    // Pull-to-navigate state
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val threshold = remember { with(density) { 80.dp.toPx() } }
+    var pullAmount by remember { mutableFloatStateOf(0f) }
+    val isThresholdReached = abs(pullAmount) >= threshold
+    
+    // Reset pull amount when content changes
+    LaunchedEffect(content.url) {
+        pullAmount = 0f
+    }
+    
+    val nestedScrollConnection = remember(content, uiState.isPagedMode, uiState.isRtl, pagerState.currentPage) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if ((abs(available.y) > 5f || abs(available.x) > 5f) && source == NestedScrollSource.Drag) {
+                    readerViewModel.hideControls()
+                }
+                
+                // Recover pullAmount
+                if (uiState.isPagedMode) {
+                    if (pullAmount > 0 && available.x < 0) {
+                        val consumed = available.x.coerceAtLeast(-pullAmount)
+                        pullAmount += consumed
+                        return Offset(consumed, 0f)
+                    }
+                    if (pullAmount < 0 && available.x > 0) {
+                        val consumed = available.x.coerceAtMost(-pullAmount)
+                        pullAmount += consumed
+                        return Offset(consumed, 0f)
+                    }
+                } else {
+                    if (pullAmount > 0 && available.y < 0) {
+                        val consumed = available.y.coerceAtLeast(-pullAmount)
+                        pullAmount += consumed
+                        return Offset(0f, consumed)
+                    }
+                    if (pullAmount < 0 && available.y > 0) {
+                        val consumed = available.y.coerceAtMost(-pullAmount)
+                        pullAmount += consumed
+                        return Offset(0f, consumed)
+                    }
+                }
+                return Offset.Zero
+            }
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                if (source == NestedScrollSource.Drag) {
+                    if (uiState.isPagedMode) {
+                        val isAtStart = pagerState.currentPage == 0
+                        val isAtEnd = pagerState.currentPage == content.paragraphs.size - 1
+
+                        if (uiState.isRtl) {
+                            // RTL: Pull Left (-X) for Previous, Pull Right (+X) for Next
+                            if (available.x < 0 && isAtStart && uiState.canNavigatePrevious) {
+                                pullAmount += available.x * 0.5f
+                                return Offset(available.x, 0f)
+                            } else if (available.x > 0 && isAtEnd && uiState.canNavigateNext) {
+                                pullAmount += available.x * 0.5f
+                                return Offset(available.x, 0f)
+                            }
+                        } else {
+                            // LTR: Pull Right (+X) for Previous, Pull Left (-X) for Next
+                            if (available.x > 0 && isAtStart && uiState.canNavigatePrevious) {
+                                pullAmount += available.x * 0.5f
+                                return Offset(available.x, 0f)
+                            } else if (available.x < 0 && isAtEnd && uiState.canNavigateNext) {
+                                pullAmount += available.x * 0.5f
+                                return Offset(available.x, 0f)
+                            }
+                        }
+                    } else {
+                        val isAtTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+                        val isAtBottom = !listState.canScrollForward
+
+                        if (available.y > 0 && isAtTop && uiState.canNavigatePrevious) {
+                            pullAmount += available.y * 0.5f
+                            return Offset(0f, available.y)
+                        } else if (available.y < 0 && isAtBottom && uiState.canNavigateNext) {
+                            pullAmount += available.y * 0.5f
+                            return Offset(0f, available.y)
+                        }
+                    }
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                val currentPull = pullAmount
+                if (abs(currentPull) >= threshold) {
+                    val isPrevious = if (uiState.isPagedMode) {
+                        if (uiState.isRtl) currentPull < 0 else currentPull > 0
+                    } else {
+                        currentPull > 0
+                    }
+
+                    if (isPrevious) {
+                        readerViewModel.navigateToPreviousChapter()
+                    } else {
+                        readerViewModel.navigateToNextChapter()
+                    }
+                }
+                pullAmount = 0f
+                return Velocity.Zero
+            }
+        }
+    }
+
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .nestedScroll(nestedScrollConnection)
+    ) {
         if (uiState.isPagedMode) {
             HorizontalPager(
                 state = pagerState,
@@ -561,11 +686,6 @@ private fun ContentArea(
                     .background(Color.Black)
                     .pointerInput(Unit) {
                         detectTapGestures(onTap = { readerViewModel.toggleControls() })
-                    }
-                    .pointerInput(Unit) {
-                        detectVerticalDragGestures { _, dragAmount ->
-                            if (abs(dragAmount) > 10f) readerViewModel.hideControls()
-                        }
                     },
                 contentPadding = if (isManhwa) PaddingValues(0.dp) else PaddingValues(16.dp),
                 verticalArrangement = if (isManhwa) Arrangement.spacedBy(0.dp) else Arrangement.spacedBy(24.dp)
@@ -609,30 +729,6 @@ private fun ContentArea(
                         }
                     }
                 }
-
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        if (content.hasPreviousChapter()) {
-                            Button(
-                                onClick = { readerViewModel.navigateToPreviousChapter() },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A1A1A), contentColor = Color.White)
-                            ) {
-                                Text("← Previous Chapter")
-                            }
-                        }
-                        if (content.hasNextChapter()) {
-                            Button(
-                                onClick = { readerViewModel.navigateToNextChapter() },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A1A1A), contentColor = Color.White)
-                            ) {
-                                Text("Next Chapter →")
-                            }
-                        }
-                    }
-                }
             }
         }
 
@@ -668,6 +764,73 @@ private fun ContentArea(
                 onNextClick = { readerViewModel.navigateToNextChapter() },
                 onProgressChange = { readerViewModel.seekToProgress(it) }
             )
+        }
+
+        // Pull-to-navigate indicators
+        if (abs(pullAmount) > 0f) {
+            val isPrevious = if (uiState.isPagedMode) {
+                if (uiState.isRtl) pullAmount < 0 else pullAmount > 0
+            } else {
+                pullAmount > 0
+            }
+
+            val arrowColor by animateColorAsState(
+                if (isThresholdReached) Color(0xFF4CAF50) else Color.White,
+                label = "arrowColor"
+            )
+            
+            val alignment = if (uiState.isPagedMode) {
+                if (isPrevious) {
+                    if (uiState.isRtl) Alignment.CenterStart else Alignment.CenterEnd
+                } else {
+                    if (uiState.isRtl) Alignment.CenterEnd else Alignment.CenterStart
+                }
+            } else {
+                if (isPrevious) Alignment.TopCenter else Alignment.BottomCenter
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = (abs(pullAmount) / threshold * 0.4f).coerceAtMost(0.4f))),
+                contentAlignment = alignment
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(32.dp)
+                ) {
+                    val icon = if (uiState.isPagedMode) {
+                        if (isPrevious) {
+                            if (uiState.isRtl) Icons.AutoMirrored.Filled.ArrowBack else Icons.AutoMirrored.Filled.ArrowForward
+                        } else {
+                            if (uiState.isRtl) Icons.AutoMirrored.Filled.ArrowForward else Icons.AutoMirrored.Filled.ArrowBack
+                        }
+                    } else {
+                        if (isPrevious) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward
+                    }
+
+                    val rotation by animateFloatAsState(if (isThresholdReached) 180f else 0f, label = "arrowRotation")
+                    
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = arrowColor,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .rotate(if (uiState.isPagedMode) 0f else rotation) // Rotation for vertical, none for auto-mirrored horizontal
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (isPrevious) {
+                            if (isThresholdReached) "Release for Previous Chapter" else "Pull for Previous Chapter"
+                        } else {
+                            if (isThresholdReached) "Release for Next Chapter" else "Pull for Next Chapter"
+                        },
+                        color = arrowColor,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+            }
         }
     }
 }

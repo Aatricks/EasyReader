@@ -77,8 +77,9 @@ class ReaderViewModel(
      * Load content from URL or file path
      * @param url The URL or file path to load content from
      * @param libraryItemId Optional library item ID to track reading progress
+     * @param fromBottom If true, initialize scroll position at the end of the content
      */
-    fun loadContent(url: String, libraryItemId: String? = null) {
+    fun loadContent(url: String, libraryItemId: String? = null, fromBottom: Boolean = false) {
         viewModelScope.launch {
             try {
                 // Check if this is an EPUB URL with href fragment (format: path#href or content://...#href)
@@ -89,7 +90,7 @@ class ReaderViewModel(
                         val href = parts[1]
                         // Check if base path looks like an EPUB (content URI or .epub file)
                         if (basePath.startsWith("content://") || basePath.endsWith(".epub", ignoreCase = true) || basePath.contains("epub")) {
-                            loadEpubChapter(basePath, href, libraryItemId)
+                            loadEpubChapter(basePath, href, libraryItemId, fromBottom)
                             return@launch
                         }
                     }
@@ -98,14 +99,11 @@ class ReaderViewModel(
                 // Save previous progress for the current library item before loading next
                 val prevItemId = currentLibraryItemId
                 val prevContent = _uiState.value.content
-                val prevProgress = _uiState.value.scrollProgress
                 if (prevItemId != null && prevContent != null) {
                     try {
-                        // Only update progress and scroll position, NOT currentChapter
-                        // currentChapter should remain the clean label set during item creation
                         libraryRepository.updateProgress(
                             itemId = prevItemId,
-                            currentChapter = "", // Empty string signals to keep existing value
+                            currentChapter = "", 
                             progress = _uiState.value.scrollProgress,
                             currentChapterUrl = prevContent.url,
                             lastScrollProgress = _uiState.value.scrollPosition.toInt(),
@@ -136,13 +134,17 @@ class ReaderViewModel(
                         val baseNovelUrl = libraryItem?.baseNovelUrl ?: ""
                         val sourceName = libraryItem?.sourceName ?: ""
                         
-                        // Determine reading mode: Priority to saved preference, then guess
+                        // Determine reading mode
                         val savedMode = libraryItem?.readingMode
                         val isPaged = if (savedMode != null) {
                             savedMode == io.aatricks.novelscraper.data.model.ReadingMode.PAGED
                         } else {
                             guessIsPaged(content)
                         }
+
+                        val initialIndex = if (fromBottom) (content.paragraphs.size - 1).coerceAtLeast(0) else 0
+                        val initialPosition = if (fromBottom) 100f else 0f
+                        val initialProgress = if (fromBottom) 100 else 0
 
                         _uiState.update {
                             it.copy(
@@ -151,11 +153,11 @@ class ReaderViewModel(
                                 error = null,
                                 canNavigateNext = content.hasNextChapter(),
                                 canNavigatePrevious = content.hasPreviousChapter(),
-                                scrollPosition = 0f,
-                                scrollProgress = 0,
-                                scrollIndex = 0,
+                                scrollPosition = initialPosition,
+                                scrollProgress = initialProgress,
+                                scrollIndex = initialIndex,
                                 scrollOffset = 0,
-                                hasReachedQuarterScreen = false,
+                                hasReachedQuarterScreen = fromBottom,
                                 novelName = novelName,
                                 chapterTitle = chapterTitle,
                                 baseTitle = baseTitle,
@@ -339,7 +341,7 @@ class ReaderViewModel(
                 }
                 
                 // Load the previous chapter content
-                loadContent(prevUrl, prevItemId)
+                loadContent(prevUrl, prevItemId, fromBottom = true)
             }
         }
     }
@@ -349,8 +351,9 @@ class ReaderViewModel(
      * @param epubPath The path to the EPUB file
      * @param href The chapter href within the EPUB
      * @param libraryItemId Optional library item ID to track reading progress
+     * @param fromBottom If true, initialize scroll position at the end of the content
      */
-    fun loadEpubChapter(epubPath: String, href: String, libraryItemId: String? = null) {
+    fun loadEpubChapter(epubPath: String, href: String, libraryItemId: String? = null, fromBottom: Boolean = false) {
         viewModelScope.launch {
             try {
                 // Save previous progress for the current library item before loading next
@@ -446,6 +449,10 @@ class ReaderViewModel(
                 val novelName = libraryItem?.baseTitle?.ifBlank { libraryItem.title } ?: content.title ?: ""
                 val chapterTitle = content.title ?: libraryItem?.currentChapter ?: ""
                 
+                val initialIndex = if (fromBottom) (content.paragraphs.size - 1).coerceAtLeast(0) else 0
+                val initialPosition = if (fromBottom) 100f else 0f
+                val initialProgress = if (fromBottom) 100 else 0
+
                 _uiState.update {
                     it.copy(
                         content = content,
@@ -453,11 +460,11 @@ class ReaderViewModel(
                         error = null,
                         canNavigateNext = content.hasNextChapter(),
                         canNavigatePrevious = content.hasPreviousChapter(),
-                        scrollPosition = 0f,
-                        scrollProgress = 0,
-                        scrollIndex = 0,
+                        scrollPosition = initialPosition,
+                        scrollProgress = initialProgress,
+                        scrollIndex = initialIndex,
                         scrollOffset = 0,
-                        hasReachedQuarterScreen = false,
+                        hasReachedQuarterScreen = fromBottom,
                         novelName = novelName,
                         chapterTitle = chapterTitle
                     )
