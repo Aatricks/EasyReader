@@ -33,7 +33,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FilterList
-import io.aatricks.novelscraper.data.repository.source.SmartScraperSource
 import androidx.activity.compose.BackHandler
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,9 +57,7 @@ fun ExploreScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     
-    var showCustomUrlDialog by remember { mutableStateOf(false) }
     var showSourceDialog by remember { mutableStateOf(false) }
-    var customUrl by remember { mutableStateOf("") }
 
     LaunchedEffect(selectedSource) {
         availableTags = exploreRepository.getTags(selectedSource)
@@ -87,17 +84,7 @@ fun ExploreScreen(
         selectedItemDetails = null
         isFetchingDetails = true
         scope.launch {
-            // Check if it's a smart scraper source
-            val source = if (item.source.contains(".")) {
-                SmartScraperSource(item.url.substringBefore("/", item.url.substringAfter("://").substringBefore("/"))) 
-                // This is a bit hacky, better to have a way to find source by name or store it
-            } else null
-            
-            val details = if (source != null) {
-                try { source.getNovelDetails(item.url) } catch (e: Exception) { null }
-            } else {
-                exploreRepository.getNovelDetails(item.url, item.source)
-            }
+            val details = exploreRepository.getNovelDetails(item.url, item.source)
             selectedItemDetails = details ?: item
             isFetchingDetails = false
         }
@@ -190,9 +177,6 @@ fun ExploreScreen(
                             contentDescription = "Select Source",
                             tint = if (selectedSource != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
-                    }
-                    IconButton(onClick = { showCustomUrlDialog = true }) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Custom URL")
                     }
                     IconButton(onClick = {
                         if (isSearching) {
@@ -328,70 +312,6 @@ fun ExploreScreen(
             confirmButton = {
                 TextButton(onClick = { showSourceDialog = false }) {
                     Text("Close")
-                }
-            }
-        )
-    }
-
-    if (showCustomUrlDialog) {
-        val onDiscover = {
-            if (customUrl.isNotBlank()) {
-                val finalUrl = if (!customUrl.startsWith("http")) "https://$customUrl" else customUrl
-                showCustomUrlDialog = false
-                isLoading = true
-                scope.launch {
-                    try {
-                        val scraper = SmartScraperSource(finalUrl)
-                        val items = scraper.getPopularNovels(1)
-                        if (items.isNotEmpty()) {
-                            exploreItems = items
-                            // Save to SourceManager
-                            io.aatricks.novelscraper.data.local.SourceManager(context).addSource(finalUrl)
-                        } else {
-                            snackbarHostState.showSnackbar("No items found at this URL.")
-                        }
-                    } catch (e: Exception) {
-                        snackbarHostState.showSnackbar("Error: ${e.message}")
-                    } finally {
-                        isLoading = false
-                    }
-                }
-            }
-        }
-
-        AlertDialog(
-            onDismissRequest = { showCustomUrlDialog = false },
-            title = { Text("Add Custom Source") },
-            text = {
-                Column {
-                    Text("Enter the URL of a novel or manhwa website to discover content.")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    TextField(
-                        value = customUrl,
-                        onValueChange = { customUrl = it },
-                        placeholder = { Text("https://example.com") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        trailingIcon = if (customUrl.isNotEmpty()) {
-                            {
-                                IconButton(onClick = { customUrl = "" }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Clear")
-                                }
-                            }
-                        } else null,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                        keyboardActions = KeyboardActions(onGo = { onDiscover() })
-                    )
-                }
-            },
-            confirmButton = {
-                Button(onClick = onDiscover) {
-                    Text("Discover")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCustomUrlDialog = false }) {
-                    Text("Cancel")
                 }
             }
         )

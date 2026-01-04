@@ -1,19 +1,15 @@
 package io.aatricks.novelscraper.data.repository
 
 import android.content.Context
-import io.aatricks.novelscraper.data.local.SourceManager
 import io.aatricks.novelscraper.data.model.ExploreItem
 import io.aatricks.novelscraper.data.repository.source.MangaBatSource
 import io.aatricks.novelscraper.data.repository.source.NovelFireSource
 import io.aatricks.novelscraper.data.repository.source.NovelSource
-import io.aatricks.novelscraper.data.repository.source.SmartScraperSource
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
 class ExploreRepository(context: Context? = null) {
-
-    private val sourceManager = context?.let { SourceManager(it) }
 
     private val staticSources: List<NovelSource> = listOf(
         NovelFireSource(),
@@ -21,7 +17,7 @@ class ExploreRepository(context: Context? = null) {
     )
 
     private val sources: List<NovelSource>
-        get() = staticSources + (sourceManager?.getNovelSources() ?: emptyList())
+        get() = staticSources
 
     fun getAllSources(): List<NovelSource> = sources
 
@@ -63,9 +59,7 @@ class ExploreRepository(context: Context? = null) {
     }
 
     suspend fun getNovelDetails(url: String, sourceName: String): ExploreItem? {
-        val source = sources.find { it.name == sourceName } 
-            ?: if (sourceName.contains(".")) SmartScraperSource("https://$sourceName") else null
-            ?: return null
+        val source = sources.find { it.name == sourceName } ?: return null
             
         return try {
             source.getNovelDetails(url)
