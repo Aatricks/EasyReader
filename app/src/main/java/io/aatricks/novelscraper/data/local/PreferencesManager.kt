@@ -6,6 +6,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import io.aatricks.novelscraper.data.model.LibraryItem
 import io.aatricks.novelscraper.data.model.ContentType
+import io.aatricks.novelscraper.util.TextUtils
 
 /**
  * SharedPreferences wrapper for type-safe preferences access
@@ -99,7 +100,7 @@ class PreferencesManager(context: Context) {
                             hasUpdates = item.hasUpdates,
                             chapterSummaries = item.chapterSummaries ?: emptyMap(),
                             baseTitle = if (item.baseTitle == null || item.baseTitle.isEmpty()) 
-                                extractBaseTitle(safeTitle, item.contentType ?: ContentType.WEB) 
+                                TextUtils.extractBaseTitle(safeTitle, item.contentType ?: ContentType.WEB) 
                                 else item.baseTitle,
                             readingMode = if (item.readingMode == null) io.aatricks.novelscraper.data.model.ReadingMode.VERTICAL else item.readingMode,
                             baseNovelUrl = item.baseNovelUrl ?: "",
@@ -116,25 +117,6 @@ class PreferencesManager(context: Context) {
         } else {
             emptyList()
         }
-    }
-    
-    /**
-     * Extract base title by removing chapter markers - used for migration
-     */
-    private fun extractBaseTitle(title: String, contentType: ContentType): String {
-        // Only normalize WEB content for grouping
-        if (contentType != ContentType.WEB) return title
-        
-        val patterns = listOf(
-            Regex("""[–—\-:]?\s*(?:chapter|ch|ch\.)\s*\d+.*$""", RegexOption.IGNORE_CASE),
-            Regex("""\s*[–—\-]\s*\d+.*$"""),
-            Regex("""\s*:\s*\d+.*$""")
-        )
-        var normalized = title
-        for (pattern in patterns) {
-            normalized = normalized.replace(pattern, "").trim()
-        }
-        return if (normalized.isBlank() || normalized.length < 3) title else normalized
     }
     
     // Current title for tracking

@@ -92,10 +92,62 @@ class TextUtilsTest {
         assertEquals(2, TextUtils.estimateReadingTime(longText))
     }
 
-    @Test
-    fun testCleanHtmlEntities() {
-        assertEquals("&", TextUtils.cleanHtmlEntities("&amp;"))
-        assertEquals("\"Quote\"", TextUtils.cleanHtmlEntities("&quot;Quote&quot;"))
-        assertEquals("—", TextUtils.cleanHtmlEntities("&mdash;"))
+        @Test
+
+        fun testCleanHtmlEntities() {
+
+            assertEquals("&", TextUtils.cleanHtmlEntities("&amp;"))
+
+            assertEquals("\"Quote\"", TextUtils.cleanHtmlEntities("&quot;Quote&quot;"))
+
+            assertEquals("—", TextUtils.cleanHtmlEntities("&mdash;"))
+
+        }
+
+    
+
+        @Test
+
+        fun testExtractBaseTitle() {
+
+            val web = io.aatricks.novelscraper.data.model.ContentType.WEB
+
+            assertEquals("Solo Max-Level Newbie", TextUtils.extractBaseTitle("Read Solo Max-Level Newbie Chapter 233 Free Online | MangaBat", web))
+
+            assertEquals("The Beginning After The End", TextUtils.extractBaseTitle("The Beginning After The End - Chapter 175", web))
+
+            assertEquals("Omniscient Reader’s Viewpoint", TextUtils.extractBaseTitle("Read Omniscient Reader’s Viewpoint at MangaBat", web))
+
+            assertEquals("The Great Mage Returns After 4000 Years", TextUtils.extractBaseTitle("The Great Mage Returns After 4000 Years: 150", web))
+
+            
+
+            // Should not clean non-WEB content
+
+            val epub = io.aatricks.novelscraper.data.model.ContentType.EPUB
+
+            assertEquals("Some Book - Chapter 1", TextUtils.extractBaseTitle("Some Book - Chapter 1", epub))
+
+        }
+
+    
+
+        @Test
+
+        fun testExtractChapterLabel() {
+
+            assertEquals("Chapter 233", TextUtils.extractChapterLabel("Read Chapter 233 Free Online | MangaBat"))
+
+            assertEquals("Chapter 175", TextUtils.extractChapterLabel("Chapter 175 - The End"))
+
+            assertEquals("Chapter 150", TextUtils.extractChapterLabel("The Great Mage Returns After 4000 Years: 150"))
+
+            assertEquals("Chapter 10", TextUtils.extractChapterLabel("Ch. 10"))
+
+            assertEquals(null, TextUtils.extractChapterLabel("Just some title"))
+
+        }
+
     }
-}
+
+    

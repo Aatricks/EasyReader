@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.model.LibraryItem
+import io.aatricks.novelscraper.util.TextUtils
 import io.aatricks.novelscraper.data.repository.LibraryRepository
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -151,7 +152,7 @@ class LibraryViewModel(
                 }
 
                 // Extract baseTitle for grouping
-                val baseTitle = extractBaseTitle(title, contentType)
+                val baseTitle = TextUtils.extractBaseTitle(title, contentType)
 
                 libraryRepository.addItem(
                     title = title.trim(),
@@ -235,7 +236,7 @@ class LibraryViewModel(
                         title = fullTitle,
                         url = readingUrl,
                         contentType = ContentType.WEB,
-                        currentChapter = extractChapterLabel(chapterTitle) ?: "Chapter 1",
+                        currentChapter =TextUtils.extractChapterLabel(chapterTitle) ?: "Chapter 1",
                         baseTitle = item.title,
                         baseNovelUrl = item.url,
                         sourceName = item.source,
@@ -287,7 +288,7 @@ class LibraryViewModel(
                             title = chapter.title,
                             url = chapter.url,
                             contentType = ContentType.WEB,
-                            currentChapter = extractChapterLabel(chapter.title) ?: extractChapterLabelFromUrl(chapter.url) ?: chapter.title,
+                            currentChapter =TextUtils.extractChapterLabel(chapter.title) ?: TextUtils.extractChapterLabelFromUrl(chapter.url) ?: chapter.title,
                             baseTitle = baseTitle,
                             baseNovelUrl = baseNovelUrl,
                             sourceName = sourceName
@@ -354,9 +355,9 @@ class LibraryViewModel(
                     )
                 } else {
                     // For WEB content, extract baseTitle once and store it
-                    val chapterLabel = extractChapterLabel(fetchedTitle) ?: extractChapterLabelFromUrl(url) ?: "Chapter 1"
+                    val chapterLabel = TextUtils.extractChapterLabel(fetchedTitle) ?: TextUtils.extractChapterLabelFromUrl(fetchedTitle) ?: "Chapter 1"
                     val fullTitle = fetchedTitle.trim().ifBlank { url }
-                    val baseTitle = extractBaseTitle(fullTitle, contentType)
+                    val baseTitle = TextUtils.extractBaseTitle(fullTitle, contentType)
 
                     val addedItem = libraryRepository.addItem(
                         title = fullTitle,
@@ -407,8 +408,8 @@ class LibraryViewModel(
     private suspend fun addNextChapters(item: LibraryItem, maxChapters: Int) {
         var currentUrl = item.url
         // Use the item's baseTitle - it's already been extracted
-        val itemBaseTitle = item.baseTitle.ifBlank { extractBaseTitle(item.title, ContentType.WEB) }
-        
+        val itemBaseTitle = item.baseTitle.ifBlank {TextUtils.extractBaseTitle(item.title, ContentType.WEB) }
+
         for (i in 1..maxChapters) {
             try {
                 val nextUrl = contentRepository?.incrementChapterUrl(currentUrl) ?: break
@@ -417,13 +418,13 @@ class LibraryViewModel(
                 if (libraryRepository.getItemByUrl(nextUrl) != null) break
                 // Fetch title
                 val nextTitle = contentRepository?.fetchTitle(nextUrl) ?: break
-                val nextBaseTitle = extractBaseTitle(nextTitle, ContentType.WEB)
-                
+                val nextBaseTitle =TextUtils.extractBaseTitle(nextTitle, ContentType.WEB)
+
                 // If base title matches (or next is blank/generic), add it
                 if (nextBaseTitle.equals(itemBaseTitle, ignoreCase = true) || nextBaseTitle.isBlank()) {
-                    val chapterLabel = extractChapterLabel(nextTitle) ?: extractChapterLabelFromUrl(nextUrl) ?: "Chapter ${item.currentChapter.filter { it.isDigit() }.toIntOrNull()?.plus(i) ?: (i + 1)}"
+                    val chapterLabel =TextUtils.extractChapterLabel(nextTitle) ?: TextUtils.extractChapterLabelFromUrl(nextUrl) ?: "Chapter ${item.currentChapter.filter { it.isDigit() }.toIntOrNull()?.plus(i) ?: (i + 1)}"
                     val fullTitle = nextTitle.trim().ifBlank { "$itemBaseTitle - Chapter ${chapterLabel.replace("Chapter ", "")}" }
-                    
+
                     libraryRepository.addItem(
                         title = fullTitle,
                         url = nextUrl,
@@ -440,54 +441,7 @@ class LibraryViewModel(
             }
         }
     }
-
-    /**
-     * Extract base title by removing chapter markers
-     * Only normalizes WEB content - PDFs/HTML/EPUB keep full titles
-     */
-    private fun extractBaseTitle(title: String, contentType: ContentType): String {
-        // Only normalize WEB content for grouping
-        if (contentType != ContentType.WEB) return title
-        
-        // Remove common chapter markers and trailing content
-        val patterns = listOf(
-            Regex("""[–—\-:]?\s*(?:chapter|ch|ch\.)\s*\d+.*$""", RegexOption.IGNORE_CASE),
-            Regex("""\s*[–—\-]\s*\d+.*$"""), // "Title - 123" or "Title – 123"
-            Regex("""\s*:\s*\d+.*$""") // "Title: 123"
-        )
-        var normalized = title
-        for (pattern in patterns) {
-            normalized = normalized.replace(pattern, "").trim()
-        }
-        return if (normalized.isBlank() || normalized.length < 3) title else normalized
-    }
-
-    /**
-     * Try to extract a human chapter label from a title string
-     */
-    private fun extractChapterLabel(title: String?): String? {
-        if (title == null) return null
-        val regex = Regex("""(chapter|ch|ch\.)\s*(\d+)""", RegexOption.IGNORE_CASE)
-        val match = regex.find(title)
-        return match?.let { "Chapter ${it.groupValues[2]}" }
-    }
-
-    /**
-     * Try to find a numeric chapter in the URL
-     */
-    private fun extractChapterLabelFromUrl(url: String): String? {
-        val patterns = listOf(
-            Regex("""chapter[-_/](\d+)""", RegexOption.IGNORE_CASE),
-            Regex("""ch[-_/]?(\d+)""", RegexOption.IGNORE_CASE),
-            Regex("""(\d+)(?=\.html|\.htm|$)""")
-        )
-        for (p in patterns) {
-            val m = p.find(url)
-            if (m != null) return "Chapter ${m.groupValues[1]}"
-        }
-        return null
-    }
-
+    
     /**
      * Remove a single item from library
      */
@@ -866,7 +820,7 @@ class LibraryViewModel(
         _searchQuery.value = ""
         _contentTypeFilter.value = null
     }
-    
+
     /**
      * Update chapter summary for a specific item
      * @param itemId The library item ID

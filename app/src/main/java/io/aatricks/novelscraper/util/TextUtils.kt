@@ -124,6 +124,104 @@ object TextUtils {
     }
 
     /**
+     * Extract base title by removing chapter markers and common web junk.
+     * Only normalizes WEB content - PDFs/HTML/EPUB keep full titles.
+     */
+    fun extractBaseTitle(title: String, contentType: io.aatricks.novelscraper.data.model.ContentType): String {
+        // Only normalize WEB content for grouping
+        if (contentType != io.aatricks.novelscraper.data.model.ContentType.WEB) return title
+        
+        var normalized = title
+
+        // 1. Remove common web novel "junk" first
+        val junkPatterns = listOf(
+            Regex("""(?i)^read\s+"""),
+            Regex("""(?i)\s+free\s+online.*$"""),
+            Regex("""(?i)\s+online\s+free.*$"""),
+            Regex("""(?i)\s*\|\s*.*$"""), // Remove anything after |
+            Regex("""(?i)\s+at\s+.*$"""), // Remove " at SourceName"
+            Regex("""(?i)[\s–—\-:]*(MangaBat|NovelFire|MangaPark|MangaKakalot).*$"""),
+            Regex("""(?i)[\s–—\-:]*Scan.*$""")
+        )
+        
+        for (pattern in junkPatterns) {
+            normalized = normalized.replace(pattern, "")
+        }
+        
+        // 2. Remove common chapter markers and trailing content
+        val chapterPatterns = listOf(
+            Regex("""[–—\-:]?\s*(?:chapter|ch|ch\.)\s*\d+.*$""", RegexOption.IGNORE_CASE),
+            Regex("""\s*[–—\-]\s*\d+.*$"""), // "Title - 123" or "Title – 123"
+            Regex("""\s*:\s*\d+.*$""") // "Title: 123"
+        )
+        for (pattern in chapterPatterns) {
+            normalized = normalized.replace(pattern, "").trim()
+        }
+
+        // 3. Final cleanup of separators
+        normalized = normalized.replace(Regex("""^[\s–—\-:\|]+"""), "")
+            .replace(Regex("""[\s–—\-:\|]+$"""), "")
+            .trim()
+
+        return if (normalized.isBlank() || normalized.length < 3) title else normalized
+    }
+
+    /**
+     * Extract a standardized chapter label (e.g., "Chapter 233") from text.
+     */
+    fun extractChapterLabel(title: String?): String? {
+        if (title == null || title.isBlank()) return null
+        
+        // Priority 1: Explicit chapter markers
+        val regex = Regex("""(?i)(?:chapter|ch|ch\.|c)\s*(\d+)""")
+        val match = regex.find(title)
+        if (match != null) {
+            return "Chapter ${match.groupValues[1]}"
+        }
+        
+        // Priority 2: Number after a separator at the end of the string
+        // e.g. "Novel Title: 150" or "Novel Title - 150"
+        val endNumberRegex = Regex("""[\s:\-—–\|](\d+)\s*$""")
+        val endMatch = endNumberRegex.find(title)
+        if (endMatch != null) {
+            return "Chapter ${endMatch.groupValues[1]}"
+        }
+        
+        // Priority 3: Any standalone number that isn't part of the title's year or volume
+        // We look for the last number in the string as it's most likely the chapter
+        val allNumbers = Regex("""\b(\d+)\b""").findAll(title)
+        val lastNumberMatch = allNumbers.lastOrNull()
+        if (lastNumberMatch != null) {
+            val num = lastNumberMatch.groupValues[1]
+            // Heuristic: chapter numbers are usually not years (like 2023) unless the novel is very long
+            // and usually not single digits if there's a better match, but we just take the last one.
+            return "Chapter $num"
+        }
+        
+        return null
+    }
+
+    /**
+     * Extract chapter label from URL
+     */
+    fun extractChapterLabelFromUrl(url: String): String? {
+        val patterns = listOf(
+            Regex("chapter\\s*(\\d+)", RegexOption.IGNORE_CASE),
+            Regex("ch(?:apter)?\\D*(\\d+)", RegexOption.IGNORE_CASE),
+            Regex("/(\\d+)(?:/|$)"),
+            Regex("-(\\d+)(?:\\D|$)")
+        )
+        for (r in patterns) {
+            val m = r.find(url)
+            if (m != null && m.groupValues.size >= 2) {
+                val num = m.groupValues[1]
+                return "Chapter $num"
+            }
+        }
+        return null
+    }
+
+    /**
      * Extract chapter number from URL or text
      * 
      * @param text The text or URL to extract chapter from

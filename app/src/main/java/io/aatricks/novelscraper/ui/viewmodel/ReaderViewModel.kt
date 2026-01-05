@@ -145,8 +145,8 @@ class ReaderViewModel(
                         
                         // Use library baseTitle if available, otherwise extract it from content title
                         val baseTitle = libraryItem?.baseTitle?.ifBlank { null }
-                            ?: (libraryItem?.title?.let { extractBaseTitle(it, ContentType.WEB) })
-                            ?: (content.title?.let { extractBaseTitle(it, ContentType.WEB) })
+                            ?: (libraryItem?.title?.let { TextUtils.extractBaseTitle(it, ContentType.WEB) })
+                            ?: (content.title?.let { TextUtils.extractBaseTitle(it, ContentType.WEB) })
                             ?: ""
                         
                         val novelName = baseTitle.ifBlank { content.title ?: libraryItem?.title ?: "" }
@@ -338,14 +338,14 @@ class ReaderViewModel(
 
         return try {
             val title = fetchedTitle ?: url
-            val chapterLabel = extractChapterLabel(title) 
-                ?: extractChapterLabelFromUrl(url) 
+            val chapterLabel = TextUtils.extractChapterLabel(title) 
+                ?: TextUtils.extractChapterLabelFromUrl(url) 
                 ?: (if (isNext) "Next Chapter" else "Previous Chapter")
             
             val baseTitle = if (currentItem.baseTitle.isNotBlank()) {
                 currentItem.baseTitle
             } else {
-                extractBaseTitle(currentItem.title, ContentType.WEB)
+                TextUtils.extractBaseTitle(currentItem.title, ContentType.WEB)
             }
             
             val newItem = libraryRepository.addItem(
@@ -470,8 +470,8 @@ class ReaderViewModel(
                 // Get novel name and chapter info
                 val libraryItem = libraryItemId?.let { libraryRepository.getItemById(it) }
                 val baseTitle = libraryItem?.baseTitle?.ifBlank { null }
-                    ?: content.title?.let { extractBaseTitle(it, ContentType.EPUB) }
-                    ?: libraryItem?.title?.let { extractBaseTitle(it, ContentType.EPUB) }
+                    ?: content.title?.let { TextUtils.extractBaseTitle(it, ContentType.EPUB) }
+                    ?: libraryItem?.title?.let { TextUtils.extractBaseTitle(it, ContentType.EPUB) }
                     ?: ""
                 
                 val novelName = baseTitle.ifBlank { content.title ?: libraryItem?.title ?: "" }
@@ -655,66 +655,73 @@ class ReaderViewModel(
     }
 
     /**
-     * Extract chapter label from title
-     */
-    private fun extractChapterLabel(title: String?): String? {
-        if (title == null) return null
-        val regex = Regex("(chapter|ch|ch\\.)\\s*(\\d+)", RegexOption.IGNORE_CASE)
-        val match = regex.find(title)
-        return match?.let { "Chapter ${it.groupValues[2]}" }
-    }
-
-    /**
-     * Clean chapter title by removing the novel name and separators
-     */
-    private fun cleanChapterTitle(fullTitle: String?, novelName: String): String {
-        if (fullTitle == null || fullTitle.isBlank()) return ""
-        if (novelName.isBlank()) return fullTitle
-        
-        var cleaned = fullTitle
-        // Remove novel name if it's present at the beginning or followed by common separators
-        if (cleaned.contains(novelName, ignoreCase = true)) {
-            cleaned = cleaned.replace(novelName, "", ignoreCase = true)
-        }
-        
-        // Remove leading/trailing separators like " - ", " : ", " — ", " – "
-        cleaned = cleaned.replace(Regex("""^[\s–—\-:]+"""), "")
-            .replace(Regex("""[\s–—\-:]+$"""), "")
-            .trim()
-            
-        // If everything was removed (title was just novel name), return empty
-        if (cleaned.isBlank() && fullTitle.equals(novelName, ignoreCase = true)) {
-            return ""
-        }
-        
-        return cleaned
-    }
-
-    /**
-     * Extract chapter label from URL
-     */
-    private fun extractChapterLabelFromUrl(url: String): String? {
-        val patterns = listOf(
-            Regex("chapter\\s*(\\d+)", RegexOption.IGNORE_CASE),
-            Regex("ch(?:apter)?\\D*(\\d+)", RegexOption.IGNORE_CASE),
-            Regex("/(\\d+)(?:/|$)"),
-            Regex("-(\\d+)(?:\\D|$)")
-        )
-        for (r in patterns) {
-            val m = r.find(url)
-            if (m != null && m.groupValues.size >= 2) {
-                val num = m.groupValues[1]
-                return "Chapter $num"
-            }
-        }
-        return null
-    }
-
-    /**
      * Clear error state
      */
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    /**
+     * Clean chapter title by removing the novel name, common web junk, and separators.
+     * If the title still looks like a web page title, attempts to extract just the chapter label.
+     */
+    private fun cleanChapterTitle(fullTitle: String?, novelName: String): String {
+        if (fullTitle == null || fullTitle.isBlank()) return ""
+        
+        var cleaned: String = fullTitle
+        
+        // 1. Remove common web novel "junk" first
+        val junkPatterns = listOf(
+            Regex("""(?i)^read\s+"""),
+            Regex("""(?i)\s+free\s+online.*$"""),
+            Regex("""(?i)\s+online\s+free.*$"""),
+            Regex("""(?i)\s*\|\s*.*$"""), // Remove anything after |
+            Regex("""(?i)\s+at\s+.*$"""), // Remove " at SourceName"
+            Regex("""(?i)[\s–—\-:]*(MangaBat|NovelFire|MangaPark|MangaKakalot).*$"""),
+            Regex("""(?i)[\s–—\-:]*Scan.*$""")
+        )
+        
+        for (pattern in junkPatterns) {
+            cleaned = cleaned.replace(pattern, "")
+        }
+
+        if (novelName.isNotBlank()) {
+            // Remove novel name if it's present
+            if (cleaned.contains(novelName, ignoreCase = true)) {
+                cleaned = cleaned.replace(novelName, "", ignoreCase = true)
+            }
+        }
+        
+        // Remove leading/trailing separators
+        cleaned = cleaned.replace(Regex("""^[\s–—\-:\|]+"""), "")
+            .replace(Regex("""[\s–—\-:\|]+$"""), "")
+            .trim()
+            
+        // 2. If it still looks like a long web page title or contains "Chapter", 
+        // try to extract just the chapter label + subtitle
+        if (cleaned.length > 40 || cleaned.contains("Chapter", ignoreCase = true) || cleaned.contains("Ch.", ignoreCase = true)) {
+             val extractedLabel = TextUtils.extractChapterLabel(cleaned)
+             if (extractedLabel != null) {
+                 // Check if there is a subtitle after the chapter label
+                 // e.g. "Chapter 233 - The Final Battle"
+                 val subTitleRegex = Regex("""(?i)(?:chapter|ch|ch\.)\s*\d+[\s:\-—–\|]+(.+)""")
+                 val match = subTitleRegex.find(cleaned)
+                 val subTitle = match?.groupValues?.get(1)?.trim()
+                 
+                 return if (!subTitle.isNullOrBlank() && subTitle.length > 2) {
+                     "$extractedLabel: $subTitle"
+                 } else {
+                     extractedLabel
+                 }
+             }
+        }
+
+        // If everything was removed or it's just the novel name, return empty
+        if (cleaned.isBlank() || (novelName.isNotBlank() && fullTitle.equals(novelName, ignoreCase = true))) {
+            return ""
+        }
+        
+        return cleaned
     }
 
     /**
@@ -820,27 +827,6 @@ class ReaderViewModel(
         if (progress > 0) {
             updateReadingProgress(progress)
         }
-    }
-    
-    /**
-     * Extract base title by removing chapter markers
-     * Only normalizes WEB content - PDFs/HTML/EPUB keep full titles
-     */
-    private fun extractBaseTitle(title: String, contentType: ContentType): String {
-        // Only normalize WEB content for grouping
-        if (contentType != ContentType.WEB) return title
-        
-        // Remove common chapter markers and trailing content
-        val patterns = listOf(
-            Regex("""[–—\-:]?\s*(?:chapter|ch|ch\.)\s*\d+.*$""", RegexOption.IGNORE_CASE),
-            Regex("""\s*[–—\-]\s*\d+.*$"""), // "Title - 123" or "Title – 123"
-            Regex("""\s*:\s*\d+.*$""") // "Title: 123"
-        )
-        var normalized = title
-        for (pattern in patterns) {
-            normalized = normalized.replace(pattern, "").trim()
-        }
-        return if (normalized.isBlank() || normalized.length < 3) title else normalized
     }
     
     /**
