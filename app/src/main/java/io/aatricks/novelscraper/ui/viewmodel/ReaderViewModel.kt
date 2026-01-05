@@ -142,9 +142,20 @@ class ReaderViewModel(
 
                         // Get novel name and chapter info
                         val libraryItem = libraryItemId?.let { libraryRepository.getItemById(it) }
-                        val novelName = libraryItem?.baseTitle?.ifBlank { libraryItem.title } ?: content.title ?: ""
-                        val chapterTitle = content.title ?: libraryItem?.currentChapter ?: ""
-                        val baseTitle = libraryItem?.baseTitle ?: extractBaseTitle(novelName, ContentType.WEB)
+                        
+                        // Use library baseTitle if available, otherwise extract it from content title
+                        val baseTitle = libraryItem?.baseTitle?.ifBlank { null }
+                            ?: (libraryItem?.title?.let { extractBaseTitle(it, ContentType.WEB) })
+                            ?: (content.title?.let { extractBaseTitle(it, ContentType.WEB) })
+                            ?: ""
+                        
+                        val novelName = baseTitle.ifBlank { content.title ?: libraryItem?.title ?: "" }
+                        
+                        // Clean chapter title by removing the novel name from it to avoid duplication
+                        val chapterTitle = cleanChapterTitle(content.title, novelName).ifBlank {
+                            libraryItem?.currentChapter ?: ""
+                        }
+                        
                         val baseNovelUrl = libraryItem?.baseNovelUrl ?: ""
                         val sourceName = libraryItem?.sourceName ?: ""
                         
@@ -458,8 +469,15 @@ class ReaderViewModel(
 
                 // Get novel name and chapter info
                 val libraryItem = libraryItemId?.let { libraryRepository.getItemById(it) }
-                val novelName = libraryItem?.baseTitle?.ifBlank { libraryItem.title } ?: content.title ?: ""
-                val chapterTitle = content.title ?: libraryItem?.currentChapter ?: ""
+                val baseTitle = libraryItem?.baseTitle?.ifBlank { null }
+                    ?: content.title?.let { extractBaseTitle(it, ContentType.EPUB) }
+                    ?: libraryItem?.title?.let { extractBaseTitle(it, ContentType.EPUB) }
+                    ?: ""
+                
+                val novelName = baseTitle.ifBlank { content.title ?: libraryItem?.title ?: "" }
+                val chapterTitle = cleanChapterTitle(content.title, novelName).ifBlank {
+                    libraryItem?.currentChapter ?: ""
+                }
                 
                 val initialIndex = if (fromBottom) (content.paragraphs.size - 1).coerceAtLeast(0) else 0
                 val initialPosition = if (fromBottom) 100f else 0f
@@ -479,7 +497,8 @@ class ReaderViewModel(
                         scrollOffset = 0,
                         hasReachedQuarterScreen = fromBottom,
                         novelName = novelName,
-                        chapterTitle = chapterTitle
+                        chapterTitle = chapterTitle,
+                        baseTitle = baseTitle
                     )
                 }
 
@@ -643,6 +662,32 @@ class ReaderViewModel(
         val regex = Regex("(chapter|ch|ch\\.)\\s*(\\d+)", RegexOption.IGNORE_CASE)
         val match = regex.find(title)
         return match?.let { "Chapter ${it.groupValues[2]}" }
+    }
+
+    /**
+     * Clean chapter title by removing the novel name and separators
+     */
+    private fun cleanChapterTitle(fullTitle: String?, novelName: String): String {
+        if (fullTitle == null || fullTitle.isBlank()) return ""
+        if (novelName.isBlank()) return fullTitle
+        
+        var cleaned = fullTitle
+        // Remove novel name if it's present at the beginning or followed by common separators
+        if (cleaned.contains(novelName, ignoreCase = true)) {
+            cleaned = cleaned.replace(novelName, "", ignoreCase = true)
+        }
+        
+        // Remove leading/trailing separators like " - ", " : ", " — ", " – "
+        cleaned = cleaned.replace(Regex("""^[\s–—\-:]+"""), "")
+            .replace(Regex("""[\s–—\-:]+$"""), "")
+            .trim()
+            
+        // If everything was removed (title was just novel name), return empty
+        if (cleaned.isBlank() && fullTitle.equals(novelName, ignoreCase = true)) {
+            return ""
+        }
+        
+        return cleaned
     }
 
     /**
