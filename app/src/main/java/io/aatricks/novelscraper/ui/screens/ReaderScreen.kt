@@ -293,6 +293,7 @@ fun ReaderScreen(
         val selectedChapterUrls = remember { mutableStateListOf<String>() }
         // true if selecting downloaded chapters for deletion, false if selecting source chapters for download
         var isDeleteMode by remember { mutableStateOf(false) }
+        val chaptersListState = rememberLazyListState()
 
         ModalBottomSheet(
             onDismissRequest = { 
@@ -310,7 +311,7 @@ fun ReaderScreen(
             val allChapters = uiState.fullChapterList.ifEmpty {
                 libraryItemsInGroup.map { 
                     io.aatricks.novelscraper.data.model.ChapterInfo(it.currentChapter.ifBlank { it.title }, it.url)
-                }.reversed()
+                } // Removed .reversed() to keep ascending unification
             }
 
             val filteredChapters = if (isSelectionMode) {
@@ -321,6 +322,14 @@ fun ReaderScreen(
                 }
             } else {
                 allChapters
+            }
+
+            // Scroll to current chapter when opened
+            LaunchedEffect(showChapterList) {
+                val currentIndex = filteredChapters.indexOfFirst { it.url == uiState.content?.url }
+                if (currentIndex >= 0) {
+                    chaptersListState.scrollToItem(currentIndex)
+                }
             }
 
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
@@ -387,7 +396,10 @@ fun ReaderScreen(
                         CircularProgressIndicator(color = Color(0xFF4CAF50))
                     }
                 } else {
-                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 450.dp)) {
+                    LazyColumn(
+                        state = chaptersListState,
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 450.dp)
+                    ) {
                         items(filteredChapters) { chapter ->
                             val isDownloaded = chapter.url in downloadedUrls
                             val isSelected = chapter.url in selectedChapterUrls

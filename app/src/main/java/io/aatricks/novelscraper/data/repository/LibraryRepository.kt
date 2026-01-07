@@ -276,19 +276,17 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
      * Group items by baseTitle
      */
     fun getGroupedByTitle(): Map<String, List<LibraryItem>> {
-        // Group by baseTitle and sort each group's chapters in descending order when possible
-        // Sort by chapter number if available, otherwise by date added (most recent first)
+        // Group by baseTitle and sort each group's chapters in ascending order
         return _libraryItems.value.groupBy { item ->
-            // Use baseTitle if available, otherwise fall back to title
             item.baseTitle.ifBlank { item.title }
         }.mapValues { (_, items) ->
-            // Sort items by chapter number (descending) when we can parse it, otherwise by dateAdded
+            // Sort items by chapter number (ascending) when we can parse it, otherwise by dateAdded
             items.sortedWith { a, b ->
                 val aNum = parseChapterNumberOrNull(a)
                 val bNum = parseChapterNumberOrNull(b)
                 when {
-                    aNum != null && bNum != null -> bNum.compareTo(aNum)
-                    else -> b.dateAdded.compareTo(a.dateAdded)
+                    aNum != null && bNum != null -> aNum.compareTo(bNum)
+                    else -> a.dateAdded.compareTo(b.dateAdded)
                 }
             }
         }

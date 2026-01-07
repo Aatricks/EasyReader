@@ -185,10 +185,10 @@ class MangaBatSource : NovelSource {
                 title = element.text(),
                 url = chapterUrl
             )
-        }
+        }.reversed() // Unify to Ascending (1 to N)
 
-        // First chapter is usually the last one in the list for mangabat
-        val readingUrl = chapterList.lastOrNull()?.url
+        // First chapter is the first one in the ascending list
+        val readingUrl = chapterList.firstOrNull()?.url
 
                 ExploreItem(
 
