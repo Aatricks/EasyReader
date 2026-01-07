@@ -53,7 +53,8 @@ class ReaderViewModel(
                 fontSize = preferencesManager.fontSize,
                 lineHeight = preferencesManager.lineHeight,
                 fontFamily = preferencesManager.fontFamily,
-                margins = preferencesManager.margins
+                margins = preferencesManager.margins,
+                paragraphSpacing = preferencesManager.paragraphSpacing
             )
         }
     }
@@ -90,7 +91,8 @@ class ReaderViewModel(
         val fontSize: Float = 18f,
         val lineHeight: Float = 1.5f,
         val fontFamily: String = "Default",
-        val margins: Int = 16
+        val margins: Int = 16,
+        val paragraphSpacing: Float = 1.0f
     )
     
     // Formatting update functions
@@ -116,6 +118,12 @@ class ReaderViewModel(
         val margins = newMargins.coerceIn(0, 64)
         preferencesManager.margins = margins
         _uiState.update { it.copy(margins = margins) }
+    }
+
+    fun updateParagraphSpacing(newSpacing: Float) {
+        val spacing = newSpacing.coerceIn(0.0f, 3.0f)
+        preferencesManager.paragraphSpacing = spacing
+        _uiState.update { it.copy(paragraphSpacing = spacing) }
     }
 
     /**

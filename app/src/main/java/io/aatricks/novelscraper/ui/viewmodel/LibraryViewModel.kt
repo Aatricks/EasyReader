@@ -247,7 +247,8 @@ class LibraryViewModel(
                     // We need a temporary item to pass to addNextChapters
                     val tempItem = libraryRepository.getItemByUrl(readingUrl)
                     if (tempItem != null) {
-                        addNextChapters(tempItem, 5)
+                        // Automatically adding chapters removed to prevent "starting at ch 6" issue
+                        // User can download more if needed.
                     }
                 } else {
                     // EPUB/PDF

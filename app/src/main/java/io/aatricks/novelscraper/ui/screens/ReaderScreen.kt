@@ -55,6 +55,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.unit.sp
 import io.aatricks.novelscraper.data.model.ChapterContent
 import io.aatricks.novelscraper.data.model.ContentElement
@@ -282,6 +283,7 @@ fun ReaderScreen(
             onUpdateLineHeight = { readerViewModel.updateLineHeight(it) },
             onUpdateFontFamily = { readerViewModel.updateFontFamily(it) },
             onUpdateMargins = { readerViewModel.updateMargins(it) },
+            onUpdateParagraphSpacing = { readerViewModel.updateParagraphSpacing(it) },
             sheetState = settingsSheetState
         )
     }
@@ -736,8 +738,7 @@ private fun ContentArea(
                     .pointerInput(Unit) {
                         detectTapGestures(onTap = { readerViewModel.toggleControls() })
                     },
-                contentPadding = if (isManhwa) PaddingValues(0.dp) else PaddingValues(horizontal = uiState.margins.dp, vertical = 16.dp),
-                verticalArrangement = if (isManhwa) Arrangement.spacedBy(0.dp) else Arrangement.spacedBy(uiState.fontSize.dp) // Use font size as spacing roughly
+                verticalArrangement = if (isManhwa) Arrangement.spacedBy(0.dp) else Arrangement.spacedBy((uiState.fontSize * uiState.paragraphSpacing).dp)
             ) {
                 itemsIndexed(
                     content.paragraphs,
@@ -752,7 +753,7 @@ private fun ContentArea(
                                     lineHeight = (uiState.fontSize * uiState.lineHeight).sp,
                                     fontFamily = fontFamily
                                 ),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = uiState.margins.dp)
                             )
                         }
                         is ContentElement.Image -> {
@@ -1141,6 +1142,7 @@ fun ReaderSettingsSheet(
     onUpdateLineHeight: (Float) -> Unit,
     onUpdateFontFamily: (String) -> Unit,
     onUpdateMargins: (Int) -> Unit,
+    onUpdateParagraphSpacing: (Float) -> Unit,
     sheetState: SheetState
 ) {
     ModalBottomSheet(
@@ -1167,7 +1169,7 @@ fun ReaderSettingsSheet(
                     onValueChange = onUpdateFontSize,
                     valueRange = 12f..32f,
                     steps = 19, // 1sp steps
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).scale(scaleY = 0.8f, scaleX = 1f),
                     colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50))
                 )
             }
@@ -1184,7 +1186,7 @@ fun ReaderSettingsSheet(
                     onValueChange = onUpdateLineHeight,
                     valueRange = 1.0f..2.5f,
                     steps = 14, // 0.1 steps
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).scale(scaleY = 0.8f, scaleX = 1f),
                     colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50))
                 )
             }
@@ -1201,7 +1203,24 @@ fun ReaderSettingsSheet(
                     onValueChange = { onUpdateMargins(it.toInt()) },
                     valueRange = 0f..64f,
                     steps = 15, // 4dp steps approx
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).scale(scaleY = 0.8f, scaleX = 1f),
+                    colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50))
+                )
+            }
+
+            // Paragraph Spacing
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Spacing: ${String.format("%.1f", uiState.paragraphSpacing)}", modifier = Modifier.width(100.dp))
+                Slider(
+                    value = uiState.paragraphSpacing,
+                    onValueChange = onUpdateParagraphSpacing,
+                    valueRange = 0.0f..3.0f,
+                    steps = 29, // 0.1 steps
+                    modifier = Modifier.weight(1f).scale(scaleY = 0.8f, scaleX = 1f),
                     colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50))
                 )
             }

@@ -145,6 +145,10 @@ class PreferencesManager(context: Context) {
     var margins: Int
         get() = prefs.getInt(KEY_MARGINS, 16)
         set(value) = prefs.edit().putInt(KEY_MARGINS, value).apply()
+
+    var paragraphSpacing: Float
+        get() = prefs.getFloat(KEY_PARAGRAPH_SPACING, 1.0f)
+        set(value) = prefs.edit().putFloat(KEY_PARAGRAPH_SPACING, value).apply()
     
     // Clear all preferences
     fun clearAll() {
@@ -174,5 +178,6 @@ class PreferencesManager(context: Context) {
         private const val KEY_LINE_HEIGHT = "reader_line_height"
         private const val KEY_FONT_FAMILY = "reader_font_family"
         private const val KEY_MARGINS = "reader_margins"
+        private const val KEY_PARAGRAPH_SPACING = "reader_paragraph_spacing"
     }
 }
