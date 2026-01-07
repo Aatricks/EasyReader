@@ -118,6 +118,22 @@ class PreferencesManager(context: Context) {
             emptyList()
         }
     }
+
+    // Collapsed sources
+    fun saveCollapsedSources(sources: Set<String>) {
+        val json = gson.toJson(sources)
+        prefs.edit().putString(KEY_COLLAPSED_SOURCES, json).apply()
+    }
+
+    fun loadCollapsedSources(): Set<String> {
+        val json = prefs.getString(KEY_COLLAPSED_SOURCES, null) ?: return emptySet()
+        val type = object : TypeToken<Set<String>>() {}.type
+        return try {
+            gson.fromJson(json, type)
+        } catch (e: Exception) {
+            emptySet()
+        }
+    }
     
     // Current title for tracking
     var currentTitle: String?
@@ -170,6 +186,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_PARAGRAPHS = "paragraphs"
         private const val KEY_SCROLL_POSITION = "scroll_position"
         private const val KEY_LIBRARY_ITEMS = "library_items"
+        private const val KEY_COLLAPSED_SOURCES = "collapsed_sources"
         private const val KEY_CURRENT_TITLE = "current_title"
         private const val KEY_LAST_UPDATE_CHECK = "last_update_check"
         

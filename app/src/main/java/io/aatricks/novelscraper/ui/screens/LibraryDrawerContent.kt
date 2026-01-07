@@ -264,7 +264,6 @@ fun LibraryDrawerContent(
             val scope = rememberCoroutineScope()
 
             val expandedNovelState = remember { mutableStateMapOf<String, Boolean>() }
-            val expandedSourceState = remember { mutableStateMapOf<String, Boolean>() }
             val showFullChaptersState = remember { mutableStateMapOf<String, Boolean>() }
 
             val groupedBySource = libraryUiState.groupedBySource
@@ -277,16 +276,13 @@ fun LibraryDrawerContent(
                     val sourceName = sourceEntry.key
                     val novels = sourceEntry.value
                     
-                    if (!expandedSourceState.containsKey(sourceName)) {
-                        expandedSourceState[sourceName] = true
-                    }
-                    val isSourceExpanded = expandedSourceState[sourceName] ?: true
+                    val isSourceExpanded = !libraryUiState.collapsedSources.contains(sourceName)
 
                     item(key = "source_$sourceName") {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { expandedSourceState[sourceName] = !isSourceExpanded }
+                                .clickable { libraryViewModel.toggleSourceExpansion(sourceName) }
                                 .padding(vertical = 8.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {

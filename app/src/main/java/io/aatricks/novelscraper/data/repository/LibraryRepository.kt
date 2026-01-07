@@ -26,10 +26,14 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
     
     private val _selectedItems = MutableStateFlow<Set<String>>(emptySet())
     val selectedItems: StateFlow<Set<String>> = _selectedItems.asStateFlow()
+
+    private val _collapsedSources = MutableStateFlow<Set<String>>(emptySet())
+    val collapsedSources: StateFlow<Set<String>> = _collapsedSources.asStateFlow()
     
     init {
         // Load library on initialization
         _libraryItems.value = preferencesManager.loadLibraryItems()
+        _collapsedSources.value = preferencesManager.loadCollapsedSources()
     }
     
     /**
@@ -567,6 +571,20 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
         } else {
             false
         }
+    }
+
+    /**
+     * Toggle source expansion state
+     */
+    fun toggleSourceExpansion(sourceName: String) {
+        val current = _collapsedSources.value.toMutableSet()
+        if (current.contains(sourceName)) {
+            current.remove(sourceName)
+        } else {
+            current.add(sourceName)
+        }
+        _collapsedSources.value = current
+        preferencesManager.saveCollapsedSources(current)
     }
     
     /**

@@ -54,6 +54,7 @@ class LibraryViewModel(
         val filteredItems: List<LibraryItem> = emptyList(),
         val groupedItems: Map<String, List<LibraryItem>> = emptyMap(),
         val groupedBySource: Map<String, Map<String, List<LibraryItem>>> = emptyMap(),
+        val collapsedSources: Set<String> = emptySet(),
         val isLoading: Boolean = false,
         val error: String? = null,
         val isSelectionMode: Boolean = false,
@@ -78,13 +79,21 @@ class LibraryViewModel(
      */
     private fun observeLibraryChanges() {
         viewModelScope.launch {
-            combine(
+            // Group repository flows
+            val repoFlow = combine(
                 libraryRepository.libraryItems,
                 libraryRepository.selectedItems,
+                libraryRepository.collapsedSources
+            ) { items, selected, collapsed ->
+                Triple(items, selected, collapsed)
+            }
+
+            combine(
+                repoFlow,
                 _searchQuery,
                 _contentTypeFilter,
                 _sortMode
-            ) { items, selectedIds, query, filter, sort ->
+            ) { (items, selectedIds, collapsedSources), query, filter, sort ->
                 // Apply filters
                 var filteredItems = items
 
@@ -113,6 +122,7 @@ class LibraryViewModel(
                         filteredItems = filteredItems,
                         groupedItems = libraryRepository.getGroupedByTitle(filteredItems),
                         groupedBySource = libraryRepository.getGroupedBySourceAndTitle(filteredItems),
+                        collapsedSources = collapsedSources,
                         isSelectionMode = selectedIds.isNotEmpty(),
                         selectedIds = selectedIds,
                         selectedCount = selectedIds.size,
@@ -846,5 +856,12 @@ class LibraryViewModel(
                 }
             }
         }
+    }
+
+    /**
+     * Toggle source expansion
+     */
+    fun toggleSourceExpansion(sourceName: String) {
+        libraryRepository.toggleSourceExpansion(sourceName)
     }
 }
