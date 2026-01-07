@@ -170,7 +170,7 @@ class ReaderViewModel(
                             currentChapter = "", 
                             progress = _uiState.value.scrollProgress,
                             currentChapterUrl = prevContent.url,
-                            lastScrollProgress = _uiState.value.scrollPosition.toInt(),
+                            lastScrollProgress = _uiState.value.scrollPosition,
                             lastReadIndex = _uiState.value.scrollIndex,
                             lastReadOffset = _uiState.value.scrollOffset
                         )
@@ -260,20 +260,19 @@ class ReaderViewModel(
                             libraryRepository.markAsCurrentlyReading(it)
                             if (!isExplicitNavigation) {
                                 val item = libraryRepository.getItemById(it)
-                                item?.let { libItem ->
-                                    // Restore last known saved chapter percent/position for this library item
-                                    restoredScrollPercent = libItem.lastScrollPosition.toFloat()
-                                    suppressAutoNavUntilUserInteraction = true
-                                    _uiState.update { state ->
-                                        state.copy(
-                                            scrollPosition = restoredScrollPercent,
-                                            scrollProgress = libItem.progress,
-                                            scrollIndex = libItem.lastReadIndex,
-                                            scrollOffset = libItem.lastReadOffset
-                                        )
-                                    }
-                                }
-                            }
+                                                            item?.let { libItem ->
+                                                                // Restore last known saved chapter percent/position for this library item
+                                                                restoredScrollPercent = libItem.lastScrollPosition
+                                                                suppressAutoNavUntilUserInteraction = true
+                                                                _uiState.update { state ->
+                                                                    state.copy(
+                                                                        scrollPosition = restoredScrollPercent,
+                                                                        scrollProgress = libItem.progress,
+                                                                        scrollIndex = libItem.lastReadIndex,
+                                                                        scrollOffset = libItem.lastReadOffset
+                                                                    )
+                                                                }
+                                                            }                            }
                         }
                         
                         // Reset explicit navigation flag
@@ -445,7 +444,7 @@ class ReaderViewModel(
                             currentChapter = "", // Empty string signals to keep existing value
                             progress = _uiState.value.scrollProgress,
                             currentChapterUrl = prevContent.url,
-                            lastScrollProgress = _uiState.value.scrollPosition.toInt(),
+                            lastScrollProgress = _uiState.value.scrollPosition,
                             lastReadIndex = _uiState.value.scrollIndex,
                             lastReadOffset = _uiState.value.scrollOffset
                         )
@@ -568,7 +567,7 @@ class ReaderViewModel(
                     if (!isExplicitNavigation) {
                         val item = libraryRepository.getItemById(it)
                         item?.let { libItem ->
-                            restoredScrollPercent = libItem.lastScrollPosition.toFloat()
+                            restoredScrollPercent = libItem.lastScrollPosition
                             suppressAutoNavUntilUserInteraction = true
                             _uiState.update { state ->
                                 state.copy(
@@ -618,8 +617,10 @@ class ReaderViewModel(
         val isScrollingDown = deltaRaw > 0f
 
         // Calculate progress percentage as normalized percent (0-100)
-        val progress = if (maxScrollOffset > 0) {
-            ((scrollOffset / maxScrollOffset) * 100f).coerceIn(0f, 100f)
+        val progress = if (maxScrollOffset > viewportHeight) {
+            ((scrollOffset / (maxScrollOffset - viewportHeight)) * 100f).coerceIn(0f, 100f)
+        } else if (maxScrollOffset > 0) {
+            100f // If content is smaller than viewport, we are effectively at the end
         } else {
             0f
         }
@@ -643,10 +644,10 @@ class ReaderViewModel(
         // Debounce repository updates and direction tracking
         progressUpdateJob?.cancel()
         progressUpdateJob = viewModelScope.launch {
-            delay(100) // 100ms debounce for persistence logic
+            delay(50) // 50ms debounce for persistence logic
             
-            // Update reading progress in library when reaching milestones (every 2%)
-            if (progressInt > 0 && progressInt % 2 == 0) {
+            // Update reading progress in library when reaching milestones (every 1%)
+            if (progressInt > 0) {
                 updateReadingProgress(progressInt)
             }
 
@@ -670,7 +671,7 @@ class ReaderViewModel(
         try {
             currentLibraryItemId?.let { itemId ->
                 val currentChapterUrl = _uiState.value.content?.url ?: ""
-                val lastScroll = _uiState.value.scrollPosition.toInt()
+                val lastScroll = _uiState.value.scrollPosition
                 val index = _uiState.value.scrollIndex
                 val offset = _uiState.value.scrollOffset
 

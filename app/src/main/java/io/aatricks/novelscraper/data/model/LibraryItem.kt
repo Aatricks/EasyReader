@@ -28,7 +28,7 @@ data class LibraryItem(
     val dateAdded: Long = System.currentTimeMillis(),
     val lastRead: Long = System.currentTimeMillis(),
     val isDownloading: Boolean = false,
-    val lastScrollPosition: Int = 0,
+    val lastScrollPosition: Float = 0f,
     val lastReadIndex: Int = 0,
     val lastReadOffset: Int = 0,
     val hasUpdates: Boolean = false,

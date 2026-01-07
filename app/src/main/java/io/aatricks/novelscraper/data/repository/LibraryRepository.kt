@@ -174,7 +174,7 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
         currentChapter: String,
         progress: Int,
         currentChapterUrl: String? = null,
-        lastScrollProgress: Int? = null,
+        lastScrollProgress: Float? = null,
         lastReadIndex: Int? = null,
         lastReadOffset: Int? = null
     ) {
@@ -199,7 +199,7 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
         currentChapter: String,
         progress: Int,
         currentChapterUrl: String? = null,
-        lastScrollProgress: Int? = null,
+        lastScrollProgress: Float? = null,
         lastReadIndex: Int? = null,
         lastReadOffset: Int? = null
     ): Boolean = withContext(Dispatchers.IO) {

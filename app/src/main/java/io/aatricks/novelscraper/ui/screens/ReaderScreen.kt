@@ -53,6 +53,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
@@ -81,7 +82,7 @@ fun ReaderScreen(
     var showExplore by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val exploreRepository = remember { ExploreRepository(context) }
-    
+
     var showCloudflareWebView by remember { mutableStateOf(false) }
     var cloudflareUrl by remember { mutableStateOf("") }
 
@@ -107,7 +108,7 @@ fun ReaderScreen(
     BackHandler(enabled = !drawerState.isOpen && !uiState.showControls && !showExplore && uiState.content != null) {
         scope.launch { drawerState.open() }
     }
-    
+
     // Check for Cloudflare/403 errors
     LaunchedEffect(uiState.error) {
         if (uiState.error?.contains("403") == true || uiState.error?.contains("503") == true) {
@@ -176,7 +177,7 @@ fun ReaderScreen(
                 }
             },
             confirmButton = {
-                Button(onClick = { 
+                Button(onClick = {
                     showCloudflareWebView = false
                     readerViewModel.retryLoad()
                 }) {
@@ -296,7 +297,7 @@ fun ReaderScreen(
         val chaptersListState = rememberLazyListState()
 
         ModalBottomSheet(
-            onDismissRequest = { 
+            onDismissRequest = {
                 showChapterList = false
                 isSelectionMode = false
                 selectedChapterUrls.clear()
@@ -307,9 +308,9 @@ fun ReaderScreen(
         ) {
             val libraryItemsInGroup = libraryViewModel.uiState.value.groupedItems[uiState.baseTitle] ?: emptyList()
             val downloadedUrls = libraryItemsInGroup.map { it.url }.toSet()
-            
+
             val allChapters = uiState.fullChapterList.ifEmpty {
-                libraryItemsInGroup.map { 
+                libraryItemsInGroup.map {
                     io.aatricks.novelscraper.data.model.ChapterInfo(it.currentChapter.ifBlank { it.title }, it.url)
                 } // Removed .reversed() to keep ascending unification
             }
@@ -340,7 +341,7 @@ fun ReaderScreen(
                 ) {
                     Text(
                         text = if (isSelectionMode) {
-                            if (isDeleteMode) "Delete Chapters (${selectedChapterUrls.size})" 
+                            if (isDeleteMode) "Delete Chapters (${selectedChapterUrls.size})"
                             else "Download Chapters (${selectedChapterUrls.size})"
                         } else "Chapters",
                         style = MaterialTheme.typography.titleLarge,
@@ -390,7 +391,7 @@ fun ReaderScreen(
                         }
                     }
                 }
-                
+
                 if (uiState.isChaptersLoading && uiState.fullChapterList.isEmpty()) {
                     Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = Color(0xFF4CAF50))
@@ -405,7 +406,7 @@ fun ReaderScreen(
                             val isSelected = chapter.url in selectedChapterUrls
 
                             ListItem(
-                                headlineContent = { 
+                                headlineContent = {
                                     Text(
                                         text = chapter.title,
                                         color = when {
@@ -413,7 +414,7 @@ fun ReaderScreen(
                                             chapter.url == uiState.content?.url -> Color(0xFF4CAF50)
                                             else -> Color.White
                                         }
-                                    ) 
+                                    )
                                 },
                                 trailingContent = {
                                     if (!isSelectionMode && isDownloaded) {
@@ -459,7 +460,7 @@ fun ReaderScreen(
                         }
                     }
                 }
-                
+
                 Spacer(modifier = Modifier.height(32.dp))
             }
         }
@@ -482,7 +483,7 @@ private fun ContentArea(
     val listState = rememberLazyListState()
     val uiState by readerViewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
-    
+
     // Resolve font family
     val fontFamily = when (uiState.fontFamily) {
         "Serif" -> androidx.compose.ui.text.font.FontFamily.Serif
@@ -504,20 +505,30 @@ private fun ContentArea(
     LaunchedEffect(content.url, uiState.seekTrigger) {
         if (content.paragraphs.isNotEmpty()) {
             val isInitialRestore = !appliedRestore.value
-            
+
+            // Capture target values BEFORE any delay to prevent them being
+            // overwritten by the eager scroll observer
+            val targetIndex = uiState.scrollIndex
+            val targetOffset = uiState.scrollOffset
+            val targetPosition = uiState.scrollPosition
+
+            if (isInitialRestore) {
+                // Allow time for measurement and layout to settle
+                kotlinx.coroutines.delay(150)
+            }
+
             if (uiState.isPagedMode) {
-                val page = uiState.scrollIndex.coerceIn(0, content.paragraphs.size - 1)
+                val page = targetIndex.coerceIn(0, content.paragraphs.size - 1)
                 pagerState.scrollToPage(page)
             } else {
-                // For vertical mode, try to use index/offset if they seem valid
-                // During a manual seek from slider, scrollIndex is set to a rough value and scrollOffset to 0
-                if (uiState.scrollIndex >= 0) {
+                // For vertical mode, use the captured values
+                if (targetIndex >= 0) {
                     try {
-                        listState.scrollToItem(uiState.scrollIndex, uiState.scrollOffset)
+                        listState.scrollToItem(targetIndex, targetOffset)
                     } catch (_: Exception) {
                         // Fallback to percentage if scrollToItem fails
                         val totalItems = content.paragraphs.size
-                        val percent = uiState.scrollPosition.coerceIn(0f, 100f) / 100f
+                        val percent = targetPosition.coerceIn(0f, 100f) / 100f
                         val index = (percent * totalItems).toInt().coerceIn(0, totalItems - 1)
                         listState.scrollToItem(index, 0)
                     }
@@ -528,36 +539,48 @@ private fun ContentArea(
     }
 
     if (uiState.isPagedMode) {
-        LaunchedEffect(pagerState.currentPage) {
-            val totalItems = content.paragraphs.size
-            val currentItem = pagerState.currentPage
-            val progress = if (totalItems > 0) ((currentItem.toFloat() / totalItems) * 100f).coerceIn(0f, 100f) else 0f
-            
-            readerViewModel.updateScrollPosition(
-                scrollOffset = progress,
-                maxScrollOffset = 100f,
-                viewportHeight = 1f,
-                index = currentItem,
-                offset = 0
-            )
-        }
-    } else {
-        LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
-            if (content.paragraphs.isNotEmpty()) {
+        if (appliedRestore.value) {
+            LaunchedEffect(pagerState.currentPage) {
                 val totalItems = content.paragraphs.size
-                val currentItem = listState.firstVisibleItemIndex
-                val itemHeight = 100f
-                val maxScrollOffset = totalItems * itemHeight
-                val currentScrollOffset = currentItem * itemHeight + listState.firstVisibleItemScrollOffset
-                val viewportHeight = 800f
+                val currentItem = pagerState.currentPage
+                val progress = if (totalItems > 0) ((currentItem.toFloat() / totalItems) * 100f).coerceIn(0f, 100f) else 0f
 
                 readerViewModel.updateScrollPosition(
-                    scrollOffset = currentScrollOffset,
-                    maxScrollOffset = maxScrollOffset,
-                    viewportHeight = viewportHeight,
-                    index = listState.firstVisibleItemIndex,
-                    offset = listState.firstVisibleItemScrollOffset
+                    scrollOffset = progress,
+                    maxScrollOffset = 100f,
+                    viewportHeight = 1f,
+                    index = currentItem,
+                    offset = 0
                 )
+            }
+        }
+    } else {
+        // Only observe and update progress AFTER restoration has been applied
+        if (appliedRestore.value) {
+            LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
+                if (content.paragraphs.isNotEmpty()) {
+                    val layoutInfo = listState.layoutInfo
+                    val visibleItems = layoutInfo.visibleItemsInfo
+
+                    if (visibleItems.isNotEmpty()) {
+                        val totalItems = layoutInfo.totalItemsCount
+                        val firstItem = visibleItems.first()
+
+                        val currentScrollOffset = firstItem.index.toFloat() +
+                            (listState.firstVisibleItemScrollOffset.toFloat() / firstItem.size.toFloat())
+
+                        val maxScrollOffset = (totalItems - 1).coerceAtLeast(0).toFloat()
+                        val viewportHeightInItems = layoutInfo.viewportSize.height.toFloat() / firstItem.size.toFloat()
+
+                        readerViewModel.updateScrollPosition(
+                            scrollOffset = currentScrollOffset,
+                            maxScrollOffset = maxScrollOffset + viewportHeightInItems,
+                            viewportHeight = viewportHeightInItems,
+                            index = listState.firstVisibleItemIndex,
+                            offset = listState.firstVisibleItemScrollOffset
+                        )
+                    }
+                }
             }
         }
     }
@@ -571,19 +594,19 @@ private fun ContentArea(
     val threshold = remember { with(density) { 80.dp.toPx() } }
     var pullAmount by remember { mutableFloatStateOf(0f) }
     val isThresholdReached = abs(pullAmount) >= threshold
-    
+
     // Reset pull amount when content changes
     LaunchedEffect(content.url) {
         pullAmount = 0f
     }
-    
+
     val nestedScrollConnection = remember(content, uiState.isPagedMode, uiState.isRtl, pagerState.currentPage) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if ((abs(available.y) > 5f || abs(available.x) > 5f) && source == NestedScrollSource.Drag) {
                     readerViewModel.hideControls()
                 }
-                
+
                 // Recover pullAmount
                 if (uiState.isPagedMode) {
                     if (pullAmount > 0 && available.x < 0) {
@@ -677,9 +700,17 @@ private fun ContentArea(
         }
     }
 
+    val isRestoring = !appliedRestore.value && (uiState.scrollIndex > 0 || uiState.scrollOffset > 0)
+    val contentAlpha by animateFloatAsState(
+        targetValue = if (isRestoring) 0f else 1f,
+        animationSpec = tween(durationMillis = 200),
+        label = "contentAlpha"
+    )
+
     Box(modifier = Modifier
         .fillMaxSize()
         .nestedScroll(nestedScrollConnection)
+        .alpha(contentAlpha)
     ) {
         if (uiState.isPagedMode) {
             HorizontalPager(
@@ -845,7 +876,7 @@ private fun ContentArea(
                 if (isThresholdReached) Color(0xFF4CAF50) else Color.White,
                 label = "arrowColor"
             )
-            
+
             val alignment = if (uiState.isPagedMode) {
                 if (isPrevious) {
                     if (uiState.isRtl) Alignment.CenterStart else Alignment.CenterEnd
@@ -877,7 +908,7 @@ private fun ContentArea(
                     }
 
                     val rotation by animateFloatAsState(if (isThresholdReached) 180f else 0f, label = "arrowRotation")
-                    
+
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
@@ -1014,16 +1045,16 @@ private fun ReaderImageView(
 ) {
     if (imageUrl.startsWith("http")) {
         val context = LocalContext.current
-        
+
         // Check for cached image file
-        val cachedFile = remember(imageUrl) { 
-            readerViewModel.contentRepository.getCachedMediaFile(imageUrl) 
+        val cachedFile = remember(imageUrl) {
+            readerViewModel.contentRepository.getCachedMediaFile(imageUrl)
         }
-        
+
         val imageRequest = remember(imageUrl, pageUrl) {
             val uri = try { java.net.URI(pageUrl) } catch (e: Exception) { null }
             val referer = if (uri != null) "${uri.scheme}://${uri.host}/" else pageUrl
-            
+
             ImageRequest.Builder(context)
                 .data(if (cachedFile.exists()) cachedFile else imageUrl)
                 .addHeader("Referer", referer)
@@ -1168,7 +1199,7 @@ fun ReaderSettingsSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text("Reading Settings", style = MaterialTheme.typography.titleLarge)
-            
+
             // Font Size
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1254,7 +1285,7 @@ fun ReaderSettingsSheet(
                     )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
