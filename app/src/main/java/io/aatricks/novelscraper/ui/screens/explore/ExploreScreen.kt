@@ -117,8 +117,12 @@ fun ExploreScreen(
 
     LaunchedEffect(selectedSource, selectedTags) {
         isLoading = true
-        exploreItems = exploreRepository.getPopularNovels(1, selectedSource, selectedTags.toList())
         page = 1
+        exploreItems = if (isSearching && searchQuery.isNotBlank()) {
+            exploreRepository.searchNovels(searchQuery, 1, selectedSource)
+        } else {
+            exploreRepository.getPopularNovels(1, selectedSource, selectedTags.toList())
+        }
         isLoading = false
     }
 
@@ -158,7 +162,7 @@ fun ExploreScreen(
                                         scope.launch {
                                             isLoading = true
                                             page = 1
-                                            exploreItems = exploreRepository.getPopularNovels(1)
+                                            exploreItems = exploreRepository.getPopularNovels(1, selectedSource, selectedTags.toList())
                                             isLoading = false
                                         }
                                     }) {
