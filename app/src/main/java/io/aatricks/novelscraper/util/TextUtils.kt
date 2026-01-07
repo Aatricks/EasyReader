@@ -324,41 +324,26 @@ object TextUtils {
 
     /**
      * Formats the text of a chapter by removing extra whitespace and normalizing paragraph breaks.
-     *
-     * @param text The chapter text to format.
-     * @return The formatted chapter text.
      */
     fun formatChapterText(text: String): String {
         if (text.isEmpty()) return text
 
-        // Normalize line endings first
         val normalized = text.trim().replace(LINE_BREAK_REGEX, "\n")
 
-        // Split into paragraphs on 2+ newlines, keeping the separator length for each paragraph
-        // so we can avoid merging paragraphs that were intentionally separated
         val rawParagraphsWithSep = PARAGRAPH_SPLIT_REGEX.findAll(normalized)
             .map { it.groupValues[1] to it.groupValues[2].length }
             .toList()
         var rawParagraphs = rawParagraphsWithSep.map { it.first }
 
-        // Keep all raw paragraphs; do not remove promotional/footer fragments here.
-
-        // Merge adjacent paragraphs that look like accidental splits (e.g., line-wrap
-        // produced an extra blank line between a sentence continuation). Heuristics:
-        // - If previous paragraph does not end with a sentence terminator and
-        //   either the previous paragraph is short (<= 8 words) or ends with a small
-        //   'continuation' word (of, to, for, etc.), then merge with next paragraph.
+        // Initial merge of accidental splits
         val paragraphs = mutableListOf<String>()
         var i = 0
         while (i < rawParagraphs.size) {
             var cur = rawParagraphs[i].trim()
             if (cur.isEmpty()) { i++; continue }
 
-            // Lookahead to decide if we should merge with next paragraph
             if (i + 1 < rawParagraphs.size) {
                 val next = rawParagraphs[i + 1].trim()
-                // If the original input had a deliberate paragraph break of 2+ newlines
-                // between these two paragraphs, do not attempt to merge them.
                 if (rawParagraphsWithSep[i].second >= 2) {
                     paragraphs.add(cur)
                     i++
@@ -373,22 +358,17 @@ object TextUtils {
                             (wordCount <= 8 || lastW in CONTINUATION_WORDS || lastW.length <= 4) &&
                             !(cur.contains(':') && next.contains(':'))
 
-                        // If the next paragraph looks like a heading (short, starts with uppercase),
-                        // avoid merging as it likely indicates an intentional paragraph break.
-                        val nextFirstChar = next.firstOrNull()
-                        val nextWordCount = next.split(WHITESPACE_REGEX).filter { it.isNotBlank() }.size
-                        val looksLikeHeading = nextFirstChar != null && nextFirstChar.isUpperCase() && nextWordCount in 1..4 &&
-                            (next.uppercase() == next || next.trimEnd().endsWith(":"))
+                    val nextFirstChar = next.firstOrNull()
+                    val nextWordCount = next.split(WHITESPACE_REGEX).filter { it.isNotBlank() }.size
+                    val looksLikeHeading = nextFirstChar != null && nextFirstChar.isUpperCase() && nextWordCount in 1..4 &&
+                        (next.uppercase() == next || next.trimEnd().endsWith(":"))
 
-                        if (shouldMerge && !looksLikeHeading) {
-                        // Merge current and next paragraph with a space (preserve spacing)
+                    if (shouldMerge && !looksLikeHeading) {
                         cur = (cur + " " + next).replace(MULTIPLE_SPACES_REGEX, " ")
                         i += 2
-                        // In case there are multiple accidental splits, keep merging
                         while (i < rawParagraphs.size) {
                             val peek = rawParagraphs[i].trim()
                             if (peek.isEmpty()) { i++; continue }
-                            // stop merging if peek looks like a proper paragraph start (starts with uppercase and current ends with sentence end)
                             val peekFirst = peek.firstOrNull()
                             if (peekFirst != null && peekFirst.isUpperCase() && cur.trim().lastOrNull()?.let { SENTENCE_ENDERS.contains(it) } == true) break
                             cur = (cur + " " + peek).replace(MULTIPLE_SPACES_REGEX, " ")
@@ -399,14 +379,11 @@ object TextUtils {
                     }
                 }
             }
-
             paragraphs.add(cur)
             i++
         }
 
-        // Second, conservative pass: merge any remaining adjacent paragraphs that
-        // still look like accidental splits. This helps catch cases where the
-        // initial heuristics missed short fragments like "No sense" + "of honor.".
+        // Conservative aggressive merge
         val compacted = mutableListOf<String>()
         var pi = 0
         while (pi < paragraphs.size) {
@@ -417,14 +394,11 @@ object TextUtils {
                 val nxt = paragraphs[pi + 1].trim()
                 if (nxt.isEmpty()) { pi++; continue }
 
-                // If the original normalized text has a hard paragraph separation
-                // between cur and nxt, do not attempt to aggressively merge them.
                 if (normalized.contains(cur + "\n\n" + nxt)) break
 
                 val lastChar = cur.lastOrNull()
                 val lastW = lastWord(cur).lowercase()
                 val wordCount = cur.split(WHITESPACE_REGEX).size
-
                 val nextFirst = nxt.firstOrNull()
                 val nextWordCountAgg = nxt.split(WHITESPACE_REGEX).filter { it.isNotBlank() }.size
                 val looksLikeHeadingAgg = nextFirst != null && nextFirst.isUpperCase() && nextWordCountAgg in 1..4 &&
@@ -441,119 +415,77 @@ object TextUtils {
                 }
                 break
             }
-
             compacted.add(cur)
             pi++
         }
 
         val processedParagraphs = compacted.map { paragraph ->
-            // Trim edges of the paragraph
             val p = paragraph.trim()
             if (p.isEmpty()) return@map ""
 
-            // Replace multiple spaces with single space inside paragraph
             var builder = StringBuilder(p.replace(MULTIPLE_SPACES_REGEX, " "))
-
-            // Walk through and replace single newlines according to rules:
-            // - If the character immediately before the newline is a sentence end (.?!…:;"'”»)) keep the newline
-            // - If the char before newline is a hyphen '-' (word split) remove the hyphen and the newline (no space)
-            // - Otherwise replace the newline with a single space
-            var i = 0
-            while (i < builder.length) {
-                val c = builder[i]
+            var j = 0
+            while (j < builder.length) {
+                val c = builder[j]
                 if (c == '\n') {
-                    // find previous non-space char
-                    var prevIndex = i - 1
+                    var prevIndex = j - 1
                     while (prevIndex >= 0 && builder[prevIndex].isWhitespace()) prevIndex--
                     val prevChar = if (prevIndex >= 0) builder[prevIndex] else null
 
-                    // find next non-space char
-                    var nextIndex = i + 1
+                    var nextIndex = j + 1
                     while (nextIndex < builder.length && builder[nextIndex].isWhitespace()) nextIndex++
                     val nextChar = if (nextIndex < builder.length) builder[nextIndex] else null
 
-                    // Find the next line snippet (look ahead to the next newline or end)
                     val nextLineEnd = builder.indexOf('\n', nextIndex).let { if (it == -1) builder.length else it }
                     val nextLineSnippet = if (nextIndex < builder.length) builder.substring(nextIndex, minOf(nextLineEnd, nextIndex + 60)).trimStart() else ""
 
-                    // Heuristics to preserve newline:
-                    // - Next line starts with a list marker (e.g., '1.', 'i.', '-', '*', '•')
-                    // - Next line looks like a heading (short and starts with uppercase)
-                    // - Next line starts with a quote/em-dash which often marks dialogue
                     val startsWithQuoteOrDash = nextLineSnippet.startsWith("\"") || nextLineSnippet.startsWith("“") ||
                             nextLineSnippet.startsWith("—") || nextLineSnippet.startsWith("-") || nextLineSnippet.startsWith("'")
-                        // Consider a heading only if the next line is very short (<=4 words)
-                        // and either is in ALL CAPS/punctuation-heavy or ends with a colon.
-                        val nextLineWords = nextLineSnippet.split(WHITESPACE_REGEX).filter { it.isNotBlank() }.size
-                        val looksLikeHeading = nextLineWords in 1..4 && nextLineSnippet.firstOrNull()?.isUpperCase() == true &&
-                            (nextLineSnippet.uppercase() == nextLineSnippet || nextLineSnippet.trimEnd().endsWith(":"))
+                    val nextLineWords = nextLineSnippet.split(WHITESPACE_REGEX).filter { it.isNotBlank() }.size
+                    val looksLikeHeading = nextLineWords in 1..4 && nextLineSnippet.firstOrNull()?.isUpperCase() == true &&
+                        (nextLineSnippet.uppercase() == nextLineSnippet || nextLineSnippet.trimEnd().endsWith(":"))
                     val preserveBecauseNextLine = LIST_MARKER_REGEX.containsMatchIn(nextLineSnippet) || startsWithQuoteOrDash || looksLikeHeading
 
                     when {
                         prevChar == null -> {
-                            // leading newline, just remove
-                            builder.deleteCharAt(i)
+                            builder.deleteCharAt(j)
                             continue
                         }
                         prevChar == '-' -> {
-                            // word-split hyphen: remove the hyphen (prev) and the newline
-                            builder.deleteCharAt(i) // remove newline
-                            builder.deleteCharAt(prevIndex) // remove hyphen
-                            i = maxOf(0, prevIndex)
+                            builder.deleteCharAt(j)
+                            builder.deleteCharAt(prevIndex)
+                            j = maxOf(0, prevIndex)
                             continue
                         }
                         SENTENCE_ENDERS.contains(prevChar) || preserveBecauseNextLine -> {
-                            // keep paragraph style newline (convert to single newline)
-                            // replace any whitespace around with a single newline
-                            // remove any spaces before current pos
-                            var j = i - 1
-                            while (j >= 0 && builder[j].isWhitespace()) { builder.deleteCharAt(j); j-- ; i-- }
-                            // remove any spaces after newline
-                            var k = i + 1
-                            while (k < builder.length && builder[k].isWhitespace()) { builder.deleteCharAt(k) }
-                            // ensure a single newline remains
-                            if (i >= builder.length || builder[i] != '\n') {
-                                // already removed, skip
-                                continue
-                            }
-                            i++
+                            var k = j - 1
+                            while (k >= 0 && builder[k].isWhitespace()) { builder.deleteCharAt(k); k--; j-- }
+                            var m = j + 1
+                            while (m < builder.length && builder[m].isWhitespace()) { builder.deleteCharAt(m) }
+                            if (j >= builder.length || builder[j] != '\n') continue
+                            j++
                             continue
                         }
                         else -> {
-                            // default: join lines
-                            // remove the newline and ensure a single space at that position
-                            builder.deleteCharAt(i)
-                            // insert space if previous char is not space and next char is not punctuation
-                            // prevChar is non-null here (handled above), assert non-null to satisfy Kotlin
+                            builder.deleteCharAt(j)
                             val pChar = prevChar!!
                             val needSpace = !pChar.isWhitespace() && pChar != '-' &&
                                             (nextChar != null && !nextChar.isWhitespace() && nextChar != ',' && nextChar != '.')
                             if (needSpace) {
-                                builder.insert(i, ' ')
-                                i++
+                                builder.insert(j, ' ')
+                                j++
                             }
                             continue
                         }
                     }
                 }
-                i++
+                j++
             }
-
-            // After the iterative pass, also collapse any remaining newlines that
-            // clearly start with a lowercase letter or digit (continuation lines).
-            // This is conservative: we only join newlines followed by lowercase/digit
-            // since headings and dialogue often start with uppercase or punctuation.
             builder.toString().replace(NEWLINE_BEFORE_LOWER_DIGIT_REGEX, " ")
         }
 
-        // Re-join paragraphs with double newline and normalize multiple blank lines
         val joined = processedParagraphs.joinToString("\n\n").replace(THREE_PLUS_NEWLINES_REGEX, "\n\n")
 
-        // Next, consider collapsing accidental paragraph breaks (double
-        // newlines) where the split looks like a line-wrap artifact rather
-        // than a true paragraph boundary. We merge when the left part does
-        // not end with a sentence terminator and is short or ends with a
-        // continuation word.
         val parts = joined.split("\n\n").map { it.trim() }.toMutableList()
         var pi2 = 0
         while (pi2 < parts.size - 1) {
@@ -561,13 +493,11 @@ object TextUtils {
             val right = parts[pi2 + 1]
             if (left.isEmpty() || right.isEmpty()) { pi2++; continue }
 
-            // Respect explicit paragraph separators in the original text
             if (normalized.contains(left + "\n\n" + right)) { pi2++; continue }
 
             val lastChar = left.lastOrNull()
             val lastW = lastWord(left).lowercase()
             val leftWordCount = left.split(WHITESPACE_REGEX).size
-
             val continuationWords2 = setOf("of", "to", "for", "and", "but", "or", "the", "a", "an")
 
             val shouldCollapseParagraph = (lastChar != null && !SENTENCE_ENDERS.contains(lastChar)) &&
@@ -576,7 +506,6 @@ object TextUtils {
             if (shouldCollapseParagraph) {
                 parts[pi2] = (left + " " + right).replace(MULTIPLE_SPACES_REGEX, " ")
                 parts.removeAt(pi2 + 1)
-                // stay on same index to see if we can collapse further
             } else {
                 pi2++
             }
@@ -584,11 +513,6 @@ object TextUtils {
 
         val collapsed = parts.joinToString("\n\n")
 
-        // Additional aggressive cleanup pass: some sources split mid-sentence
-        // across paragraph tags or inserted extra blank lines. Conservatively
-        // merge paragraph pairs where the right paragraph begins with a
-        // lowercase letter or digit (strong signal of a continuation) and
-        // the left paragraph does not end with a sentence terminator.
         val postParts = collapsed.split("\n\n").map { it.trim() }.toMutableList()
         var idx = 0
         while (idx < postParts.size - 1) {
@@ -596,38 +520,29 @@ object TextUtils {
             val right = postParts[idx + 1]
             if (left.isEmpty() || right.isEmpty()) { idx++; continue }
 
-            // Respect explicit paragraph separators in the original text
             if (normalized.contains(left + "\n\n" + right)) { idx++; continue }
 
             val leftLast = left.lastOrNull()
             val rightFirst = right.firstOrNull()
-
-            // If right starts with lowercase or digit, and left does not end
-            // with a sentence-ender, merge them. This aggressively collapses
-            // accidental paragraph boundaries while preserving true breaks.
             val shouldMergeBecauseRightIsContinuation = (rightFirst != null && (rightFirst.isLowerCase() || rightFirst.isDigit())) &&
                     (leftLast == null || !SENTENCE_ENDERS.contains(leftLast))
 
             if (shouldMergeBecauseRightIsContinuation) {
                 postParts[idx] = (left + " " + right).replace(MULTIPLE_SPACES_REGEX, " ")
                 postParts.removeAt(idx + 1)
-                // do not increment idx so we can keep collapsing if needed
             } else {
                 idx++
             }
         }
 
         var finallyCollapsed = postParts.joinToString("\n\n")
-
-        // Collapse accidental leftover single newlines into spaces while preserving paragraphs
         val collapsedSingleNewlines = finallyCollapsed.replace(SINGLE_NEWLINE_REGEX, " ")
-
-        // Trim extra whitespace and return
         return collapsedSingleNewlines.replace(TWO_PLUS_SPACES_REGEX, " ").trim()
     }
 
-    // Debug helper used in tests to inspect how paragraphs are split and
-    // what separators (number of newlines) were found between them.
+    /**
+     * Debug helper used in tests to inspect how paragraphs are split.
+     */
     fun debugGetParagraphsWithSeparators(text: String): List<Pair<String, Int>> {
         if (text.isEmpty()) return emptyList()
         val normalized = text.trim().replace(LINE_BREAK_REGEX, "\n")

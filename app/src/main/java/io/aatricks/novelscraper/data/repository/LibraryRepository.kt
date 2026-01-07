@@ -319,18 +319,15 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
         }
     }
 
-    // Helper to extract chapter number from title or currentChapter using TextUtils helper if available
     private fun parseChapterNumberOrNull(item: LibraryItem): Int? {
-        // Try currentChapter first
         val cc = item.currentChapter
         if (cc.isNotBlank()) {
             val num = TextUtils.extractChapterNumber(cc)
             if (num != null) return num
         }
-        // Fallback to title
         val titleNum = TextUtils.extractChapterNumber(item.title)
         if (titleNum != null) return titleNum
-        // Fallback to URL - try to extract from URL string
+        
         val urlNum = TextUtils.extractChapterNumber(item.url)
         if (urlNum != null) return urlNum
         return null
@@ -495,43 +492,26 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
 
     /**
      * Check for updates for all novels in the library.
-     * Only checks novels that are at the last known chapter.
      */
     suspend fun refreshLibraryUpdates(exploreRepository: ExploreRepository) = withContext(Dispatchers.IO) {
         val currentItems = _libraryItems.value.toMutableList()
         val groupedItems = getGroupedByTitle()
         var updated = false
 
-        for ((baseTitle, items) in groupedItems) {
+        for ((_, items) in groupedItems) {
             if (items.isEmpty()) continue
             
-            // The first item in the sorted list is the latest chapter we have in library
             val latestInLibrary = items.first()
-            
-            // Only check if it has source info
             if (latestInLibrary.baseNovelUrl.isBlank() || latestInLibrary.sourceName.isBlank()) continue
 
-            // Check if it's "at the last known chapter" 
-            // We'll check if the most recent chapter in library has been reached/read
-            // Or more simply, just check if we can find MORE chapters on the source than what we have.
-            
             try {
                 val details = exploreRepository.getNovelDetails(latestInLibrary.baseNovelUrl, latestInLibrary.sourceName)
                 if (details != null && details.chapters.isNotEmpty()) {
-                    val latestOnSource = details.chapters.lastOrNull() // Usually chapters are listed in order, last is newest? 
-                    // Wait, ExploreItem.chapters order depends on source. 
-                    // Let's check NovelFireSource or MangaBatSource to see chapter order.
-                    
-                    // Most sources have newest chapter at the TOP of the list or BOTTOM.
-                    // Let's assume for now we compare the latest chapter URL we have with what's available.
-                    
                     val sourceChapterUrls = details.chapters.map { it.url }
                     val libraryChapterUrlsForThisNovel = items.map { it.url }.toSet()
-                    
                     val hasNewChapters = sourceChapterUrls.any { it !in libraryChapterUrlsForThisNovel }
                     
                     if (hasNewChapters || latestInLibrary.totalChapters != details.chapters.size) {
-                        // Mark the latest item in library as having updates
                         val index = currentItems.indexOfFirst { it.id == latestInLibrary.id }
                         if (index != -1) {
                             var newItem = currentItems[index].copy(totalChapters = details.chapters.size)
@@ -546,7 +526,6 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
                     }
                 }
             } catch (e: Exception) {
-                // Ignore errors for individual novels
             }
         }
 

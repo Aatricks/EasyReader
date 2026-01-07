@@ -883,72 +883,32 @@ class ContentRepository(private val context: Context) {
             throw Exception("Chapter not found: $href")
         }
 
-        // Parse HTML content
         val doc = Jsoup.parse(String(chapterContent!!))
         val tocItem = epubBook.findTocItemByHref(href)
-
-        // Extract content elements (text and images)
         val contentElements = mutableListOf<ContentElement>()
 
-        android.util.Log.d(TAG, "loadEpubChapter: Loading chapter '$href' from $filePath")
-
         doc.select("body").first()?.let { body ->
-            // Traverse the body in document order to preserve image/text positioning
-            // This ensures images appear exactly where they are in the EPUB
             fun processElement(element: org.jsoup.nodes.Element) {
                 when {
-                    // Check if this is a text container (p, div, h1-h6, etc.)
-                    element.tagName() in
-                            listOf(
-                                    "p",
-                                    "div",
-                                    "h1",
-                                    "h2",
-                                    "h3",
-                                    "h4",
-                                    "h5",
-                                    "h6",
-                                    "blockquote",
-                                    "li"
-                            ) -> {
-                        // First check for images within this element
+                    element.tagName() in listOf("p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "li") -> {
                         val images = element.select("img, image")
                         if (images.isNotEmpty()) {
-                            // If the element contains images, process its children in order
                             element.children().forEach { child -> processElement(child) }
-                            // Also get any direct text in this element (not in children)
                             val directText = element.ownText().trim()
-                            // Allow short text fragments (dialogue, single words) to be
-                            // included. Previously we required length > 10 which could
-                            // remove legitimate short lines from EPUBs.
                             if (directText.isNotBlank() && directText.length > 1) {
                                 contentElements.add(ContentElement.Text(directText))
-                                android.util.Log.d(
-                                        TAG,
-                                        "loadEpubChapter: Added text: ${directText.take(50)}..."
-                                )
                             }
                         } else {
-                            // No images, just get the text content
                             val text = element.text().trim()
                             if (text.isNotBlank() && text.length > 1) {
                                 contentElements.add(ContentElement.Text(text))
-                                android.util.Log.d(
-                                        TAG,
-                                        "loadEpubChapter: Added text: ${text.take(50)}..."
-                                )
                             }
                         }
                     }
-                    // Check if this is an img tag
                     element.tagName() == "img" -> {
                         val src = element.attr("src")
                         if (src.isNotBlank()) {
                             val imgPath = resolveEpubPath(href, src)
-                            android.util.Log.d(
-                                    TAG,
-                                    "loadEpubChapter: Found img tag with src: $imgPath"
-                            )
                             contentElements.add(
                                     ContentElement.Image(
                                             url = "$filePath#img:$imgPath",
@@ -958,15 +918,10 @@ class ContentRepository(private val context: Context) {
                             )
                         }
                     }
-                    // Check if this is an SVG image element
                     element.tagName() == "image" -> {
                         val imageHref = element.attr("xlink:href").ifBlank { element.attr("href") }
                         if (imageHref.isNotBlank()) {
                             val imgPath = resolveEpubPath(href, imageHref)
-                            android.util.Log.d(
-                                    TAG,
-                                    "loadEpubChapter: Found SVG image with xlink:href: $imgPath"
-                            )
                             contentElements.add(
                                     ContentElement.Image(
                                             url = "$filePath#img:$imgPath",
@@ -976,69 +931,34 @@ class ContentRepository(private val context: Context) {
                             )
                         }
                     }
-                    // For other container elements, recurse into children
                     else -> {
                         element.children().forEach { child -> processElement(child) }
                     }
                 }
             }
-
-            // Process all direct children of body in document order
             body.children().forEach { child -> processElement(child) }
-
-            android.util.Log.d(
-                    TAG,
-                    "loadEpubChapter: Found ${contentElements.size} content elements in document order"
-            )
         }
 
-        android.util.Log.d(
-                TAG,
-                "loadEpubChapter: Extracted ${contentElements.size} content elements"
-        )
-
-        // If this chapter has ONLY images but no text, try to load the next chapter and combine
-        // them
-        // This handles EPUBs where intro image pages are separate from text content
         val hasText = contentElements.any { it is ContentElement.Text }
         val hasImages = contentElements.any { it is ContentElement.Image }
 
-        // If chapter has images but no text, merge with the next chapter that has text
-
         if (hasImages && !hasText && !isPeeking) {
-
             var nextHref = epubBook.getNextHref(href)
-
             val combinedContent = contentElements.toMutableList()
-
             var finalNextHref = epubBook.getNextHref(href)
-
             var nextTitle: String? = null
-
             var mergeCount = 0
 
             while (nextHref != null && nextHref != href && mergeCount < 5) {
-
                 val nextChapter = loadEpubChapter(filePath, epubBook, nextHref, isPeeking = true)
-
                 val nextHasText = nextChapter.content.any { it is ContentElement.Text }
-
                 combinedContent.addAll(nextChapter.content)
-
                 finalNextHref = nextChapter.nextHref
-
                 if (nextChapter.title != null) {
-
                     nextTitle = nextChapter.title
                 }
-
-                if (nextHasText) {
-
-                    break
-                }
-
+                if (nextHasText) break
                 nextHref = epubBook.getNextHref(nextHref)
-
                 mergeCount++
             }
 
@@ -1049,8 +969,9 @@ class ContentRepository(private val context: Context) {
                     nextHref = finalNextHref,
                     previousHref = epubBook.getPreviousHref(href)
             )
-        } // If chapter has text but no images, check if PREVIOUS chapter was image-only
-        if (hasText && !hasImages && !isPeeking) { // Do not merge when peeking
+        } 
+        
+        if (hasText && !hasImages && !isPeeking) {
             var prevHref = epubBook.getPreviousHref(href)
             val contentToPrepend = mutableListOf<ContentElement>()
             var finalPrevHref: String? = epubBook.getPreviousHref(href)
@@ -1070,7 +991,6 @@ class ContentRepository(private val context: Context) {
                 } else {
                     break
                 }
-
                 prevHref = epubBook.getPreviousHref(prevHref)
             }
 
@@ -1086,15 +1006,9 @@ class ContentRepository(private val context: Context) {
             }
         }
 
-        // If this chapter has NO content at all, try to load the next chapter
-        if (contentElements.isEmpty() && !isPeeking) { // Do not merge when peeking
-            android.util.Log.d(
-                    TAG,
-                    "loadEpubChapter: Chapter '$href' has no content, trying next in spine"
-            )
+        if (contentElements.isEmpty() && !isPeeking) {
             val nextHref = epubBook.getNextHref(href)
             if (nextHref != null && nextHref != href) {
-                android.util.Log.d(TAG, "loadEpubChapter: Loading next chapter: $nextHref")
                 return loadEpubChapter(filePath, epubBook, nextHref)
             }
         }

@@ -194,24 +194,10 @@ class LibraryViewModel(
             try {
                 _uiState.update { it.copy(isLoading = true) }
 
-                // If item already has a resolved reading URL (unlikely from list, but possible from details), use it.
-                // Otherwise resolve it.
                 val readingUrl = item.readingUrl ?: run {
                     val details = exploreRepository.getNovelDetails(item.url, item.source)
                     details?.readingUrl ?: item.url
                 }
-
-                // Now proceed with normal fetchAndAdd logic using the reading URL
-                // We use readingUrl as the main URL for the library item.
-                // But we might want to preserve the book title if readingUrl is just "Chapter 1"
-
-                // Let's call a modified internal add logic or just use fetchAndAdd but pass the reading URL.
-                // However, fetchAndAdd will fetch the title from readingUrl (e.g. "Chapter 1...").
-                // We want the book title as the base.
-
-                // So:
-                // 1. Check if readingUrl exists in library.
-                // 2. Add item using item.title as baseTitle and title.
 
                 val existing = libraryRepository.getItemByUrl(readingUrl)
                 if (existing != null) {
@@ -226,18 +212,8 @@ class LibraryViewModel(
                 }
 
                 if (contentType == ContentType.WEB) {
-                    // For web, readingUrl is likely a chapter.
-                    // We want the library item title to be "Book Title - Chapter X" or just "Book Title" if we group?
-                    // LibraryRepository groups by baseTitle.
-                    // So we add the item with:
-                    // title = "Book Title - Chapter X" (we need to fetch chapter title)
-                    // baseTitle = "Book Title"
-
-                    // Let's fetch the chapter title to be nice.
                     val chapterTitle = contentRepository?.fetchTitle(readingUrl) ?: "Chapter 1"
-                    // If chapterTitle is just "Chapter 1", combine with book title.
-                    // If chapterTitle is "Book Title - Chapter 1", use as is.
-
+                    
                     val fullTitle = if (chapterTitle.contains(item.title, ignoreCase = true)) {
                         chapterTitle
                     } else {
@@ -248,7 +224,7 @@ class LibraryViewModel(
                         title = fullTitle,
                         url = readingUrl,
                         contentType = ContentType.WEB,
-                        currentChapter =TextUtils.extractChapterLabel(chapterTitle) ?: "Chapter 1",
+                        currentChapter = TextUtils.extractChapterLabel(chapterTitle) ?: "Chapter 1",
                         baseTitle = item.title,
                         baseNovelUrl = item.url,
                         sourceName = item.source,
@@ -256,14 +232,11 @@ class LibraryViewModel(
                     )
 
                     // Try to add next chapters
-                    // We need a temporary item to pass to addNextChapters
                     val tempItem = libraryRepository.getItemByUrl(readingUrl)
                     if (tempItem != null) {
                         // Automatically adding chapters removed to prevent "starting at ch 6" issue
-                        // User can download more if needed.
                     }
                 } else {
-                    // EPUB/PDF
                     libraryRepository.addItem(
                         title = item.title,
                         url = readingUrl,

@@ -186,35 +186,23 @@ class SummaryService(private val context: Context) {
     }
     
     /**
-     * Smart content selection for better summaries
-     * Implements multiple strategies:
-     * - Content Analysis: Identify key paragraphs based on length, dialogue, keywords
-     * - Middle Sampling: Include content from beginning, middle, and end
-     * - Chapter Structure: Prioritize opening and closing paragraphs
-     * 
-     * @param content List of paragraphs
-     * @param maxWords Maximum number of words to include
-     * @return Selected content as a string
+     * Smart content selection for better summaries.
      */
     private fun selectKeyContent(content: List<String>, maxWords: Int): String {
         if (content.isEmpty()) return ""
         
-        // If content is already small, return it all
         val totalWords = content.sumOf { it.split(Regex("\\s+")).size }
         if (totalWords <= maxWords) {
             return content.joinToString("\n\n")
         }
         
-        Log.d(TAG, "Selecting key content from ${content.size} paragraphs ($totalWords words)")
-        
-        // Score each paragraph for importance
         val scoredParagraphs = content.mapIndexed { index, paragraph ->
             val words = paragraph.split(Regex("\\s+"))
             val wordCount = words.size
             
             var score = 0.0
             
-            // 1. Length score: Prefer substantial paragraphs (not too short, not too long)
+            // Score based on length
             score += when {
                 wordCount in 20..100 -> 2.0
                 wordCount in 10..20 -> 1.0
@@ -222,21 +210,20 @@ class SummaryService(private val context: Context) {
                 else -> 0.5
             }
             
-            // 2. Position score: Prioritize opening and closing
+            // Score based on position (favoring start and end)
             val position = index.toDouble() / content.size
             score += when {
-                index < 3 -> 3.0 // First 3 paragraphs
-                index >= content.size - 3 -> 2.5 // Last 3 paragraphs
-                position in 0.4..0.6 -> 1.5 // Middle section
+                index < 3 -> 3.0
+                index >= content.size - 3 -> 2.5
+                position in 0.4..0.6 -> 1.5
                 else -> 0.5
             }
             
-            // 3. Dialogue score: Paragraphs with dialogue often contain key interactions
-            val hasDialogue = paragraph.contains("\"") || paragraph.contains("'") || 
-                             paragraph.contains("said") || paragraph.contains("asked")
-            if (hasDialogue) score += 1.5
+            // Dialogue
+            if (paragraph.contains("\"") || paragraph.contains("'") || 
+                paragraph.contains("said") || paragraph.contains("asked")) score += 1.5
             
-            // 4. Keyword score: Look for plot-relevant keywords
+            // Keywords
             val keywordPatterns = listOf(
                 "suddenly", "realized", "discovered", "decided", "arrived",
                 "died", "killed", "attacked", "revealed", "secret",
@@ -244,24 +231,19 @@ class SummaryService(private val context: Context) {
                 "shocked", "surprised", "angry", "happy", "sad"
             )
             val lowerParagraph = paragraph.lowercase()
-            val keywordCount = keywordPatterns.count { lowerParagraph.contains(it) }
-            score += keywordCount * 0.5
+            score += keywordPatterns.count { lowerParagraph.contains(it) } * 0.5
             
-            // 5. Action verbs score: Paragraphs with action are often important
+            // Action verbs
             val actionVerbs = listOf(
                 "ran", "fought", "grabbed", "rushed", "jumped",
                 "fell", "screamed", "whispered", "turned", "opened"
             )
-            val actionCount = actionVerbs.count { lowerParagraph.contains(it) }
-            score += actionCount * 0.3
+            score += actionVerbs.count { lowerParagraph.contains(it) } * 0.3
             
             ScoredParagraph(index, paragraph, wordCount, score)
         }
         
-        // Sort by score (descending)
         val sortedByScore = scoredParagraphs.sortedByDescending { it.score }
-        
-        // Select paragraphs up to maxWords, maintaining some original order
         val selected = mutableListOf<ScoredParagraph>()
         var currentWords = 0
         
@@ -270,14 +252,10 @@ class SummaryService(private val context: Context) {
                 selected.add(paragraph)
                 currentWords += paragraph.wordCount
             }
-            if (currentWords >= maxWords * 0.9) break // Allow some flexibility
+            if (currentWords >= maxWords * 0.9) break
         }
         
-        // Re-sort by original index to maintain narrative flow
         selected.sortBy { it.index }
-        
-        Log.d(TAG, "Selected ${selected.size} paragraphs ($currentWords words) from top-scored content")
-        
         return selected.joinToString("\n\n") { it.text }
     }
     
