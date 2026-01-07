@@ -361,15 +361,15 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
     }
     
     /**
-     * Search items by title or chapter
+     * Search items by title
      */
     fun searchItems(query: String): List<LibraryItem> {
         if (query.isBlank()) return _libraryItems.value
         
-        val lowercaseQuery = query.lowercase()
+        val lowercaseQuery = query.trim().lowercase()
         return _libraryItems.value.filter {
             it.title.lowercase().contains(lowercaseQuery) ||
-            it.currentChapter.lowercase().contains(lowercaseQuery)
+            it.baseTitle.lowercase().contains(lowercaseQuery)
         }
     }
     
