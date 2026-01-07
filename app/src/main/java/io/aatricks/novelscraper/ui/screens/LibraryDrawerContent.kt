@@ -347,7 +347,7 @@ fun LibraryDrawerContent(
                                                                         libraryViewModel.toggleGroupSelection(groupTitle)
                                                                     } else {
                                                                         val current = items.find { it.isCurrentlyReading }
-                                                                            ?: items.maxByOrNull { it.progress }
+                                                                            ?: items.maxByOrNull { it.lastRead }
                                                                             ?: items.first()
                                                                         val loadUrl = if (current.currentChapterUrl.isNotBlank()) current.currentChapterUrl else current.url
                                                                         readerViewModel.loadContent(loadUrl, current.id)
@@ -364,7 +364,7 @@ fun LibraryDrawerContent(
                                                             color = Color.White
                                                         )
                                                         if (!isExpanded) {
-                                                            val current = items.find { it.isCurrentlyReading } ?: items.maxByOrNull { it.progress } ?: items.first()
+                                                            val current = items.find { it.isCurrentlyReading } ?: items.maxByOrNull { it.lastRead } ?: items.first()
                                                             Text(
                                                                 text = current.currentChapter.ifBlank { "Chapter 1" },
                                                                 style = MaterialTheme.typography.bodySmall,
@@ -395,7 +395,7 @@ fun LibraryDrawerContent(
                                                 Spacer(modifier = Modifier.height(8.dp))
                                                 
                                                 // Continue Reading Button
-                                                val lastRead = items.find { it.isCurrentlyReading } ?: items.maxByOrNull { it.progress }
+                                                val lastRead = items.find { it.isCurrentlyReading } ?: items.maxByOrNull { it.lastRead }
                                                 if (lastRead != null && lastRead.progress > 0) {
                                                     Button(
                                                         onClick = {

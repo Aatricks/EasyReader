@@ -45,6 +45,8 @@ class ReaderViewModel(
     private var lastRawScrollOffset: Float = -1f
     // Debounce progress updates to reduce jitter
     private var progressUpdateJob: Job? = null
+    // Job for tracking content loading
+    private var loadJob: Job? = null
     
     init {
         // Load initial settings
@@ -141,7 +143,8 @@ class ReaderViewModel(
      * @param isSilent If true, don't show full-screen loading state (keep current content)
      */
     fun loadContent(url: String, libraryItemId: String? = null, fromBottom: Boolean = false, isSilent: Boolean = false) {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             try {
                 // Check if this is an EPUB URL with href fragment (format: path#href or content://...#href)
                 if (url.contains("#")) {
@@ -179,10 +182,10 @@ class ReaderViewModel(
                 } else {
                     _uiState.update { it.copy(error = null) }
                 }
-                currentLibraryItemId = libraryItemId
 
                 when (val result = contentRepository.loadContent(url)) {
                     is ContentRepository.ContentResult.Success -> {
+                        currentLibraryItemId = libraryItemId
                         val content = ChapterContent(
                             paragraphs = result.elements,
                             title = result.title,
@@ -308,7 +311,8 @@ class ReaderViewModel(
      */
     fun navigateToNextChapter() {
         val nextUrl = _uiState.value.content?.nextChapterUrl ?: return
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             // Mark as explicit navigation to prevent scroll restoration
             isExplicitNavigation = true
             
@@ -348,7 +352,8 @@ class ReaderViewModel(
      */
     fun navigateToPreviousChapter(fromBottom: Boolean = false) {
         val prevUrl = _uiState.value.content?.previousChapterUrl ?: return
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             // Mark as explicit navigation to prevent scroll restoration
             isExplicitNavigation = true
             
@@ -426,7 +431,8 @@ class ReaderViewModel(
      * @param isSilent If true, don't show full-screen loading state
      */
     fun loadEpubChapter(epubPath: String, href: String, libraryItemId: String? = null, fromBottom: Boolean = false, isSilent: Boolean = false) {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             try {
                 // Save previous progress for the current library item before loading next
                 val prevItemId = currentLibraryItemId
@@ -451,7 +457,6 @@ class ReaderViewModel(
                 } else {
                     _uiState.update { it.copy(error = null) }
                 }
-                currentLibraryItemId = libraryItemId
 
                 // Get EPUB book structure
                 val epubBook = contentRepository.getEpubBook(epubPath)
@@ -465,6 +470,8 @@ class ReaderViewModel(
                     }
                     return@launch
                 }
+                
+                currentLibraryItemId = libraryItemId
 
                 // Load chapter content with full ContentElements (text + images)
                 val chapter = contentRepository.loadEpubChapterFull(epubPath, href)
@@ -606,29 +613,8 @@ class ReaderViewModel(
         index: Int,
         offset: Int
     ) {
-        // Cancel previous update and schedule new one with debounce
-        progressUpdateJob?.cancel()
-        progressUpdateJob = viewModelScope.launch {
-            delay(100) // 100ms debounce to reduce jitter
-            performScrollUpdate(scrollOffset, maxScrollOffset, viewportHeight, index, offset)
-        }
-    }
-
-    private fun performScrollUpdate(
-        scrollOffset: Float,
-        maxScrollOffset: Float,
-        viewportHeight: Float,
-        index: Int,
-        offset: Int
-    ) {
         // Determine raw delta to detect true user gesture direction
-        val deltaRaw = if (lastRawScrollOffset < 0f) {
-            0f
-        } else {
-            scrollOffset - lastRawScrollOffset
-        }
-
-        // Determine scroll direction from raw delta
+        val deltaRaw = if (lastRawScrollOffset < 0f) 0f else scrollOffset - lastRawScrollOffset
         val isScrollingDown = deltaRaw > 0f
 
         // Calculate progress percentage as normalized percent (0-100)
@@ -640,9 +626,9 @@ class ReaderViewModel(
 
         // hasReachedQuarterScreen interpreted as percent >= 25%
         val hasReached = progress >= 25f
-
-        // Update UI state: use scrollPosition as percent (Float), scrollProgress as Int
         val progressInt = progress.toInt()
+
+        // Update UI state IMMEDIATELY so that loadContent() always has the latest values
         _uiState.update {
             it.copy(
                 scrollPosition = progress,
@@ -654,29 +640,26 @@ class ReaderViewModel(
             )
         }
 
-        // Update reading progress in library when reaching milestones (every 2%)
-        if (progressInt > 0 && progressInt % 2 == 0) {
-            updateReadingProgress(progressInt)
-        }
-
-        // Auto-navigation logic: suppressed until user moves sufficiently away from restored percent
-        val now = System.currentTimeMillis()
-        if (suppressAutoNavUntilUserInteraction) {
-            // If user moved more than 2 percentage points away, clear suppression
-            if (abs(progress - restoredScrollPercent) > 2f) {
-                suppressAutoNavUntilUserInteraction = false
-            } else {
-                // still suppressed; update lastRawScrollOffset and do not auto-navigate
-                lastRawScrollOffset = scrollOffset
-                return
+        // Debounce repository updates and direction tracking
+        progressUpdateJob?.cancel()
+        progressUpdateJob = viewModelScope.launch {
+            delay(100) // 100ms debounce for persistence logic
+            
+            // Update reading progress in library when reaching milestones (every 2%)
+            if (progressInt > 0 && progressInt % 2 == 0) {
+                updateReadingProgress(progressInt)
             }
+
+            // Auto-navigation suppression logic
+            if (suppressAutoNavUntilUserInteraction) {
+                if (abs(progress - restoredScrollPercent) > 2f) {
+                    suppressAutoNavUntilUserInteraction = false
+                }
+            }
+
+            // Update last raw scroll offset for next direction calculation
+            lastRawScrollOffset = scrollOffset
         }
-
-        // Auto-navigation disabled: chapters change only via explicit user actions (button taps)
-        // This prevents unwanted navigation when scrolling to read the end of a chapter
-
-        // Update last raw scroll offset for next direction calculation
-        lastRawScrollOffset = scrollOffset
     }
 
     /**
@@ -961,7 +944,8 @@ class ReaderViewModel(
      * Automatically adds to library and inherits metadata
      */
     fun navigateToChapter(url: String, title: String) {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             // Mark as explicit navigation to prevent scroll restoration
             isExplicitNavigation = true
             

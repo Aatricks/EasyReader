@@ -5,7 +5,7 @@
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-1.7.6-brightgreen.svg)](https://developer.android.com/jetpack/compose)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
-**A lightweight, all-in-one Android reader for web novels, manga, manhwa, and local documents** — built with modern Kotlin and Jetpack Compose for a seamless, distraction-free reading experience.
+**A lightweight, all-in-one Android reader for web novels, manga, manhwa, and local documents**, built with modern Kotlin and Jetpack Compose for a seamless, distraction-free reading experience.
 
 <img src="ManwhaReader.jpg" alt="EasyReader Manwha reader screenshot" width="200" /> <img src="NovelReader.jpg" alt="EasyReader Novel reader screenshot" width="200" /> <img src="Explorer.jpg" alt="EasyReader Explorer screenshot" width="200" />
 
@@ -17,7 +17,7 @@ EasyReader is a clean, focused environment for consuming digital content. Whethe
 
 **Why EasyReader?**
 - **Discovery Hub**: Integrated exploration of popular sources like MangaBat and NovelFire.
-- **Smart Scraping**: "Smart Scraper" engine that extracts content from almost any web source.
+- **Smart Scraping**: "Smart Scraper" engine that extracts content from almost any online novel.
 - **Offline-first**: Pre-fetch and cache entire series for uninterrupted reading anywhere.
 - **Distraction-free**: Immersive Material3 design with edge-to-edge display and dark theme.
 - **AI-powered**: On-device LLM integration for instant chapter summaries.
@@ -71,24 +71,6 @@ cd EasyReader
 ```bash
 ./gradlew :app:installRelease
 ```
-
----
-
-## Usage
-
-### Discovering Content
-1. Open the **Explore** tab from the side drawer.
-2. Browse popular items or use the search bar to find specific titles across all supported sources.
-3. Tap on an item to see details and click "Add to Library" or "Start Reading".
-
-### Adding via URL
-1. Copy any novel or manga chapter URL from your browser.
-2. Open EasyReader's drawer and paste the URL.
-3. The **Smart Scraper** will analyze the page and import the content automatically.
-
-### AI Summaries
-- While reading a chapter, tap the summary icon in the library header.
-- The on-device LLM will analyze the text and provide a concise overview of the chapter's events.
 
 ---
 
