@@ -111,8 +111,8 @@ class LibraryViewModel(
                     state.copy(
                         items = items,
                         filteredItems = filteredItems,
-                        groupedItems = libraryRepository.getGroupedByTitle(),
-                        groupedBySource = libraryRepository.getGroupedBySourceAndTitle(),
+                        groupedItems = libraryRepository.getGroupedByTitle(filteredItems),
+                        groupedBySource = libraryRepository.getGroupedBySourceAndTitle(filteredItems),
                         isSelectionMode = selectedIds.isNotEmpty(),
                         selectedIds = selectedIds,
                         selectedCount = selectedIds.size,

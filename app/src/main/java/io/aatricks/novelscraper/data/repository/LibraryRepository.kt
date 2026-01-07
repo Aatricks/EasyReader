@@ -275,20 +275,13 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
     /**
      * Group items by baseTitle
      */
-    fun getGroupedByTitle(): Map<String, List<LibraryItem>> {
+    fun getGroupedByTitle(items: List<LibraryItem>? = null): Map<String, List<LibraryItem>> {
+        val targetItems = items ?: _libraryItems.value
         // Group by baseTitle and sort each group's chapters in ascending order
-        return _libraryItems.value.groupBy { item ->
+        return targetItems.groupBy { item ->
             item.baseTitle.ifBlank { item.title }
         }.mapValues { (_, items) ->
-            // Sort items by chapter number (ascending) when we can parse it, otherwise by dateAdded
-            items.sortedWith { a, b ->
-                val aNum = parseChapterNumberOrNull(a)
-                val bNum = parseChapterNumberOrNull(b)
-                when {
-                    aNum != null && bNum != null -> aNum.compareTo(bNum)
-                    else -> a.dateAdded.compareTo(b.dateAdded)
-                }
-            }
+            sortChapters(items)
         }
     }
 
@@ -296,16 +289,30 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
      * Group items by Source, then by Base Title
      * Returns: Map<SourceName, Map<NovelTitle, List<Chapters>>>
      */
-    fun getGroupedBySourceAndTitle(): Map<String, Map<String, List<LibraryItem>>> {
-        val byTitle = getGroupedByTitle() // Map<NovelTitle, List<Chapters>>
+    fun getGroupedBySourceAndTitle(items: List<LibraryItem>? = null): Map<String, Map<String, List<LibraryItem>>> {
+        val targetItems = items ?: _libraryItems.value
         
-        // Group these novels by the source of their first chapter
-        return byTitle.entries.groupBy { (_, items) ->
-            items.firstOrNull()?.sourceName?.ifBlank { "Local" } ?: "Local"
-        }.mapValues { (_, entries) ->
-            // Convert List<Entry> back to Map and sort by title
-            entries.associate { it.key to it.value }.toSortedMap()
-        }.toSortedMap()
+        // Group these novels by the source
+        return targetItems.groupBy { it.sourceName.ifBlank { "Local" } }
+            .mapValues { (_, sourceItems) ->
+                // Then group by title within the source
+                sourceItems.groupBy { it.baseTitle.ifBlank { it.title } }
+                    .mapValues { (_, novelItems) -> 
+                        sortChapters(novelItems)
+                    }.toSortedMap()
+            }.toSortedMap()
+    }
+
+    // Helper to sort chapters
+    private fun sortChapters(items: List<LibraryItem>): List<LibraryItem> {
+        return items.sortedWith { a, b ->
+            val aNum = parseChapterNumberOrNull(a)
+            val bNum = parseChapterNumberOrNull(b)
+            when {
+                aNum != null && bNum != null -> aNum.compareTo(bNum)
+                else -> a.dateAdded.compareTo(b.dateAdded)
+            }
+        }
     }
 
     // Helper to extract chapter number from title or currentChapter using TextUtils helper if available
