@@ -7,9 +7,8 @@
 
 **A lightweight, all-in-one Android reader for web novels, manga, manhwa, and local documents** — built with modern Kotlin and Jetpack Compose for a seamless, distraction-free reading experience.
 
-<img src="ManwhaReader.jpg" alt="EasyReader Manwha reader screenshot" width="200" />
-<img src="NovelReader.jpg" alt="EasyReader Novel reader screenshot" width="200" />
-<img src="Explorer.jpg" alt="EasyReader Explorer screenshot" width="200" />
+<img src="ManwhaReader.jpg" alt="EasyReader Manwha reader screenshot" width="200" /> <img src="NovelReader.jpg" alt="EasyReader Novel reader screenshot" width="200" /> <img src="Explorer.jpg" alt="EasyReader Explorer screenshot" width="200" />
+
 ---
 
 ## Overview
