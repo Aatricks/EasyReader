@@ -260,19 +260,20 @@ class ReaderViewModel(
                             libraryRepository.markAsCurrentlyReading(it)
                             if (!isExplicitNavigation) {
                                 val item = libraryRepository.getItemById(it)
-                                                            item?.let { libItem ->
-                                                                // Restore last known saved chapter percent/position for this library item
-                                                                restoredScrollPercent = libItem.lastScrollPosition
-                                                                suppressAutoNavUntilUserInteraction = true
-                                                                _uiState.update { state ->
-                                                                    state.copy(
-                                                                        scrollPosition = restoredScrollPercent,
-                                                                        scrollProgress = libItem.progress,
-                                                                        scrollIndex = libItem.lastReadIndex,
-                                                                        scrollOffset = libItem.lastReadOffset
-                                                                    )
-                                                                }
-                                                            }                            }
+                                item?.let { libItem ->
+                                    // Restore last known saved chapter percent/position for this library item
+                                    restoredScrollPercent = libItem.lastScrollPosition
+                                    suppressAutoNavUntilUserInteraction = true
+                                    _uiState.update { state ->
+                                        state.copy(
+                                            scrollPosition = restoredScrollPercent,
+                                            scrollProgress = libItem.progress,
+                                            scrollIndex = libItem.lastReadIndex,
+                                            scrollOffset = libItem.lastReadOffset
+                                        )
+                                    }
+                                }
+                            }
                         }
                         
                         // Reset explicit navigation flag
