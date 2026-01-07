@@ -292,6 +292,22 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
         }
     }
 
+    /**
+     * Group items by Source, then by Base Title
+     * Returns: Map<SourceName, Map<NovelTitle, List<Chapters>>>
+     */
+    fun getGroupedBySourceAndTitle(): Map<String, Map<String, List<LibraryItem>>> {
+        val byTitle = getGroupedByTitle() // Map<NovelTitle, List<Chapters>>
+        
+        // Group these novels by the source of their first chapter
+        return byTitle.entries.groupBy { (_, items) ->
+            items.firstOrNull()?.sourceName?.ifBlank { "Local" } ?: "Local"
+        }.mapValues { (_, entries) ->
+            // Convert List<Entry> back to Map and sort by title
+            entries.associate { it.key to it.value }.toSortedMap()
+        }.toSortedMap()
+    }
+
     // Helper to extract chapter number from title or currentChapter using TextUtils helper if available
     private fun parseChapterNumberOrNull(item: LibraryItem): Int? {
         // Try currentChapter first
