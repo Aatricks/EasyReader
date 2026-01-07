@@ -2,6 +2,9 @@ package io.aatricks.novelscraper.ui.screens.explore
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -318,23 +321,28 @@ fun ExploreScreen(
     }
 
     if (selectedItem != null) {
-        ExploreItemDetailDialog(
-            item = selectedItemDetails ?: selectedItem!!,
-            isLoading = isFetchingDetails,
-            onDismiss = { 
+        ModalBottomSheet(
+            onDismissRequest = {
                 selectedItem = null
                 selectedItemDetails = null
             },
-            onAddToLibrary = {
-                val itemToAdd = selectedItemDetails ?: selectedItem!!
-                libraryViewModel.addExploreItem(itemToAdd, exploreRepository)
-                scope.launch {
-                    snackbarHostState.showSnackbar("Adding to library...")
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ) {
+            ExploreItemDetailSheet(
+                item = selectedItemDetails ?: selectedItem!!,
+                isLoading = isFetchingDetails,
+                onAddToLibrary = {
+                    val itemToAdd = selectedItemDetails ?: selectedItem!!
+                    libraryViewModel.addExploreItem(itemToAdd, exploreRepository)
+                    scope.launch {
+                        snackbarHostState.showSnackbar("Adding to library...")
+                    }
+                    selectedItem = null
+                    selectedItemDetails = null
                 }
-                selectedItem = null
-                selectedItemDetails = null
-            }
-        )
+            )
+        }
     }
 }
 
@@ -404,10 +412,9 @@ fun ExploreItemCard(item: ExploreItem, onClick: () -> Unit) {
 }
 
 @Composable
-fun ExploreItemDetailDialog(
+fun ExploreItemDetailSheet(
     item: ExploreItem,
     isLoading: Boolean = false,
-    onDismiss: () -> Unit,
     onAddToLibrary: () -> Unit
 ) {
     val context = LocalContext.current
@@ -416,7 +423,6 @@ fun ExploreItemDetailDialog(
         var referer = if (uri != null) "${uri.scheme}://${uri.host}/" else item.url
         
         // Special case for MangaBat/Manganato
-        // Special case for MangaBat/Manganato - images often require this referer
         if (item.source == "MangaBat" || referer.contains("mangabat") || referer.contains("manganato")) {
             referer = "https://manganato.com/"
         }
@@ -428,60 +434,91 @@ fun ExploreItemDetailDialog(
             .build()
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(item.title) },
-        text = {
-            if (isLoading) {
-                Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            } else {
-                Column {
-                     AsyncImage(
-                        model = imageRequest,
-                        contentDescription = item.title,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp)
-                            .padding(bottom = 8.dp),
-                        contentScale = ContentScale.Fit
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+    ) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            AsyncImage(
+                model = imageRequest,
+                contentDescription = item.title,
+                modifier = Modifier
+                    .width(100.dp)
+                    .height(150.dp)
+                    .clip(MaterialTheme.shapes.medium),
+                contentScale = ContentScale.Crop
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                if (item.author != null) {
+                    Text(
+                        text = "Author: ${item.author}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    if (item.author != null) {
-                        Text("Author: ${item.author}", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    Text("Source: ${item.source}", style = MaterialTheme.typography.bodyMedium)
-                    if (item.chapterCount > 0) {
-                        Text("Chapters: ${item.chapterCount}", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    if (item.summary != null && item.summary!!.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = item.summary!!,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 10,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    } else {
-                         Spacer(modifier = Modifier.height(8.dp))
-                         Text(
-                            text = "No summary available.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
                 }
-            }
-        },
-        confirmButton = {
-            Button(onClick = onAddToLibrary) {
-                Text("Add to Library")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close")
+                Text(
+                    text = "Source: ${item.source}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (item.chapterCount > 0) {
+                    Text(
+                        text = "Chapters: ${item.chapterCount}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
-    )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = onAddToLibrary,
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large
+        ) {
+            Icon(Icons.Default.Add, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Add to Library")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        HorizontalDivider()
+        
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "Summary",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
+            Text(
+                text = if (item.summary.isNullOrBlank()) "No summary available." else item.summary!!,
+                style = MaterialTheme.typography.bodyMedium,
+                lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.5,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+    }
 }

@@ -74,6 +74,7 @@ fun LibraryDrawerContent(
     val summaryUiState by summaryViewModel.uiState.collectAsState()
 
     var urlInput by remember { mutableStateOf("") }
+    var isAddSectionVisible by remember { mutableStateOf(false) }
 
     // Initialize summary service on first composition
     LaunchedEffect(Unit) {
@@ -87,13 +88,25 @@ fun LibraryDrawerContent(
             .padding(16.dp)
     ) {
         // Header
-        Text(
-            text = "Library",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Library",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            IconButton(onClick = { isAddSectionVisible = !isAddSectionVisible }) {
+                Icon(
+                    imageVector = if (isAddSectionVisible) Icons.Filled.Close else Icons.Filled.Add,
+                    contentDescription = if (isAddSectionVisible) "Close Add" else "Add Novel",
+                    tint = Color.White
+                )
+            }
+        }
 
         // URL Input Section
         val onSubmit = {
@@ -101,48 +114,91 @@ fun LibraryDrawerContent(
                 // Fetch title asynchronously and add
                 libraryViewModel.fetchAndAdd(urlInput)
                 urlInput = ""
+                isAddSectionVisible = false
             }
         }
 
-        OutlinedTextField(
-            value = urlInput,
-            onValueChange = { urlInput = it },
-            label = { Text("Novel URL", color = Color.Gray) },
-            placeholder = { Text("Enter novel URL...", color = Color.DarkGray) },
-            modifier = Modifier.fillMaxWidth(),
-            trailingIcon = {
-                if (urlInput.isNotEmpty()) {
-                    IconButton(onClick = { urlInput = "" }) {
+        androidx.compose.animation.AnimatedVisibility(visible = isAddSectionVisible) {
+            Column {
+                OutlinedTextField(
+                    value = urlInput,
+                    onValueChange = { urlInput = it },
+                    label = { Text("Novel URL", color = Color.Gray) },
+                    placeholder = { Text("Enter novel URL...", color = Color.DarkGray) },
+                    modifier = Modifier.fillMaxWidth(),
+                    trailingIcon = {
+                        if (urlInput.isNotEmpty()) {
+                            IconButton(onClick = { urlInput = "" }) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = "Clear URL",
+                                    tint = Color.Gray
+                                )
+                            }
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                    keyboardActions = KeyboardActions(onGo = { onSubmit() }),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFF4CAF50),
+                        unfocusedBorderColor = Color.Gray,
+                        cursorColor = Color(0xFF4CAF50)
+                    ),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Action Buttons Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val buttonHeight = 48.dp
+
+                    // Add Button
+                    Button(
+                        onClick = onSubmit,
+                        modifier = Modifier.weight(1f).height(buttonHeight),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF4CAF50),
+                            disabledContainerColor = Color.DarkGray
+                        ),
+                        enabled = urlInput.isNotBlank(),
+                        shape = RoundedCornerShape(24.dp)
+                    ) {
                         Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "Clear URL",
-                            tint = Color.Gray
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = "Add",
+                            modifier = Modifier.size(20.dp)
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Add", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    // Open PDF button
+                    Button(
+                        onClick = { onOpenFilePicker() },
+                        modifier = Modifier.weight(1f).height(buttonHeight),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF795548)),
+                        shape = RoundedCornerShape(24.dp)
+                    ) {
+                        Text("Open PDF", color = Color.White, fontWeight = FontWeight.SemiBold)
                     }
                 }
-            },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-            keyboardActions = KeyboardActions(onGo = { onSubmit() }),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = Color(0xFF4CAF50),
-                unfocusedBorderColor = Color.Gray,
-                cursorColor = Color(0xFF4CAF50)
-            ),
-            singleLine = true
-        )
+                
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Action Buttons Row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            val buttonHeight = 48.dp
-
-            if (libraryUiState.isSelectionMode) {
+        if (libraryUiState.isSelectionMode) {
+             Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val buttonHeight = 48.dp
                 // Delete Button
                 Button(
                     onClick = { libraryViewModel.removeSelectedItems() },
@@ -177,40 +233,9 @@ fun LibraryDrawerContent(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Cancel", color = Color.White, fontWeight = FontWeight.SemiBold)
                 }
-            } else {
-                // Add Button
-                Button(
-                    onClick = onSubmit,
-                    modifier = Modifier.weight(1f).height(buttonHeight),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF4CAF50),
-                        disabledContainerColor = Color.DarkGray
-                    ),
-                    enabled = urlInput.isNotBlank(),
-                    shape = RoundedCornerShape(24.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Add,
-                        contentDescription = "Add",
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Add", color = Color.White, fontWeight = FontWeight.SemiBold)
-                }
-
-                // Open PDF button
-                Button(
-                    onClick = { onOpenFilePicker() },
-                    modifier = Modifier.weight(1f).height(buttonHeight),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF795548)),
-                    shape = RoundedCornerShape(24.dp)
-                ) {
-                    Text("Open PDF", color = Color.White, fontWeight = FontWeight.SemiBold)
-                }
             }
+            Spacer(modifier = Modifier.height(12.dp))
         }
-
-        Spacer(modifier = Modifier.height(12.dp))
 
         // Explore Button
         Button(

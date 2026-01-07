@@ -128,6 +128,23 @@ class PreferencesManager(context: Context) {
     var lastUpdateCheckTime: Long
         get() = prefs.getLong(KEY_LAST_UPDATE_CHECK, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_UPDATE_CHECK, value).apply()
+        
+    // Reader Settings
+    var fontSize: Float
+        get() = prefs.getFloat(KEY_FONT_SIZE, 18f)
+        set(value) = prefs.edit().putFloat(KEY_FONT_SIZE, value).apply()
+
+    var lineHeight: Float
+        get() = prefs.getFloat(KEY_LINE_HEIGHT, 1.5f)
+        set(value) = prefs.edit().putFloat(KEY_LINE_HEIGHT, value).apply()
+
+    var fontFamily: String
+        get() = prefs.getString(KEY_FONT_FAMILY, "Default") ?: "Default"
+        set(value) = prefs.edit().putString(KEY_FONT_FAMILY, value).apply()
+
+    var margins: Int
+        get() = prefs.getInt(KEY_MARGINS, 16)
+        set(value) = prefs.edit().putInt(KEY_MARGINS, value).apply()
     
     // Clear all preferences
     fun clearAll() {
@@ -151,5 +168,11 @@ class PreferencesManager(context: Context) {
         private const val KEY_LIBRARY_ITEMS = "library_items"
         private const val KEY_CURRENT_TITLE = "current_title"
         private const val KEY_LAST_UPDATE_CHECK = "last_update_check"
+        
+        // Reader Settings Keys
+        private const val KEY_FONT_SIZE = "reader_font_size"
+        private const val KEY_LINE_HEIGHT = "reader_line_height"
+        private const val KEY_FONT_FAMILY = "reader_font_family"
+        private const val KEY_MARGINS = "reader_margins"
     }
 }

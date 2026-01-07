@@ -55,6 +55,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.unit.sp
 import io.aatricks.novelscraper.data.model.ChapterContent
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
@@ -84,7 +85,9 @@ fun ReaderScreen(
     var cloudflareUrl by remember { mutableStateOf("") }
 
     var showChapterList by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     val bottomSheetState = rememberModalBottomSheetState()
+    val settingsSheetState = rememberModalBottomSheetState()
 
     // Collect state from ViewModel
     val uiState by readerViewModel.uiState.collectAsState()
@@ -249,7 +252,8 @@ fun ReaderScreen(
                                 readerViewModel = readerViewModel,
                                 libraryViewModel = libraryViewModel,
                                 onLibraryClick = { scope.launch { drawerState.open() } },
-                                onShowChapterList = { showChapterList = true }
+                                onShowChapterList = { showChapterList = true },
+                                onShowSettings = { showSettings = true }
                             )
                         }
                     }
@@ -268,6 +272,18 @@ fun ReaderScreen(
                 }
             }
         }
+    }
+
+    if (showSettings) {
+        ReaderSettingsSheet(
+            uiState = uiState,
+            onDismiss = { showSettings = false },
+            onUpdateFontSize = { readerViewModel.updateFontSize(it) },
+            onUpdateLineHeight = { readerViewModel.updateLineHeight(it) },
+            onUpdateFontFamily = { readerViewModel.updateFontFamily(it) },
+            onUpdateMargins = { readerViewModel.updateMargins(it) },
+            sheetState = settingsSheetState
+        )
     }
 
     if (showChapterList) {
@@ -446,12 +462,21 @@ private fun ContentArea(
     readerViewModel: ReaderViewModel,
     libraryViewModel: LibraryViewModel,
     onLibraryClick: () -> Unit,
-    onShowChapterList: () -> Unit
+    onShowChapterList: () -> Unit,
+    onShowSettings: () -> Unit
 ) {
     val listState = rememberLazyListState()
     val uiState by readerViewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
     
+    // Resolve font family
+    val fontFamily = when (uiState.fontFamily) {
+        "Serif" -> androidx.compose.ui.text.font.FontFamily.Serif
+        "Monospace" -> androidx.compose.ui.text.font.FontFamily.Monospace
+        "Cursive" -> androidx.compose.ui.text.font.FontFamily.Cursive
+        else -> androidx.compose.ui.text.font.FontFamily.SansSerif
+    }
+
     val pagerState = rememberPagerState(
         initialPage = 0,
         initialPageOffsetFraction = 0f
@@ -663,8 +688,12 @@ private fun ContentArea(
                                     Text(
                                         text = element.content,
                                         color = Color.White,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        modifier = Modifier.padding(16.dp).fillMaxWidth()
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            fontSize = uiState.fontSize.sp,
+                                            lineHeight = (uiState.fontSize * uiState.lineHeight).sp,
+                                            fontFamily = fontFamily
+                                        ),
+                                        modifier = Modifier.padding(uiState.margins.dp).fillMaxWidth()
                                     )
                                 }
                             }
@@ -707,8 +736,8 @@ private fun ContentArea(
                     .pointerInput(Unit) {
                         detectTapGestures(onTap = { readerViewModel.toggleControls() })
                     },
-                contentPadding = if (isManhwa) PaddingValues(0.dp) else PaddingValues(16.dp),
-                verticalArrangement = if (isManhwa) Arrangement.spacedBy(0.dp) else Arrangement.spacedBy(24.dp)
+                contentPadding = if (isManhwa) PaddingValues(0.dp) else PaddingValues(horizontal = uiState.margins.dp, vertical = 16.dp),
+                verticalArrangement = if (isManhwa) Arrangement.spacedBy(0.dp) else Arrangement.spacedBy(uiState.fontSize.dp) // Use font size as spacing roughly
             ) {
                 itemsIndexed(
                     content.paragraphs,
@@ -718,7 +747,11 @@ private fun ContentArea(
                             Text(
                                 text = element.content,
                                 color = Color.White,
-                                style = MaterialTheme.typography.bodyLarge,
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontSize = uiState.fontSize.sp,
+                                    lineHeight = (uiState.fontSize * uiState.lineHeight).sp,
+                                    fontFamily = fontFamily
+                                ),
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -766,7 +799,8 @@ private fun ContentArea(
                 onLibraryClick = onLibraryClick,
                 onToggleMode = { readerViewModel.toggleReadingMode() },
                 onToggleRtl = { readerViewModel.toggleRtl() },
-                onShowChapterList = onShowChapterList
+                onShowChapterList = onShowChapterList,
+                onShowSettings = onShowSettings
             )
         }
 
@@ -864,7 +898,8 @@ private fun TopInfoBar(
     onLibraryClick: () -> Unit,
     onToggleMode: () -> Unit,
     onToggleRtl: () -> Unit,
-    onShowChapterList: () -> Unit
+    onShowChapterList: () -> Unit,
+    onShowSettings: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -886,6 +921,9 @@ private fun TopInfoBar(
                 if (chapterTitle.isNotBlank()) {
                     Text(text = chapterTitle, color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+            }
+            IconButton(onClick = onShowSettings, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Filled.FormatSize, contentDescription = "Settings", tint = Color.White)
             }
             IconButton(onClick = onShowChapterList, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.Filled.List, contentDescription = "Chapter List", tint = Color.White)
@@ -1092,4 +1130,101 @@ private fun EmptyState(onOpenLibrary: () -> Unit) {
 
     }
 
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ReaderSettingsSheet(
+    uiState: ReaderViewModel.ReaderUiState,
+    onDismiss: () -> Unit,
+    onUpdateFontSize: (Float) -> Unit,
+    onUpdateLineHeight: (Float) -> Unit,
+    onUpdateFontFamily: (String) -> Unit,
+    onUpdateMargins: (Int) -> Unit,
+    sheetState: SheetState
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF1A1A1A),
+        contentColor = Color.White
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text("Reading Settings", style = MaterialTheme.typography.titleLarge)
+            
+            // Font Size
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Font Size: ${uiState.fontSize.toInt()}", modifier = Modifier.width(100.dp))
+                Slider(
+                    value = uiState.fontSize,
+                    onValueChange = onUpdateFontSize,
+                    valueRange = 12f..32f,
+                    steps = 19, // 1sp steps
+                    modifier = Modifier.weight(1f),
+                    colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50))
+                )
+            }
+
+            // Line Height
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Line Height: ${String.format("%.1f", uiState.lineHeight)}", modifier = Modifier.width(100.dp))
+                Slider(
+                    value = uiState.lineHeight,
+                    onValueChange = onUpdateLineHeight,
+                    valueRange = 1.0f..2.5f,
+                    steps = 14, // 0.1 steps
+                    modifier = Modifier.weight(1f),
+                    colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50))
+                )
+            }
+
+            // Margins
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Margins: ${uiState.margins}", modifier = Modifier.width(100.dp))
+                Slider(
+                    value = uiState.margins.toFloat(),
+                    onValueChange = { onUpdateMargins(it.toInt()) },
+                    valueRange = 0f..64f,
+                    steps = 15, // 4dp steps approx
+                    modifier = Modifier.weight(1f),
+                    colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50))
+                )
+            }
+
+            // Font Family
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                listOf("Default", "Serif", "Monospace").forEach { font ->
+                    FilterChip(
+                        selected = uiState.fontFamily == font,
+                        onClick = { onUpdateFontFamily(font) },
+                        label = { Text(font) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFF4CAF50),
+                            selectedLabelColor = Color.White
+                        )
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
 }

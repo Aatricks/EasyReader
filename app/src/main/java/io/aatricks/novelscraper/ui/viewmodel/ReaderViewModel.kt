@@ -24,7 +24,8 @@ import kotlin.math.abs
 class ReaderViewModel(
     val contentRepository: ContentRepository,
     private val libraryRepository: LibraryRepository,
-    private val exploreRepository: io.aatricks.novelscraper.data.repository.ExploreRepository
+    private val exploreRepository: io.aatricks.novelscraper.data.repository.ExploreRepository,
+    private val preferencesManager: io.aatricks.novelscraper.data.local.PreferencesManager
 ) : ViewModel() {
 
     // UI State
@@ -44,6 +45,18 @@ class ReaderViewModel(
     private var lastRawScrollOffset: Float = -1f
     // Debounce progress updates to reduce jitter
     private var progressUpdateJob: Job? = null
+    
+    init {
+        // Load initial settings
+        _uiState.update {
+            it.copy(
+                fontSize = preferencesManager.fontSize,
+                lineHeight = preferencesManager.lineHeight,
+                fontFamily = preferencesManager.fontFamily,
+                margins = preferencesManager.margins
+            )
+        }
+    }
 
     /**
      * Data class representing the reader UI state
@@ -72,8 +85,38 @@ class ReaderViewModel(
         val isRtl: Boolean = true, // Right-to-Left swipe for paged mode
         val fullChapterList: List<io.aatricks.novelscraper.data.model.ChapterInfo> = emptyList(),
         val isChaptersLoading: Boolean = false,
-        val seekTrigger: Long = 0L // Timestamp to trigger seek in UI
+        val seekTrigger: Long = 0L, // Timestamp to trigger seek in UI
+        // Formatting Settings
+        val fontSize: Float = 18f,
+        val lineHeight: Float = 1.5f,
+        val fontFamily: String = "Default",
+        val margins: Int = 16
     )
+    
+    // Formatting update functions
+    
+    fun updateFontSize(newSize: Float) {
+        val size = newSize.coerceIn(12f, 32f)
+        preferencesManager.fontSize = size
+        _uiState.update { it.copy(fontSize = size) }
+    }
+    
+    fun updateLineHeight(newHeight: Float) {
+        val height = newHeight.coerceIn(1.0f, 2.5f)
+        preferencesManager.lineHeight = height
+        _uiState.update { it.copy(lineHeight = height) }
+    }
+    
+    fun updateFontFamily(newFamily: String) {
+        preferencesManager.fontFamily = newFamily
+        _uiState.update { it.copy(fontFamily = newFamily) }
+    }
+    
+    fun updateMargins(newMargins: Int) {
+        val margins = newMargins.coerceIn(0, 64)
+        preferencesManager.margins = margins
+        _uiState.update { it.copy(margins = margins) }
+    }
 
     /**
      * Clear the current toast message

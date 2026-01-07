@@ -137,9 +137,10 @@ class MainActivity : ComponentActivity() {
             override fun <T : androidx.lifecycle.ViewModel> create(
                 modelClass: Class<T>
             ): T {
+                val preferencesManager = io.aatricks.novelscraper.data.local.PreferencesManager(applicationContext)
                 return when {
                     modelClass.isAssignableFrom(ReaderViewModel::class.java) -> {
-                        ReaderViewModel(contentRepository, libraryRepository, exploreRepository) as T
+                        ReaderViewModel(contentRepository, libraryRepository, exploreRepository, preferencesManager) as T
                     }
                     modelClass.isAssignableFrom(LibraryViewModel::class.java) -> {
                         LibraryViewModel(libraryRepository, contentRepository) as T
