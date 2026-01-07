@@ -236,7 +236,7 @@ fun LibraryDrawerContent(
                 ) {
                     Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Delete (${libraryUiState.selectedCount})", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("Delete", color = Color.White, fontWeight = FontWeight.SemiBold)
                 }
                 Button(
                     onClick = { libraryViewModel.exitSelectionMode() },
