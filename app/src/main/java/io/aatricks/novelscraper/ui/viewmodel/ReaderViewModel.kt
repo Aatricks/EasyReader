@@ -240,7 +240,8 @@ class ReaderViewModel(
                                 baseTitle = baseTitle,
                                 baseNovelUrl = baseNovelUrl,
                                 sourceName = sourceName,
-                                isPagedMode = isPaged
+                                isPagedMode = isPaged,
+                                fullChapterList = emptyList() // Reset chapter list when loading new content
                             )
                         }
 
