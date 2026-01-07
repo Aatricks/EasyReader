@@ -498,34 +498,44 @@ class LibraryRepository(private val preferencesManager: PreferencesManager) {
         val groupedItems = getGroupedByTitle()
         var updated = false
 
-        for ((_, items) in groupedItems) {
+        for ((baseTitle, items) in groupedItems) {
             if (items.isEmpty()) continue
             
-            val latestInLibrary = items.first()
+            // items is sorted ascending by chapter number, so last() is the latest chapter in library
+            val latestInLibrary = items.last()
             if (latestInLibrary.baseNovelUrl.isBlank() || latestInLibrary.sourceName.isBlank()) continue
 
             try {
                 val details = exploreRepository.getNovelDetails(latestInLibrary.baseNovelUrl, latestInLibrary.sourceName)
                 if (details != null && details.chapters.isNotEmpty()) {
-                    val sourceChapterUrls = details.chapters.map { it.url }
-                    val libraryChapterUrlsForThisNovel = items.map { it.url }.toSet()
-                    val hasNewChapters = sourceChapterUrls.any { it !in libraryChapterUrlsForThisNovel }
+                    val sourceChapterCount = details.chapters.size
                     
-                    if (hasNewChapters || latestInLibrary.totalChapters != details.chapters.size) {
-                        val index = currentItems.indexOfFirst { it.id == latestInLibrary.id }
-                        if (index != -1) {
-                            var newItem = currentItems[index].copy(totalChapters = details.chapters.size)
-                            if (hasNewChapters && !newItem.hasUpdates) {
-                                newItem = newItem.copy(hasUpdates = true)
-                            }
-                            if (newItem != currentItems[index]) {
-                                currentItems[index] = newItem
-                                updated = true
+                    // Only trigger update if we found more chapters than previously known
+                    if (sourceChapterCount > latestInLibrary.totalChapters) {
+                        val itemToMark = items.find { it.isCurrentlyReading } ?: latestInLibrary
+                        
+                        // Update all chapters in this group with the new total count
+                        for (i in currentItems.indices) {
+                            val item = currentItems[i]
+                            val itemGroupKey = item.baseTitle.ifBlank { item.title }
+                            
+                            if (itemGroupKey == baseTitle) {
+                                var newItem = item.copy(totalChapters = sourceChapterCount)
+                                // Only set hasUpdates on the specific item we want to badge
+                                if (item.id == itemToMark.id && !item.hasUpdates) {
+                                    newItem = newItem.copy(hasUpdates = true)
+                                }
+                                
+                                if (newItem != item) {
+                                    currentItems[i] = newItem
+                                    updated = true
+                                }
                             }
                         }
                     }
                 }
             } catch (e: Exception) {
+                android.util.Log.e("LibraryRepository", "Failed to refresh updates for $baseTitle", e)
             }
         }
 

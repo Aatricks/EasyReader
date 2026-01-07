@@ -358,11 +358,31 @@ fun LibraryDrawerContent(
                                                                 onLongClick = { libraryViewModel.toggleGroupSelection(groupTitle) }
                                                             )
                                                     ) {
-                                                        Text(
-                                                            text = groupTitle,
-                                                            style = MaterialTheme.typography.titleMedium,
-                                                            color = Color.White
-                                                        )
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            val hasUpdates = items.any { it.hasUpdates }
+                                                            val lastItem = items.lastOrNull()
+                                                            val isCaughtUp = lastItem?.let { it.isCurrentlyReading || it.progress > 0 } ?: false
+                                                            
+                                                            Text(
+                                                                text = groupTitle,
+                                                                style = MaterialTheme.typography.titleMedium,
+                                                                color = if (hasUpdates && isCaughtUp) Color(0xFF4CAF50) else Color.White,
+                                                                modifier = Modifier.weight(1f, fill = false)
+                                                            )
+                                                            
+                                                            if (hasUpdates) {
+                                                                Spacer(modifier = Modifier.width(8.dp))
+                                                                Badge(
+                                                                    containerColor = Color(0xFFFF9800),
+                                                                ) {
+                                                                    Text(
+                                                                        text = "NEW",
+                                                                        style = MaterialTheme.typography.labelSmall,
+                                                                        color = Color.Black
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
                                                         if (!isExpanded) {
                                                             val current = items.find { it.isCurrentlyReading } ?: items.maxByOrNull { it.lastRead } ?: items.first()
                                                             Text(

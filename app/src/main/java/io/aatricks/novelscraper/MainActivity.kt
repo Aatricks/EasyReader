@@ -156,19 +156,14 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Check for library updates if 24 hours have passed since the last check.
+     * Check for library updates on app launch.
      */
     private fun checkForLibraryUpdates() {
         val prefs = io.aatricks.novelscraper.data.local.PreferencesManager(applicationContext)
-        val lastCheck = prefs.lastUpdateCheckTime
-        val currentTime = System.currentTimeMillis()
         
-        // 24 hours in milliseconds = 24 * 60 * 60 * 1000
-        if (currentTime - lastCheck > 24 * 60 * 60 * 1000) {
-            lifecycleScope.launch {
-                libraryRepository.refreshLibraryUpdates(exploreRepository)
-                prefs.lastUpdateCheckTime = currentTime
-            }
+        lifecycleScope.launch {
+            libraryRepository.refreshLibraryUpdates(exploreRepository)
+            prefs.lastUpdateCheckTime = System.currentTimeMillis()
         }
     }
 
