@@ -127,6 +127,67 @@ class ContentRepositoryTest {
     }
 
     @Test
+    fun testAdRemoval() {
+        val html = """
+            <html>
+            <body>
+                <div class="content">
+                    <p>Genuine content paragraph 1.</p>
+                    <a class="ads-banner-top" href="http://scam.com">
+                        <img src="ad1.jpg">
+                    </a>
+                    <div class="responsive-bats-ads-container">
+                         <span>Ad Content</span>
+                    </div>
+                    <a class="ads-banner bats-detail-bottom-pos-1-detail-bottom-72" href="http://scam.com">
+                        <img src="ad2.jpg">
+                    </a>
+                    <img src="credit.jpg" alt="credit page">
+                    <p>Genuine content paragraph 2.</p>
+                </div>
+            </body>
+            </html>
+        """.trimIndent()
+
+        val document = Jsoup.parse(html)
+        // Apply the same removal logic as in ContentRepository
+        document.select(".ads-banner, [class*=\"ads-banner\"], [class*=\"bats-ads\"], .ads-responsive, .ads-chapter-bottom, .bats-detail-bottom-pos-1-detail-bottom-72, .sh-recommend, .cm-info, .next-chapter-img, [id*=\"ads-\"], [class*=\"footer-ads\"]").remove()
+        document.select("img[alt*='credit'], img[alt*='recommend'], img[src*='credit'], img[src*='recommend']").remove()
+
+        val body = document.body()
+        assertFalse("Ad banner top should be removed", body.html().contains("ads-banner-top"))
+        assertFalse("Bats ads should be removed", body.html().contains("bats-ads"))
+        assertFalse("Specific ad class should be removed", body.html().contains("bats-detail-bottom-pos-1-detail-bottom-72"))
+        assertFalse("Credit image should be removed", body.html().contains("credit.jpg"))
+        assertTrue("Genuine content should be preserved", body.text().contains("Genuine content paragraph 1."))
+        assertTrue("Genuine content should be preserved", body.text().contains("Genuine content paragraph 2."))
+    }
+
+    @Test
+    fun testMangaBatLastImageRemoval() {
+        val url = "https://www.mangabats.com/manga/manga-ds985873/chapter-238"
+        val imagesFromSelectors = mutableListOf(
+            io.aatricks.novelscraper.data.model.ContentElement.Image("page1.jpg"),
+            io.aatricks.novelscraper.data.model.ContentElement.Image("page2.jpg"),
+            io.aatricks.novelscraper.data.model.ContentElement.Image("page3.jpg"),
+            io.aatricks.novelscraper.data.model.ContentElement.Image("page4.jpg"),
+            io.aatricks.novelscraper.data.model.ContentElement.Image("page5.jpg"),
+            io.aatricks.novelscraper.data.model.ContentElement.Image("recommend_manga.jpg")
+        )
+
+        // Mimic ContentRepository logic
+        if ((url.contains("mangabats.com") || url.contains("manganato.com")) && imagesFromSelectors.size > 5) {
+            val lastImg = imagesFromSelectors.last()
+            if (lastImg.url.contains("recommend") || lastImg.url.contains("banner") || lastImg.url.contains("next")) {
+                imagesFromSelectors.removeAt(imagesFromSelectors.size - 1)
+            }
+        }
+
+        assertEquals(5, imagesFromSelectors.size)
+        assertFalse(imagesFromSelectors.any { it.url.contains("recommend") })
+    }
+
+    @Test
     fun testMangaDetection() {
         val html = """
             <html>

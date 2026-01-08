@@ -299,6 +299,28 @@ class ContentRepository(private val context: Context) {
     /** Parse HTML document and extract content */
     private suspend fun parseHtmlDocument(document: Document, url: String): ContentResult {
         try {
+            // Remove advertisements - target various ad-related classes and IDs
+            document.select("""
+                .ads-banner, 
+                [class*="ads-banner"], 
+                [class*="bats-ads"], 
+                .ads-responsive, 
+                .ads-chapter-bottom,
+                .bats-detail-bottom-pos-1-detail-bottom-72,
+                .sh-recommend,
+                .cm-info,
+                .next-chapter-img,
+                [id*="ads-"],
+                [class*="footer-ads"],
+                .ads-contain,
+                .banner-owner,
+                .banner-ads,
+                [class*="ads-contain"]
+            """.trimIndent().replace("\n", "")).remove()
+
+            // Remove credit/recommend images that often appear at the end
+            document.select("img[alt*='credit'], img[alt*='recommend'], img[src*='credit'], img[src*='recommend'], img[alt*='ei0qg'], img[title*='ei0qg']").remove()
+
             // Extract title
             val title = document.title().takeIf { it.isNotBlank() }
 
@@ -306,18 +328,34 @@ class ContentRepository(private val context: Context) {
             val contentElements = mutableListOf<ContentElement>()
 
             // Try common image container selectors for manga/manhwa
-            val imagesFromSelectors = mutableListOf<ContentElement.Image>()
+            var imagesFromSelectors = mutableListOf<ContentElement.Image>()
             val imageElements = document.select(MANGA_IMAGE_SELECTOR)
             var foundImages = false
             
             if (imageElements.isNotEmpty()) {
+                val adDomains = listOf("yougetwhatyoupayfor.net", "bemobtrcks.com", "xpoker24.com", "coolgamesunblocked.com", "crazygamesunblocked.net", "abcya3.games", "eos.co.com")
+                
                 imageElements.forEach { element ->
+                    // Skip images inside known ad links or tracking links
+                    val parentLink = element.parents().firstOrNull { it.tagName() == "a" }
+                    if (parentLink != null) {
+                        val href = parentLink.attr("href")
+                        if (adDomains.any { href.contains(it) } || href.contains("facebook.com") || href.contains("twitter.com")) {
+                            return@forEach
+                        }
+                    }
+
                     val src =
                             element.attr("data-src")
                                     .ifEmpty { element.attr("data-original") }
                                     .ifEmpty { element.attr("src") }
 
                     if (src.isNotBlank()) {
+                        // Filter out common ad/thumb images from MangaBat/Nato
+                        if (src.contains("/thumb/") || src.contains("og-image-bat.png") || src.contains("logo") || src.contains("banner") || adDomains.any { src.contains(it) }) {
+                            return@forEach
+                        }
+
                         val absoluteUrl =
                                 if (src.startsWith("http")) src
                                 else {
@@ -337,6 +375,20 @@ class ContentRepository(private val context: Context) {
                         imagesFromSelectors.add(ContentElement.Image(url = absoluteUrl))
                     }
                 }
+                
+                // MangaBat specific: often the last image is an ad even if classes don't match
+                if ((url.contains("mangabats.com") || url.contains("manganato.com")) && imagesFromSelectors.size > 5) {
+                    val lastImg = imagesFromSelectors.last()
+                    // If last image is from a different host than the first one, it's likely an ad
+                    val firstHost = try { URL(imagesFromSelectors.first().url).host } catch (_: Exception) { "" }
+                    val lastHost = try { URL(lastImg.url).host } catch (_: Exception) { "" }
+                    
+                    if (lastImg.url.contains("recommend") || lastImg.url.contains("banner") || lastImg.url.contains("next") || 
+                        lastImg.url.contains("/thumb/") || (lastHost.isNotBlank() && firstHost != lastHost)) {
+                        imagesFromSelectors.removeAt(imagesFromSelectors.size - 1)
+                    }
+                }
+
                 if (imagesFromSelectors.size > 2) { 
                     foundImages = true
                 }
