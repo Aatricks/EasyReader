@@ -50,14 +50,14 @@ fun LibraryItemCard(
     onLongClick: () -> Unit
 ) {
     val targetBackgroundColor = when {
-        isSelected -> Color(0xFF2C2C2C)
-        isCurrent -> Color(0xFF1A1A1A)
-        else -> Color(0xFF0D0D0D)
+        isSelected -> MaterialTheme.colorScheme.surfaceVariant
+        isCurrent -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        else -> MaterialTheme.colorScheme.surface
     }
     
     val targetBorderColor = when {
-        isSelected -> Color(0xFF4CAF50)
-        isCurrent -> Color(0xFF4CAF50).copy(alpha = 0.5f)
+        isSelected -> MaterialTheme.colorScheme.primary
+        isCurrent -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
         else -> Color.Transparent
     }
 
@@ -108,7 +108,7 @@ fun LibraryItemCard(
                     text = item.title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isCurrent) Color(0xFF4CAF50) else Color.White,
+                    color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -117,24 +117,24 @@ fun LibraryItemCard(
                 // Current reading badge
                 if (isCurrent) {
                     Badge(
-                        containerColor = Color(0xFF4CAF50),
+                        containerColor = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(start = 8.dp)
                     ) {
                         Text(
                             text = "READING",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.Black
+                            color = MaterialTheme.colorScheme.onPrimary
                         )
                     }
                 } else if (item.hasUpdates) {
                     Badge(
-                        containerColor = Color(0xFFFF9800),
+                        containerColor = MaterialTheme.colorScheme.tertiary,
                         modifier = Modifier.padding(start = 8.dp)
                     ) {
                         Text(
                             text = "NEW",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.Black
+                            color = MaterialTheme.colorScheme.onTertiary
                         )
                     }
                 }
@@ -144,7 +144,7 @@ fun LibraryItemCard(
                     Icon(
                         imageVector = Icons.Filled.CheckCircle,
                         contentDescription = "Selected",
-                        tint = Color(0xFF4CAF50),
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
                             .padding(start = 8.dp)
                             .size(24.dp)
@@ -163,14 +163,14 @@ fun LibraryItemCard(
                 Text(
                     text = "Chapter ${item.currentChapter} / ${item.totalChapters}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 
                 Text(
                     text = "${item.progress}%",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
-                    color = if (item.progress == 100) Color(0xFF4CAF50) else Color.Gray
+                    color = if (item.progress == 100) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             
@@ -184,11 +184,11 @@ fun LibraryItemCard(
                     .height(6.dp)
                     .clip(RoundedCornerShape(3.dp)),
                 color = when {
-                    item.progress == 100 -> Color(0xFF4CAF50)
-                    item.progress > 50 -> Color(0xFF2196F3)
-                    else -> Color(0xFFFF9800)
+                    item.progress == 100 -> MaterialTheme.colorScheme.primary
+                    item.progress > 50 -> MaterialTheme.colorScheme.secondary
+                    else -> MaterialTheme.colorScheme.tertiary
                 },
-                trackColor = Color(0xFF2C2C2C)
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
             
             // Download status indicator (if applicable)
@@ -201,12 +201,12 @@ fun LibraryItemCard(
                     CircularProgressIndicator(
                         modifier = Modifier.size(16.dp),
                         strokeWidth = 2.dp,
-                        color = Color(0xFF2196F3)
+                        color = MaterialTheme.colorScheme.secondary
                     )
                     Text(
                         text = "Downloading...",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF2196F3)
+                        color = MaterialTheme.colorScheme.secondary
                     )
                 }
             }

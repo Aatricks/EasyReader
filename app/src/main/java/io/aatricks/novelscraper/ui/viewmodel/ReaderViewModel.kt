@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import io.aatricks.novelscraper.data.model.ChapterContent
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.data.model.ContentType
+import io.aatricks.novelscraper.data.model.ReaderTheme
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.util.TextUtils
 import io.aatricks.novelscraper.data.repository.LibraryRepository
@@ -56,7 +57,12 @@ class ReaderViewModel(
                 lineHeight = preferencesManager.lineHeight,
                 fontFamily = preferencesManager.fontFamily,
                 margins = preferencesManager.margins,
-                paragraphSpacing = preferencesManager.paragraphSpacing
+                paragraphSpacing = preferencesManager.paragraphSpacing,
+                readerTheme = try {
+                    ReaderTheme.valueOf(preferencesManager.readerTheme)
+                } catch (e: Exception) {
+                    ReaderTheme.DARK
+                }
             )
         }
     }
@@ -94,7 +100,8 @@ class ReaderViewModel(
         val lineHeight: Float = 1.5f,
         val fontFamily: String = "Default",
         val margins: Int = 16,
-        val paragraphSpacing: Float = 1.0f
+        val paragraphSpacing: Float = 1.0f,
+        val readerTheme: ReaderTheme = ReaderTheme.DARK
     )
     
     // Formatting update functions
@@ -126,6 +133,11 @@ class ReaderViewModel(
         val spacing = newSpacing.coerceIn(0.0f, 3.0f)
         preferencesManager.paragraphSpacing = spacing
         _uiState.update { it.copy(paragraphSpacing = spacing) }
+    }
+
+    fun updateReaderTheme(newTheme: ReaderTheme) {
+        preferencesManager.readerTheme = newTheme.name
+        _uiState.update { it.copy(readerTheme = newTheme) }
     }
 
     /**

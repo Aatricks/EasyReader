@@ -57,6 +57,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
 import androidx.compose.ui.unit.sp
 import io.aatricks.novelscraper.data.model.ChapterContent
 import io.aatricks.novelscraper.data.model.ContentElement
@@ -130,16 +132,25 @@ fun ReaderScreen(
     // Manage Status Bar Visibility
     val view = LocalView.current
     val window = (view.context as? Activity)?.window
+    val readerTheme = uiState.readerTheme
 
-    LaunchedEffect(uiState.showControls) {
+    LaunchedEffect(uiState.showControls, readerTheme) {
         if (window != null) {
             val windowInsetsController = WindowCompat.getInsetsController(window, view)
             windowInsetsController.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            
+            val isDarkReader = readerTheme == io.aatricks.novelscraper.data.model.ReaderTheme.DARK || 
+                               readerTheme == io.aatricks.novelscraper.data.model.ReaderTheme.OLED
+
             if (!uiState.showControls) {
                 windowInsetsController.hide(WindowInsetsCompat.Type.statusBars())
+                // Ensure icons are visible against reader background if user swipes to see status bar
+                windowInsetsController.isAppearanceLightStatusBars = !isDarkReader
             } else {
                 windowInsetsController.show(WindowInsetsCompat.Type.statusBars())
+                // In controls mode, we might want to follow the TopAppBar style which is dark in this app
+                windowInsetsController.isAppearanceLightStatusBars = false 
             }
         }
     }
@@ -204,7 +215,6 @@ fun ReaderScreen(
             modifier = modifier,
             drawerContent = {
                 ModalDrawerSheet(
-                    drawerContainerColor = Color.Black,
                     modifier = Modifier.width(320.dp)
                 ) {
                     LibraryDrawerContent(
@@ -285,6 +295,7 @@ fun ReaderScreen(
             onUpdateFontFamily = { readerViewModel.updateFontFamily(it) },
             onUpdateMargins = { readerViewModel.updateMargins(it) },
             onUpdateParagraphSpacing = { readerViewModel.updateParagraphSpacing(it) },
+            onUpdateReaderTheme = { readerViewModel.updateReaderTheme(it) },
             sheetState = settingsSheetState
         )
     }
@@ -303,8 +314,8 @@ fun ReaderScreen(
                 selectedChapterUrls.clear()
             },
             sheetState = bottomSheetState,
-            containerColor = Color(0xFF1A1A1A),
-            contentColor = Color.White
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface
         ) {
             val libraryItemsInGroup = libraryViewModel.uiState.value.groupedItems[uiState.baseTitle] ?: emptyList()
             val downloadedUrls = libraryItemsInGroup.map { it.url }.toSet()
@@ -345,7 +356,7 @@ fun ReaderScreen(
                             else "Download Chapters (${selectedChapterUrls.size})"
                         } else "Chapters",
                         style = MaterialTheme.typography.titleLarge,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
 
                     if (isSelectionMode) {
@@ -379,14 +390,14 @@ fun ReaderScreen(
                                 Icon(
                                     imageVector = if (isDeleteMode) Icons.Default.Delete else Icons.Default.Download,
                                     contentDescription = if (isDeleteMode) "Delete" else "Download",
-                                    tint = if (isDeleteMode) Color.Red else Color(0xFF4CAF50)
+                                    tint = if (isDeleteMode) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                                 )
                             }
                             IconButton(onClick = {
                                 isSelectionMode = false
                                 selectedChapterUrls.clear()
                             }) {
-                                Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color.Gray)
+                                Icon(Icons.Default.Close, contentDescription = "Cancel", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -394,7 +405,7 @@ fun ReaderScreen(
 
                 if (uiState.isChaptersLoading && uiState.fullChapterList.isEmpty()) {
                     Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = Color(0xFF4CAF50))
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     }
                 } else {
                     LazyColumn(
@@ -410,15 +421,15 @@ fun ReaderScreen(
                                     Text(
                                         text = chapter.title,
                                         color = when {
-                                            isSelected -> Color(0xFF90CAF9)
-                                            chapter.url == uiState.content?.url -> Color(0xFF4CAF50)
-                                            else -> Color.White
+                                            isSelected -> MaterialTheme.colorScheme.primary
+                                            chapter.url == uiState.content?.url -> MaterialTheme.colorScheme.secondary
+                                            else -> MaterialTheme.colorScheme.onSurface
                                         }
                                     )
                                 },
                                 trailingContent = {
                                     if (!isSelectionMode && isDownloaded) {
-                                        Icon(Icons.Default.Check, contentDescription = "Downloaded", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Check, contentDescription = "Downloaded", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                                     } else if (isSelectionMode) {
                                         Checkbox(
                                             checked = isSelected,
@@ -426,7 +437,7 @@ fun ReaderScreen(
                                                 if (checked) selectedChapterUrls.add(chapter.url)
                                                 else selectedChapterUrls.remove(chapter.url)
                                             },
-                                            colors = CheckboxDefaults.colors(checkedColor = Color(0xFF4CAF50))
+                                            colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
                                         )
                                     }
                                 },
@@ -453,10 +464,10 @@ fun ReaderScreen(
                                         }
                                     ),
                                 colors = ListItemDefaults.colors(
-                                    containerColor = if (isSelected) Color(0xFF1E3A8A).copy(alpha = 0.3f) else Color.Transparent
+                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent
                                 )
                             )
-                            HorizontalDivider(color = Color.DarkGray)
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
                     }
                 }
@@ -707,10 +718,15 @@ private fun ContentArea(
         label = "contentAlpha"
     )
 
+    val readerTheme = uiState.readerTheme
+    val bgColor = readerTheme.backgroundColor
+    val textColor = readerTheme.textColor
+
     Box(modifier = Modifier
         .fillMaxSize()
         .nestedScroll(nestedScrollConnection)
         .alpha(contentAlpha)
+        .background(bgColor)
     ) {
         if (uiState.isPagedMode) {
             HorizontalPager(
@@ -719,7 +735,6 @@ private fun ContentArea(
                 userScrollEnabled = !uiState.showControls,
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black)
                     .pointerInput(Unit) {
                         detectTapGestures(onTap = { readerViewModel.toggleControls() })
                     }
@@ -732,7 +747,7 @@ private fun ContentArea(
                                 Box(modifier = Modifier.verticalScroll(rememberScrollState())) {
                                     Text(
                                         text = element.content,
-                                        color = Color.White,
+                                        color = textColor,
                                         style = MaterialTheme.typography.bodyLarge.copy(
                                             fontSize = uiState.fontSize.sp,
                                             lineHeight = (uiState.fontSize * uiState.lineHeight).sp,
@@ -748,7 +763,8 @@ private fun ContentArea(
                                     altText = element.altText,
                                     readerViewModel = readerViewModel,
                                     pageUrl = content.url,
-                                    contentScale = ContentScale.Fit
+                                    contentScale = ContentScale.Fit,
+                                    backgroundColor = bgColor
                                 )
                             }
                             is ContentElement.ImageGroup -> {
@@ -763,7 +779,8 @@ private fun ContentArea(
                                             altText = img.altText,
                                             readerViewModel = readerViewModel,
                                             pageUrl = content.url,
-                                            contentScale = ContentScale.FillWidth
+                                            contentScale = ContentScale.FillWidth,
+                                            backgroundColor = bgColor
                                         )
                                     }
                                 }
@@ -777,7 +794,6 @@ private fun ContentArea(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black)
                     .pointerInput(Unit) {
                         detectTapGestures(onTap = { readerViewModel.toggleControls() })
                     },
@@ -790,7 +806,7 @@ private fun ContentArea(
                         is ContentElement.Text -> {
                             Text(
                                 text = element.content,
-                                color = Color.White,
+                                color = textColor,
                                 style = MaterialTheme.typography.bodyLarge.copy(
                                     fontSize = uiState.fontSize.sp,
                                     lineHeight = (uiState.fontSize * uiState.lineHeight).sp,
@@ -805,7 +821,8 @@ private fun ContentArea(
                                 altText = element.altText,
                                 readerViewModel = readerViewModel,
                                 pageUrl = content.url,
-                                contentScale = ContentScale.FillWidth
+                                contentScale = ContentScale.FillWidth,
+                                backgroundColor = bgColor
                             )
                         }
                         is ContentElement.ImageGroup -> {
@@ -819,7 +836,8 @@ private fun ContentArea(
                                         altText = img.altText,
                                         readerViewModel = readerViewModel,
                                         pageUrl = content.url,
-                                        contentScale = ContentScale.FillWidth
+                                        contentScale = ContentScale.FillWidth,
+                                        backgroundColor = bgColor
                                     )
                                 }
                             }
@@ -947,7 +965,8 @@ private fun TopInfoBar(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = Color(0xE6000000),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        tonalElevation = 8.dp,
         shadowElevation = 8.dp
     ) {
         Row(
@@ -955,29 +974,29 @@ private fun TopInfoBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onLibraryClick, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.Menu, contentDescription = "Open Library", tint = Color.White)
+                Icon(Icons.Filled.Menu, contentDescription = "Open Library", tint = MaterialTheme.colorScheme.onSurface)
             }
             Spacer(modifier = Modifier.width(8.dp))
             Column(modifier = Modifier.weight(1f)) {
                 if (novelName.isNotBlank()) {
-                    Text(text = novelName, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(text = novelName, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (chapterTitle.isNotBlank()) {
-                    Text(text = chapterTitle, color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(text = chapterTitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             IconButton(onClick = onShowSettings, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.FormatSize, contentDescription = "Settings", tint = Color.White)
+                Icon(Icons.Filled.FormatSize, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurface)
             }
             IconButton(onClick = onShowChapterList, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.List, contentDescription = "Chapter List", tint = Color.White)
+                Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Chapter List", tint = MaterialTheme.colorScheme.onSurface)
             }
             IconButton(onClick = onToggleMode, modifier = Modifier.size(40.dp)) {
-                Icon(imageVector = if (isPagedMode) Icons.Filled.ViewCarousel else Icons.Filled.ViewStream, contentDescription = "Toggle Mode", tint = Color.White)
+                Icon(imageVector = if (isPagedMode) Icons.Filled.ViewCarousel else Icons.Filled.ViewStream, contentDescription = "Toggle Mode", tint = MaterialTheme.colorScheme.onSurface)
             }
             if (isPagedMode) {
                 IconButton(onClick = onToggleRtl, modifier = Modifier.size(40.dp)) {
-                    Text(text = if (isRtl) "RTL" else "LTR", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                    Text(text = if (isRtl) "RTL" else "LTR", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
@@ -995,14 +1014,15 @@ private fun BottomNavigationBar(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = Color(0xE6000000),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        tonalElevation = 8.dp,
         shadowElevation = 8.dp
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             var sliderValue by remember(progress) { mutableFloatStateOf(progress.toFloat()) }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(text = "Progress", color = Color.White, style = MaterialTheme.typography.bodySmall)
-                Text(text = "${sliderValue.toInt()}%", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                Text(text = "Progress", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall)
+                Text(text = "${sliderValue.toInt()}%", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall)
             }
             Spacer(modifier = Modifier.height(4.dp))
             Slider(
@@ -1011,21 +1031,37 @@ private fun BottomNavigationBar(
                 onValueChangeFinished = { onProgressChange(sliderValue.toInt()) },
                 valueRange = 0f..100f,
                 colors = SliderDefaults.colors(
-                    thumbColor = Color(0xFF4CAF50),
-                    activeTrackColor = Color(0xFF4CAF50),
-                    inactiveTrackColor = Color(0xFF2A2A2A)
+                    thumbColor = MaterialTheme.colorScheme.primary,
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
                 ),
                 modifier = Modifier.fillMaxWidth().height(24.dp)
             )
             Spacer(modifier = Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                Button(onClick = onPreviousClick, enabled = canNavigatePrevious, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A1A1A), contentColor = Color.White)) {
+                Button(
+                    onClick = onPreviousClick, 
+                    enabled = canNavigatePrevious, 
+                    modifier = Modifier.weight(1f), 
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant, 
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                ) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Previous")
                 }
                 Spacer(modifier = Modifier.width(16.dp))
-                Button(onClick = onNextClick, enabled = canNavigateNext, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A1A1A), contentColor = Color.White)) {
+                Button(
+                    onClick = onNextClick, 
+                    enabled = canNavigateNext, 
+                    modifier = Modifier.weight(1f), 
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant, 
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                ) {
                     Text("Next")
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -1041,7 +1077,8 @@ private fun ReaderImageView(
     altText: String?,
     readerViewModel: ReaderViewModel,
     pageUrl: String,
-    contentScale: ContentScale = ContentScale.FillWidth
+    contentScale: ContentScale = ContentScale.FillWidth,
+    backgroundColor: Color = Color.Black
 ) {
     if (imageUrl.startsWith("http")) {
         val context = LocalContext.current
@@ -1068,6 +1105,7 @@ private fun ReaderImageView(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .background(backgroundColor)
                 .then(if (isLoading) Modifier.height(200.dp) else Modifier.wrapContentHeight()),
             contentAlignment = Alignment.Center
         ) {
@@ -1110,7 +1148,7 @@ private fun ReaderImageView(
                 } else hasError = true
             } catch (e: Exception) { hasError = true } finally { isLoading = false }
         }
-        Box(modifier = Modifier.fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.fillMaxWidth().background(backgroundColor), contentAlignment = Alignment.Center) {
             when {
                 isLoading -> CircularProgressIndicator(color = Color.Gray, modifier = Modifier.size(32.dp).padding(16.dp))
                 hasError -> Text(text = altText ?: "Image unavailable", color = Color.Gray, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
@@ -1122,58 +1160,36 @@ private fun ReaderImageView(
 
 @Composable
 private fun LoadingState() {
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             CircularProgressIndicator(color = Color(0xFF4CAF50), modifier = Modifier.size(48.dp))
-            Text(text = "Loading content...", color = Color.White, style = MaterialTheme.typography.bodyLarge)
+            Text(text = "Loading content...", style = MaterialTheme.typography.bodyLarge)
         }
     }
 }
 
 @Composable
-
 private fun ErrorState(error: String, onRetry: () -> Unit) {
-
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
-
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(32.dp)) {
-
             Icon(imageVector = Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFF5252), modifier = Modifier.size(64.dp))
-
-            Text(text = "Error loading content", color = Color.White, style = MaterialTheme.typography.headlineSmall)
-
+            Text(text = "Error loading content", style = MaterialTheme.typography.headlineSmall)
             Text(text = error, color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
-
             Button(onClick = onRetry, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) { Text("Retry", color = Color.White) }
-
         }
-
     }
-
 }
 
-
-
 @Composable
-
 private fun EmptyState(onOpenLibrary: () -> Unit) {
-
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
-
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(32.dp)) {
-
             Icon(imageVector = Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(64.dp))
-
-            Text(text = "No content available", color = Color.White, style = MaterialTheme.typography.headlineSmall)
-
+            Text(text = "No content available", style = MaterialTheme.typography.headlineSmall)
             Text(text = "Add a novel from the library", color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
-
             Button(onClick = onOpenLibrary, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) { Text("Open Library", color = Color.White) }
-
         }
-
     }
-
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1186,19 +1202,47 @@ fun ReaderSettingsSheet(
     onUpdateFontFamily: (String) -> Unit,
     onUpdateMargins: (Int) -> Unit,
     onUpdateParagraphSpacing: (Float) -> Unit,
+    onUpdateReaderTheme: (io.aatricks.novelscraper.data.model.ReaderTheme) -> Unit,
     sheetState: SheetState
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF1A1A1A),
-        contentColor = Color.White
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text("Reading Settings", style = MaterialTheme.typography.titleLarge)
+
+            // Themes
+            Text("Theme", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                io.aatricks.novelscraper.data.model.ReaderTheme.entries.forEach { theme ->
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(theme.backgroundColor)
+                            .then(
+                                if (uiState.readerTheme == theme) {
+                                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape)
+                                } else Modifier
+                            )
+                            .clickable { onUpdateReaderTheme(theme) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (uiState.readerTheme == theme) {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = if (theme == io.aatricks.novelscraper.data.model.ReaderTheme.LIGHT || theme == io.aatricks.novelscraper.data.model.ReaderTheme.SEPIA) Color.Black else Color.White)
+                        }
+                    }
+                }
+            }
 
             // Font Size
             Row(
@@ -1213,7 +1257,7 @@ fun ReaderSettingsSheet(
                     valueRange = 12f..32f,
                     steps = 19, // 1sp steps
                     modifier = Modifier.weight(1f).scale(scaleY = 0.8f, scaleX = 1f),
-                    colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50))
+                    colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
                 )
             }
 
@@ -1230,7 +1274,7 @@ fun ReaderSettingsSheet(
                     valueRange = 1.0f..2.5f,
                     steps = 14, // 0.1 steps
                     modifier = Modifier.weight(1f).scale(scaleY = 0.8f, scaleX = 1f),
-                    colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50))
+                    colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
                 )
             }
 
@@ -1247,7 +1291,7 @@ fun ReaderSettingsSheet(
                     valueRange = 0f..64f,
                     steps = 15, // 4dp steps approx
                     modifier = Modifier.weight(1f).scale(scaleY = 0.8f, scaleX = 1f),
-                    colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50))
+                    colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
                 )
             }
 
@@ -1264,7 +1308,7 @@ fun ReaderSettingsSheet(
                     valueRange = 0.0f..3.0f,
                     steps = 29, // 0.1 steps
                     modifier = Modifier.weight(1f).scale(scaleY = 0.8f, scaleX = 1f),
-                    colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50))
+                    colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
                 )
             }
 
@@ -1279,8 +1323,8 @@ fun ReaderSettingsSheet(
                         onClick = { onUpdateFontFamily(font) },
                         label = { Text(font) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFF4CAF50),
-                            selectedLabelColor = Color.White
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
                         )
                     )
                 }

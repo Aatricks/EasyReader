@@ -88,8 +88,9 @@ class MainActivity : ComponentActivity() {
         // Set up the UI
         setContent {
             NovelScraperTheme(
-                darkTheme = true, // Force dark theme for reading
-                dynamicColor = false // Disable dynamic colors for consistent theme
+                // Follow system dark mode, but the reader itself will use its own theme settings
+                darkTheme = androidx.compose.foundation.isSystemInDarkTheme(),
+                dynamicColor = true // Enable dynamic colors for M3
             ) {
                 ReaderScreen(
                     readerViewModel = readerViewModel,

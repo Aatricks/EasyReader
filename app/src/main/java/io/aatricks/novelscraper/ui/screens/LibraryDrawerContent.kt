@@ -86,7 +86,7 @@ fun LibraryDrawerContent(
     Column(
         modifier = Modifier
             .fillMaxHeight()
-            .background(Color.Black)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(16.dp)
     ) {
         // Header
@@ -99,21 +99,21 @@ fun LibraryDrawerContent(
                 text = "Library",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = MaterialTheme.colorScheme.onSurface
             )
             Row {
                 IconButton(onClick = onExploreClick) {
                     Icon(
                         imageVector = Icons.Default.Image,
                         contentDescription = "Explore",
-                        tint = Color.White
+                        tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
                 IconButton(onClick = { isAddSectionVisible = !isAddSectionVisible }) {
                     Icon(
                         imageVector = if (isAddSectionVisible) Icons.Filled.Close else Icons.Filled.Add,
                         contentDescription = if (isAddSectionVisible) "Close Add" else "Add Novel",
-                        tint = Color.White
+                        tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -125,16 +125,15 @@ fun LibraryDrawerContent(
                 OutlinedTextField(
                     value = urlInput,
                     onValueChange = { urlInput = it },
-                    label = { Text("Novel URL", color = Color.Gray) },
-                    placeholder = { Text("Enter novel URL...", color = Color.DarkGray) },
+                    label = { Text("Novel URL") },
+                    placeholder = { Text("Enter novel URL...") },
                     modifier = Modifier.fillMaxWidth(),
                     trailingIcon = {
                         if (urlInput.isNotEmpty()) {
                             IconButton(onClick = { urlInput = "" }) {
                                 Icon(
                                     imageVector = Icons.Filled.Close,
-                                    contentDescription = "Clear URL",
-                                    tint = Color.Gray
+                                    contentDescription = "Clear URL"
                                 )
                             }
                         }
@@ -148,11 +147,8 @@ fun LibraryDrawerContent(
                         }
                     }),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF4CAF50),
-                        unfocusedBorderColor = Color.Gray,
-                        cursorColor = Color(0xFF4CAF50)
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        cursorColor = MaterialTheme.colorScheme.primary
                     ),
                     singleLine = true
                 )
@@ -173,24 +169,23 @@ fun LibraryDrawerContent(
                         },
                         modifier = Modifier.weight(1f).height(48.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF4CAF50),
-                            disabledContainerColor = Color.DarkGray
+                            containerColor = MaterialTheme.colorScheme.primary
                         ),
                         enabled = urlInput.isNotBlank(),
                         shape = RoundedCornerShape(24.dp)
                     ) {
                         Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Add", color = Color.White, fontWeight = FontWeight.SemiBold)
+                        Text("Add", fontWeight = FontWeight.SemiBold)
                     }
 
                     Button(
                         onClick = { onOpenFilePicker() },
                         modifier = Modifier.weight(1f).height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF795548)),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
                         shape = RoundedCornerShape(24.dp)
                     ) {
-                        Text("Open PDF", color = Color.White, fontWeight = FontWeight.SemiBold)
+                        Text("Open PDF", fontWeight = FontWeight.SemiBold)
                     }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
@@ -201,22 +196,19 @@ fun LibraryDrawerContent(
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { libraryViewModel.updateSearchQuery(it) },
-            placeholder = { Text("Search library...", color = Color.Gray) },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray) },
+            placeholder = { Text("Search library...") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
                     IconButton(onClick = { libraryViewModel.updateSearchQuery("") }) {
-                        Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color.Gray)
+                        Icon(Icons.Default.Close, contentDescription = "Clear")
                     }
                 }
             },
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = Color.Gray,
-                unfocusedBorderColor = Color.DarkGray,
-                cursorColor = Color(0xFF4CAF50)
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline
             ),
             singleLine = true
         )
@@ -290,13 +282,13 @@ fun LibraryDrawerContent(
                                 text = sourceName,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF4CAF50),
+                                color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.weight(1f)
                             )
                             Icon(
                                 imageVector = if (isSourceExpanded) Icons.Filled.ArrowDropDown else Icons.Filled.KeyboardArrowRight,
                                 contentDescription = null,
-                                tint = Color.Gray
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -328,7 +320,7 @@ fun LibraryDrawerContent(
                                             .padding(start = 8.dp)
                                             .clip(RoundedCornerShape(10.dp)),
                                         colors = CardDefaults.cardColors(
-                                            containerColor = if (isGroupSelected) Color(0xFF1E3A8A) else Color(0xFF0D0D0D)
+                                            containerColor = if (isGroupSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                                         )
                                     ) {
                                         Column(modifier = Modifier.padding(12.dp)) {
@@ -366,19 +358,19 @@ fun LibraryDrawerContent(
                                                             Text(
                                                                 text = groupTitle,
                                                                 style = MaterialTheme.typography.titleMedium,
-                                                                color = if (hasUpdates && isCaughtUp) Color(0xFF4CAF50) else Color.White,
+                                                                color = if (hasUpdates && isCaughtUp) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                                                 modifier = Modifier.weight(1f, fill = false)
                                                             )
                                                             
                                                             if (hasUpdates) {
                                                                 Spacer(modifier = Modifier.width(8.dp))
                                                                 Badge(
-                                                                    containerColor = Color(0xFFFF9800),
+                                                                    containerColor = MaterialTheme.colorScheme.tertiary,
                                                                 ) {
                                                                     Text(
                                                                         text = "NEW",
                                                                         style = MaterialTheme.typography.labelSmall,
-                                                                        color = Color.Black
+                                                                        color = MaterialTheme.colorScheme.onTertiary
                                                                     )
                                                                 }
                                                             }
@@ -388,15 +380,15 @@ fun LibraryDrawerContent(
                                                             Text(
                                                                 text = current.currentChapter.ifBlank { "Chapter 1" },
                                                                 style = MaterialTheme.typography.bodySmall,
-                                                                color = Color.Gray
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
                                                             )
                                                             if (current.isCurrentlyReading) {
                                                                 Spacer(modifier = Modifier.height(4.dp))
                                                                 LinearProgressIndicator(
                                                                     progress = { readerUiState.scrollProgress / 100f },
                                                                     modifier = Modifier.fillMaxWidth(),
-                                                                    color = Color(0xFF4CAF50),
-                                                                    trackColor = Color(0xFF2C2C2C)
+                                                                    color = MaterialTheme.colorScheme.primary,
+                                                                    trackColor = MaterialTheme.colorScheme.surfaceVariant
                                                                 )
                                                             }
                                                         }
@@ -406,7 +398,7 @@ fun LibraryDrawerContent(
                                                     Icon(
                                                         imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.Filled.KeyboardArrowRight,
                                                         contentDescription = null,
-                                                        tint = Color.White
+                                                        tint = MaterialTheme.colorScheme.onSurface
                                                     )
                                                 }
                                             }
@@ -425,7 +417,7 @@ fun LibraryDrawerContent(
                                                             onCloseDrawer()
                                                         },
                                                         modifier = Modifier.fillMaxWidth(),
-                                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                                                     ) {
                                                         Text("Continue: ${lastRead.currentChapter.ifBlank { "Reading" }}")
                                                     }
@@ -444,7 +436,7 @@ fun LibraryDrawerContent(
                                                                 modifier = Modifier
                                                                     .fillMaxWidth()
                                                                     .background(
-                                                                        if (isSelected) Color(0xFF1E3A8A).copy(alpha = 0.5f) else Color.Transparent,
+                                                                        if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else Color.Transparent,
                                                                         shape = RoundedCornerShape(4.dp)
                                                                     )
                                                                     .combinedClickable(
@@ -465,7 +457,7 @@ fun LibraryDrawerContent(
                                                             ) {
                                                                 Text(
                                                                     text = chapterItem.currentChapter.ifBlank { "Chapter 1" },
-                                                                    color = if (isSelected) Color(0xFF90CAF9) else if (isCurrent) Color(0xFF4CAF50) else Color.White,
+                                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else if (isCurrent) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface,
                                                                     style = MaterialTheme.typography.bodyMedium
                                                                 )
                                                             }

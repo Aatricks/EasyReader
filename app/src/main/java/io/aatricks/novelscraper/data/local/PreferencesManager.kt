@@ -165,6 +165,11 @@ class PreferencesManager(context: Context) {
     var paragraphSpacing: Float
         get() = prefs.getFloat(KEY_PARAGRAPH_SPACING, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_PARAGRAPH_SPACING, value).apply()
+
+    var readerTheme: String
+        get() = prefs.getString(KEY_READER_THEME, io.aatricks.novelscraper.data.model.ReaderTheme.DARK.name) 
+            ?: io.aatricks.novelscraper.data.model.ReaderTheme.DARK.name
+        set(value) = prefs.edit().putString(KEY_READER_THEME, value).apply()
     
     // Clear all preferences
     fun clearAll() {
@@ -196,5 +201,6 @@ class PreferencesManager(context: Context) {
         private const val KEY_FONT_FAMILY = "reader_font_family"
         private const val KEY_MARGINS = "reader_margins"
         private const val KEY_PARAGRAPH_SPACING = "reader_paragraph_spacing"
+        private const val KEY_READER_THEME = "reader_theme"
     }
 }
