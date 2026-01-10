@@ -1,89 +1,81 @@
 package io.aatricks.novelscraper.ui.screens
 
 import android.app.Activity
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.background
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.unit.dp
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.background
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.material.icons.automirrored.filled.*
-import androidx.activity.compose.BackHandler
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.border
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.aatricks.novelscraper.data.model.ChapterContent
-import io.aatricks.novelscraper.data.model.ContentElement
-import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.navigation.NavController
+import coil3.SingletonImageLoader
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+import coil3.network.NetworkHeaders
+import coil3.network.httpHeaders
+import io.aatricks.novelscraper.data.model.*
+import io.aatricks.novelscraper.ui.ExploreRoute
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
-import kotlinx.coroutines.launch
+import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
-import io.aatricks.novelscraper.ui.screens.explore.ExploreScreen
-import io.aatricks.novelscraper.data.repository.ExploreRepository
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ReaderScreen(
     readerViewModel: ReaderViewModel,
     libraryViewModel: LibraryViewModel,
+    navController: NavController,
     onOpenFilePicker: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    var showExplore by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val exploreRepository = remember { ExploreRepository(context) }
 
     var showCloudflareWebView by remember { mutableStateOf(false) }
     var cloudflareUrl by remember { mutableStateOf("") }
@@ -93,25 +85,20 @@ fun ReaderScreen(
     val bottomSheetState = rememberModalBottomSheetState()
     val settingsSheetState = rememberModalBottomSheetState()
 
-    // Collect state from ViewModel
     val uiState by readerViewModel.uiState.collectAsState()
 
-    // Handle back button for drawer
-    BackHandler(enabled = drawerState.isOpen && !showExplore) {
+    BackHandler(enabled = drawerState.isOpen) {
         scope.launch { drawerState.close() }
     }
 
-    // Handle back button for controls
-    BackHandler(enabled = !drawerState.isOpen && uiState.showControls && !showExplore) {
+    BackHandler(enabled = !drawerState.isOpen && uiState.showControls) {
         readerViewModel.hideControls()
     }
 
-    // Handle back button to open drawer if closed, controls hidden and not in explore
-    BackHandler(enabled = !drawerState.isOpen && !uiState.showControls && !showExplore && uiState.content != null) {
+    BackHandler(enabled = !drawerState.isOpen && !uiState.showControls && uiState.content != null) {
         scope.launch { drawerState.open() }
     }
 
-    // Check for Cloudflare/403 errors
     LaunchedEffect(uiState.error) {
         if (uiState.error?.contains("403") == true || uiState.error?.contains("503") == true) {
             cloudflareUrl = uiState.content?.url ?: ""
@@ -121,7 +108,6 @@ fun ReaderScreen(
         }
     }
 
-    // Handle Toast messages
     LaunchedEffect(uiState.toastMessage) {
         uiState.toastMessage?.let { message ->
             android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
@@ -129,7 +115,6 @@ fun ReaderScreen(
         }
     }
 
-    // Manage Status Bar Visibility
     val view = LocalView.current
     val window = (view.context as? Activity)?.window
     val readerTheme = uiState.readerTheme
@@ -140,16 +125,14 @@ fun ReaderScreen(
             windowInsetsController.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             
-            val isDarkReader = readerTheme == io.aatricks.novelscraper.data.model.ReaderTheme.DARK || 
-                               readerTheme == io.aatricks.novelscraper.data.model.ReaderTheme.OLED
+            val isDarkReader = readerTheme == ReaderTheme.DARK || 
+                               readerTheme == ReaderTheme.OLED
 
             if (!uiState.showControls) {
                 windowInsetsController.hide(WindowInsetsCompat.Type.statusBars())
-                // Ensure icons are visible against reader background if user swipes to see status bar
                 windowInsetsController.isAppearanceLightStatusBars = !isDarkReader
             } else {
                 windowInsetsController.show(WindowInsetsCompat.Type.statusBars())
-                // In controls mode, we might want to follow the TopAppBar style which is dark in this app
                 windowInsetsController.isAppearanceLightStatusBars = false 
             }
         }
@@ -203,83 +186,72 @@ fun ReaderScreen(
         )
     }
 
-    if (showExplore) {
-        ExploreScreen(
-            exploreRepository = exploreRepository,
-            libraryViewModel = libraryViewModel,
-            onNavigateBack = { showExplore = false }
-        )
-    } else {
-        ModalNavigationDrawer(
-            drawerState = drawerState,
-            modifier = modifier,
-            drawerContent = {
-                ModalDrawerSheet(
-                    modifier = Modifier.width(320.dp)
-                ) {
-                    LibraryDrawerContent(
-                        libraryViewModel = libraryViewModel,
-                        readerViewModel = readerViewModel,
-                        onOpenFilePicker = onOpenFilePicker,
-                        onCloseDrawer = {
-                            scope.launch { drawerState.close() }
-                        },
-                        onExploreClick = {
-                            scope.launch { drawerState.close() }
-                            showExplore = true
-                        }
-                    )
-                }
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        modifier = modifier,
+        drawerContent = {
+            ModalDrawerSheet(
+                modifier = Modifier.width(320.dp)
+            ) {
+                LibraryDrawerContent(
+                    libraryViewModel = libraryViewModel,
+                    readerViewModel = readerViewModel,
+                    navController = navController,
+                    onOpenFilePicker = onOpenFilePicker,
+                    onCloseDrawer = {
+                        scope.launch { drawerState.close() }
+                    }
+                )
             }
-        ) {
-            Scaffold(
-                containerColor = Color.Black
-            ) { paddingValues ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                ) {
-                    when {
-                        uiState.isLoading -> {
-                            LoadingState()
-                        }
-
-                        uiState.error != null -> {
-                            ErrorState(
-                                error = uiState.error!!,
-                                onRetry = { readerViewModel.retryLoad() }
-                            )
-                        }
-
-                        uiState.content == null -> {
-                            EmptyState(onOpenLibrary = {
-                                scope.launch { drawerState.open() }
-                            })
-                        }
-
-                        else -> {
-                            ContentArea(
-                                content = uiState.content!!,
-                                readerViewModel = readerViewModel,
-                                libraryViewModel = libraryViewModel,
-                                onLibraryClick = { scope.launch { drawerState.open() } },
-                                onShowChapterList = { showChapterList = true },
-                                onShowSettings = { showSettings = true }
-                            )
-                        }
+        }
+    ) {
+        Scaffold(
+            containerColor = Color.Black
+        ) { paddingValues ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                when {
+                    uiState.isLoading -> {
+                        LoadingState()
                     }
 
-                    if (uiState.isNavigating) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.3f))
-                                .pointerInput(Unit) {}, // Consume touches
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(color = Color(0xFF4CAF50))
-                        }
+                    uiState.error != null -> {
+                        ErrorState(
+                            error = uiState.error!!,
+                            onRetry = { readerViewModel.retryLoad() }
+                        )
+                    }
+
+                    uiState.content == null -> {
+                        EmptyState(onOpenLibrary = {
+                            scope.launch { drawerState.open() }
+                        })
+                    }
+
+                    else -> {
+                        ContentArea(
+                            content = uiState.content!!,
+                            readerViewModel = readerViewModel,
+                            libraryViewModel = libraryViewModel,
+                            onLibraryClick = { scope.launch { drawerState.open() } },
+                            onShowChapterList = { showChapterList = true },
+                            onShowSettings = { showSettings = true }
+                        )
+                    }
+                }
+
+                if (uiState.isNavigating) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.3f))
+                            .pointerInput(Unit) {},
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = Color(0xFF4CAF50))
                     }
                 }
             }
@@ -303,7 +275,6 @@ fun ReaderScreen(
     if (showChapterList) {
         var isSelectionMode by remember { mutableStateOf(false) }
         val selectedChapterUrls = remember { mutableStateListOf<String>() }
-        // true if selecting downloaded chapters for deletion, false if selecting source chapters for download
         var isDeleteMode by remember { mutableStateOf(false) }
         val chaptersListState = rememberLazyListState()
 
@@ -322,8 +293,8 @@ fun ReaderScreen(
 
             val allChapters = uiState.fullChapterList.ifEmpty {
                 libraryItemsInGroup.map {
-                    io.aatricks.novelscraper.data.model.ChapterInfo(it.currentChapter.ifBlank { it.title }, it.url)
-                } // Removed .reversed() to keep ascending unification
+                    ChapterInfo(it.currentChapter.ifBlank { it.title }, it.url)
+                }
             }
 
             val filteredChapters = if (isSelectionMode) {
@@ -336,7 +307,6 @@ fun ReaderScreen(
                 allChapters
             }
 
-            // Scroll to current chapter when opened
             LaunchedEffect(showChapterList) {
                 val currentIndex = filteredChapters.indexOfFirst { it.url == uiState.content?.url }
                 if (currentIndex >= 0) {
@@ -363,7 +333,6 @@ fun ReaderScreen(
                         Row {
                             IconButton(onClick = {
                                 if (isDeleteMode) {
-                                    // Delete selected chapters in batch
                                     val idsToRemove = selectedChapterUrls.mapNotNull { url ->
                                         libraryItemsInGroup.find { it.url == url }?.id
                                     }.toSet()
@@ -371,7 +340,6 @@ fun ReaderScreen(
                                         libraryViewModel.removeItems(idsToRemove)
                                     }
                                 } else {
-                                    // Download selected chapters
                                     val chaptersToDownload = selectedChapterUrls.mapNotNull { url ->
                                         allChapters.find { it.url == url }
                                     }
@@ -478,13 +446,10 @@ fun ReaderScreen(
     }
 }
 
-/**
- * Main content area displaying scrollable text and images.
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ContentArea(
-    content: io.aatricks.novelscraper.data.model.ChapterContent,
+    content: ChapterContent,
     readerViewModel: ReaderViewModel,
     libraryViewModel: LibraryViewModel,
     onLibraryClick: () -> Unit,
@@ -494,13 +459,13 @@ private fun ContentArea(
     val listState = rememberLazyListState()
     val uiState by readerViewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
-    // Resolve font family
     val fontFamily = when (uiState.fontFamily) {
-        "Serif" -> androidx.compose.ui.text.font.FontFamily.Serif
-        "Monospace" -> androidx.compose.ui.text.font.FontFamily.Monospace
-        "Cursive" -> androidx.compose.ui.text.font.FontFamily.Cursive
-        else -> androidx.compose.ui.text.font.FontFamily.SansSerif
+        "Serif" -> FontFamily.Serif
+        "Monospace" -> FontFamily.Monospace
+        "Cursive" -> FontFamily.Cursive
+        else -> FontFamily.SansSerif
     }
 
     val pagerState = rememberPagerState(
@@ -512,32 +477,55 @@ private fun ContentArea(
 
     val appliedRestore = remember(content.url) { mutableStateOf(false) }
 
-    // Handle initial restore AND manual seek requests
+    val isManhwa = remember(content) {
+        content.getImageCount() > content.getTextCount() && content.getImageCount() > 2
+    }
+
+    // Prefetch images nearby
+    LaunchedEffect(listState.firstVisibleItemIndex, content.url) {
+        if (isManhwa) {
+            val currentIndex = listState.firstVisibleItemIndex
+            val prefetchRange = 5
+            val endRange = (currentIndex + prefetchRange).coerceAtMost(content.paragraphs.size - 1)
+            
+            for (i in currentIndex..endRange) {
+                val element = content.paragraphs.getOrNull(i)
+                if (element is ContentElement.Image) {
+                    val request = ImageRequest.Builder(context)
+                        .data(element.url)
+                        .build()
+                    SingletonImageLoader.get(context).enqueue(request)
+                } else if (element is ContentElement.ImageGroup) {
+                    element.images.forEach { img ->
+                        val request = ImageRequest.Builder(context)
+                            .data(img.url)
+                            .build()
+                        SingletonImageLoader.get(context).enqueue(request)
+                    }
+                }
+            }
+        }
+    }
+
     LaunchedEffect(content.url, uiState.seekTrigger) {
         if (content.paragraphs.isNotEmpty()) {
             val isInitialRestore = !appliedRestore.value
-
-            // Capture target values BEFORE any delay to prevent them being
-            // overwritten by the eager scroll observer
             val targetIndex = uiState.scrollIndex
             val targetOffset = uiState.scrollOffset
             val targetPosition = uiState.scrollPosition
 
             if (isInitialRestore) {
-                // Allow time for measurement and layout to settle
-                kotlinx.coroutines.delay(150)
+                delay(150)
             }
 
             if (uiState.isPagedMode) {
                 val page = targetIndex.coerceIn(0, content.paragraphs.size - 1)
                 pagerState.scrollToPage(page)
             } else {
-                // For vertical mode, use the captured values
                 if (targetIndex >= 0) {
                     try {
                         listState.scrollToItem(targetIndex, targetOffset)
                     } catch (_: Exception) {
-                        // Fallback to percentage if scrollToItem fails
                         val totalItems = content.paragraphs.size
                         val percent = targetPosition.coerceIn(0f, 100f) / 100f
                         val index = (percent * totalItems).toInt().coerceIn(0, totalItems - 1)
@@ -566,7 +554,6 @@ private fun ContentArea(
             }
         }
     } else {
-        // Only observe and update progress AFTER restoration has been applied
         if (appliedRestore.value) {
             LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
                 if (content.paragraphs.isNotEmpty()) {
@@ -596,17 +583,11 @@ private fun ContentArea(
         }
     }
 
-    val isManhwa = remember(content) {
-        content.getImageCount() > content.getTextCount() && content.getImageCount() > 2
-    }
-
-    // Pull-to-navigate state
     val density = androidx.compose.ui.platform.LocalDensity.current
     val threshold = remember { with(density) { 80.dp.toPx() } }
     var pullAmount by remember { mutableFloatStateOf(0f) }
     val isThresholdReached = abs(pullAmount) >= threshold
 
-    // Reset pull amount when content changes
     LaunchedEffect(content.url) {
         pullAmount = 0f
     }
@@ -618,7 +599,6 @@ private fun ContentArea(
                     readerViewModel.hideControls()
                 }
 
-                // Recover pullAmount
                 if (uiState.isPagedMode) {
                     if (pullAmount > 0 && available.x < 0) {
                         val consumed = available.x.coerceAtLeast(-pullAmount)
@@ -656,7 +636,6 @@ private fun ContentArea(
                         val isAtEnd = pagerState.currentPage == content.paragraphs.size - 1
 
                         if (uiState.isRtl) {
-                            // RTL: Pull Left (-X) for Previous, Pull Right (+X) for Next
                             if (available.x < 0 && isAtStart && uiState.canNavigatePrevious) {
                                 pullAmount += available.x * 0.5f
                                 return Offset(available.x, 0f)
@@ -665,7 +644,6 @@ private fun ContentArea(
                                 return Offset(available.x, 0f)
                             }
                         } else {
-                            // LTR: Pull Right (+X) for Previous, Pull Left (-X) for Next
                             if (available.x > 0 && isAtStart && uiState.canNavigatePrevious) {
                                 pullAmount += available.x * 0.5f
                                 return Offset(available.x, 0f)
@@ -718,9 +696,9 @@ private fun ContentArea(
         label = "contentAlpha"
     )
 
-    val readerTheme = uiState.readerTheme
-    val bgColor = readerTheme.backgroundColor
-    val textColor = readerTheme.textColor
+    val readerThemeState = uiState.readerTheme
+    val bgColor = readerThemeState.backgroundColor
+    val textColor = readerThemeState.textColor
 
     Box(modifier = Modifier
         .fillMaxSize()
@@ -882,7 +860,6 @@ private fun ContentArea(
             )
         }
 
-        // Pull-to-navigate indicators
         if (abs(pullAmount) > 0f) {
             val isPrevious = if (uiState.isPagedMode) {
                 if (uiState.isRtl) pullAmount < 0 else pullAmount > 0
@@ -933,7 +910,7 @@ private fun ContentArea(
                         tint = arrowColor,
                         modifier = Modifier
                             .size(48.dp)
-                            .rotate(if (uiState.isPagedMode) 0f else rotation) // Rotation for vertical, none for auto-mirrored horizontal
+                            .rotate(if (uiState.isPagedMode) 0f else rotation)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
@@ -1083,7 +1060,6 @@ private fun ReaderImageView(
     if (imageUrl.startsWith("http")) {
         val context = LocalContext.current
 
-        // Check for cached image file
         val cachedFile = remember(imageUrl) {
             readerViewModel.contentRepository.getCachedMediaFile(imageUrl)
         }
@@ -1094,19 +1070,20 @@ private fun ReaderImageView(
 
             ImageRequest.Builder(context)
                 .data(if (cachedFile.exists()) cachedFile else imageUrl)
-                .addHeader("Referer", referer)
-                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .crossfade(true)
+                .httpHeaders(NetworkHeaders.Builder()
+                    .set("Referer", referer)
+                    .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    .build())
+                .crossfade(false)
                 .build()
         }
-        var isLoading by remember(imageRequest) { mutableStateOf(true) }
         var isError by remember(imageRequest) { mutableStateOf(false) }
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(backgroundColor)
-                .then(if (isLoading) Modifier.height(200.dp) else Modifier.wrapContentHeight()),
+                .wrapContentHeight(),
             contentAlignment = Alignment.Center
         ) {
             AsyncImage(
@@ -1114,16 +1091,10 @@ private fun ReaderImageView(
                 contentDescription = altText,
                 modifier = Modifier.fillMaxWidth(),
                 contentScale = contentScale,
-                onSuccess = { isLoading = false },
                 onError = {
-                    isLoading = false
                     isError = true
                 }
             )
-
-            if (isLoading) {
-                CircularProgressIndicator(color = Color.Gray, modifier = Modifier.size(32.dp))
-            }
 
             if (isError) {
                 Text(
@@ -1152,7 +1123,7 @@ private fun ReaderImageView(
             when {
                 isLoading -> CircularProgressIndicator(color = Color.Gray, modifier = Modifier.size(32.dp).padding(16.dp))
                 hasError -> Text(text = altText ?: "Image unavailable", color = Color.Gray, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
-                imageData != null -> androidx.compose.foundation.Image(bitmap = imageData!!.asImageBitmap(), contentDescription = altText, modifier = Modifier.fillMaxWidth(), contentScale = contentScale)
+                imageData != null -> Image(bitmap = imageData!!.asImageBitmap(), contentDescription = altText, modifier = Modifier.fillMaxWidth(), contentScale = contentScale)
             }
         }
     }
@@ -1202,7 +1173,7 @@ fun ReaderSettingsSheet(
     onUpdateFontFamily: (String) -> Unit,
     onUpdateMargins: (Int) -> Unit,
     onUpdateParagraphSpacing: (Float) -> Unit,
-    onUpdateReaderTheme: (io.aatricks.novelscraper.data.model.ReaderTheme) -> Unit,
+    onUpdateReaderTheme: (ReaderTheme) -> Unit,
     sheetState: SheetState
 ) {
     ModalBottomSheet(
@@ -1217,34 +1188,32 @@ fun ReaderSettingsSheet(
         ) {
             Text("Reading Settings", style = MaterialTheme.typography.titleLarge)
 
-            // Themes
             Text("Theme", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                io.aatricks.novelscraper.data.model.ReaderTheme.entries.forEach { theme ->
+                ReaderTheme.entries.forEach { theme ->
                     Box(
                         modifier = Modifier
                             .size(48.dp)
-                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .clip(CircleShape)
                             .background(theme.backgroundColor)
                             .then(
                                 if (uiState.readerTheme == theme) {
-                                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape)
+                                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
                                 } else Modifier
                             )
                             .clickable { onUpdateReaderTheme(theme) },
                         contentAlignment = Alignment.Center
                     ) {
                         if (uiState.readerTheme == theme) {
-                            Icon(Icons.Default.Check, contentDescription = null, tint = if (theme == io.aatricks.novelscraper.data.model.ReaderTheme.LIGHT || theme == io.aatricks.novelscraper.data.model.ReaderTheme.SEPIA) Color.Black else Color.White)
+                            Icon(Icons.Default.Check, contentDescription = null, tint = if (theme == ReaderTheme.LIGHT || theme == ReaderTheme.SEPIA) Color.Black else Color.White)
                         }
                     }
                 }
             }
 
-            // Font Size
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1255,13 +1224,12 @@ fun ReaderSettingsSheet(
                     value = uiState.fontSize,
                     onValueChange = onUpdateFontSize,
                     valueRange = 12f..32f,
-                    steps = 19, // 1sp steps
+                    steps = 19,
                     modifier = Modifier.weight(1f).scale(scaleY = 0.8f, scaleX = 1f),
                     colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
                 )
             }
 
-            // Line Height
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1272,13 +1240,12 @@ fun ReaderSettingsSheet(
                     value = uiState.lineHeight,
                     onValueChange = onUpdateLineHeight,
                     valueRange = 1.0f..2.5f,
-                    steps = 14, // 0.1 steps
+                    steps = 14,
                     modifier = Modifier.weight(1f).scale(scaleY = 0.8f, scaleX = 1f),
                     colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
                 )
             }
 
-            // Margins
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1289,13 +1256,12 @@ fun ReaderSettingsSheet(
                     value = uiState.margins.toFloat(),
                     onValueChange = { onUpdateMargins(it.toInt()) },
                     valueRange = 0f..64f,
-                    steps = 15, // 4dp steps approx
+                    steps = 15,
                     modifier = Modifier.weight(1f).scale(scaleY = 0.8f, scaleX = 1f),
                     colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
                 )
             }
 
-            // Paragraph Spacing
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1306,13 +1272,12 @@ fun ReaderSettingsSheet(
                     value = uiState.paragraphSpacing,
                     onValueChange = onUpdateParagraphSpacing,
                     valueRange = 0.0f..3.0f,
-                    steps = 29, // 0.1 steps
+                    steps = 29,
                     modifier = Modifier.weight(1f).scale(scaleY = 0.8f, scaleX = 1f),
                     colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
                 )
             }
 
-            // Font Family
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly

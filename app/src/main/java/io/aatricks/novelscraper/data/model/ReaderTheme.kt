@@ -2,9 +2,12 @@ package io.aatricks.novelscraper.data.model
 
 import androidx.compose.ui.graphics.Color
 
+import kotlinx.serialization.Serializable
+
 /**
  * Themes for the novel reader
  */
+@Serializable
 enum class ReaderTheme(
     val backgroundColor: Color,
     val textColor: Color,

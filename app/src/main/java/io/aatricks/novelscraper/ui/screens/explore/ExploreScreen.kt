@@ -1,52 +1,55 @@
 package io.aatricks.novelscraper.ui.screens.explore
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import coil3.compose.AsyncImage
+import coil3.network.NetworkHeaders
+import coil3.network.httpHeaders
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import io.aatricks.novelscraper.data.model.ExploreItem
 import io.aatricks.novelscraper.data.repository.ExploreRepository
+import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
 import kotlinx.coroutines.launch
-import androidx.lifecycle.viewmodel.compose.viewModel
-import io.aatricks.novelscraper.data.repository.LibraryRepository
-import io.aatricks.novelscraper.data.model.ContentType
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.FilterList
-import androidx.activity.compose.BackHandler
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExploreScreen(
     exploreRepository: ExploreRepository,
-    libraryViewModel: io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel,
+    libraryViewModel: LibraryViewModel,
     onNavigateBack: () -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -68,7 +71,7 @@ fun ExploreScreen(
 
     LaunchedEffect(selectedSource) {
         availableTags = exploreRepository.getTags(selectedSource)
-        selectedTags = emptySet() // Reset tags when source changes
+        selectedTags = emptySet()
     }
 
     BackHandler {
@@ -106,7 +109,6 @@ fun ExploreScreen(
             } else {
                 exploreRepository.searchNovels(searchQuery, page + 1, selectedSource)
             }
-            // Check if new items are already present to avoid infinite loops with sources that redirect to page 1
             val distinctNewItems = newItems.filter { newItem -> 
                 exploreItems.none { it.url == newItem.url }
             }
@@ -163,7 +165,6 @@ fun ExploreScreen(
                                 if (searchQuery.isNotEmpty()) {
                                     IconButton(onClick = {
                                         searchQuery = ""
-                                        // Reset to popular when clearing
                                         isSearching = false
                                         scope.launch {
                                             isLoading = true
@@ -195,7 +196,6 @@ fun ExploreScreen(
                         if (isSearching) {
                             isSearching = false
                             searchQuery = ""
-                            // Reload popular
                             scope.launch {
                                 isLoading = true
                                 page = 1
@@ -380,14 +380,12 @@ fun ExploreItemCard(item: ExploreItem, onClick: () -> Unit) {
     val imageRequest = remember(item.coverUrl, item.url) {
         val uri = try { java.net.URI(item.url) } catch (e: Exception) { null }
         var referer = if (uri != null) "${uri.scheme}://${uri.host}/" else item.url
-        
         if (item.source == "MangaBat" || referer.contains("mangabat") || referer.contains("manganato")) {
             referer = "https://manganato.com/"
         }
-
         ImageRequest.Builder(context)
             .data(item.coverUrl)
-            .addHeader("Referer", referer)
+            .httpHeaders(NetworkHeaders.Builder().set("Referer", referer).build())
             .crossfade(true)
             .build()
     }
@@ -408,16 +406,14 @@ fun ExploreItemCard(item: ExploreItem, onClick: () -> Unit) {
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
-            
-            // Gradient Overlay for readability
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                        Brush.verticalGradient(
                             colors = listOf(
-                                androidx.compose.ui.graphics.Color.Transparent,
-                                androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.8f)
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.8f)
                             ),
                             startY = 300f
                         )
@@ -432,10 +428,10 @@ fun ExploreItemCard(item: ExploreItem, onClick: () -> Unit) {
                 Text(
                     text = item.title,
                     style = MaterialTheme.typography.titleSmall,
-                    color = androidx.compose.ui.graphics.Color.White,
+                    color = Color.White,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    fontWeight = FontWeight.Bold
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -446,17 +442,17 @@ fun ExploreItemCard(item: ExploreItem, onClick: () -> Unit) {
                         text = item.source,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primaryContainer,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                        fontWeight = FontWeight.Medium
                     )
                     if (item.author != null) {
                         Text(
                             text = item.author!!,
                             style = MaterialTheme.typography.labelSmall,
-                            color = androidx.compose.ui.graphics.Color.LightGray,
+                            color = Color.LightGray,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.padding(start = 8.dp).weight(1f),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.End
+                            textAlign = TextAlign.End
                         )
                     }
                 }
@@ -467,12 +463,12 @@ fun ExploreItemCard(item: ExploreItem, onClick: () -> Unit) {
 
 @Composable
 fun SkeletonExploreCard() {
-    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "skeleton")
+    val infiniteTransition = rememberInfiniteTransition(label = "skeleton")
     val alpha by infiniteTransition.animateFloat(
         initialValue = 0.3f,
         targetValue = 0.7f,
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            animation = androidx.compose.animation.core.tween(1000),
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000),
             repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
         ),
         label = "alpha"
@@ -501,15 +497,12 @@ fun ExploreItemDetailSheet(
     val imageRequest = remember(item.coverUrl, item.url) {
         val uri = try { java.net.URI(item.url) } catch (e: Exception) { null }
         var referer = if (uri != null) "${uri.scheme}://${uri.host}/" else item.url
-        
-        // Special case for MangaBat/Manganato
         if (item.source == "MangaBat" || referer.contains("mangabat") || referer.contains("manganato")) {
             referer = "https://manganato.com/"
         }
-
         ImageRequest.Builder(context)
             .data(item.coverUrl)
-            .addHeader("Referer", referer)
+            .httpHeaders(NetworkHeaders.Builder().set("Referer", referer).build())
             .crossfade(true)
             .build()
     }
@@ -518,7 +511,7 @@ fun ExploreItemDetailSheet(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
-            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+            .verticalScroll(rememberScrollState())
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
             AsyncImage(
@@ -535,7 +528,7 @@ fun ExploreItemDetailSheet(
                 Text(
                     text = item.title,
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 if (item.author != null) {
@@ -559,9 +552,7 @@ fun ExploreItemDetailSheet(
                 }
             }
         }
-
         Spacer(modifier = Modifier.height(16.dp))
-
         Button(
             onClick = onAddToLibrary,
             modifier = Modifier.fillMaxWidth(),
@@ -571,21 +562,15 @@ fun ExploreItemDetailSheet(
             Spacer(modifier = Modifier.width(8.dp))
             Text("Add to Library")
         }
-
         Spacer(modifier = Modifier.height(16.dp))
-        
         HorizontalDivider()
-        
         Spacer(modifier = Modifier.height(16.dp))
-
         Text(
             text = "Summary",
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+            fontWeight = FontWeight.SemiBold
         )
-        
         Spacer(modifier = Modifier.height(8.dp))
-
         if (isLoading) {
             Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
@@ -598,7 +583,6 @@ fun ExploreItemDetailSheet(
                 color = MaterialTheme.colorScheme.onSurface
             )
         }
-        
         Spacer(modifier = Modifier.height(32.dp))
     }
 }

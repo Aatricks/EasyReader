@@ -31,8 +31,17 @@ import kotlinx.coroutines.sync.withPermit
 import org.jsoup.select.NodeVisitor
 import org.jsoup.nodes.Node
 
-/** Repository for content operations including web scraping, HTML/PDF parsing, and caching */
-class ContentRepository(private val context: Context) {
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Repository for content loading and processing (Web, PDF, HTML, EPUB)
+ */
+@Singleton
+class ContentRepository @Inject constructor(
+    @ApplicationContext private val context: android.content.Context
+) {
 
     companion object {
         private const val TAG = "ContentRepository"

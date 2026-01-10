@@ -8,11 +8,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
+
 /**
  * Service for generating AI summaries of novel chapters using llmedge library
  * Uses LLMEdgeManager (llmedge) for model management and on-device inference
  */
-class SummaryService(private val context: Context) {
+@Singleton
+class SummaryService @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
     
     private val TAG = "SummaryService"
     private var modelFile: File? = null

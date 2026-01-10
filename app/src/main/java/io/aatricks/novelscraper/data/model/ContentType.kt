@@ -1,8 +1,11 @@
 package io.aatricks.novelscraper.data.model
 
+import kotlinx.serialization.Serializable
+
 /**
- * Enum representing content types. Enums serialize cleanly with Gson for persistence.
+ * Enum representing content types.
  */
+@Serializable
 enum class ContentType(val typeName: String) {
     WEB("web"),
     PDF("pdf"),

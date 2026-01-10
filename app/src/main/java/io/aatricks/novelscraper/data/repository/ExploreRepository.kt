@@ -9,7 +9,17 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
-class ExploreRepository(context: Context? = null) {
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Repository for exploring and searching novels from various sources.
+ */
+@Singleton
+class ExploreRepository @Inject constructor(
+    @ApplicationContext private val context: android.content.Context
+) {
 
     private val staticSources: List<NovelSource> = listOf(
         NovelFireSource(),
