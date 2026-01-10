@@ -1,23 +1,26 @@
 package io.aatricks.novelscraper.ui.viewmodel
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
 import io.aatricks.novelscraper.data.repository.SummaryService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import android.util.Log
+import javax.inject.Inject
 
 /**
  * ViewModel for managing AI chapter summaries
  * Coordinates with SummaryService and maintains UI state
  */
-class SummaryViewModel(application: Application) : AndroidViewModel(application) {
+@HiltViewModel
+class SummaryViewModel @Inject constructor(
+    private val summaryService: SummaryService
+) : BaseViewModel<SummaryViewModel.SummaryUiState>(SummaryUiState()) {
     
     private val TAG = "SummaryViewModel"
-    private val summaryService = SummaryService(application.applicationContext)
     
     // UI State
     data class SummaryUiState(
@@ -29,38 +32,31 @@ class SummaryViewModel(application: Application) : AndroidViewModel(application)
         val summariesCache: Map<String, String> = emptyMap() // chapterUrl -> summary
     )
     
-    private val _uiState = MutableStateFlow(SummaryUiState())
-    val uiState: StateFlow<SummaryUiState> = _uiState.asStateFlow()
-    
     /**
      * Initialize the summary service (loads AI model)
      */
     fun initializeSummaryService() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isInitializing = true, error = null)
+            updateState { it.copy(isInitializing = true, error = null) }
             
             val result = summaryService.initialize()
             
             if (result.isSuccess) {
                 Log.d(TAG, "Summary service initialized successfully")
-                _uiState.value = _uiState.value.copy(isInitializing = false)
+                updateState { it.copy(isInitializing = false) }
             } else {
                 val error = result.exceptionOrNull()?.message ?: "Failed to initialize"
                 Log.e(TAG, "Summary service initialization failed: $error")
-                _uiState.value = _uiState.value.copy(
+                updateState { it.copy(
                     isInitializing = false,
                     error = error
-                )
+                ) }
             }
         }
     }
     
     /**
      * Generate a summary for a chapter
-     * @param chapterUrl Unique identifier for the chapter
-     * @param chapterTitle Optional chapter title
-     * @param content Chapter content (list of paragraphs)
-     * @param onComplete Callback when summary is generated
      */
     fun generateSummary(
         chapterUrl: String,
@@ -68,90 +64,65 @@ class SummaryViewModel(application: Application) : AndroidViewModel(application)
         content: List<String>,
         onComplete: (String) -> Unit
     ) {
-        // Check if already cached
         val cached = _uiState.value.summariesCache[chapterUrl]
         if (cached != null) {
-            Log.d(TAG, "Using cached summary for: $chapterUrl")
-            _uiState.value = _uiState.value.copy(currentSummary = cached)
+            updateState { it.copy(currentSummary = cached) }
             onComplete(cached)
             return
         }
         
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
+            updateState { it.copy(
                 isGenerating = true,
                 activeChapterUrl = chapterUrl,
                 error = null,
                 currentSummary = null
-            )
+            ) }
             
             val sb = StringBuilder()
             val result = summaryService.generateSummary(chapterTitle, content, onProgress = { token ->
-                // Append token and update UI state
                 sb.append(token)
-                Log.d(TAG, "token: $token")
-                _uiState.value = _uiState.value.copy(currentSummary = sb.toString())
+                updateState { it.copy(currentSummary = sb.toString()) }
             })
             
             if (result.isSuccess) {
                 val summary = result.getOrNull() ?: "Summary generated"
-                Log.d(TAG, "Summary generated for: $chapterUrl")
-                
-                // Update cache
                 val updatedCache = _uiState.value.summariesCache.toMutableMap()
                 updatedCache[chapterUrl] = summary
                 
-                _uiState.value = _uiState.value.copy(
+                updateState { it.copy(
                     isGenerating = false,
                     activeChapterUrl = null,
                     currentSummary = summary,
                     summariesCache = updatedCache
-                )
-                
+                ) }
                 onComplete(summary)
             } else {
                 val error = result.exceptionOrNull()?.message ?: "Failed to generate summary"
-                Log.e(TAG, "Summary generation failed: $error")
-                _uiState.value = _uiState.value.copy(
+                updateState { it.copy(
                     isGenerating = false,
                     activeChapterUrl = null,
                     error = error
-                )
+                ) }
             }
         }
     }
 
-    /** Cancel current generation if any (and clear active state) */
     fun cancelGeneration() {
-        Log.d(TAG, "cancelGeneration invoked from UI")
         try { io.aatricks.llmedge.LLMEdgeManager.cancelGeneration() } catch (_: Throwable) {}
-        _uiState.value = _uiState.value.copy(isGenerating = false, activeChapterUrl = null)
+        updateState { it.copy(isGenerating = false, activeChapterUrl = null) }
     }
     
-    /**
-     * Get cached summary if available
-     */
-    fun getCachedSummary(chapterUrl: String): String? {
-        return _uiState.value.summariesCache[chapterUrl]
-    }
+    fun getCachedSummary(chapterUrl: String): String? = _uiState.value.summariesCache[chapterUrl]
     
-    /**
-     * Clear error state
-     */
     fun clearError() {
-        _uiState.value = _uiState.value.copy(error = null)
+        updateState { it.copy(error = null) }
     }
     
-    /**
-     * Check if service is ready
-     */
-    fun isServiceReady(): Boolean {
-        return summaryService.isReady()
-    }
+    fun isServiceReady(): Boolean = summaryService.isReady()
     
     override fun onCleared() {
         super.onCleared()
         summaryService.release()
-        Log.d(TAG, "SummaryViewModel cleared")
     }
 }

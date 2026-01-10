@@ -11,103 +11,96 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import dagger.hilt.android.AndroidEntryPoint
 import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.repository.ContentRepository
+import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
+import io.aatricks.novelscraper.ui.ExploreRoute
+import io.aatricks.novelscraper.ui.ReaderRoute
 import io.aatricks.novelscraper.ui.screens.ReaderScreen
+import io.aatricks.novelscraper.ui.screens.explore.ExploreScreen
 import io.aatricks.novelscraper.ui.theme.NovelScraperTheme
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import io.aatricks.novelscraper.util.FileUtils
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import javax.inject.Inject
 
-/**
- * Main Activity for Novel Scraper app.
- * 
- * Features:
- * - Edge-to-edge display with proper theming
- * - File picker for HTML/PDF files
- * - ViewModel initialization for reader and library
- * - Permission handling for storage access
- * - Deep link handling for web URLs
- */
+import androidx.hilt.navigation.compose.hiltViewModel
+import io.aatricks.novelscraper.ui.viewmodel.ExploreViewModel
+
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    // ViewModels
-    private lateinit var readerViewModel: ReaderViewModel
-    private lateinit var libraryViewModel: LibraryViewModel
+    private val readerViewModel: ReaderViewModel by viewModels()
+    private val libraryViewModel: LibraryViewModel by viewModels()
+    
+    @Inject lateinit var contentRepository: ContentRepository
+    @Inject lateinit var libraryRepository: LibraryRepository
+    @Inject lateinit var exploreRepository: ExploreRepository
+    @Inject lateinit var okHttpClient: OkHttpClient
 
-    // Repositories
-    private lateinit var contentRepository: ContentRepository
-    private lateinit var libraryRepository: LibraryRepository
-    private lateinit var exploreRepository: io.aatricks.novelscraper.data.repository.ExploreRepository
-
-    // File picker launcher
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let { handleFilePicked(it) }
     }
 
-    // Permission launcher for storage access (Android 13+)
     private val storagePermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
             openFilePicker()
         } else {
-            Toast.makeText(
-                this,
-                "Storage permission is required to access files",
-                Toast.LENGTH_LONG
-            ).show()
+            Toast.makeText(this, "Storage permission required", Toast.LENGTH_LONG).show()
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // Enable edge-to-edge display
         enableEdgeToEdge()
 
-        // Initialize repositories
-        initializeRepositories()
-
-        // Initialize ViewModels
-        initializeViewModels()
-
-        // Check for library updates once a day
         checkForLibraryUpdates()
 
-        // Set up the UI
         setContent {
             NovelScraperTheme(
-                darkTheme = true, // Force dark theme for reading
-                dynamicColor = false // Disable dynamic colors for consistent theme
+                darkTheme = androidx.compose.foundation.isSystemInDarkTheme(),
+                dynamicColor = true
             ) {
-                ReaderScreen(
-                    readerViewModel = readerViewModel,
-                    libraryViewModel = libraryViewModel,
-                    onOpenFilePicker = { checkPermissionsAndOpenFilePicker() },
-                    modifier = Modifier.fillMaxSize()
-                )
+                val navController = rememberNavController()
+                NavHost(navController = navController, startDestination = ReaderRoute) {
+                    composable<ReaderRoute> {
+                        ReaderScreen(
+                            readerViewModel = readerViewModel,
+                            libraryViewModel = libraryViewModel,
+                            navController = navController,
+                            onOpenFilePicker = { checkPermissionsAndOpenFilePicker() },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    composable<ExploreRoute> {
+                        val exploreViewModel: ExploreViewModel = hiltViewModel()
+                        ExploreScreen(
+                            exploreViewModel = exploreViewModel,
+                            libraryViewModel = libraryViewModel,
+                            onNavigateBack = { navController.popBackStack() }
+                        )
+                    }
+                }
             }
         }
 
-        // Load last reading item if present
-        val last = libraryRepository.getCurrentlyReading()
-        last?.let { item ->
-            val loadUrl = if (item.currentChapterUrl.isNotBlank()) item.currentChapterUrl else item.url
-            readerViewModel.loadContent(loadUrl, item.id)
-        }
-
-        // Handle intent (deep links, file opens)
         handleIntent(intent)
     }
 
@@ -117,215 +110,97 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
-    /**
-     * Initialize repositories with application context
-     */
-    private fun initializeRepositories() {
-        contentRepository = ContentRepository(applicationContext)
-        val preferencesManager = io.aatricks.novelscraper.data.local.PreferencesManager(applicationContext)
-        libraryRepository = LibraryRepository(preferencesManager)
-        exploreRepository = io.aatricks.novelscraper.data.repository.ExploreRepository(applicationContext)
-    }
-
-    /**
-     * Initialize ViewModels with repositories
-     */
-    private fun initializeViewModels() {
-        // Create ViewModelFactory
-        val factory = object : ViewModelProvider.Factory {
-            @Suppress("UNCHECKED_CAST")
-            override fun <T : androidx.lifecycle.ViewModel> create(
-                modelClass: Class<T>
-            ): T {
-                val preferencesManager = io.aatricks.novelscraper.data.local.PreferencesManager(applicationContext)
-                return when {
-                    modelClass.isAssignableFrom(ReaderViewModel::class.java) -> {
-                        ReaderViewModel(contentRepository, libraryRepository, exploreRepository, preferencesManager) as T
-                    }
-                    modelClass.isAssignableFrom(LibraryViewModel::class.java) -> {
-                        LibraryViewModel(libraryRepository, contentRepository) as T
-                    }
-                    else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
-                }
-            }
-        }
-
-        // Initialize ViewModels
-        readerViewModel = ViewModelProvider(this, factory)[ReaderViewModel::class.java]
-        libraryViewModel = ViewModelProvider(this, factory)[LibraryViewModel::class.java]
-    }
-
-    /**
-     * Check for library updates on app launch.
-     */
     private fun checkForLibraryUpdates() {
         val prefs = io.aatricks.novelscraper.data.local.PreferencesManager(applicationContext)
-        
         lifecycleScope.launch {
-            libraryRepository.refreshLibraryUpdates(exploreRepository)
-            prefs.lastUpdateCheckTime = System.currentTimeMillis()
+            try {
+                libraryRepository.refreshLibraryUpdates(exploreRepository)
+                prefs.lastUpdateCheckTime = System.currentTimeMillis()
+            } catch (_: Exception) {}
         }
     }
 
-    /**
-     * Handle incoming intents (deep links, file opens)
-     */
     private fun handleIntent(intent: Intent?) {
         intent ?: return
-
         when (intent.action) {
             Intent.ACTION_VIEW -> {
-                // Handle file open or web URL
                 intent.data?.let { uri ->
                     if (uri.scheme == "http" || uri.scheme == "https") {
-                        // Web URL - load in reader
                         handleWebUrl(uri.toString())
                     } else {
-                        // File URI - handle as file
                         handleFilePicked(uri)
                     }
                 }
             }
             Intent.ACTION_SEND -> {
-                // Handle shared URL
                 if (intent.type == "text/plain") {
                     intent.getStringExtra(Intent.EXTRA_TEXT)?.let { sharedText ->
-                        // Try to extract URL from shared text
                         val urlPattern = Regex("https?://[^\\s]+")
-                        val matchResult = urlPattern.find(sharedText)
-                        matchResult?.value?.let { url ->
-                            handleWebUrl(url)
-                        }
+                        urlPattern.find(sharedText)?.value?.let { handleWebUrl(it) }
                     }
                 }
             }
         }
     }
 
-    /**
-     * Handle web URL loading
-     */
     private fun handleWebUrl(url: String) {
-        // Extract title from URL
         val title = io.aatricks.novelscraper.util.TextUtils.extractTitleFromUrl(url)
-        
-        // Add to library if not exists
-        libraryViewModel.addItem(
-            title = title,
-            url = url,
-            contentType = ContentType.WEB
-        )
-
-        // Load content in reader
+        libraryViewModel.addItem(title = title, url = url, contentType = ContentType.WEB)
         readerViewModel.loadContent(url)
     }
 
-    /**
-     * Handle picked file from file picker
-     */
     private fun handleFilePicked(uri: Uri) {
-        // Take persistent URI permission for content:// URIs
         if (uri.scheme == "content") {
             try {
-                contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            } catch (e: Exception) {
-                android.util.Log.w("MainActivity", "Could not take persistent permission for URI: $uri", e)
-            }
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (e: Exception) {}
         }
         
-        // Get file information
         val fileName = FileUtils.getFileName(this, uri) ?: "Unknown"
         val fileType = FileUtils.detectFileType(this, uri)
-
-        // Determine content type
         val contentType = when (fileType) {
             FileUtils.FileType.PDF -> ContentType.PDF
             FileUtils.FileType.HTML -> ContentType.HTML
             FileUtils.FileType.EPUB -> ContentType.EPUB
             else -> {
-                Toast.makeText(
-                    this,
-                    "Unsupported file type",
-                    Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(this, "Unsupported file type", Toast.LENGTH_SHORT).show()
                 return
             }
         }
 
-        // Add to library
         val title = fileName.substringBeforeLast('.')
-        val addedItem = libraryViewModel.addItem(
-            title = title,
-            url = uri.toString(),
-            contentType = contentType
-        )
+        libraryViewModel.addItem(title = title, url = uri.toString(), contentType = contentType)
 
-        // Load content in reader
-        // For EPUB files, load the first chapter properly with loadEpubChapter
         if (contentType == ContentType.EPUB) {
-            // Get the first chapter href from the EPUB TOC
             lifecycleScope.launch {
                 try {
                     val epubBook = contentRepository.getEpubBook(uri.toString())
                     val firstHref = epubBook?.toc?.firstOrNull()?.href
                     if (firstHref != null) {
-                        // Load first chapter with proper EPUB rendering (images + text)
                         readerViewModel.loadEpubChapter(uri.toString(), firstHref, null)
                     } else {
-                        // Fallback to regular load if no TOC
                         readerViewModel.loadContent(uri.toString())
                     }
                 } catch (e: Exception) {
-                    android.util.Log.e("MainActivity", "Failed to load EPUB TOC", e)
-                    // Fallback to regular load
                     readerViewModel.loadContent(uri.toString())
                 }
             }
         } else {
-            // For PDF/HTML, use regular loadContent
             readerViewModel.loadContent(uri.toString())
         }
-
-        Toast.makeText(
-            this,
-            "Loaded: $fileName",
-            Toast.LENGTH_SHORT
-        ).show()
     }
 
-    /**
-     * Check permissions and open file picker
-     */
     private fun checkPermissionsAndOpenFilePicker() {
-        // On Android 13+ (API 33+), we need READ_MEDIA_* permissions
-        // On Android 10-12 (API 29-32), we can use scoped storage without permissions
-        // On Android 9 and below, we need READ_EXTERNAL_STORAGE
-        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Android 13+ - check for READ_MEDIA_DOCUMENTS
-            if (ContextCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.READ_MEDIA_IMAGES
-                ) == PackageManager.PERMISSION_GRANTED
-            ) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED) {
                 openFilePicker()
             } else {
-                // Request permission
                 storagePermissionLauncher.launch(Manifest.permission.READ_MEDIA_IMAGES)
             }
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Android 10-12 - scoped storage, no permission needed
             openFilePicker()
         } else {
-            // Android 9 and below - check READ_EXTERNAL_STORAGE
-            if (ContextCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.READ_EXTERNAL_STORAGE
-                ) == PackageManager.PERMISSION_GRANTED
-            ) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
                 openFilePicker()
             } else {
                 storagePermissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -333,30 +208,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Open the file picker
-     */
     private fun openFilePicker() {
-        val mimeTypes = arrayOf(
-            "text/html",
-            "application/xhtml+xml",
-            "application/pdf",
-            "application/epub+zip"
-        )
-        
+        val mimeTypes = arrayOf("text/html", "application/xhtml+xml", "application/pdf", "application/epub+zip")
         filePickerLauncher.launch(mimeTypes)
     }
 
     override fun onPause() {
         super.onPause()
-        // Save reading progress when app goes to background
-        readerViewModel.updateReadingProgress(
-            readerViewModel.uiState.value.scrollProgress
-        )
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        // Clean up ViewModels if needed
+        try {
+            readerViewModel.updateReadingProgress(readerViewModel.uiState.value.scrollProgress)
+        } catch (_: Exception) {}
     }
 }

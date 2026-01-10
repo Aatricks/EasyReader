@@ -17,6 +17,7 @@
         android:minSdkVersion="33" />
 
     <application
+        android:name=".EasyReaderApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"

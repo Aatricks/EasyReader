@@ -76,8 +76,8 @@ private val LightColorScheme = lightColorScheme(
  */
 @Composable
 fun NovelScraperTheme(
-    darkTheme: Boolean = true, // Force dark theme for better reading experience
-    dynamicColor: Boolean = false, // Disable dynamic colors for consistent design
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = true, // Enable dynamic colors for M3 look
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -93,17 +93,16 @@ fun NovelScraperTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
+            val colorSurface = colorScheme.surface.toArgb()
             
-            // Set status bar color to black
-            window.statusBarColor = Black.toArgb()
-            
-            // Set navigation bar color to black
-            window.navigationBarColor = Black.toArgb()
+            // Set status bar and nav bar colors based on surface color for a unified M3 look
+            window.statusBarColor = colorSurface
+            window.navigationBarColor = colorSurface
             
             // Set light/dark icons based on theme
             val windowInsetsController = WindowCompat.getInsetsController(window, view)
-            windowInsetsController.isAppearanceLightStatusBars = false
-            windowInsetsController.isAppearanceLightNavigationBars = false
+            windowInsetsController.isAppearanceLightStatusBars = !darkTheme
+            windowInsetsController.isAppearanceLightNavigationBars = !darkTheme
         }
     }
 

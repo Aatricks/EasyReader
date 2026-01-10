@@ -1,18 +1,13 @@
 package io.aatricks.novelscraper.data.repository.source
 
 import io.aatricks.novelscraper.data.model.ExploreItem
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.jsoup.Jsoup
 import java.net.URLEncoder
 
-class MangaBatSource : NovelSource {
+class MangaBatSource : BaseJsoupSource() {
     override val name = "MangaBat"
     override val baseUrl = "https://www.mangabats.com"
 
-    private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
-    override suspend fun getPopularNovels(page: Int, tags: List<String>): List<ExploreItem> = withContext(Dispatchers.IO) {
+    override suspend fun getPopularNovels(page: Int, tags: List<String>): List<ExploreItem> = io {
         val url = if (tags.isNotEmpty()) {
             val tag = tags.first() // MangaBat only supports one tag in URL
             val tagSlug = tag.lowercase().replace(" ", "-")
@@ -20,11 +15,7 @@ class MangaBatSource : NovelSource {
         } else {
             "$baseUrl/manga-list/hot-manga?page=$page"
         }
-        val document = Jsoup.connect(url)
-            .userAgent(userAgent)
-            .referrer(baseUrl)
-            .timeout(10000)
-            .get()
+        val document = getDocument(url)
 
         val items = mutableListOf<ExploreItem>()
         // Add .itemupdate for the main page style list
@@ -40,20 +31,10 @@ class MangaBatSource : NovelSource {
             
             // Find the image - it might be in a different link than the title
             val img = element.select("img").first()
-            var coverUrl = img?.attr("src")?.ifEmpty { 
-                img?.attr("data-src")?.ifEmpty {
-                    img?.attr("data-original")?.ifEmpty {
-                        img?.attr("data-lazy-src")?.ifEmpty { "" }
-                    }
-                }
-            } ?: ""
+            val coverUrl = img?.findImage()?.let { resolveUrl(it) } ?: ""
 
             if (title.isNotBlank() && href.isNotBlank()) {
-                val absoluteUrl = if (href.startsWith("http")) href else "$baseUrl${if (href.startsWith("/")) "" else "/"}$href"
-                if (coverUrl.isNotBlank()) {
-                    if (coverUrl.startsWith("//")) coverUrl = "https:$coverUrl"
-                    else if (!coverUrl.startsWith("http")) coverUrl = "$baseUrl${if (coverUrl.startsWith("/")) "" else "/"}$coverUrl"
-                }
+                val absoluteUrl = resolveUrl(href)
                 items.add(ExploreItem(
                     title = title.trim(),
                     url = absoluteUrl,
@@ -69,14 +50,9 @@ class MangaBatSource : NovelSource {
                 val title = link.text().trim()
                 val href = link.attr("href")
                 if (title.length > 5 && !title.contains("Chapter", ignoreCase = true) && items.none { it.url.contains(href) }) {
-                    val absoluteUrl = if (href.startsWith("http")) href else "$baseUrl$href"
+                    val absoluteUrl = resolveUrl(href)
                     val img = link.parent()?.select("img")?.first() ?: link.closest("div")?.select("img")?.first()
-                    var coverUrl = img?.attr("data-src")?.ifEmpty { img?.attr("src") } ?: ""
-                    
-                    if (coverUrl.isNotBlank()) {
-                        if (coverUrl.startsWith("//")) coverUrl = "https:$coverUrl"
-                        else if (!coverUrl.startsWith("http")) coverUrl = "$baseUrl${if (coverUrl.startsWith("/")) "" else "/"}$coverUrl"
-                    }
+                    val coverUrl = img?.findImage()?.let { resolveUrl(it) } ?: ""
 
                     items.add(ExploreItem(
                         title = title,
@@ -91,16 +67,12 @@ class MangaBatSource : NovelSource {
         items.distinctBy { it.url }
     }
 
-    override suspend fun searchNovels(query: String, page: Int): List<ExploreItem> = withContext(Dispatchers.IO) {
+    override suspend fun searchNovels(query: String, page: Int): List<ExploreItem> = io {
         val encodedQuery = URLEncoder.encode(query.replace(" ", "_"), "UTF-8")
         // Correct search URL for Mangabat is /search/story/
         val url = "$baseUrl/search/story/$encodedQuery?page=$page"
         
-        val document = Jsoup.connect(url)
-            .userAgent(userAgent)
-            .referrer(baseUrl)
-            .timeout(10000)
-            .get()
+        val document = getDocument(url)
 
         val items = mutableListOf<ExploreItem>()
         val elements = document.select(".list-story-item, .item-story, .story_item, .itemupdate")
@@ -115,20 +87,10 @@ class MangaBatSource : NovelSource {
             
             // Find the image - it might be in a different link than the title
             val img = element.select("img").first()
-            var coverUrl = img?.attr("data-src")?.ifEmpty { 
-                img?.attr("data-original")?.ifEmpty {
-                    img?.attr("data-lazy-src")?.ifEmpty {
-                        img?.attr("src")
-                    }
-                }
-            } ?: ""
+            val coverUrl = img?.findImage()?.let { resolveUrl(it) } ?: ""
 
             if (title.isNotBlank() && href.isNotBlank()) {
-                val absoluteUrl = if (href.startsWith("http")) href else "$baseUrl${if (href.startsWith("/")) "" else "/"}$href"
-                if (coverUrl.isNotBlank()) {
-                    if (coverUrl.startsWith("//")) coverUrl = "https:$coverUrl"
-                    else if (!coverUrl.startsWith("http")) coverUrl = "$baseUrl${if (coverUrl.startsWith("/")) "" else "/"}$coverUrl"
-                }
+                val absoluteUrl = resolveUrl(href)
                 items.add(ExploreItem(
                     title = title.trim(),
                     url = absoluteUrl,
@@ -140,12 +102,8 @@ class MangaBatSource : NovelSource {
         items.distinctBy { it.url }
     }
 
-    override suspend fun getNovelDetails(url: String): ExploreItem = withContext(Dispatchers.IO) {
-        val document = Jsoup.connect(url)
-            .userAgent(userAgent)
-            .referrer(url) // Important for details
-            .timeout(10000)
-            .get()
+    override suspend fun getNovelDetails(url: String): ExploreItem = io {
+        val document = connect(url).referrer(url).get()
 
         val title = document.select(".story-info-right h1, h1").text()
         
@@ -162,25 +120,15 @@ class MangaBatSource : NovelSource {
         
         // Improved coverUrl selector using OpenGraph or specific image alt
         val coverImg = document.select(".info-image img, .story-info-left img, .manga-info-pic img").first()
-        var coverUrl = document.select("meta[property='og:image']").attr("content")
-            .ifBlank { 
-                coverImg?.attr("data-src")?.ifEmpty {
-                    coverImg?.attr("data-original")?.ifEmpty {
-                        coverImg?.attr("src")
-                    }
-                } ?: ""
-            }
+        val coverUrl = document.select("meta[property='og:image']").attr("content")
+            .ifBlank { coverImg?.findImage() ?: "" }
+            .let { resolveUrl(it) }
         
-        if (coverUrl.isNotBlank()) {
-            if (coverUrl.startsWith("//")) coverUrl = "https:$coverUrl"
-            else if (!coverUrl.startsWith("http")) coverUrl = "$baseUrl${if (coverUrl.startsWith("/")) "" else "/"}$coverUrl"
-        }
-
         val chapters = document.select(".chapter-name, .chapter-list a, .row a[href*='/chapter-']")
         val chapterCount = chapters.size
         
         val chapterList = chapters.map { element ->
-            val chapterUrl = element.attr("href").let { if (it.startsWith("http")) it else "$baseUrl$it" }
+            val chapterUrl = resolveUrl(element.attr("href"))
             io.aatricks.novelscraper.data.model.ChapterInfo(
                 title = element.text(),
                 url = chapterUrl
@@ -190,46 +138,24 @@ class MangaBatSource : NovelSource {
         // First chapter is the first one in the ascending list
         val readingUrl = chapterList.firstOrNull()?.url
 
-                ExploreItem(
+        ExploreItem(
+            title = title,
+            url = url,
+            coverUrl = if (coverUrl.isBlank()) null else coverUrl,
+            author = author,
+            summary = summary,
+            chapterCount = chapterCount,
+            source = name,
+            readingUrl = readingUrl,
+            chapters = chapterList
+        )
+    }
 
-                    title = title,
-
-                    url = url,
-
-                    coverUrl = if (coverUrl.isBlank()) null else coverUrl,
-
-                    author = author,
-
-                    summary = summary,
-
-                    chapterCount = chapterCount,
-
-                    source = name,
-
-                    readingUrl = readingUrl,
-
-                    chapters = chapterList
-
-                )
-
-            }
-
-        
-
-            override suspend fun getTags(): List<String> = listOf(
-
-                "Action", "Adult", "Adventure", "Comedy", "Cooking", "Doujinshi", "Drama", "Ecchi", "Fantasy", 
-
-                "Gender bender", "Harem", "Historical", "Horror", "Isekai", "Josei", "Manhua", "Manhwa", 
-
-                "Martial arts", "Mature", "Mecha", "Medical", "Mystery", "One shot", "Psychological", "Romance", 
-
-                "School life", "Sci fi", "Seinen", "Shoujo", "Shoujo ai", "Shounen", "Shounen ai", "Slice of life", 
-
-                "Smut", "Sports", "Supernatural", "Tragedy", "Webtoons", "Yaoi", "Yuri"
-
-            )
-
-        }
-
-        
+    override suspend fun getTags(): List<String> = listOf(
+        "Action", "Adult", "Adventure", "Comedy", "Cooking", "Doujinshi", "Drama", "Ecchi", "Fantasy", 
+        "Gender bender", "Harem", "Historical", "Horror", "Isekai", "Josei", "Manhua", "Manhwa", 
+        "Martial arts", "Mature", "Mecha", "Medical", "Mystery", "One shot", "Psychological", "Romance", 
+        "School life", "Sci fi", "Seinen", "Shoujo", "Shoujo ai", "Shounen", "Shounen ai", "Slice of life", 
+        "Smut", "Sports", "Supernatural", "Tragedy", "Webtoons", "Yaoi", "Yuri"
+    )
+}

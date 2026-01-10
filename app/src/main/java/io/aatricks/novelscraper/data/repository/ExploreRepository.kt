@@ -9,17 +9,20 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
-class ExploreRepository(context: Context? = null) {
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 
-    private val staticSources: List<NovelSource> = listOf(
-        NovelFireSource(),
-        MangaBatSource()
-    )
+/**
+ * Repository for exploring and searching novels from various sources.
+ */
+@Singleton
+class ExploreRepository @Inject constructor(
+    @ApplicationContext private val context: android.content.Context,
+    private val sources: Set<@JvmSuppressWildcards NovelSource>
+) {
 
-    private val sources: List<NovelSource>
-        get() = staticSources
-
-    fun getAllSources(): List<NovelSource> = sources
+    fun getAllSources(): List<NovelSource> = sources.toList()
 
     suspend fun getPopularNovels(page: Int = 1, sourceName: String? = null, tags: List<String> = emptyList()): List<ExploreItem> = coroutineScope {
         val activeSources = if (sourceName == null) sources else sources.filter { it.name == sourceName }

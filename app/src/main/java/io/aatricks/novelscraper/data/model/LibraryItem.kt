@@ -1,18 +1,17 @@
 package io.aatricks.novelscraper.data.model
 
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
+
 /**
  * Data class representing a library item in the Novel Scraper app.
  * Immutable by default with validation in init block.
- *
- * @property title The title of the novel or document
- * @property url The source URL or file path
- * @property timestamp Unix timestamp when the item was added to library
- * @property type The type of content (Web, PDF, or HTML)
- * @property progress Reading progress as percentage (0-100)
- * @property isCurrentlyReading Flag indicating if this is the currently active reading item
- * @property isSelected UI selection state for batch operations
  */
+@Serializable
+@Entity(tableName = "library_items")
 data class LibraryItem(
+    @PrimaryKey
     val id: String = System.currentTimeMillis().toString(),
     val title: String,
     val url: String,
@@ -32,8 +31,8 @@ data class LibraryItem(
     val lastReadIndex: Int = 0,
     val lastReadOffset: Int = 0,
     val hasUpdates: Boolean = false,
-    val chapterSummaries: Map<String, String>? = emptyMap(), // chapter URL -> AI-generated summary (nullable for Gson backward compatibility)
-    val baseTitle: String = "", // Base title without chapter markers - used for grouping (empty for backward compatibility)
+    val chapterSummaries: Map<String, String> = emptyMap(), // chapter URL -> AI-generated summary
+    val baseTitle: String = "", // Base title without chapter markers - used for grouping
     val readingMode: ReadingMode = ReadingMode.VERTICAL,
     val baseNovelUrl: String = "", // URL of the novel main page
     val sourceName: String = "" // Name of the source (e.g., MangaBat)

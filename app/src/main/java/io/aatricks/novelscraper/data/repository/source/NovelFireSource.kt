@@ -10,7 +10,7 @@ import org.json.JSONObject
 import org.jsoup.Jsoup
 import java.net.URLEncoder
 
-class NovelFireSource : NovelSource {
+class NovelFireSource : BaseJsoupSource() {
     override val name = "NovelFire"
     override val baseUrl = "https://novelfire.net"
 
@@ -25,56 +25,51 @@ class NovelFireSource : NovelSource {
         return clean.trim()
     }
     
-        override suspend fun getPopularNovels(page: Int, tags: List<String>): List<ExploreItem> = withContext(Dispatchers.IO) {
-            val url = if (tags.isNotEmpty()) {
-                val tag = tags.first() // Use first tag for now
-                val tagSlug = tag.lowercase().replace(" ", "-")
-                "$baseUrl/genre-$tagSlug/sort-popular/status-all/all-novel?page=$page"
-            } else {
-                "$baseUrl/genre-all/sort-popular/status-all/all-novel?page=$page"
-            }
-            val document = Jsoup.connect(url)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                .timeout(10000)
-                .get()
-    
-            val items = mutableListOf<ExploreItem>()
-            val elements = document.select(".row .col-lg-2, .row .col-md-3, .book-item, .item")
-            val bookLinks = document.select("a[href^='/book/']")
-    
-            bookLinks.forEach { link ->
-                val rawTitle = link.text()
-                val title = cleanNovelTitle(rawTitle)
-                val href = link.attr("href")
-                // Avoid empty titles or "Read Now" links if they exist
-                if (title.isNotBlank() && !title.equals("Read Now", ignoreCase = true) && !title.contains("Chapter", ignoreCase = true)) {
-                     // Try to find image nearby
-                     val parent = link.closest(".novel-item, .item, .book-item") ?: link.parent()?.parent()
-                     val img = parent?.select("img")?.first()
-                     var coverUrl = img?.attr("data-src")?.ifEmpty { img.attr("src") } ?: ""
-                     if (coverUrl.startsWith("/")) coverUrl = "$baseUrl$coverUrl"
-    
-                     // Deduplicate by URL
-                     if (items.none { it.url == "$baseUrl$href" }) {
-                         items.add(ExploreItem(
-                             title = title,
-                             url = "$baseUrl$href",
-                             coverUrl = if (coverUrl.isBlank()) null else coverUrl,
-                             source = name
-                         ))
-                     }
-                }
-            }
-            items
+    override suspend fun getPopularNovels(page: Int, tags: List<String>): List<ExploreItem> = io {
+        val url = if (tags.isNotEmpty()) {
+            val tag = tags.first() // Use first tag for now
+            val tagSlug = tag.lowercase().replace(" ", "-")
+            "$baseUrl/genre-$tagSlug/sort-popular/status-all/all-novel?page=$page"
+        } else {
+            "$baseUrl/genre-all/sort-popular/status-all/all-novel?page=$page"
         }
+        val document = getDocument(url)
+
+        val items = mutableListOf<ExploreItem>()
+        val bookLinks = document.select("a[href^='/book/']")
+
+        bookLinks.forEach { link ->
+            val rawTitle = link.text()
+            val title = cleanNovelTitle(rawTitle)
+            val href = link.attr("href")
+            // Avoid empty titles or "Read Now" links if they exist
+            if (title.isNotBlank() && !title.equals("Read Now", ignoreCase = true) && !title.contains("Chapter", ignoreCase = true)) {
+                 // Try to find image nearby
+                 val parent = link.closest(".novel-item, .item, .book-item") ?: link.parent()?.parent()
+                 val img = parent?.select("img")?.first()
+                 val coverUrl = img?.findImage()?.let { resolveUrl(it) } ?: ""
+
+                 // Deduplicate by URL
+                 val absoluteUrl = resolveUrl(href)
+                 if (items.none { it.url == absoluteUrl }) {
+                     items.add(ExploreItem(
+                         title = title,
+                         url = absoluteUrl,
+                         coverUrl = if (coverUrl.isBlank()) null else coverUrl,
+                         source = name
+                     ))
+                 }
+            }
+        }
+        items
+    }
     
-    override suspend fun searchNovels(query: String, page: Int): List<ExploreItem> = withContext(Dispatchers.IO) {
+    override suspend fun searchNovels(query: String, page: Int): List<ExploreItem> = io {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
         val url = "$baseUrl/ajax/searchLive?inputContent=$encodedQuery"
         
         try {
-            val response = Jsoup.connect(url)
-                .userAgent("Mozilla/5.0")
+            val response = connect(url)
                 .ignoreContentType(true)
                 .execute()
                 .body()
@@ -93,19 +88,16 @@ class NovelFireSource : NovelSource {
                 items.add(ExploreItem(
                     title = title,
                     url = "$baseUrl/book/$slug",
-                    coverUrl = if (image.startsWith("http")) image else "$baseUrl/$image",
+                    coverUrl = resolveUrl(image),
                     source = name,
                     rank = obj.optInt("rank").toString(),
                     chapterCount = obj.optInt("total_chapter")
                 ))
             }
-            return@withContext items
+            items
         } catch (e: Exception) {
             val fallbackUrl = "$baseUrl/genre-all/sort-popular/status-all/all-novel?keyword=$encodedQuery&page=$page"
-            val document = Jsoup.connect(fallbackUrl)
-                .userAgent("Mozilla/5.0")
-                .timeout(10000)
-                .get()
+            val document = getDocument(fallbackUrl)
 
             val items = mutableListOf<ExploreItem>()
             val bookLinks = document.select("a[href^='/book/']")
@@ -118,28 +110,25 @@ class NovelFireSource : NovelSource {
                  if (title.isNotBlank() && !title.equals("Read Now", ignoreCase = true) && !title.contains("Chapter", ignoreCase = true)) {
                      val parent = link.closest(".novel-item, .item, .book-item") ?: link.parent()?.parent()
                      val img = parent?.select("img")?.first()
-                     var coverUrl = img?.attr("data-src")?.ifEmpty { img?.attr("src") } ?: ""
-                     if (coverUrl.startsWith("/")) coverUrl = "$baseUrl$coverUrl"
+                     val coverUrl = img?.findImage()?.let { resolveUrl(it) } ?: ""
+                     val absoluteUrl = resolveUrl(href)
 
-                     if (items.none { it.url == "$baseUrl$href" }) {
+                     if (items.none { it.url == absoluteUrl }) {
                          items.add(ExploreItem(
                              title = title,
-                             url = "$baseUrl$href",
+                             url = absoluteUrl,
                              coverUrl = if (coverUrl.isBlank()) null else coverUrl,
                              source = name
                          ))
                      }
                  }
             }
-            return@withContext items
+            items
         }
     }
 
-    override suspend fun getNovelDetails(url: String): ExploreItem = withContext(Dispatchers.IO) {
-        val document = Jsoup.connect(url)
-            .userAgent("Mozilla/5.0")
-            .timeout(10000)
-            .get()
+    override suspend fun getNovelDetails(url: String): ExploreItem = io {
+        val document = getDocument(url)
 
         val rawTitle = document.select("h1, .novel-title").first()?.text() ?: "Unknown Title"
         val title = cleanNovelTitle(rawTitle)
@@ -151,12 +140,8 @@ class NovelFireSource : NovelSource {
                 .ifEmpty { summaryElement.text() }
         } else null
 
-        var coverUrl = document.select(".fixed-img .cover img, .book-cover img, .novel-cover img").attr("src")
-            .ifEmpty { document.select(".fixed-img .cover img, .book-cover img, .novel-cover img").attr("data-src") }
-
-        if (coverUrl.isNotBlank() && !coverUrl.startsWith("http")) {
-            coverUrl = "$baseUrl${if (coverUrl.startsWith("/")) "" else "/"}$coverUrl"
-        }
+        val coverImg = document.select(".fixed-img .cover img, .book-cover img, .novel-cover img").first()
+        val coverUrl = resolveUrl(coverImg?.findImage() ?: "")
 
         val infoText = document.text()
         val chapterCountRegex = Regex("(\\d+)\\s*Chapters", RegexOption.IGNORE_CASE)
@@ -170,16 +155,13 @@ class NovelFireSource : NovelSource {
 
         val chaptersPageHref = document.select("a[href$='/chapters']").attr("href")
         val chaptersUrl = if (chaptersPageHref.isNotBlank()) {
-            if (chaptersPageHref.startsWith("http")) chaptersPageHref else "$baseUrl$chaptersPageHref"
+            resolveUrl(chaptersPageHref)
         } else {
             if (url.endsWith("/chapters")) url else "$url/chapters"
         }
 
         val firstPageDoc = try {
-            Jsoup.connect(chaptersUrl)
-                .userAgent("Mozilla/5.0")
-                .timeout(10000)
-                .get()
+            getDocument(chaptersUrl)
         } catch (e: Exception) {
             document
         }
@@ -188,7 +170,7 @@ class NovelFireSource : NovelSource {
 
         fun parseChapters(doc: org.jsoup.nodes.Document): List<ChapterInfo> {
             return doc.select(".chapter-list li a, ul.chapters li a, .chapters li a").mapNotNull { element ->
-                val chapterUrl = element.attr("href").let { if (it.startsWith("http")) it else "$baseUrl$it" }
+                val chapterUrl = resolveUrl(element.attr("href"))
 
                 var rawTitle = element.attr("title")
                 if (rawTitle.isBlank()) rawTitle = element.select(".chapter-title").text()
@@ -228,17 +210,16 @@ class NovelFireSource : NovelSource {
         }
 
         if (maxPage > 1) {
-            val deferredPages = (2..maxPage).map { page ->
-                async {
-                    try {
-                        val pageUrl = if (chaptersUrl.contains("?")) "$chaptersUrl&page=$page" else "$chaptersUrl?page=$page"
-                        val pageDoc = Jsoup.connect(pageUrl)
-                            .userAgent("Mozilla/5.0")
-                            .timeout(10000)
-                            .get()
-                        parseChapters(pageDoc)
-                    } catch (e: Exception) {
-                        emptyList<ChapterInfo>()
+            val deferredPages = kotlinx.coroutines.coroutineScope {
+                (2..maxPage).map { page ->
+                    async {
+                        try {
+                            val pageUrl = if (chaptersUrl.contains("?")) "$chaptersUrl&page=$page" else "$chaptersUrl?page=$page"
+                            val pageDoc = getDocument(pageUrl)
+                            parseChapters(pageDoc)
+                        } catch (e: Exception) {
+                            emptyList<ChapterInfo>()
+                        }
                     }
                 }
             }
@@ -250,14 +231,14 @@ class NovelFireSource : NovelSource {
         } else {
             val readNowHref = document.select("a:contains(Read Now)").attr("href")
             if (readNowHref.isNotBlank()) {
-                if (readNowHref.startsWith("http")) readNowHref else "$baseUrl$readNowHref"
+                resolveUrl(readNowHref)
             } else url
         }
 
         ExploreItem(
             title = title,
             url = url,
-            coverUrl = coverUrl,
+            coverUrl = if (coverUrl.isBlank()) null else coverUrl,
             author = author,
             summary = summary,
             chapterCount = chapterCount,

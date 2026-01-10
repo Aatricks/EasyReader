@@ -2,23 +2,30 @@ package io.aatricks.novelscraper.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import io.aatricks.novelscraper.data.model.LibraryItem
 import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.util.TextUtils
 
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import javax.inject.Inject
+import javax.inject.Singleton
+
 /**
  * SharedPreferences wrapper for type-safe preferences access
  */
-class PreferencesManager(context: Context) {
+@Singleton
+class PreferencesManager @Inject constructor(
+    @ApplicationContext context: Context
+) {
     
     private val prefs: SharedPreferences = context.getSharedPreferences(
         PREFS_NAME,
         Context.MODE_PRIVATE
     )
     
-    private val gson = Gson()
+    private val json = Json { ignoreUnknownKeys = true }
     
     // Current URL
     var currentUrl: String?
@@ -27,15 +34,14 @@ class PreferencesManager(context: Context) {
     
     // Current paragraphs
     fun saveParagraphs(paragraphs: List<String>) {
-        val json = gson.toJson(paragraphs)
-        prefs.edit().putString(KEY_PARAGRAPHS, json).apply()
+        val jsonString = json.encodeToString(paragraphs)
+        prefs.edit().putString(KEY_PARAGRAPHS, jsonString).apply()
     }
     
     fun loadParagraphs(): List<String> {
-        val json = prefs.getString(KEY_PARAGRAPHS, null) ?: return emptyList()
-        val type = object : TypeToken<List<String>>() {}.type
+        val jsonString = prefs.getString(KEY_PARAGRAPHS, null) ?: return emptyList()
         return try {
-            gson.fromJson(json, type)
+            json.decodeFromString(jsonString)
         } catch (e: Exception) {
             emptyList()
         }
@@ -48,68 +54,15 @@ class PreferencesManager(context: Context) {
     
     // Library items
     fun saveLibraryItems(items: List<LibraryItem>) {
-        val json = gson.toJson(items)
-        prefs.edit().putString(KEY_LIBRARY_ITEMS, json).apply()
+        val jsonString = json.encodeToString(items)
+        prefs.edit().putString(KEY_LIBRARY_ITEMS, jsonString).apply()
     }
     
     fun loadLibraryItems(): List<LibraryItem> {
-        val json = prefs.getString(KEY_LIBRARY_ITEMS, null)
-        return if (json != null) {
+        val jsonString = prefs.getString(KEY_LIBRARY_ITEMS, null)
+        return if (jsonString != null) {
             try {
-                val type = object : TypeToken<List<LibraryItem>>() {}.type
-                val items: List<LibraryItem> = gson.fromJson(json, type)
-                // Migration: ensure all fields are properly initialized even if missing in JSON
-                items.map { item ->
-                    // Use a temporary variable to handle potential nulls from Gson deserialization
-                    // of non-nullable Kotlin fields
-                    @Suppress("SENSELESS_COMPARISON")
-                    val isInvalid = item.id == null ||
-                                   item.title == null ||
-                                   item.url == null ||
-                                   item.chapterSummaries == null || 
-                                   item.baseTitle == null || 
-                                   item.readingMode == null ||
-                                   item.baseNovelUrl == null ||
-                                   item.sourceName == null ||
-                                   @Suppress("SENSELESS_COMPARISON")
-                                   (item.hasUpdates == null as Any?)
-                    
-                    if (isInvalid) {
-                        val safeTitle = item.title ?: "Unknown"
-                        val safeUrl = item.url ?: ""
-                        // Reconstruct the item to ensure default values are used for missing fields
-                        LibraryItem(
-                            id = item.id ?: System.currentTimeMillis().toString(),
-                            title = safeTitle,
-                            url = safeUrl,
-                            timestamp = item.timestamp,
-                            type = item.type ?: ContentType.WEB,
-                            progress = item.progress,
-                            isCurrentlyReading = item.isCurrentlyReading,
-                            isSelected = item.isSelected,
-                            currentChapter = item.currentChapter ?: "",
-                            currentChapterUrl = item.currentChapterUrl ?: "",
-                            totalChapters = item.totalChapters,
-                            contentType = item.contentType ?: ContentType.WEB,
-                            dateAdded = item.dateAdded,
-                            lastRead = item.lastRead,
-                            isDownloading = item.isDownloading,
-                            lastScrollPosition = item.lastScrollPosition,
-                            lastReadIndex = item.lastReadIndex,
-                            lastReadOffset = item.lastReadOffset,
-                            hasUpdates = item.hasUpdates,
-                            chapterSummaries = item.chapterSummaries ?: emptyMap(),
-                            baseTitle = if (item.baseTitle == null || item.baseTitle.isEmpty()) 
-                                TextUtils.extractBaseTitle(safeTitle, item.contentType ?: ContentType.WEB) 
-                                else item.baseTitle,
-                            readingMode = if (item.readingMode == null) io.aatricks.novelscraper.data.model.ReadingMode.VERTICAL else item.readingMode,
-                            baseNovelUrl = item.baseNovelUrl ?: "",
-                            sourceName = item.sourceName ?: ""
-                        )
-                    } else {
-                        item
-                    }
-                }
+                json.decodeFromString<List<LibraryItem>>(jsonString)
             } catch (e: Exception) {
                 android.util.Log.e("PreferencesManager", "Failed to load library items", e)
                 emptyList()
@@ -121,15 +74,14 @@ class PreferencesManager(context: Context) {
 
     // Collapsed sources
     fun saveCollapsedSources(sources: Set<String>) {
-        val json = gson.toJson(sources)
-        prefs.edit().putString(KEY_COLLAPSED_SOURCES, json).apply()
+        val jsonString = json.encodeToString(sources)
+        prefs.edit().putString(KEY_COLLAPSED_SOURCES, jsonString).apply()
     }
 
     fun loadCollapsedSources(): Set<String> {
-        val json = prefs.getString(KEY_COLLAPSED_SOURCES, null) ?: return emptySet()
-        val type = object : TypeToken<Set<String>>() {}.type
+        val jsonString = prefs.getString(KEY_COLLAPSED_SOURCES, null) ?: return emptySet()
         return try {
-            gson.fromJson(json, type)
+            json.decodeFromString(jsonString)
         } catch (e: Exception) {
             emptySet()
         }
@@ -165,6 +117,11 @@ class PreferencesManager(context: Context) {
     var paragraphSpacing: Float
         get() = prefs.getFloat(KEY_PARAGRAPH_SPACING, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_PARAGRAPH_SPACING, value).apply()
+
+    var readerTheme: String
+        get() = prefs.getString(KEY_READER_THEME, io.aatricks.novelscraper.data.model.ReaderTheme.DARK.name) 
+            ?: io.aatricks.novelscraper.data.model.ReaderTheme.DARK.name
+        set(value) = prefs.edit().putString(KEY_READER_THEME, value).apply()
     
     // Clear all preferences
     fun clearAll() {
@@ -196,5 +153,6 @@ class PreferencesManager(context: Context) {
         private const val KEY_FONT_FAMILY = "reader_font_family"
         private const val KEY_MARGINS = "reader_margins"
         private const val KEY_PARAGRAPH_SPACING = "reader_paragraph_spacing"
+        private const val KEY_READER_THEME = "reader_theme"
     }
 }

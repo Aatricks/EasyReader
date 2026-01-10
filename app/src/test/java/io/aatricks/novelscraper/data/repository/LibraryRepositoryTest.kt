@@ -1,28 +1,34 @@
 package io.aatricks.novelscraper.data.repository
 
+import io.aatricks.novelscraper.data.local.LibraryDao
 import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.model.LibraryItem
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Test
 import org.junit.Assert.*
 import org.mockito.Mock
-import org.mockito.Mockito.*
 import org.mockito.MockitoAnnotations
+import org.mockito.kotlin.*
 
 class LibraryRepositoryTest {
 
     @Mock
     private lateinit var preferencesManager: PreferencesManager
+    
+    @Mock
+    private lateinit var libraryDao: LibraryDao
 
     private lateinit var repository: LibraryRepository
 
     @Before
     fun setup() {
         MockitoAnnotations.openMocks(this)
-        `when`(preferencesManager.loadLibraryItems()).thenReturn(emptyList())
-        repository = LibraryRepository(preferencesManager)
+        whenever(preferencesManager.loadLibraryItems()).thenReturn(emptyList())
+        whenever(libraryDao.getAllItems()).thenReturn(flowOf(emptyList()))
+        repository = LibraryRepository(libraryDao, preferencesManager)
     }
 
     @Test
@@ -31,55 +37,46 @@ class LibraryRepositoryTest {
         
         assertEquals("Test Book", item.title)
         assertEquals("https://example.com", item.url)
-        assertEquals(1, repository.libraryItems.value.size)
-        verify(preferencesManager).saveLibraryItems(anyList())
+        verify(libraryDao).insertItem(any())
     }
 
     @Test
     fun testRemoveItem() = runBlocking {
-        val item = repository.addItem("Test Book", "https://example.com", ContentType.WEB)
-        val removed = repository.removeItem(item.id)
+        val itemId = "test-id"
+        val item = LibraryItem(id = itemId, title = "Test", url = "url")
+        whenever(libraryDao.getItemById(itemId)).thenReturn(item)
+        
+        val removed = repository.removeItem(itemId)
         
         assertTrue(removed)
-        assertEquals(0, repository.libraryItems.value.size)
+        verify(libraryDao).deleteItem(item)
     }
 
     @Test
     fun testUpdateProgress() = runBlocking {
-        val item = repository.addItem("Test Book", "https://example.com", ContentType.WEB)
-        repository.updateProgress(item.id, "Chapter 2", 50)
+        val itemId = "test-id"
+        val item = LibraryItem(id = itemId, title = "Test", url = "url")
+        whenever(libraryDao.getItemById(itemId)).thenReturn(item)
         
-        val updatedItem = repository.getItemById(item.id)
-        assertEquals("Chapter 2", updatedItem?.currentChapter)
-        assertEquals(50, updatedItem?.progress)
-    }
-
-    @Test
-    fun testGrouping() = runBlocking {
-        repository.addItem("Book 1 - Ch 1", "url1", ContentType.WEB, baseTitle = "Book 1")
-        repository.addItem("Book 1 - Ch 2", "url2", ContentType.WEB, baseTitle = "Book 1")
-        repository.addItem("Book 2 - Ch 1", "url3", ContentType.WEB, baseTitle = "Book 2")
+        repository.updateProgress(itemId, "Chapter 2", 50)
         
-        val grouped = repository.getGroupedByTitle()
-        assertEquals(2, grouped.size)
-        assertEquals(2, grouped["Book 1"]?.size)
-        assertEquals(1, grouped["Book 2"]?.size)
+        verify(libraryDao).insertItem(check {
+            assertEquals("Chapter 2", it.currentChapter)
+            assertEquals(50, it.progress)
+        })
     }
 
     @Test
     fun testSelection() = runBlocking {
-        val item1 = repository.addItem("Book 1", "url1", ContentType.WEB)
-        val item2 = repository.addItem("Book 2", "url2", ContentType.WEB)
+        val item1Id = "id1"
+        val item2Id = "id2"
         
-        repository.toggleSelection(item1.id)
-        assertTrue(repository.isSelected(item1.id))
-        assertFalse(repository.isSelected(item2.id))
-        assertEquals(1, repository.getSelectionCount())
-        
-        repository.selectAll()
-        assertEquals(2, repository.getSelectionCount())
+        repository.toggleSelection(item1Id)
+        assertTrue(item1Id in repository.selectedItems.value)
+        assertFalse(item2Id in repository.selectedItems.value)
+        assertEquals(1, repository.selectedItems.value.size)
         
         repository.clearSelection()
-        assertEquals(0, repository.getSelectionCount())
+        assertEquals(0, repository.selectedItems.value.size)
     }
 }

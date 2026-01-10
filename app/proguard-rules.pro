@@ -1,21 +1,24 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Ktor rules
+-keep class io.ktor.** { *; }
+-keep interface io.ktor.** { *; }
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Kotlinx Serialization rules
+-keep class kotlinx.serialization.** { *; }
+-keep interface kotlinx.serialization.** { *; }
+-keepattributes *Annotation*, InnerClasses, EnclosingMethod, Signature, Exceptions
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Hilt/Dagger rules
+-keep class dagger.hilt.** { *; }
+-keep interface dagger.hilt.** { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Room rules
+-keep class androidx.room.** { *; }
+-keep interface androidx.room.** { *; }
+
+# OkHttp rules
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+
+# llmedge rules
+-keep class io.aatricks.llmedge.** { *; }
+-keep interface io.aatricks.llmedge.** { *; }
