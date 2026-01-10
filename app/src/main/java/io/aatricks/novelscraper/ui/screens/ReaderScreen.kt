@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
@@ -285,7 +286,6 @@ private fun ContentArea(
     onShowChapterList: () -> Unit,
     onShowSettings: () -> Unit
 ) {
-    val listState = rememberLazyListState()
     val uiState by readerViewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -297,17 +297,25 @@ private fun ContentArea(
         else -> FontFamily.SansSerif
     }
 
-    val pagerState = rememberPagerState(
-        initialPage = 0,
-        initialPageOffsetFraction = 0f
-    ) {
-        content.paragraphs.size
-    }
-
-    val appliedRestore = remember(content.url) { mutableStateOf(false) }
-
     val isManhwa = remember(content) {
         content.getImageCount() > content.getTextCount() && content.getImageCount() > 2
+    }
+
+    // Keyed states to ensure fresh state and correct initial position upon novel switch
+    val listState = key(content.url) {
+        rememberLazyListState(
+            initialFirstVisibleItemIndex = uiState.scrollIndex,
+            initialFirstVisibleItemScrollOffset = uiState.scrollOffset
+        )
+    }
+
+    val pagerState = key(content.url) {
+        rememberPagerState(
+            initialPage = uiState.scrollIndex.coerceIn(0, (content.paragraphs.size - 1).coerceAtLeast(0)),
+            initialPageOffsetFraction = 0f
+        ) {
+            content.paragraphs.size
+        }
     }
 
     // Prefetch images nearby
@@ -336,16 +344,11 @@ private fun ContentArea(
         }
     }
 
-    LaunchedEffect(content.url, uiState.seekTrigger) {
-        if (content.paragraphs.isNotEmpty()) {
-            val isInitialRestore = !appliedRestore.value
+    // Handle explicit seeks from the slider
+    LaunchedEffect(uiState.seekTrigger) {
+        if (content.paragraphs.isNotEmpty() && uiState.seekTrigger > 0L) {
             val targetIndex = uiState.scrollIndex
             val targetOffset = uiState.scrollOffset
-            val targetPosition = uiState.scrollPosition
-
-            if (isInitialRestore) {
-                delay(150)
-            }
 
             if (uiState.isPagedMode) {
                 val page = targetIndex.coerceIn(0, content.paragraphs.size - 1)
@@ -356,57 +359,52 @@ private fun ContentArea(
                         listState.scrollToItem(targetIndex, targetOffset)
                     } catch (_: Exception) {
                         val totalItems = content.paragraphs.size
-                        val percent = targetPosition.coerceIn(0f, 100f) / 100f
+                        val percent = uiState.scrollPosition.coerceIn(0f, 100f) / 100f
                         val index = (percent * totalItems).toInt().coerceIn(0, totalItems - 1)
                         listState.scrollToItem(index, 0)
                     }
                 }
             }
-            if (isInitialRestore) appliedRestore.value = true
         }
     }
 
     if (uiState.isPagedMode) {
-        if (appliedRestore.value) {
-            LaunchedEffect(pagerState.currentPage) {
-                val totalItems = content.paragraphs.size
-                val currentItem = pagerState.currentPage
-                val progress = if (totalItems > 0) ((currentItem.toFloat() / totalItems) * 100f).coerceIn(0f, 100f) else 0f
+        LaunchedEffect(pagerState.currentPage) {
+            val totalItems = content.paragraphs.size
+            val currentItem = pagerState.currentPage
+            val progress = if (totalItems > 0) ((currentItem.toFloat() / (totalItems - 1).coerceAtLeast(1)) * 100f).coerceIn(0f, 100f) else 0f
 
-                readerViewModel.updateScrollPosition(
-                    scrollOffset = progress,
-                    maxScrollOffset = 100f,
-                    viewportHeight = 1f,
-                    index = currentItem,
-                    offset = 0
-                )
-            }
+            readerViewModel.updateScrollPosition(
+                scrollOffset = progress,
+                maxScrollOffset = 100f,
+                viewportHeight = 1f,
+                index = currentItem,
+                offset = 0
+            )
         }
     } else {
-        if (appliedRestore.value) {
-            LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
-                if (content.paragraphs.isNotEmpty()) {
-                    val layoutInfo = listState.layoutInfo
-                    val visibleItems = layoutInfo.visibleItemsInfo
+        LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
+            if (content.paragraphs.isNotEmpty()) {
+                val layoutInfo = listState.layoutInfo
+                val visibleItems = layoutInfo.visibleItemsInfo
 
-                    if (visibleItems.isNotEmpty()) {
-                        val totalItems = layoutInfo.totalItemsCount
-                        val firstItem = visibleItems.first()
+                if (visibleItems.isNotEmpty()) {
+                    val totalItems = layoutInfo.totalItemsCount
+                    val firstItem = visibleItems.first()
 
-                        val currentScrollOffset = firstItem.index.toFloat() +
-                            (listState.firstVisibleItemScrollOffset.toFloat() / firstItem.size.toFloat())
+                    val currentScrollOffset = firstItem.index.toFloat() +
+                        (listState.firstVisibleItemScrollOffset.toFloat() / firstItem.size.coerceAtLeast(1).toFloat())
 
-                        val maxScrollOffset = (totalItems - 1).coerceAtLeast(0).toFloat()
-                        val viewportHeightInItems = layoutInfo.viewportSize.height.toFloat() / firstItem.size.toFloat()
+                    val maxScrollOffset = (totalItems - 1).coerceAtLeast(0).toFloat()
+                    val viewportHeightInItems = layoutInfo.viewportSize.height.toFloat() / firstItem.size.coerceAtLeast(1).toFloat()
 
-                        readerViewModel.updateScrollPosition(
-                            scrollOffset = currentScrollOffset,
-                            maxScrollOffset = maxScrollOffset + viewportHeightInItems,
-                            viewportHeight = viewportHeightInItems,
-                            index = listState.firstVisibleItemIndex,
-                            offset = listState.firstVisibleItemScrollOffset
-                        )
-                    }
+                    readerViewModel.updateScrollPosition(
+                        scrollOffset = currentScrollOffset,
+                        maxScrollOffset = maxScrollOffset + viewportHeightInItems,
+                        viewportHeight = viewportHeightInItems,
+                        index = listState.firstVisibleItemIndex,
+                        offset = listState.firstVisibleItemScrollOffset
+                    )
                 }
             }
         }
@@ -518,13 +516,6 @@ private fun ContentArea(
         }
     }
 
-    val isRestoring = !appliedRestore.value && (uiState.scrollIndex > 0 || uiState.scrollOffset > 0)
-    val contentAlpha by animateFloatAsState(
-        targetValue = if (isRestoring) 0f else 1f,
-        animationSpec = tween(durationMillis = 200),
-        label = "contentAlpha"
-    )
-
     val readerThemeState = uiState.readerTheme
     val bgColor = readerThemeState.backgroundColor
     val textColor = readerThemeState.textColor
@@ -532,7 +523,6 @@ private fun ContentArea(
     Box(modifier = Modifier
         .fillMaxSize()
         .nestedScroll(nestedScrollConnection)
-        .alpha(contentAlpha)
         .background(bgColor)
     ) {
         if (uiState.isPagedMode) {
@@ -571,7 +561,9 @@ private fun ContentArea(
                                     readerViewModel = readerViewModel,
                                     pageUrl = content.url,
                                     contentScale = ContentScale.Fit,
-                                    backgroundColor = bgColor
+                                    backgroundColor = bgColor,
+                                    width = element.width,
+                                    height = element.height
                                 )
                             }
                             is ContentElement.ImageGroup -> {
@@ -587,7 +579,9 @@ private fun ContentArea(
                                             readerViewModel = readerViewModel,
                                             pageUrl = content.url,
                                             contentScale = ContentScale.FillWidth,
-                                            backgroundColor = bgColor
+                                            backgroundColor = bgColor,
+                                            width = img.width,
+                                            height = img.height
                                         )
                                     }
                                 }
@@ -629,7 +623,9 @@ private fun ContentArea(
                                 readerViewModel = readerViewModel,
                                 pageUrl = content.url,
                                 contentScale = ContentScale.FillWidth,
-                                backgroundColor = bgColor
+                                backgroundColor = bgColor,
+                                width = element.width,
+                                height = element.height
                             )
                         }
                         is ContentElement.ImageGroup -> {
@@ -644,7 +640,9 @@ private fun ContentArea(
                                         readerViewModel = readerViewModel,
                                         pageUrl = content.url,
                                         contentScale = ContentScale.FillWidth,
-                                        backgroundColor = bgColor
+                                        backgroundColor = bgColor,
+                                        width = img.width,
+                                        height = img.height
                                     )
                                 }
                             }
@@ -680,7 +678,7 @@ private fun ContentArea(
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             BottomNavigationBar(
-                progress = uiState.scrollProgress,
+                progress = uiState.scrollPosition,
                 canNavigatePrevious = uiState.canNavigatePrevious,
                 canNavigateNext = uiState.canNavigateNext,
                 onPreviousClick = { readerViewModel.navigateToPreviousChapter() },

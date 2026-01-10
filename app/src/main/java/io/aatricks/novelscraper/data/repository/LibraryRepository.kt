@@ -13,6 +13,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,6 +30,7 @@ class LibraryRepository @Inject constructor(
 ) : BaseRepository("LibraryRepository") {
     
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val progressMutex = Mutex()
     
     val libraryItems: StateFlow<List<LibraryItem>> = libraryDao.getAllItems()
         .catch { e -> 
@@ -169,22 +172,24 @@ class LibraryRepository @Inject constructor(
         lastScrollProgress: Float? = null,
         lastReadIndex: Int? = null,
         lastReadOffset: Int? = null
-    ): Boolean = runCatching("Failed to update progress", false) {
-        val item = libraryDao.getItemById(itemId)
-        if (item != null) {
-            val updated = item.copy(
-                currentChapter = if (currentChapter.isNotBlank()) currentChapter else item.currentChapter,
-                progress = progress,
-                currentChapterUrl = currentChapterUrl ?: item.currentChapterUrl,
-                lastScrollPosition = lastScrollProgress ?: item.lastScrollPosition,
-                lastReadIndex = lastReadIndex ?: item.lastReadIndex,
-                lastReadOffset = lastReadOffset ?: item.lastReadOffset,
-                lastRead = System.currentTimeMillis()
-            )
-            libraryDao.insertItem(updated)
-            true
-        } else false
-    } ?: false
+    ): Boolean = progressMutex.withLock {
+        runCatching("Failed to update progress", false) {
+            val item = libraryDao.getItemById(itemId)
+            if (item != null) {
+                val updated = item.copy(
+                    currentChapter = if (currentChapter.isNotBlank()) currentChapter else item.currentChapter,
+                    progress = progress,
+                    currentChapterUrl = currentChapterUrl ?: item.currentChapterUrl,
+                    lastScrollPosition = lastScrollProgress ?: item.lastScrollPosition,
+                    lastReadIndex = lastReadIndex ?: item.lastReadIndex,
+                    lastReadOffset = lastReadOffset ?: item.lastReadOffset,
+                    lastRead = System.currentTimeMillis()
+                )
+                libraryDao.insertItem(updated)
+                true
+            } else false
+        } ?: false
+    }
     
     suspend fun markAsCurrentlyReading(itemId: String): Boolean = runCatching("Failed to mark as reading", false) {
         libraryDao.setCurrentReading(itemId)

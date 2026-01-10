@@ -70,12 +70,12 @@ fun TopInfoBar(
 
 @Composable
 fun BottomNavigationBar(
-    progress: Int,
+    progress: Float,
     canNavigatePrevious: Boolean,
     canNavigateNext: Boolean,
     onPreviousClick: () -> Unit,
     onNextClick: () -> Unit,
-    onProgressChange: (Int) -> Unit
+    onProgressChange: (Float) -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -84,7 +84,7 @@ fun BottomNavigationBar(
         shadowElevation = 8.dp
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            var sliderValue by remember(progress) { mutableFloatStateOf(progress.toFloat()) }
+            var sliderValue by remember(progress) { mutableFloatStateOf(progress) }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(text = "Progress", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall)
                 Text(text = "${sliderValue.toInt()}%", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall)
@@ -93,7 +93,7 @@ fun BottomNavigationBar(
             Slider(
                 value = sliderValue,
                 onValueChange = { sliderValue = it },
-                onValueChangeFinished = { onProgressChange(sliderValue.toInt()) },
+                onValueChangeFinished = { onProgressChange(sliderValue) },
                 valueRange = 0f..100f,
                 colors = SliderDefaults.colors(
                     thumbColor = MaterialTheme.colorScheme.primary,

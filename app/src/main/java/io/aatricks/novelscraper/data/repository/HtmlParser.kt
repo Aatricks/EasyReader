@@ -83,7 +83,15 @@ class HtmlParser @Inject constructor() {
                             "$base/$src"
                         }
                     }
-                    imagesFromSelectors.add(ContentElement.Image(url = absoluteUrl))
+
+                    val width = element.attr("width").toIntOrNull() ?: element.attr("data-width").toIntOrNull() ?: 0
+                    val height = element.attr("height").toIntOrNull() ?: element.attr("data-height").toIntOrNull() ?: 0
+
+                    imagesFromSelectors.add(ContentElement.Image(
+                        url = absoluteUrl,
+                        width = width,
+                        height = height
+                    ))
                 }
             }
             
