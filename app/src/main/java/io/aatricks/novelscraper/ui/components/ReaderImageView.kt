@@ -52,14 +52,15 @@ fun ReaderImageView(
         val imageRequest = remember(imageUrl, pageUrl) {
             val uri = try { java.net.URI(pageUrl) } catch (e: Exception) { null }
             val referer = if (uri != null) "${uri.scheme}://${uri.host}/" else pageUrl
+            val isCached = cachedFile.exists()
 
             ImageRequest.Builder(context)
-                .data(if (cachedFile.exists()) cachedFile else imageUrl)
+                .data(if (isCached) cachedFile else imageUrl)
                 .httpHeaders(NetworkHeaders.Builder()
                     .set("Referer", referer)
                     .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                     .build())
-                .crossfade(true)
+                .crossfade(!isCached) // Only crossfade if not cached
                 .build()
         }
         var isError by remember(imageRequest) { mutableStateOf(false) }

@@ -318,27 +318,27 @@ private fun ContentArea(
         }
     }
 
-    // Prefetch images nearby
-    LaunchedEffect(listState.firstVisibleItemIndex, content.url) {
-        if (isManhwa) {
-            val currentIndex = listState.firstVisibleItemIndex
-            val prefetchRange = 5
-            val endRange = (currentIndex + prefetchRange).coerceAtMost(content.paragraphs.size - 1)
-            
-            for (i in currentIndex..endRange) {
-                val element = content.paragraphs.getOrNull(i)
-                if (element is ContentElement.Image) {
+    // Aggressive prefetch images nearby
+    LaunchedEffect(listState.firstVisibleItemIndex, pagerState.currentPage, content.url) {
+        val currentIndex = if (uiState.isPagedMode) pagerState.currentPage else listState.firstVisibleItemIndex
+        val prefetchRange = 10 
+        
+        val startRange = (currentIndex - 3).coerceAtLeast(0)
+        val endRange = (currentIndex + prefetchRange).coerceAtMost(content.paragraphs.size - 1)
+        
+        for (i in startRange..endRange) {
+            val element = content.paragraphs.getOrNull(i)
+            if (element is ContentElement.Image) {
+                val request = ImageRequest.Builder(context)
+                    .data(element.url)
+                    .build()
+                SingletonImageLoader.get(context).enqueue(request)
+            } else if (element is ContentElement.ImageGroup) {
+                element.images.forEach { img ->
                     val request = ImageRequest.Builder(context)
-                        .data(element.url)
+                        .data(img.url)
                         .build()
                     SingletonImageLoader.get(context).enqueue(request)
-                } else if (element is ContentElement.ImageGroup) {
-                    element.images.forEach { img ->
-                        val request = ImageRequest.Builder(context)
-                            .data(img.url)
-                            .build()
-                        SingletonImageLoader.get(context).enqueue(request)
-                    }
                 }
             }
         }
