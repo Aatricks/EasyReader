@@ -26,11 +26,7 @@ class ReaderViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
     private val exploreRepository: ExploreRepository,
     private val preferencesManager: PreferencesManager
-) : ViewModel() {
-
-    // UI State
-    private val _uiState = MutableStateFlow(ReaderUiState())
-    val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
+) : BaseViewModel<ReaderViewModel.ReaderUiState>(ReaderUiState()) {
 
     // Current library item ID being read
     private var currentLibraryItemId: String? = null
@@ -50,7 +46,7 @@ class ReaderViewModel @Inject constructor(
     
     init {
         // Load initial settings
-        _uiState.update {
+        updateState {
             it.copy(
                 fontSize = preferencesManager.fontSize,
                 lineHeight = preferencesManager.lineHeight,
@@ -117,39 +113,39 @@ class ReaderViewModel @Inject constructor(
     fun updateFontSize(newSize: Float) {
         val size = newSize.coerceIn(12f, 32f)
         preferencesManager.fontSize = size
-        _uiState.update { it.copy(fontSize = size) }
+        updateState { it.copy(fontSize = size) }
     }
     
     fun updateLineHeight(newHeight: Float) {
         val height = newHeight.coerceIn(1.0f, 2.5f)
         preferencesManager.lineHeight = height
-        _uiState.update { it.copy(lineHeight = height) }
+        updateState { it.copy(lineHeight = height) }
     }
     
     fun updateFontFamily(newFamily: String) {
         preferencesManager.fontFamily = newFamily
-        _uiState.update { it.copy(fontFamily = newFamily) }
+        updateState { it.copy(fontFamily = newFamily) }
     }
     
     fun updateMargins(newMargins: Int) {
         val margins = newMargins.coerceIn(0, 64)
         preferencesManager.margins = margins
-        _uiState.update { it.copy(margins = margins) }
+        updateState { it.copy(margins = margins) }
     }
 
     fun updateParagraphSpacing(newSpacing: Float) {
         val spacing = newSpacing.coerceIn(0.0f, 3.0f)
         preferencesManager.paragraphSpacing = spacing
-        _uiState.update { it.copy(paragraphSpacing = spacing) }
+        updateState { it.copy(paragraphSpacing = spacing) }
     }
 
     fun updateReaderTheme(newTheme: ReaderTheme) {
         preferencesManager.readerTheme = newTheme.name
-        _uiState.update { it.copy(readerTheme = newTheme) }
+        updateState { it.copy(readerTheme = newTheme) }
     }
 
     fun clearToast() {
-        _uiState.update { it.copy(toastMessage = null) }
+        updateState { it.copy(toastMessage = null) }
     }
 
     fun loadContent(url: String, libraryItemId: String? = null, fromBottom: Boolean = false, isSilent: Boolean = false) {
@@ -185,9 +181,9 @@ class ReaderViewModel @Inject constructor(
                 }
 
                 if (!isSilent) {
-                    _uiState.update { it.copy(isLoading = true, error = null) }
+                    updateState { it.copy(isLoading = true, error = null) }
                 } else {
-                    _uiState.update { it.copy(error = null) }
+                    updateState { it.copy(error = null) }
                 }
 
                 when (val result = contentRepository.loadContent(url)) {
@@ -208,7 +204,7 @@ class ReaderViewModel @Inject constructor(
                             ?: ""
                         
                         val novelName = baseTitle.ifBlank { content.title ?: libraryItem?.title ?: "" }
-                        val chapterTitle = cleanChapterTitle(content.title, novelName).ifBlank {
+                        val chapterTitle = TextUtils.cleanChapterTitle(content.title, novelName).ifBlank {
                             libraryItem?.currentChapter ?: ""
                         }
                         
@@ -219,14 +215,14 @@ class ReaderViewModel @Inject constructor(
                         val isPaged = if (savedMode != null) {
                             savedMode == ReadingMode.PAGED
                         } else {
-                            guessIsPaged(content)
+                            TextUtils.guessIsPaged(content)
                         }
 
                         val initialIndex = if (fromBottom) (content.paragraphs.size - 1).coerceAtLeast(0) else 0
                         val initialPosition = if (fromBottom) 100f else 0f
                         val initialProgress = if (fromBottom) 100 else 0
 
-                        _uiState.update {
+                        updateState {
                             it.copy(
                                 content = content,
                                 isLoading = false,
@@ -248,6 +244,8 @@ class ReaderViewModel @Inject constructor(
                                 fullChapterList = emptyList()
                             )
                         }
+                        
+                        updateNavigationUrls()
 
                         libraryItem?.let { item ->
                             if (item.baseNovelUrl.isNotBlank() && item.sourceName.isNotBlank()) {
@@ -262,7 +260,7 @@ class ReaderViewModel @Inject constructor(
                                 item?.let { libItem ->
                                     restoredScrollPercent = libItem.lastScrollPosition
                                     suppressAutoNavUntilUserInteraction = true
-                                    _uiState.update { state ->
+                                    updateState { state ->
                                         state.copy(
                                             scrollPosition = restoredScrollPercent,
                                             scrollProgress = libItem.progress,
@@ -277,7 +275,7 @@ class ReaderViewModel @Inject constructor(
                         isExplicitNavigation = false
                     }
                     is ContentRepository.ContentResult.Error -> {
-                        _uiState.update {
+                        updateState {
                             it.copy(
                                 isLoading = false,
                                 isNavigating = false,
@@ -288,7 +286,7 @@ class ReaderViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                _uiState.update {
+                updateState {
                     it.copy(
                         isLoading = false,
                         isNavigating = false,
@@ -301,6 +299,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun navigateToNextChapter() {
+        updateNavigationUrls()
         val nextUrl = _uiState.value.content?.nextChapterUrl ?: return
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
@@ -311,9 +310,9 @@ class ReaderViewModel @Inject constructor(
                 return@launch
             }
 
-            _uiState.update { it.copy(isNavigating = true) }
+            updateState { it.copy(isNavigating = true) }
             val result = contentRepository.loadContent(nextUrl)
-            _uiState.update { it.copy(isNavigating = false) }
+            updateState { it.copy(isNavigating = false) }
 
             when (result) {
                 is ContentRepository.ContentResult.Success -> {
@@ -322,7 +321,7 @@ class ReaderViewModel @Inject constructor(
                 }
                 is ContentRepository.ContentResult.Error -> {
                     if (result.message.contains("404")) {
-                        _uiState.update { it.copy(toastMessage = "Next chapter not found (404)") }
+                        updateState { it.copy(toastMessage = "Next chapter not found (404)") }
                     } else {
                         loadContent(nextUrl, isSilent = false)
                     }
@@ -332,6 +331,7 @@ class ReaderViewModel @Inject constructor(
     }
     
     fun navigateToPreviousChapter(fromBottom: Boolean = false) {
+        updateNavigationUrls()
         val prevUrl = _uiState.value.content?.previousChapterUrl ?: return
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
@@ -342,9 +342,9 @@ class ReaderViewModel @Inject constructor(
                 return@launch
             }
 
-            _uiState.update { it.copy(isNavigating = true) }
+            updateState { it.copy(isNavigating = true) }
             val result = contentRepository.loadContent(prevUrl)
-            _uiState.update { it.copy(isNavigating = false) }
+            updateState { it.copy(isNavigating = false) }
 
             when (result) {
                 is ContentRepository.ContentResult.Success -> {
@@ -353,7 +353,7 @@ class ReaderViewModel @Inject constructor(
                 }
                 is ContentRepository.ContentResult.Error -> {
                     if (result.message.contains("404")) {
-                        _uiState.update { it.copy(toastMessage = "Previous chapter not found (404)") }
+                        updateState { it.copy(toastMessage = "Previous chapter not found (404)") }
                     } else {
                         loadContent(prevUrl, fromBottom = fromBottom, isSilent = false)
                     }
@@ -415,14 +415,14 @@ class ReaderViewModel @Inject constructor(
                 }
 
                 if (!isSilent) {
-                    _uiState.update { it.copy(isLoading = true, error = null) }
+                    updateState { it.copy(isLoading = true, error = null) }
                 } else {
-                    _uiState.update { it.copy(error = null) }
+                    updateState { it.copy(error = null) }
                 }
 
                 val epubBook = contentRepository.getEpubBook(epubPath)
                 if (epubBook == null) {
-                    _uiState.update {
+                    updateState {
                         it.copy(
                             isLoading = false,
                             isNavigating = false,
@@ -435,7 +435,7 @@ class ReaderViewModel @Inject constructor(
                 currentLibraryItemId = libraryItemId
                 val chapter = contentRepository.loadEpubChapterFull(epubPath, href)
                 if (chapter == null) {
-                    _uiState.update {
+                    updateState {
                         it.copy(
                             isLoading = false,
                             isNavigating = false,
@@ -489,7 +489,7 @@ class ReaderViewModel @Inject constructor(
                     ?: ""
                 
                 val novelName = baseTitle.ifBlank { content.title ?: libraryItem?.title ?: "" }
-                val chapterTitle = cleanChapterTitle(content.title, novelName).ifBlank {
+                val chapterTitle = TextUtils.cleanChapterTitle(content.title, novelName).ifBlank {
                     libraryItem?.currentChapter ?: ""
                 }
                 
@@ -497,7 +497,7 @@ class ReaderViewModel @Inject constructor(
                 val initialPosition = if (fromBottom) 100f else 0f
                 val initialProgress = if (fromBottom) 100 else 0
 
-                _uiState.update {
+                updateState {
                     it.copy(
                         content = content,
                         isLoading = false,
@@ -523,7 +523,7 @@ class ReaderViewModel @Inject constructor(
                         item?.let { libItem ->
                             restoredScrollPercent = libItem.lastScrollPosition
                             suppressAutoNavUntilUserInteraction = true
-                            _uiState.update { state ->
+                            updateState { state ->
                                 state.copy(
                                     scrollPosition = restoredScrollPercent,
                                     scrollProgress = libItem.progress,
@@ -537,7 +537,7 @@ class ReaderViewModel @Inject constructor(
                 
                 isExplicitNavigation = false
             } catch (e: Exception) {
-                _uiState.update {
+                updateState {
                     it.copy(
                         isLoading = false,
                         isNavigating = false,
@@ -570,7 +570,7 @@ class ReaderViewModel @Inject constructor(
         val hasReached = progress >= 25f
         val progressInt = progress.toInt()
 
-        _uiState.update {
+        updateState {
             it.copy(
                 scrollPosition = progress,
                 scrollProgress = progressInt,
@@ -618,49 +618,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun clearError() {
-        _uiState.update { it.copy(error = null) }
-    }
-
-    private fun cleanChapterTitle(fullTitle: String?, novelName: String): String {
-        if (fullTitle == null || fullTitle.isBlank()) return ""
-        var cleaned: String = fullTitle
-        val junkPatterns = listOf(
-            Regex("""(?i)^read\s+"""),
-            Regex("""(?i)\s+free\s+online.*$"""),
-            Regex("""(?i)\s+online\s+free.*$"""),
-            Regex("""(?i)\s*\|\s*.*$"""), 
-            Regex("""(?i)\s+at\s+.*$"""), 
-            Regex("""(?i)[\s–—\-:]*(MangaBat|NovelFire|MangaPark|MangaKakalot).*$"""),
-            Regex("""(?i)[\s–—\-:]*Scan.*$""")
-        )
-        for (pattern in junkPatterns) {
-            cleaned = cleaned.replace(pattern, "")
-        }
-        if (novelName.isNotBlank()) {
-            if (cleaned.contains(novelName, ignoreCase = true)) {
-                cleaned = cleaned.replace(novelName, "", ignoreCase = true)
-            }
-        }
-        cleaned = cleaned.replace(Regex("""^[\s–—\-:\|]+"""), "")
-            .replace(Regex("""[\s–—\-:\|]+$"""), "")
-            .trim()
-        if (cleaned.length > 40 || cleaned.contains("Chapter", ignoreCase = true) || cleaned.contains("Ch.", ignoreCase = true)) {
-             val extractedLabel = TextUtils.extractChapterLabel(cleaned)
-             if (extractedLabel != null) {
-                 val subTitleRegex = Regex("""(?i)(?:chapter|ch|ch\.)\s*\d+[\s:\-—–\|]+(.+)""")
-                 val match = subTitleRegex.find(cleaned)
-                 val subTitle = match?.groupValues?.get(1)?.trim()
-                 return if (!subTitle.isNullOrBlank() && subTitle.length > 2) {
-                     "$extractedLabel: $subTitle"
-                 } else {
-                     extractedLabel
-                 }
-             }
-        }
-        if (cleaned.isBlank() || (novelName.isNotBlank() && fullTitle.equals(novelName, ignoreCase = true))) {
-            return ""
-        }
-        return cleaned
+        updateState { it.copy(error = null) }
     }
 
     fun retryLoad() {
@@ -692,7 +650,7 @@ class ReaderViewModel @Inject constructor(
             try {
                 contentRepository.clearAllCache()
             } catch (e: Exception) {
-                _uiState.update {
+                updateState {
                     it.copy(error = "Failed to clear cache: ${e.message}")
                 }
             }
@@ -704,7 +662,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun saveScrollPosition(position: Float) {
-        _uiState.update { it.copy(scrollPosition = position) }
+        updateState { it.copy(scrollPosition = position) }
     }
 
     fun getScrollPosition(): Float {
@@ -717,7 +675,7 @@ class ReaderViewModel @Inject constructor(
         val roughIndex = if (totalItems > 0) {
             ((targetPercent / 100f) * totalItems).toInt().coerceIn(0, totalItems - 1)
         } else 0
-        _uiState.update { it.copy(
+        updateState { it.copy(
             scrollPosition = targetPercent, 
             scrollProgress = progress,
             scrollIndex = roughIndex,
@@ -736,16 +694,16 @@ class ReaderViewModel @Inject constructor(
     }
     
     fun toggleControls() {
-        _uiState.update { it.copy(showControls = !it.showControls) }
+        updateState { it.copy(showControls = !it.showControls) }
     }
     
     fun hideControls() {
-        _uiState.update { it.copy(showControls = false) }
+        updateState { it.copy(showControls = false) }
     }
 
     fun toggleReadingMode() {
         val newMode = !uiState.value.isPagedMode
-        _uiState.update { it.copy(isPagedMode = newMode) }
+        updateState { it.copy(isPagedMode = newMode) }
         currentLibraryItemId?.let { id ->
             viewModelScope.launch {
                 libraryRepository.updateReadingMode(
@@ -758,18 +716,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun toggleRtl() {
-        _uiState.update { it.copy(isRtl = !it.isRtl) }
-    }
-
-    private fun guessIsPaged(content: ChapterContent): Boolean {
-        val imageCount = content.getImageCount()
-        val textCount = content.getTextCount()
-        if (textCount > imageCount * 2) return false
-        if (imageCount > 0) {
-            if (imageCount in 5..60 && textCount < 10) return true
-            if (imageCount > 60) return false
-        }
-        return false
+        updateState { it.copy(isRtl = !it.isRtl) }
     }
 
     fun navigateToChapter(url: String, title: String) {
@@ -781,9 +728,9 @@ class ReaderViewModel @Inject constructor(
                 loadContent(url, existingItem.id)
                 return@launch
             }
-            _uiState.update { it.copy(isNavigating = true) }
+            updateState { it.copy(isNavigating = true) }
             val result = contentRepository.loadContent(url)
-            _uiState.update { it.copy(isNavigating = false) }
+            updateState { it.copy(isNavigating = false) }
             when (result) {
                 is ContentRepository.ContentResult.Success -> {
                     val itemId = addChapterToLibrary(url, result.title, isNext = true)
@@ -791,7 +738,7 @@ class ReaderViewModel @Inject constructor(
                 }
                 is ContentRepository.ContentResult.Error -> {
                     if (result.message.contains("404")) {
-                        _uiState.update { it.copy(toastMessage = "Chapter not found (404)") }
+                        updateState { it.copy(toastMessage = "Chapter not found (404)") }
                     } else {
                         loadContent(url, isSilent = false)
                     }
@@ -803,15 +750,16 @@ class ReaderViewModel @Inject constructor(
     fun loadFullChapterList(baseUrl: String, sourceName: String) {
         viewModelScope.launch {
             try {
-                _uiState.update { it.copy(isChaptersLoading = true) }
+                updateState { it.copy(isChaptersLoading = true) }
                 val details = exploreRepository.getNovelDetails(baseUrl, sourceName)
                 if (details != null && details.chapters.isNotEmpty()) {
-                    _uiState.update { 
+                    updateState { 
                         it.copy(
                             fullChapterList = details.chapters,
                             isChaptersLoading = false
                         ) 
                     }
+                    updateNavigationUrls()
                     currentLibraryItemId?.let { id ->
                         val item = libraryRepository.getItemById(id)
                         if (item != null && item.totalChapters != details.chapters.size) {
@@ -819,10 +767,35 @@ class ReaderViewModel @Inject constructor(
                         }
                     }
                 } else {
-                    _uiState.update { it.copy(isChaptersLoading = false) }
+                    updateState { it.copy(isChaptersLoading = false) }
                 }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isChaptersLoading = false) }
+            }
+            catch (e: Exception) {
+                updateState { it.copy(isChaptersLoading = false) }
+            }
+        }
+    }
+
+    private fun updateNavigationUrls() {
+        val state = _uiState.value
+        val currentUrl = state.content?.url ?: return
+        val list = state.fullChapterList
+        if (list.isEmpty()) return
+
+        val currentIndex = list.indexOfFirst { it.url == currentUrl }
+        if (currentIndex != -1) {
+            val prevUrl = if (currentIndex > 0) list[currentIndex - 1].url else null
+            val nextUrl = if (currentIndex < list.size - 1) list[currentIndex + 1].url else null
+
+            updateState { s ->
+                s.copy(
+                    content = s.content?.copy(
+                        nextChapterUrl = nextUrl ?: s.content.nextChapterUrl,
+                        previousChapterUrl = prevUrl ?: s.content.previousChapterUrl
+                    ),
+                    canNavigateNext = nextUrl != null || (s.content?.hasNextChapter() == true),
+                    canNavigatePrevious = prevUrl != null || (s.content?.hasPreviousChapter() == true)
+                )
             }
         }
     }

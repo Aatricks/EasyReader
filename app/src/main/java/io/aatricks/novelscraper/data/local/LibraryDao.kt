@@ -33,12 +33,12 @@ interface LibraryDao {
     @Query("UPDATE library_items SET isCurrentlyReading = 0")
     suspend fun clearCurrentlyReading()
 
+    @Query("UPDATE library_items SET isCurrentlyReading = 1 WHERE id = :id")
+    suspend fun markAsCurrentlyReading(id: String)
+
     @Transaction
     suspend fun setCurrentReading(id: String) {
         clearCurrentlyReading()
-        val item = getItemById(id)
-        item?.let {
-            insertItem(it.copy(isCurrentlyReading = true))
-        }
+        markAsCurrentlyReading(id)
     }
 }

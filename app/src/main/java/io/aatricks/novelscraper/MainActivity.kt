@@ -37,6 +37,9 @@ import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import javax.inject.Inject
 
+import androidx.hilt.navigation.compose.hiltViewModel
+import io.aatricks.novelscraper.ui.viewmodel.ExploreViewModel
+
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
@@ -87,8 +90,9 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable<ExploreRoute> {
+                        val exploreViewModel: ExploreViewModel = hiltViewModel()
                         ExploreScreen(
-                            exploreRepository = exploreRepository,
+                            exploreViewModel = exploreViewModel,
                             libraryViewModel = libraryViewModel,
                             onNavigateBack = { navController.popBackStack() }
                         )

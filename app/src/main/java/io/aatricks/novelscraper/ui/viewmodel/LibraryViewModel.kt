@@ -18,12 +18,9 @@ import android.util.Log
 class LibraryViewModel @Inject constructor(
     val repository: LibraryRepository,
     private val contentRepository: ContentRepository
-) : ViewModel() {
+) : BaseViewModel<LibraryViewModel.LibraryUiState>(LibraryUiState()) {
 
     private val TAG = "LibraryViewModel"
-
-    private val _uiState = MutableStateFlow(LibraryUiState())
-    val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -114,7 +111,7 @@ class LibraryViewModel @Inject constructor(
                     currentlyReading = items.find { it.isCurrentlyReading }
                 )
             }.collect { newState ->
-                _uiState.value = newState
+                updateState { newState }
             }
         }
     }
@@ -127,10 +124,10 @@ class LibraryViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             try {
-                _uiState.update { it.copy(isLoading = true, error = null) }
+                updateState { it.copy(isLoading = true, error = null) }
                 val existingItem = repository.getItemByUrl(url)
                 if (existingItem != null) {
-                    _uiState.update { it.copy(isLoading = false, error = "This item already exists in your library") }
+                    updateState { it.copy(isLoading = false, error = "This item already exists in your library") }
                     return@launch
                 }
                 val baseTitle = TextUtils.extractBaseTitle(title, contentType)
@@ -141,9 +138,9 @@ class LibraryViewModel @Inject constructor(
                     currentChapter = currentChapter,
                     baseTitle = baseTitle
                 )
-                _uiState.update { it.copy(isLoading = false) }
+                updateState { it.copy(isLoading = false) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = "Failed to add item: ${e.message}") }
+                updateState { it.copy(isLoading = false, error = "Failed to add item: ${e.message}") }
             }
         }
     }
@@ -151,14 +148,14 @@ class LibraryViewModel @Inject constructor(
     fun addExploreItem(item: io.aatricks.novelscraper.data.model.ExploreItem, exploreRepository: ExploreRepository) {
         viewModelScope.launch {
             try {
-                _uiState.update { it.copy(isLoading = true) }
+                updateState { it.copy(isLoading = true) }
                 val readingUrl = item.readingUrl ?: run {
                     val details = exploreRepository.getNovelDetails(item.url, item.source)
                     details?.readingUrl ?: item.url
                 }
                 val existing = repository.getItemByUrl(readingUrl)
                 if (existing != null) {
-                    _uiState.update { it.copy(isLoading = false, error = "Item already in library") }
+                    updateState { it.copy(isLoading = false, error = "Item already in library") }
                     return@launch
                 }
                 val contentType = when {
@@ -195,9 +192,9 @@ class LibraryViewModel @Inject constructor(
                         totalChapters = item.chapterCount
                     )
                 }
-                _uiState.update { it.copy(isLoading = false) }
+                updateState { it.copy(isLoading = false) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = "Failed to add: ${e.message}") }
+                updateState { it.copy(isLoading = false, error = "Failed to add: ${e.message}") }
             }
         }
     }
@@ -231,10 +228,10 @@ class LibraryViewModel @Inject constructor(
     fun fetchAndAdd(url: String) {
         viewModelScope.launch {
             try {
-                _uiState.update { it.copy(isLoading = true, error = null) }
+                updateState { it.copy(isLoading = true, error = null) }
                 val existing = repository.getItemByUrl(url)
                 if (existing != null) {
-                    _uiState.update { it.copy(isLoading = false, error = "This item already exists in your library") }
+                    updateState { it.copy(isLoading = false, error = "This item already exists in your library") }
                     return@launch
                 }
                 val contentType = when {
@@ -280,9 +277,9 @@ class LibraryViewModel @Inject constructor(
                         sourceName = "Web"
                     )
                 }
-                _uiState.update { it.copy(isLoading = false) }
+                updateState { it.copy(isLoading = false) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = "Failed to add item: ${e.message}") }
+                updateState { it.copy(isLoading = false, error = "Failed to add item: ${e.message}") }
             }
         }
     }
@@ -290,16 +287,16 @@ class LibraryViewModel @Inject constructor(
     fun prefetchLibrary(selectedOnly: Boolean = false) {
         viewModelScope.launch {
             try {
-                _uiState.update { it.copy(isLoading = true) }
+                updateState { it.copy(isLoading = true) }
                 val items = if (selectedOnly) repository.getSelectedItems() else repository.libraryItems.value
                 items.forEach { item ->
                     try {
                         contentRepository.prefetch(item.url)
                     } catch (_: Exception) {}
                 }
-                _uiState.update { it.copy(isLoading = false) }
+                updateState { it.copy(isLoading = false) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = "Prefetch failed: ${e.message}") }
+                updateState { it.copy(isLoading = false, error = "Prefetch failed: ${e.message}") }
             }
         }
     }
@@ -313,7 +310,7 @@ class LibraryViewModel @Inject constructor(
                 }
                 repository.removeItem(itemId)
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to remove item: ${e.message}") }
+                updateState { it.copy(error = "Failed to remove item: ${e.message}") }
             }
         }
     }
@@ -329,7 +326,7 @@ class LibraryViewModel @Inject constructor(
                 }
                 repository.removeItems(itemIds)
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to remove items: ${e.message}") }
+                updateState { it.copy(error = "Failed to remove items: ${e.message}") }
             }
         }
     }
@@ -346,7 +343,7 @@ class LibraryViewModel @Inject constructor(
                     repository.removeItems(ids)
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to remove group: ${e.message}") }
+                updateState { it.copy(error = "Failed to remove group: ${e.message}") }
             }
         }
     }
@@ -356,7 +353,7 @@ class LibraryViewModel @Inject constructor(
             try {
                 repository.updateItem(item)
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to update item: ${e.message}") }
+                updateState { it.copy(error = "Failed to update item: ${e.message}") }
             }
         }
     }
@@ -374,7 +371,7 @@ class LibraryViewModel @Inject constructor(
             try {
                 repository.markAsCurrentlyReading(itemId)
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to mark item: ${e.message}") }
+                updateState { it.copy(error = "Failed to mark item: ${e.message}") }
             }
         }
     }
@@ -438,7 +435,7 @@ class LibraryViewModel @Inject constructor(
                     repository.clearSelection()
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to remove selected items: ${e.message}") }
+                updateState { it.copy(error = "Failed to remove selected items: ${e.message}") }
             }
         }
     }
@@ -449,7 +446,7 @@ class LibraryViewModel @Inject constructor(
                 repository.clearLibrary()
                 contentRepository.clearAllCache()
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to clear library: ${e.message}") }
+                updateState { it.copy(error = "Failed to clear library: ${e.message}") }
             }
         }
     }

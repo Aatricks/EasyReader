@@ -41,104 +41,28 @@ import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import io.aatricks.novelscraper.data.model.ExploreItem
-import io.aatricks.novelscraper.data.repository.ExploreRepository
+import io.aatricks.novelscraper.ui.viewmodel.ExploreViewModel
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExploreScreen(
-    exploreRepository: ExploreRepository,
+    exploreViewModel: ExploreViewModel,
     libraryViewModel: LibraryViewModel,
     onNavigateBack: () -> Unit
 ) {
-    var searchQuery by remember { mutableStateOf("") }
-    var isSearching by remember { mutableStateOf(false) }
-    var exploreItems by remember { mutableStateOf<List<ExploreItem>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var selectedSource by remember { mutableStateOf<String?>(null) }
-    var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var availableTags by remember { mutableStateOf<List<String>>(emptyList()) }
-    var selectedItem by remember { mutableStateOf<ExploreItem?>(null) }
-    var selectedItemDetails by remember { mutableStateOf<ExploreItem?>(null) }
-    var isFetchingDetails by remember { mutableStateOf(false) }
-    var page by remember { mutableStateOf(1) }
+    val uiState by exploreViewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val context = LocalContext.current
     
     var showSourceDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(selectedSource) {
-        availableTags = exploreRepository.getTags(selectedSource)
-        selectedTags = emptySet()
-    }
-
     BackHandler {
-        if (isSearching) {
-            isSearching = false
-            searchQuery = ""
-            scope.launch {
-                isLoading = true
-                page = 1
-                exploreItems = exploreRepository.getPopularNovels(1, selectedSource, selectedTags.toList())
-                isLoading = false
-            }
+        if (uiState.isSearching) {
+            exploreViewModel.toggleSearch()
         } else {
             onNavigateBack()
-        }
-    }
-
-    fun fetchDetails(item: ExploreItem) {
-        selectedItem = item
-        selectedItemDetails = null
-        isFetchingDetails = true
-        scope.launch {
-            val details = exploreRepository.getNovelDetails(item.url, item.source)
-            selectedItemDetails = details ?: item
-            isFetchingDetails = false
-        }
-    }
-
-    fun loadMore() {
-        if (isLoading) return
-        scope.launch {
-            isLoading = true
-            val newItems = if (searchQuery.isBlank()) {
-                exploreRepository.getPopularNovels(page + 1, selectedSource, selectedTags.toList())
-            } else {
-                exploreRepository.searchNovels(searchQuery, page + 1, selectedSource)
-            }
-            val distinctNewItems = newItems.filter { newItem -> 
-                exploreItems.none { it.url == newItem.url }
-            }
-            
-            if (distinctNewItems.isNotEmpty()) {
-                exploreItems = exploreItems + distinctNewItems
-                page++
-            }
-            isLoading = false
-        }
-    }
-
-    LaunchedEffect(selectedSource, selectedTags) {
-        isLoading = true
-        page = 1
-        exploreItems = if (isSearching && searchQuery.isNotBlank()) {
-            exploreRepository.searchNovels(searchQuery, 1, selectedSource)
-        } else {
-            exploreRepository.getPopularNovels(1, selectedSource, selectedTags.toList())
-        }
-        isLoading = false
-    }
-
-    fun performSearch() {
-        if (searchQuery.isBlank()) return
-        scope.launch {
-            isLoading = true
-            page = 1
-            exploreItems = exploreRepository.searchNovels(searchQuery, 1, selectedSource)
-            isLoading = false
         }
     }
 
@@ -146,10 +70,10 @@ fun ExploreScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    if (isSearching) {
+                    if (uiState.isSearching) {
                         TextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
+                            value = uiState.searchQuery,
+                            onValueChange = { exploreViewModel.updateSearchQuery(it) },
                             placeholder = { Text("Search novels...") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
@@ -162,23 +86,14 @@ fun ExploreScreen(
                             ),
                             shape = RoundedCornerShape(24.dp),
                             trailingIcon = {
-                                if (searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = {
-                                        searchQuery = ""
-                                        isSearching = false
-                                        scope.launch {
-                                            isLoading = true
-                                            page = 1
-                                            exploreItems = exploreRepository.getPopularNovels(1, selectedSource, selectedTags.toList())
-                                            isLoading = false
-                                        }
-                                    }) {
+                                if (uiState.searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { exploreViewModel.toggleSearch() }) {
                                         Icon(Icons.Default.Close, contentDescription = "Clear")
                                     }
                                 }
                             },
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                            keyboardActions = KeyboardActions(onSearch = { performSearch() })
+                            keyboardActions = KeyboardActions(onSearch = { exploreViewModel.performSearch() })
                         )
                     } else {
                         Text("Explore")
@@ -189,26 +104,13 @@ fun ExploreScreen(
                         Icon(
                             imageVector = Icons.Default.FilterList,
                             contentDescription = "Select Source",
-                            tint = if (selectedSource != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            tint = if (uiState.selectedSource != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
                     }
-                    IconButton(onClick = {
-                        if (isSearching) {
-                            isSearching = false
-                            searchQuery = ""
-                            scope.launch {
-                                isLoading = true
-                                page = 1
-                                exploreItems = exploreRepository.getPopularNovels(1, selectedSource, selectedTags.toList())
-                                isLoading = false
-                            }
-                        } else {
-                            isSearching = true
-                        }
-                    }) {
+                    IconButton(onClick = { exploreViewModel.toggleSearch() }) {
                         Icon(
-                            imageVector = if (isSearching) Icons.Default.Close else Icons.Default.Search,
-                            contentDescription = if (isSearching) "Close Search" else "Search"
+                            imageVector = if (uiState.isSearching) Icons.Default.Close else Icons.Default.Search,
+                            contentDescription = if (uiState.isSearching) "Close Search" else "Search"
                         )
                     }
                 },
@@ -222,7 +124,7 @@ fun ExploreScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         Column(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
-            if (availableTags.isNotEmpty() && !isSearching) {
+            if (uiState.availableTags.isNotEmpty() && !uiState.isSearching) {
                 LazyRow(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     contentPadding = PaddingValues(horizontal = 8.dp),
@@ -230,21 +132,15 @@ fun ExploreScreen(
                 ) {
                     item {
                         FilterChip(
-                            selected = selectedTags.isEmpty(),
-                            onClick = { selectedTags = emptySet() },
+                            selected = uiState.selectedTags.isEmpty(),
+                            onClick = { exploreViewModel.clearTags() },
                             label = { Text("All") }
                         )
                     }
-                    items(availableTags) { tag ->
+                    items(uiState.availableTags) { tag ->
                         FilterChip(
-                            selected = selectedTags.contains(tag),
-                            onClick = {
-                                selectedTags = if (selectedTags.contains(tag)) {
-                                    selectedTags - tag
-                                } else {
-                                    selectedTags + tag
-                                }
-                            },
+                            selected = uiState.selectedTags.contains(tag),
+                            onClick = { exploreViewModel.toggleTag(tag) },
                             label = { Text(tag) }
                         )
                     }
@@ -258,29 +154,25 @@ fun ExploreScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    if (isLoading && exploreItems.isEmpty()) {
-                        items(10) {
-                            SkeletonExploreCard()
-                        }
-                    } else if (exploreItems.isEmpty()) {
+                    if (uiState.isLoading && uiState.items.isEmpty()) {
+                        items(10) { SkeletonExploreCard() }
+                    } else if (uiState.items.isEmpty()) {
                         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                             Box(modifier = Modifier.fillMaxSize().padding(top = 100.dp), contentAlignment = Alignment.Center) {
                                 Text("No items found.", style = MaterialTheme.typography.bodyLarge)
                             }
                         }
                     } else {
-                        items(exploreItems) { item ->
-                            ExploreItemCard(item = item, onClick = { fetchDetails(item) })
+                        items(uiState.items) { item ->
+                            ExploreItemCard(item = item, onClick = { exploreViewModel.selectItem(item) })
                         }
 
-                        if (isLoading) {
-                            items(4) {
-                                SkeletonExploreCard()
-                            }
+                        if (uiState.isLoading) {
+                            items(4) { SkeletonExploreCard() }
                         } else {
                             item {
                                 LaunchedEffect(true) {
-                                    loadMore()
+                                    exploreViewModel.loadMore()
                                 }
                             }
                         }
@@ -296,42 +188,41 @@ fun ExploreScreen(
             containerColor = MaterialTheme.colorScheme.surface,
             title = { Text("Select Source", style = MaterialTheme.typography.titleLarge) },
             text = {
-                val sources = exploreRepository.getAllSources()
                 LazyColumn(modifier = Modifier.fillMaxWidth()) {
                     item {
                         ListItem(
                             headlineContent = { Text("All Sources") },
                             modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable {
-                                selectedSource = null
+                                exploreViewModel.selectSource(null)
                                 showSourceDialog = false
                             },
                             colors = ListItemDefaults.colors(
                                 containerColor = Color.Transparent,
-                                headlineColor = if (selectedSource == null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                headlineColor = if (uiState.selectedSource == null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                             ),
                             trailingContent = {
                                 RadioButton(
-                                    selected = selectedSource == null,
+                                    selected = uiState.selectedSource == null,
                                     onClick = null,
                                     colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
                                 )
                             }
                         )
                     }
-                    items(sources) { source ->
+                    items(uiState.sources) { sourceName ->
                         ListItem(
-                            headlineContent = { Text(source.name) },
+                            headlineContent = { Text(sourceName) },
                             modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable {
-                                selectedSource = source.name
+                                exploreViewModel.selectSource(sourceName)
                                 showSourceDialog = false
                             },
                             colors = ListItemDefaults.colors(
                                 containerColor = Color.Transparent,
-                                headlineColor = if (selectedSource == source.name) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                headlineColor = if (uiState.selectedSource == sourceName) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                             ),
                             trailingContent = {
                                 RadioButton(
-                                    selected = selectedSource == source.name,
+                                    selected = uiState.selectedSource == sourceName,
                                     onClick = null,
                                     colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
                                 )
@@ -341,33 +232,27 @@ fun ExploreScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showSourceDialog = false }) {
-                    Text("Close")
-                }
+                TextButton(onClick = { showSourceDialog = false }) { Text("Close") }
             }
         )
     }
 
-    if (selectedItem != null) {
+    if (uiState.selectedItem != null) {
         ModalBottomSheet(
-            onDismissRequest = {
-                selectedItem = null
-                selectedItemDetails = null
-            },
+            onDismissRequest = { exploreViewModel.dismissItem() },
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.onSurface
         ) {
             ExploreItemDetailSheet(
-                item = selectedItemDetails ?: selectedItem!!,
-                isLoading = isFetchingDetails,
+                item = uiState.selectedItemDetails ?: uiState.selectedItem!!,
+                isLoading = uiState.isFetchingDetails,
                 onAddToLibrary = {
-                    val itemToAdd = selectedItemDetails ?: selectedItem!!
-                    libraryViewModel.addExploreItem(itemToAdd, exploreRepository)
+                    val itemToAdd = uiState.selectedItemDetails ?: uiState.selectedItem!!
+                    libraryViewModel.addExploreItem(itemToAdd, exploreViewModel.exploreRepository)
                     scope.launch {
                         snackbarHostState.showSnackbar("Adding to library...")
                     }
-                    selectedItem = null
-                    selectedItemDetails = null
+                    exploreViewModel.dismissItem()
                 }
             )
         }

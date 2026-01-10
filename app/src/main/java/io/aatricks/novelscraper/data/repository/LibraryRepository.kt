@@ -25,14 +25,13 @@ import android.util.Log
 class LibraryRepository @Inject constructor(
     private val libraryDao: LibraryDao,
     private val preferencesManager: PreferencesManager
-) {
+) : BaseRepository("LibraryRepository") {
     
-    private val TAG = "LibraryRepository"
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     
     val libraryItems: StateFlow<List<LibraryItem>> = libraryDao.getAllItems()
         .catch { e -> 
-            Log.e(TAG, "Error collecting library items", e)
+            Log.e(tag, "Error collecting library items", e)
             emit(emptyList()) 
         }
         .stateIn(repositoryScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -49,23 +48,21 @@ class LibraryRepository @Inject constructor(
                 migrateIfNecessary()
                 _collapsedSources.value = preferencesManager.loadCollapsedSources()
             } catch (e: Exception) {
-                Log.e(TAG, "Error in init", e)
+                Log.e(tag, "Error in init", e)
             }
         }
     }
 
-    private suspend fun migrateIfNecessary() = withContext(Dispatchers.IO) {
-        try {
+    private suspend fun migrateIfNecessary() = io {
+        runCatching("Migration failed") {
             val legacyItems = preferencesManager.loadLibraryItems()
             if (legacyItems.isNotEmpty()) {
                 val currentRoomItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
                 if (currentRoomItems.isEmpty()) {
                     libraryDao.insertItems(legacyItems)
-                    Log.d(TAG, "Migrated ${legacyItems.size} items from SharedPreferences")
+                    Log.d(tag, "Migrated ${legacyItems.size} items from SharedPreferences")
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Migration failed", e)
         }
     }
     
@@ -78,7 +75,7 @@ class LibraryRepository @Inject constructor(
         baseNovelUrl: String = "",
         sourceName: String = "",
         totalChapters: Int = 0
-    ): LibraryItem = withContext(Dispatchers.IO) {
+    ): LibraryItem = io {
         val newItem = LibraryItem(
             id = UUID.randomUUID().toString(),
             title = title,
@@ -98,74 +95,49 @@ class LibraryRepository @Inject constructor(
         newItem
     }
     
-    suspend fun removeItem(itemId: String): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val item = libraryDao.getItemById(itemId)
-            if (item != null) {
-                libraryDao.deleteItem(item)
-                true
-            } else false
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to remove item", e)
-            false
-        }
-    }
-    
-    suspend fun removeItems(itemIds: Set<String>): Int = withContext(Dispatchers.IO) {
-        try {
-            libraryDao.deleteItemsByIds(itemIds)
-            itemIds.size
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to remove items", e)
-            0
-        }
-    }
-    
-    suspend fun updateItem(updatedItem: LibraryItem): Boolean = withContext(Dispatchers.IO) {
-        try {
-            libraryDao.insertItem(updatedItem)
+    suspend fun removeItem(itemId: String): Boolean = runCatching("Failed to remove item", false) {
+        val item = libraryDao.getItemById(itemId)
+        if (item != null) {
+            libraryDao.deleteItem(item)
             true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to update item", e)
-            false
-        }
-    }
+        } else false
+    } ?: false
     
-    suspend fun updateReadingMode(itemId: String, readingMode: ReadingMode): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val item = libraryDao.getItemById(itemId)
-            if (item != null) {
-                val baseTitle = item.baseTitle
-                val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
-                val itemsToUpdate = allItems.filter { it.baseTitle == baseTitle }
-                val updatedItems = itemsToUpdate.map { it.copy(readingMode = readingMode) }
-                libraryDao.insertItems(updatedItems)
-                true
-            } else false
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to update reading mode", e)
-            false
-        }
-    }
+    suspend fun removeItems(itemIds: Set<String>): Int = runCatching("Failed to remove items", 0) {
+        libraryDao.deleteItemsByIds(itemIds)
+        itemIds.size
+    } ?: 0
+    
+    suspend fun updateItem(updatedItem: LibraryItem): Boolean = runCatching("Failed to update item", false) {
+        libraryDao.insertItem(updatedItem)
+        true
+    } ?: false
+    
+    suspend fun updateReadingMode(itemId: String, readingMode: ReadingMode): Boolean = runCatching("Failed to update reading mode", false) {
+        val item = libraryDao.getItemById(itemId)
+        if (item != null) {
+            val baseTitle = item.baseTitle
+            val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
+            val itemsToUpdate = allItems.filter { it.baseTitle == baseTitle }
+            val updatedItems = itemsToUpdate.map { it.copy(readingMode = readingMode) }
+            libraryDao.insertItems(updatedItems)
+            true
+        } else false
+    } ?: false
 
-    suspend fun updateNovelInfo(itemId: String, baseNovelUrl: String, sourceName: String): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val item = libraryDao.getItemById(itemId)
-            if (item != null) {
-                val baseTitle = item.baseTitle
-                val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
-                val itemsToUpdate = allItems.filter { it.baseTitle == baseTitle }
-                val updatedItems = itemsToUpdate.map { 
-                    it.copy(baseNovelUrl = baseNovelUrl, sourceName = sourceName) 
-                }
-                libraryDao.insertItems(updatedItems)
-                true
-            } else false
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to update novel info", e)
-            false
-        }
-    }
+    suspend fun updateNovelInfo(itemId: String, baseNovelUrl: String, sourceName: String): Boolean = runCatching("Failed to update novel info", false) {
+        val item = libraryDao.getItemById(itemId)
+        if (item != null) {
+            val baseTitle = item.baseTitle
+            val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
+            val itemsToUpdate = allItems.filter { it.baseTitle == baseTitle }
+            val updatedItems = itemsToUpdate.map { 
+                it.copy(baseNovelUrl = baseNovelUrl, sourceName = sourceName) 
+            }
+            libraryDao.insertItems(updatedItems)
+            true
+        } else false
+    } ?: false
 
     fun saveProgress(
         itemId: String,
@@ -197,61 +169,38 @@ class LibraryRepository @Inject constructor(
         lastScrollProgress: Float? = null,
         lastReadIndex: Int? = null,
         lastReadOffset: Int? = null
-    ): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val item = libraryDao.getItemById(itemId)
-            if (item != null) {
-                val updated = item.copy(
-                    currentChapter = if (currentChapter.isNotBlank()) currentChapter else item.currentChapter,
-                    progress = progress,
-                    currentChapterUrl = currentChapterUrl ?: item.currentChapterUrl,
-                    lastScrollPosition = lastScrollProgress ?: item.lastScrollPosition,
-                    lastReadIndex = lastReadIndex ?: item.lastReadIndex,
-                    lastReadOffset = lastReadOffset ?: item.lastReadOffset,
-                    lastRead = System.currentTimeMillis()
-                )
-                libraryDao.insertItem(updated)
-                true
-            } else false
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to update progress", e)
-            false
-        }
-    }
-    
-    suspend fun markAsCurrentlyReading(itemId: String): Boolean = withContext(Dispatchers.IO) {
-        try {
-            libraryDao.setCurrentReading(itemId)
+    ): Boolean = runCatching("Failed to update progress", false) {
+        val item = libraryDao.getItemById(itemId)
+        if (item != null) {
+            val updated = item.copy(
+                currentChapter = if (currentChapter.isNotBlank()) currentChapter else item.currentChapter,
+                progress = progress,
+                currentChapterUrl = currentChapterUrl ?: item.currentChapterUrl,
+                lastScrollPosition = lastScrollProgress ?: item.lastScrollPosition,
+                lastReadIndex = lastReadIndex ?: item.lastReadIndex,
+                lastReadOffset = lastReadOffset ?: item.lastReadOffset,
+                lastRead = System.currentTimeMillis()
+            )
+            libraryDao.insertItem(updated)
             true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to mark as reading", e)
-            false
-        }
+        } else false
+    } ?: false
+    
+    suspend fun markAsCurrentlyReading(itemId: String): Boolean = runCatching("Failed to mark as reading", false) {
+        libraryDao.setCurrentReading(itemId)
+        true
+    } ?: false
+    
+    suspend fun getCurrentlyReading(): LibraryItem? = runCatching("Failed to get currently reading") {
+        libraryDao.getCurrentlyReading()
     }
     
-    suspend fun getCurrentlyReading(): LibraryItem? {
-        return try {
-            libraryDao.getCurrentlyReading()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get currently reading", e)
-            null
-        }
+    suspend fun getItemById(itemId: String): LibraryItem? = io {
+        libraryDao.getItemById(itemId)
     }
     
-    suspend fun getItemById(itemId: String): LibraryItem? {
-        return try {
-            libraryDao.getItemById(itemId)
-        } catch (e: Exception) {
-            null
-        }
-    }
-    
-    suspend fun getItemByUrl(url: String): LibraryItem? {
-        return try {
-            libraryDao.getItemByUrl(url)
-        } catch (e: Exception) {
-            null
-        }
+    suspend fun getItemByUrl(url: String): LibraryItem? = io {
+        libraryDao.getItemByUrl(url)
     }
     
     fun getGroupedByTitle(items: List<LibraryItem>? = null): Map<String, List<LibraryItem>> {
@@ -357,18 +306,16 @@ class LibraryRepository @Inject constructor(
         return libraryItems.value.filter { it.id in selectedIds }
     }
     
-    suspend fun clearLibrary() = withContext(Dispatchers.IO) {
-        try {
+    suspend fun clearLibrary() = io {
+        runCatching("Failed to clear library") {
             _selectedItems.value = emptySet()
             val all = libraryDao.getAllItems().firstOrNull() ?: emptyList()
             all.forEach { libraryDao.deleteItem(it) }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to clear library", e)
         }
     }
 
-    suspend fun refreshLibraryUpdates(exploreRepository: ExploreRepository) = withContext(Dispatchers.IO) {
-        try {
+    suspend fun refreshLibraryUpdates(exploreRepository: ExploreRepository) = io {
+        runCatching("Refresh updates failed") {
             val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
             val groupedItems = getGroupedByTitle(allItems)
 
@@ -377,7 +324,7 @@ class LibraryRepository @Inject constructor(
                 val latestInLibrary = items.last()
                 if (latestInLibrary.baseNovelUrl.isBlank() || latestInLibrary.sourceName.isBlank()) continue
 
-                try {
+                runCatching("Failed to refresh updates for $baseTitle") {
                     val details = exploreRepository.getNovelDetails(latestInLibrary.baseNovelUrl, latestInLibrary.sourceName)
                     if (details != null && details.chapters.isNotEmpty()) {
                         val sourceChapterCount = details.chapters.size
@@ -393,27 +340,18 @@ class LibraryRepository @Inject constructor(
                             libraryDao.insertItems(updatedItems)
                         }
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to refresh updates for $baseTitle", e)
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Refresh updates failed", e)
         }
     }
 
-    suspend fun clearUpdateIndicator(itemId: String): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val item = libraryDao.getItemById(itemId)
-            if (item != null && item.hasUpdates) {
-                libraryDao.insertItem(item.copy(hasUpdates = false))
-                true
-            } else false
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to clear update indicator", e)
-            false
-        }
-    }
+    suspend fun clearUpdateIndicator(itemId: String): Boolean = runCatching("Failed to clear update indicator", false) {
+        val item = libraryDao.getItemById(itemId)
+        if (item != null && item.hasUpdates) {
+            libraryDao.insertItem(item.copy(hasUpdates = false))
+            true
+        } else false
+    } ?: false
 
     fun toggleSourceExpansion(sourceName: String) {
         val current = _collapsedSources.value.toMutableSet()

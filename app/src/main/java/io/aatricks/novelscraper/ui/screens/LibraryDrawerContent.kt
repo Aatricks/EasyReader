@@ -221,8 +221,7 @@ fun LibraryDrawerContent(
         if (libraryUiState.items.isEmpty()) {
             EmptyLibraryState()
         } else {
-            val context = LocalContext.current
-            val contentRepository = remember { ContentRepository(context) }
+            val contentRepository = readerViewModel.contentRepository
 
             val expandedNovelState = remember { mutableStateMapOf<String, Boolean>() }
             val showFullChaptersState = remember { mutableStateMapOf<String, Boolean>() }

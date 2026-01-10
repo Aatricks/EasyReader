@@ -18,7 +18,7 @@ import javax.inject.Inject
 @HiltViewModel
 class SummaryViewModel @Inject constructor(
     private val summaryService: SummaryService
-) : ViewModel() {
+) : BaseViewModel<SummaryViewModel.SummaryUiState>(SummaryUiState()) {
     
     private val TAG = "SummaryViewModel"
     
@@ -32,28 +32,25 @@ class SummaryViewModel @Inject constructor(
         val summariesCache: Map<String, String> = emptyMap() // chapterUrl -> summary
     )
     
-    private val _uiState = MutableStateFlow(SummaryUiState())
-    val uiState: StateFlow<SummaryUiState> = _uiState.asStateFlow()
-    
     /**
      * Initialize the summary service (loads AI model)
      */
     fun initializeSummaryService() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isInitializing = true, error = null)
+            updateState { it.copy(isInitializing = true, error = null) }
             
             val result = summaryService.initialize()
             
             if (result.isSuccess) {
                 Log.d(TAG, "Summary service initialized successfully")
-                _uiState.value = _uiState.value.copy(isInitializing = false)
+                updateState { it.copy(isInitializing = false) }
             } else {
                 val error = result.exceptionOrNull()?.message ?: "Failed to initialize"
                 Log.e(TAG, "Summary service initialization failed: $error")
-                _uiState.value = _uiState.value.copy(
+                updateState { it.copy(
                     isInitializing = false,
                     error = error
-                )
+                ) }
             }
         }
     }
@@ -69,23 +66,23 @@ class SummaryViewModel @Inject constructor(
     ) {
         val cached = _uiState.value.summariesCache[chapterUrl]
         if (cached != null) {
-            _uiState.value = _uiState.value.copy(currentSummary = cached)
+            updateState { it.copy(currentSummary = cached) }
             onComplete(cached)
             return
         }
         
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
+            updateState { it.copy(
                 isGenerating = true,
                 activeChapterUrl = chapterUrl,
                 error = null,
                 currentSummary = null
-            )
+            ) }
             
             val sb = StringBuilder()
             val result = summaryService.generateSummary(chapterTitle, content, onProgress = { token ->
                 sb.append(token)
-                _uiState.value = _uiState.value.copy(currentSummary = sb.toString())
+                updateState { it.copy(currentSummary = sb.toString()) }
             })
             
             if (result.isSuccess) {
@@ -93,33 +90,33 @@ class SummaryViewModel @Inject constructor(
                 val updatedCache = _uiState.value.summariesCache.toMutableMap()
                 updatedCache[chapterUrl] = summary
                 
-                _uiState.value = _uiState.value.copy(
+                updateState { it.copy(
                     isGenerating = false,
                     activeChapterUrl = null,
                     currentSummary = summary,
                     summariesCache = updatedCache
-                )
+                ) }
                 onComplete(summary)
             } else {
                 val error = result.exceptionOrNull()?.message ?: "Failed to generate summary"
-                _uiState.value = _uiState.value.copy(
+                updateState { it.copy(
                     isGenerating = false,
                     activeChapterUrl = null,
                     error = error
-                )
+                ) }
             }
         }
     }
 
     fun cancelGeneration() {
         try { io.aatricks.llmedge.LLMEdgeManager.cancelGeneration() } catch (_: Throwable) {}
-        _uiState.value = _uiState.value.copy(isGenerating = false, activeChapterUrl = null)
+        updateState { it.copy(isGenerating = false, activeChapterUrl = null) }
     }
     
     fun getCachedSummary(chapterUrl: String): String? = _uiState.value.summariesCache[chapterUrl]
     
     fun clearError() {
-        _uiState.value = _uiState.value.copy(error = null)
+        updateState { it.copy(error = null) }
     }
     
     fun isServiceReady(): Boolean = summaryService.isReady()

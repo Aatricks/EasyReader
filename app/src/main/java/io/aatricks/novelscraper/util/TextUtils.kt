@@ -543,11 +543,62 @@ object TextUtils {
     /**
      * Debug helper used in tests to inspect how paragraphs are split.
      */
-    fun debugGetParagraphsWithSeparators(text: String): List<Pair<String, Int>> {
-        if (text.isEmpty()) return emptyList()
-        val normalized = text.trim().replace(LINE_BREAK_REGEX, "\n")
-        return PARAGRAPH_SPLIT_REGEX.findAll(normalized)
-            .map { it.groupValues[1].trim() to it.groupValues[2].length }
-            .toList()
+    /**
+     * Clean a chapter title by removing junk and the novel name.
+     */
+    fun cleanChapterTitle(fullTitle: String?, novelName: String): String {
+        if (fullTitle == null || fullTitle.isBlank()) return ""
+        var cleaned: String = fullTitle
+        val junkPatterns = listOf(
+            Regex("""(?i)^read\s+"""),
+            Regex("""(?i)\s+free\s+online.*$"""),
+            Regex("""(?i)\s+online\s+free.*$"""),
+            Regex("""(?i)\s*\|\s*.*$"""), 
+            Regex("""(?i)\s+at\s+.*$"""), 
+            Regex("""(?i)[\s–—\-:]*(MangaBat|NovelFire|MangaPark|MangaKakalot).*$"""),
+            Regex("""(?i)[\s–—\-:]*Scan.*$""")
+        )
+        for (pattern in junkPatterns) {
+            cleaned = cleaned.replace(pattern, "")
+        }
+        if (novelName.isNotBlank()) {
+            if (cleaned.contains(novelName, ignoreCase = true)) {
+                cleaned = cleaned.replace(novelName, "", ignoreCase = true)
+            }
+        }
+        cleaned = cleaned.replace(Regex("""^[\s–—\-:\|]+"""), "")
+            .replace(Regex("""[\s–—\-:\|]+$"""), "")
+            .trim()
+        if (cleaned.length > 40 || cleaned.contains("Chapter", ignoreCase = true) || cleaned.contains("Ch.", ignoreCase = true)) {
+             val extractedLabel = extractChapterLabel(cleaned)
+             if (extractedLabel != null) {
+                 val subTitleRegex = Regex("""(?i)(?:chapter|ch|ch\.)\s*\d+[\s:\-—–\|]+(.+)""")
+                 val match = subTitleRegex.find(cleaned)
+                 val subTitle = match?.groupValues?.get(1)?.trim()
+                 return if (!subTitle.isNullOrBlank() && subTitle.length > 2) {
+                     "$extractedLabel: $subTitle"
+                 } else {
+                     extractedLabel
+                 }
+             }
+        }
+        if (cleaned.isBlank() || (novelName.isNotBlank() && fullTitle.equals(novelName, ignoreCase = true))) {
+            return ""
+        }
+        return cleaned
+    }
+
+    /**
+     * Guess if the content should be in paged mode based on image vs text count.
+     */
+    fun guessIsPaged(content: io.aatricks.novelscraper.data.model.ChapterContent): Boolean {
+        val imageCount = content.getImageCount()
+        val textCount = content.getTextCount()
+        if (textCount > imageCount * 2) return false
+        if (imageCount > 0) {
+            if (imageCount in 5..60 && textCount < 10) return true
+            if (imageCount > 60) return false
+        }
+        return false
     }
 }
