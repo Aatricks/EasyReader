@@ -58,7 +58,7 @@ class LibraryViewModel @Inject constructor(
         PROGRESS
     }
 
-    private fun observeLibraryChanges() {
+    private fun observeLibraryChanges(): Unit {
         viewModelScope.launch {
             val repoFlow = combine(
                 repository.libraryItems,
@@ -74,30 +74,9 @@ class LibraryViewModel @Inject constructor(
                 _contentTypeFilter,
                 _sortMode
             ) { repoData, query, filter, sort ->
-                val items = repoData.first
-                val selectedIds = repoData.second
-                val collapsedSources = repoData.third
+                val (items, selectedIds, collapsedSources) = repoData
                 
-                var filteredItems = items
-
-                if (filter != null) {
-                    filteredItems = filteredItems.filter { it.contentType == filter }
-                }
-
-                if (query.isNotBlank()) {
-                    val lowercaseQuery = query.trim().lowercase()
-                    filteredItems = filteredItems.filter {
-                        it.title.lowercase().contains(lowercaseQuery) ||
-                        it.baseTitle.lowercase().contains(lowercaseQuery)
-                    }
-                }
-
-                filteredItems = when (sort) {
-                    SortMode.LAST_READ -> filteredItems.sortedByDescending { it.lastRead }
-                    SortMode.DATE_ADDED -> filteredItems.sortedByDescending { it.dateAdded }
-                    SortMode.TITLE -> filteredItems.sortedBy { it.title.lowercase() }
-                    SortMode.PROGRESS -> filteredItems.sortedByDescending { it.progress }
-                }
+                val filteredItems = filterAndSortItems(items, query, filter, sort)
 
                 LibraryUiState(
                     items = items,
@@ -117,19 +96,45 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    private fun filterAndSortItems(
+        items: List<LibraryItem>,
+        query: String,
+        filter: ContentType?,
+        sort: SortMode
+    ): List<LibraryItem> {
+        var filtered = items
+
+        if (filter != null) {
+            filtered = filtered.filter { it.contentType == filter }
+        }
+
+        if (query.isNotBlank()) {
+            val lowercaseQuery = query.trim().lowercase()
+            filtered = filtered.filter {
+                it.title.lowercase().contains(lowercaseQuery) ||
+                it.baseTitle.lowercase().contains(lowercaseQuery)
+            }
+        }
+
+        return when (sort) {
+            SortMode.LAST_READ -> filtered.sortedByDescending { it.lastRead }
+            SortMode.DATE_ADDED -> filtered.sortedByDescending { it.dateAdded }
+            SortMode.TITLE -> filtered.sortedBy { it.title.lowercase() }
+            SortMode.PROGRESS -> filtered.sortedByDescending { it.progress }
+        }
+    }
+
     fun addItem(
         title: String,
         url: String,
         contentType: ContentType,
         currentChapter: String = "Chapter 1"
-    ) {
+    ): Unit {
         viewModelScope.launch {
-            try {
+            runCatching {
                 updateState { it.copy(isLoading = true, error = null) }
-                val existingItem = repository.getItemByUrl(url)
-                if (existingItem != null) {
-                    updateState { it.copy(isLoading = false, error = "This item already exists in your library") }
-                    return@launch
+                if (repository.getItemByUrl(url) != null) {
+                    throw Exception("This item already exists in your library")
                 }
                 val baseTitle = TextUtils.extractBaseTitle(title, contentType)
                 repository.addItem(
@@ -140,47 +145,28 @@ class LibraryViewModel @Inject constructor(
                     baseTitle = baseTitle
                 )
                 updateState { it.copy(isLoading = false) }
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 updateState { it.copy(isLoading = false, error = "Failed to add item: ${e.message}") }
             }
         }
     }
 
-    fun addExploreItem(item: io.aatricks.novelscraper.data.model.ExploreItem, exploreRepository: ExploreRepository) {
+    fun addExploreItem(
+        item: io.aatricks.novelscraper.data.model.ExploreItem,
+        exploreRepository: ExploreRepository
+    ): Unit {
         viewModelScope.launch {
-            try {
+            runCatching {
                 updateState { it.copy(isLoading = true) }
-                val readingUrl = item.readingUrl ?: run {
-                    val details = exploreRepository.getNovelDetails(item.url, item.source)
-                    details?.readingUrl ?: item.url
+                val readingUrl = item.readingUrl ?: exploreRepository.getNovelDetails(item.url, item.source)?.readingUrl ?: item.url
+                
+                if (repository.getItemByUrl(readingUrl) != null) {
+                    throw Exception("Item already in library")
                 }
-                val existing = repository.getItemByUrl(readingUrl)
-                if (existing != null) {
-                    updateState { it.copy(isLoading = false, error = "Item already in library") }
-                    return@launch
-                }
-                val contentType = when {
-                    readingUrl.endsWith(".epub", ignoreCase = true) -> ContentType.EPUB
-                    readingUrl.endsWith(".pdf", ignoreCase = true) -> ContentType.PDF
-                    else -> ContentType.WEB
-                }
+                
+                val contentType = determineContentType(readingUrl)
                 if (contentType == ContentType.WEB) {
-                    val chapterTitle = contentRepository.fetchTitle(readingUrl) ?: "Chapter 1"
-                    val fullTitle = if (chapterTitle.contains(item.title, ignoreCase = true)) {
-                        chapterTitle
-                    } else {
-                        "${item.title} - $chapterTitle"
-                    }
-                    repository.addItem(
-                        title = fullTitle,
-                        url = readingUrl,
-                        contentType = ContentType.WEB,
-                        currentChapter = TextUtils.extractChapterLabel(chapterTitle) ?: "Chapter 1",
-                        baseTitle = item.title,
-                        baseNovelUrl = item.url,
-                        sourceName = item.source,
-                        totalChapters = item.chapterCount
-                    )
+                    addWebExploreItem(item, readingUrl)
                 } else {
                     repository.addItem(
                         title = item.title,
@@ -194,10 +180,40 @@ class LibraryViewModel @Inject constructor(
                     )
                 }
                 updateState { it.copy(isLoading = false) }
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 updateState { it.copy(isLoading = false, error = "Failed to add: ${e.message}") }
             }
         }
+    }
+
+    private fun determineContentType(url: String): ContentType {
+        return when {
+            url.endsWith(".epub", ignoreCase = true) -> ContentType.EPUB
+            url.endsWith(".pdf", ignoreCase = true) -> ContentType.PDF
+            else -> ContentType.WEB
+        }
+    }
+
+    private suspend fun addWebExploreItem(
+        item: io.aatricks.novelscraper.data.model.ExploreItem,
+        readingUrl: String
+    ): Unit {
+        val chapterTitle = contentRepository.fetchTitle(readingUrl) ?: "Chapter 1"
+        val fullTitle = if (chapterTitle.contains(item.title, ignoreCase = true)) {
+            chapterTitle
+        } else {
+            "${item.title} - $chapterTitle"
+        }
+        repository.addItem(
+            title = fullTitle,
+            url = readingUrl,
+            contentType = ContentType.WEB,
+            currentChapter = TextUtils.extractChapterLabel(chapterTitle) ?: "Chapter 1",
+            baseTitle = item.title,
+            baseNovelUrl = item.url,
+            sourceName = item.source,
+            totalChapters = item.chapterCount
+        )
     }
 
     fun addChapters(
@@ -205,55 +221,39 @@ class LibraryViewModel @Inject constructor(
         baseTitle: String,
         baseNovelUrl: String,
         sourceName: String
-    ) {
+    ): Unit {
         viewModelScope.launch {
             chapters.forEach { chapter ->
-                try {
+                runCatching {
                     if (repository.getItemByUrl(chapter.url) == null) {
                         repository.addItem(
                             title = chapter.title,
                             url = chapter.url,
                             contentType = ContentType.WEB,
-                            currentChapter = TextUtils.extractChapterLabel(chapter.title) ?: TextUtils.extractChapterLabelFromUrl(chapter.url) ?: chapter.title,
+                            currentChapter = TextUtils.extractChapterLabel(chapter.title) 
+                                ?: TextUtils.extractChapterLabelFromUrl(chapter.url) 
+                                ?: chapter.title,
                             baseTitle = baseTitle,
                             baseNovelUrl = baseNovelUrl,
                             sourceName = sourceName
                         )
                         contentRepository.prefetch(chapter.url)
                     }
-                } catch (_: Exception) {}
+                }
             }
         }
     }
 
-    fun fetchAndAdd(url: String) {
+    fun fetchAndAdd(url: String): Unit {
         viewModelScope.launch {
-            try {
+            runCatching {
                 updateState { it.copy(isLoading = true, error = null) }
-                val existing = repository.getItemByUrl(url)
-                if (existing != null) {
-                    updateState { it.copy(isLoading = false, error = "This item already exists in your library") }
-                    return@launch
+                if (repository.getItemByUrl(url) != null) {
+                    throw Exception("This item already exists in your library")
                 }
-                val contentType = when {
-                    url.endsWith(".epub", ignoreCase = true) || url.contains("epub") -> ContentType.EPUB
-                    url.endsWith(".pdf", ignoreCase = true) || url.contains("pdf") -> ContentType.PDF
-                    url.endsWith(".html", ignoreCase = true) || url.endsWith(".htm", ignoreCase = true) -> ContentType.HTML
-                    url.startsWith("http://") || url.startsWith("https://") -> ContentType.WEB
-                    else -> {
-                        when {
-                            url.contains("epub", ignoreCase = true) -> ContentType.EPUB
-                            url.contains("pdf", ignoreCase = true) -> ContentType.PDF
-                            url.contains("html", ignoreCase = true) -> ContentType.HTML
-                            else -> ContentType.WEB
-                        }
-                    }
-                }
-                val fetchedTitle = try {
-                    contentRepository.fetchTitle(url) ?: url
-                } catch (e: Exception) {
-                    url
-                }
+                val contentType = inferContentType(url)
+                val fetchedTitle = runCatching { contentRepository.fetchTitle(url) }.getOrNull() ?: url
+                
                 if (contentType == ContentType.EPUB) {
                     repository.addItem(
                         title = fetchedTitle.trim().ifBlank { url },
@@ -265,23 +265,31 @@ class LibraryViewModel @Inject constructor(
                         sourceName = "EPUB"
                     )
                 } else {
-                    val chapterLabel = TextUtils.extractChapterLabel(fetchedTitle) ?: TextUtils.extractChapterLabelFromUrl(fetchedTitle) ?: "Chapter 1"
                     val fullTitle = fetchedTitle.trim().ifBlank { url }
                     val baseTitle = TextUtils.extractBaseTitle(fullTitle, contentType)
                     repository.addItem(
                         title = fullTitle,
                         url = url.trim(),
                         contentType = contentType,
-                        currentChapter = chapterLabel,
+                        currentChapter = TextUtils.extractChapterLabel(fullTitle) ?: "Chapter 1",
                         baseTitle = baseTitle,
                         baseNovelUrl = url,
-                        sourceName = "Web"
+                        sourceName = if (url.startsWith("http")) "Web" else "File"
                     )
                 }
                 updateState { it.copy(isLoading = false) }
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 updateState { it.copy(isLoading = false, error = "Failed to add item: ${e.message}") }
             }
+        }
+    }
+
+    private fun inferContentType(url: String): ContentType {
+        return when {
+            url.endsWith(".epub", ignoreCase = true) || url.contains("epub") -> ContentType.EPUB
+            url.endsWith(".pdf", ignoreCase = true) || url.contains("pdf") -> ContentType.PDF
+            url.endsWith(".html", ignoreCase = true) || url.endsWith(".htm", ignoreCase = true) -> ContentType.HTML
+            else -> ContentType.WEB
         }
     }
 
@@ -290,103 +298,92 @@ class LibraryViewModel @Inject constructor(
         baseNovelUrl: String,
         sourceName: String,
         onChapterLoaded: (String, String) -> Unit
-    ) {
+    ): Unit {
         viewModelScope.launch {
-            try {
+            runCatching {
                 updateState { it.copy(isLoading = true) }
                 val details = exploreRepository.getNovelDetails(baseNovelUrl, sourceName)
-                if (details != null && details.chapters.isNotEmpty()) {
-                    // Chapters are unified to Ascending in sources (1 to N)
-                    // We want the latest one
-                    val latestChapter = details.chapters.last()
-                    
-                    var item = repository.getItemByUrl(latestChapter.url)
-                    if (item == null) {
-                        item = repository.addItem(
-                            title = latestChapter.title,
-                            url = latestChapter.url,
-                            contentType = ContentType.WEB,
-                            currentChapter = TextUtils.extractChapterLabel(latestChapter.title) 
-                                ?: TextUtils.extractChapterLabelFromUrl(latestChapter.url) 
-                                ?: latestChapter.title,
-                            baseTitle = baseTitle,
-                            baseNovelUrl = baseNovelUrl,
-                            sourceName = sourceName,
-                            totalChapters = details.chapters.size
-                        )
-                        contentRepository.prefetch(latestChapter.url)
-                    } else {
-                        // If it's already in library, just update its metadata if needed
-                        if (item.totalChapters < details.chapters.size) {
-                            repository.updateItem(item.copy(totalChapters = details.chapters.size))
-                        }
-                    }
-                    
-                    // Clear update indicator for this novel
-                    repository.clearUpdateIndicator(item.id)
-                    
-                    onChapterLoaded(item.url, item.id)
-                } else {
-                    updateState { it.copy(error = "No chapters found for this novel") }
+                if (details == null || details.chapters.isEmpty()) {
+                    throw Exception("No chapters found for this novel")
                 }
+                
+                val latestChapter = details.chapters.last()
+                var item = repository.getItemByUrl(latestChapter.url)
+                
+                if (item == null) {
+                    item = repository.addItem(
+                        title = latestChapter.title,
+                        url = latestChapter.url,
+                        contentType = ContentType.WEB,
+                        currentChapter = TextUtils.extractChapterLabel(latestChapter.title) 
+                            ?: TextUtils.extractChapterLabelFromUrl(latestChapter.url) 
+                            ?: latestChapter.title,
+                        baseTitle = baseTitle,
+                        baseNovelUrl = baseNovelUrl,
+                        sourceName = sourceName,
+                        totalChapters = details.chapters.size
+                    )
+                    contentRepository.prefetch(latestChapter.url)
+                } else if (item.totalChapters < details.chapters.size) {
+                    repository.updateItem(item.copy(totalChapters = details.chapters.size))
+                }
+                
+                repository.clearUpdateIndicator(item!!.id)
+                onChapterLoaded(item.url, item.id)
                 updateState { it.copy(isLoading = false) }
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 Log.e(TAG, "Failed to open new chapter", e)
                 updateState { it.copy(isLoading = false, error = "Failed to load new chapter: ${e.message}") }
             }
         }
     }
 
-    fun prefetchLibrary(selectedOnly: Boolean = false) {
+    fun prefetchLibrary(selectedOnly: Boolean = false): Unit {
         viewModelScope.launch {
-            try {
+            runCatching {
                 updateState { it.copy(isLoading = true) }
                 val items = if (selectedOnly) repository.getSelectedItems() else repository.libraryItems.value
                 items.forEach { item ->
-                    try {
-                        contentRepository.prefetch(item.url)
-                    } catch (_: Exception) {}
+                    runCatching { contentRepository.prefetch(item.url) }
                 }
                 updateState { it.copy(isLoading = false) }
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 updateState { it.copy(isLoading = false, error = "Prefetch failed: ${e.message}") }
             }
         }
     }
     
-    fun removeItem(itemId: String) {
+    fun removeItem(itemId: String): Unit {
         viewModelScope.launch {
-            try {
-                val item = repository.getItemById(itemId)
-                if (item != null) {
+            runCatching {
+                repository.getItemById(itemId)?.let { item ->
                     contentRepository.clearCache(item.url)
                 }
                 repository.removeItem(itemId)
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 updateState { it.copy(error = "Failed to remove item: ${e.message}") }
             }
         }
     }
 
-    fun removeItems(itemIds: Set<String>) {
+    fun removeItems(itemIds: Set<String>): Unit {
         viewModelScope.launch {
-            try {
+            runCatching {
                 itemIds.forEach { id ->
-                    val item = repository.getItemById(id)
-                    if (item != null) {
+                    repository.getItemById(id)?.let { item ->
                         contentRepository.clearCache(item.url)
                     }
                 }
                 repository.removeItems(itemIds)
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 updateState { it.copy(error = "Failed to remove items: ${e.message}") }
             }
         }
     }
 
-    fun removeGroup(baseTitle: String) {
+    fun removeGroup(baseTitle: String): Unit {
         viewModelScope.launch {
-            try {
+            runCatching {
                 val groupItems = uiState.value.groupedItems[baseTitle] ?: emptyList()
                 if (groupItems.isNotEmpty()) {
                     groupItems.forEach { item ->
@@ -395,58 +392,51 @@ class LibraryViewModel @Inject constructor(
                     val ids = groupItems.map { it.id }.toSet()
                     repository.removeItems(ids)
                 }
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 updateState { it.copy(error = "Failed to remove group: ${e.message}") }
             }
         }
     }
 
-    fun updateItem(item: LibraryItem) {
+    fun updateItem(item: LibraryItem): Unit {
         viewModelScope.launch {
-            try {
-                repository.updateItem(item)
-            } catch (e: Exception) {
-                updateState { it.copy(error = "Failed to update item: ${e.message}") }
-            }
+            runCatching { repository.updateItem(item) }
+                .onFailure { e -> updateState { it.copy(error = "Failed to update item: ${e.message}") } }
         }
     }
 
-    fun updateProgress(itemId: String, currentChapter: String, progress: Int) {
+    fun updateProgress(itemId: String, currentChapter: String, progress: Int): Unit {
         viewModelScope.launch {
-            try {
-                repository.updateProgress(itemId, currentChapter, progress)
-            } catch (_: Exception) {}
+            runCatching { repository.updateProgress(itemId, currentChapter, progress) }
         }
     }
 
-    fun markAsCurrentlyReading(itemId: String) {
+    fun markAsCurrentlyReading(itemId: String): Unit {
         viewModelScope.launch {
-            try {
-                repository.markAsCurrentlyReading(itemId)
-            } catch (e: Exception) {
-                updateState { it.copy(error = "Failed to mark item: ${e.message}") }
-            }
+            runCatching { repository.markAsCurrentlyReading(itemId) }
+                .onFailure { e -> updateState { it.copy(error = "Failed to mark item: ${e.message}") } }
         }
     }
 
-    fun toggleSelection(itemId: String) {
+    fun toggleSelection(itemId: String): Unit {
         repository.toggleSelection(itemId)
     }
 
-    fun selectItem(itemId: String) {
+    fun selectItem(itemId: String): Unit {
         repository.selectItem(itemId)
     }
 
-    fun deselectItem(itemId: String) {
+    fun deselectItem(itemId: String): Unit {
         repository.deselectItem(itemId)
     }
 
-    fun toggleGroupSelection(baseTitle: String) {
+    fun toggleGroupSelection(baseTitle: String): Unit {
         viewModelScope.launch {
             val groupItems = uiState.value.groupedItems[baseTitle] ?: emptyList()
             val selectedIds = uiState.value.selectedIds
             val allSelected = groupItems.all { it.id in selectedIds }
             val itemIds = groupItems.map { it.id }
+            
             if (allSelected) {
                 repository.deselectItems(itemIds)
             } else {
@@ -455,56 +445,55 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    fun selectAll() {
+    fun selectAll(): Unit {
         repository.selectAll()
     }
 
-    fun clearSelection() {
+    fun clearSelection(): Unit {
         repository.clearSelection()
     }
 
-    fun updateSearchQuery(query: String) {
+    fun updateSearchQuery(query: String): Unit {
         _searchQuery.value = query
     }
 
-    fun setContentTypeFilter(contentType: ContentType?) {
+    fun setContentTypeFilter(contentType: ContentType?): Unit {
         _contentTypeFilter.value = contentType
     }
 
-    fun setSortMode(mode: SortMode) {
+    fun setSortMode(mode: SortMode): Unit {
         _sortMode.value = mode
     }
 
-    fun removeSelectedItems() {
+    fun removeSelectedItems(): Unit {
         viewModelScope.launch {
-            try {
+            runCatching {
                 val selectedIds = repository.selectedItems.value
                 val selectedItems = repository.libraryItems.value.filter { it.id in selectedIds }
                 if (selectedItems.isNotEmpty()) {
-                    selectedItems.forEach { item ->
-                        contentRepository.clearCache(item.url)
-                    }
+                    selectedItems.forEach { item -> contentRepository.clearCache(item.url) }
                     repository.removeItems(selectedIds)
                     repository.clearSelection()
                 }
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 updateState { it.copy(error = "Failed to remove selected items: ${e.message}") }
             }
         }
     }
 
-    fun clearLibrary() {
+    fun clearLibrary(): Unit {
         viewModelScope.launch {
-            try {
+            runCatching {
                 repository.clearLibrary()
                 contentRepository.clearAllCache()
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 updateState { it.copy(error = "Failed to clear library: ${e.message}") }
             }
         }
     }
 
-    fun toggleSourceExpansion(sourceName: String) {
+    fun toggleSourceExpansion(sourceName: String): Unit {
         repository.toggleSourceExpansion(sourceName)
     }
+
 }

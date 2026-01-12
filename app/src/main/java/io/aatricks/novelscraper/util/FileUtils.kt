@@ -15,43 +15,27 @@ object FileUtils {
 
     /**
      * Get the filename from a URI
-     * @param context Application context
-     * @param uri The URI to extract filename from
-     * @return The filename or null if not found
      */
     fun getFileName(context: Context, uri: Uri): String? {
-        var result: String? = null
+        if (uri.scheme != "content") return uri.lastPathSegment
 
-        if (uri.scheme == "content") {
-            var cursor: Cursor? = null
-            try {
-                cursor = context.contentResolver.query(uri, null, null, null, null)
-                if (cursor != null && cursor.moveToFirst()) {
-                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (nameIndex >= 0) {
-                        result = cursor.getString(nameIndex)
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                cursor?.close()
+        return queryContentColumn(context, uri, OpenableColumns.DISPLAY_NAME)
+            ?: uri.lastPathSegment
+    }
+
+    private fun queryContentColumn(context: Context, uri: Uri, columnName: String): String? {
+        return runCatching {
+            context.contentResolver.query(uri, arrayOf(columnName), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val index = cursor.getColumnIndex(columnName)
+                    if (index >= 0) cursor.getString(index) else null
+                } else null
             }
-        }
-
-        // Fallback to last path segment if content scheme fails
-        if (result == null) {
-            result = uri.lastPathSegment
-        }
-
-        return result
+        }.getOrNull()
     }
 
     /**
      * Get the file extension from a URI
-     * @param context Application context
-     * @param uri The URI to extract extension from
-     * @return The file extension (without dot) or empty string
      */
     fun getFileExtension(context: Context, uri: Uri): String {
         val fileName = getFileName(context, uri) ?: return ""
@@ -65,9 +49,6 @@ object FileUtils {
 
     /**
      * Get MIME type from URI
-     * @param context Application context
-     * @param uri The URI to get MIME type from
-     * @return MIME type string or null
      */
     fun getMimeType(context: Context, uri: Uri): String? {
         return context.contentResolver.getType(uri)
@@ -75,9 +56,6 @@ object FileUtils {
 
     /**
      * Detect file type from URI based on MIME type and extension
-     * @param context Application context
-     * @param uri The URI to detect type from
-     * @return FileType enum value
      */
     fun detectFileType(context: Context, uri: Uri): FileType {
         val mimeType = getMimeType(context, uri)
@@ -97,72 +75,42 @@ object FileUtils {
 
     /**
      * Read InputStream from URI
-     * @param context Application context
-     * @param uri The URI to read from
-     * @return InputStream or null if failed
      */
     fun getInputStream(context: Context, uri: Uri): InputStream? {
-        return try {
-            context.contentResolver.openInputStream(uri)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
+        return runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
     }
 
     /**
      * Copy URI content to a file
-     * @param context Application context
-     * @param uri Source URI
-     * @param destinationFile Destination file
-     * @return true if successful, false otherwise
      */
     fun copyUriToFile(context: Context, uri: Uri, destinationFile: File): Boolean {
-        return try {
-            val inputStream = getInputStream(context, uri) ?: return false
-            inputStream.use { input ->
+        return runCatching {
+            getInputStream(context, uri)?.use { input ->
                 destinationFile.outputStream().use { output ->
                     input.copyTo(output)
                 }
-            }
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
-        }
+            } != null
+        }.getOrDefault(false)
     }
 
     /**
      * Get file size from URI
-     * @param context Application context
-     * @param uri The URI to get size from
-     * @return File size in bytes or -1 if unknown
      */
     fun getFileSize(context: Context, uri: Uri): Long {
-        var size: Long = -1
-        if (uri.scheme == "content") {
-            var cursor: Cursor? = null
-            try {
-                cursor = context.contentResolver.query(uri, null, null, null, null)
-                if (cursor != null && cursor.moveToFirst()) {
-                    val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-                    if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) {
-                        size = cursor.getLong(sizeIndex)
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                cursor?.close()
+        if (uri.scheme != "content") return -1L
+        
+        return runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    if (index >= 0 && !cursor.isNull(index)) cursor.getLong(index) else -1L
+                } else -1L
             }
-        }
-        return size
+        }.getOrNull() ?: -1L
     }
 
     /**
      * Format file size to human-readable string
-     * @param bytes Size in bytes
-     * @return Formatted string (e.g., "1.5 MB")
      */
     fun formatFileSize(bytes: Long): String {
         if (bytes < 0) return "Unknown"
@@ -176,13 +124,11 @@ object FileUtils {
             unitIndex++
         }
 
-        return String.format("%.2f %s", size, units[unitIndex])
+        return "%.2f %s".format(size, units[unitIndex])
     }
 
     /**
      * Check if URI is a local file
-     * @param uri The URI to check
-     * @return true if local file, false otherwise
      */
     fun isLocalFile(uri: Uri): Boolean {
         return uri.scheme == "file"
@@ -190,8 +136,6 @@ object FileUtils {
 
     /**
      * Check if URI is a content URI
-     * @param uri The URI to check
-     * @return true if content URI, false otherwise
      */
     fun isContentUri(uri: Uri): Boolean {
         return uri.scheme == "content"
@@ -199,8 +143,6 @@ object FileUtils {
 
     /**
      * Check if URI is a remote URL
-     * @param uri The URI to check
-     * @return true if remote URL, false otherwise
      */
     fun isRemoteUrl(uri: Uri): Boolean {
         return uri.scheme == "http" || uri.scheme == "https"
@@ -208,16 +150,12 @@ object FileUtils {
 
     /**
      * Validate if a string is a valid URL
-     * @param url The URL string to validate
-     * @return true if valid URL, false otherwise
      */
     fun isValidUrl(url: String): Boolean {
-        return try {
+        return runCatching {
             val uri = Uri.parse(url)
             uri.scheme != null && (uri.scheme == "http" || uri.scheme == "https")
-        } catch (e: Exception) {
-            false
-        }
+        }.getOrDefault(false)
     }
 
     /**

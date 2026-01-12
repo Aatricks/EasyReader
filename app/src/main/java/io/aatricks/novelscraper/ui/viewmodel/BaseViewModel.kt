@@ -13,7 +13,7 @@ abstract class BaseViewModel<S>(initialState: S) : ViewModel() {
     protected val _uiState = MutableStateFlow(initialState)
     val uiState: StateFlow<S> = _uiState.asStateFlow()
 
-    protected fun updateState(block: (S) -> S) {
+    protected fun updateState(block: (S) -> S): Unit {
         _uiState.update(block)
     }
 
@@ -23,17 +23,17 @@ abstract class BaseViewModel<S>(initialState: S) : ViewModel() {
         loadingState: (S, Boolean) -> S,
         errorState: (S, String?) -> S,
         block: suspend CoroutineScope.() -> Unit
-    ) {
+    ): Unit {
         viewModelScope.launch {
-            try {
-                if (handleLoading) updateState { loadingState(it, true) }
-                if (handleError) updateState { errorState(it, null) }
-                block()
-                if (handleLoading) updateState { loadingState(it, false) }
-            } catch (e: Exception) {
-                if (handleLoading) updateState { loadingState(it, false) }
-                if (handleError) updateState { errorState(it, e.message ?: "An unknown error occurred") }
-            }
+            if (handleLoading) updateState { loadingState(it, true) }
+            if (handleError) updateState { errorState(it, null) }
+            
+            runCatching { block() }
+                .onFailure { e ->
+                    if (handleError) updateState { errorState(it, e.message ?: "An unknown error occurred") }
+                }
+            
+            if (handleLoading) updateState { loadingState(it, false) }
         }
     }
 }

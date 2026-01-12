@@ -20,21 +20,24 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory {
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         return ImageLoader.Builder(context)
-            .memoryCache {
-                MemoryCache.Builder()
-                    .maxSizePercent(context, 0.25)
-                    .build()
-            }
-            .diskCache {
-                DiskCache.Builder()
-                    .directory(context.cacheDir.resolve("image_cache").absolutePath.toPath())
-                    .maxSizeBytes(1024 * 1024 * 512) // 512MB
-                    .build()
-            }
-            .components {
-                add(OkHttpNetworkFetcherFactory(okHttpClient))
-            }
+            .memoryCache { buildMemoryCache(context) }
+            .diskCache { buildDiskCache(context) }
+            .components { add(OkHttpNetworkFetcherFactory(okHttpClient)) }
             .crossfade(false)
+            .build()
+    }
+
+    private fun buildMemoryCache(context: PlatformContext): MemoryCache {
+        return MemoryCache.Builder()
+            .maxSizePercent(context, 0.25)
+            .build()
+    }
+
+    private fun buildDiskCache(context: PlatformContext): DiskCache {
+        val directory = context.cacheDir.resolve("image_cache").absolutePath.toPath()
+        return DiskCache.Builder()
+            .directory(directory)
+            .maxSizeBytes(512 * 1024 * 1024)
             .build()
     }
 }

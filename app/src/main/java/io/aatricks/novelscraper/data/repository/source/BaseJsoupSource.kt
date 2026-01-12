@@ -25,24 +25,12 @@ abstract class BaseJsoupSource : NovelSource {
     protected fun getDocument(url: String): Document = connect(url).get()
 
     protected fun Element.absoluteUrl(attributeKey: String): String {
-        val value = attr(attributeKey)
-        return when {
-            value.isBlank() -> ""
-            value.startsWith("http") -> value
-            value.startsWith("//") -> "https:$value"
-            value.startsWith("/") -> "$baseUrl$value"
-            else -> "$baseUrl/$value"
-        }
+        return resolveUrl(attr(attributeKey))
     }
 
     protected fun Element.findImage(): String {
-        return attr("data-src").ifBlank {
-            attr("data-original").ifBlank {
-                attr("data-lazy-src").ifBlank {
-                    attr("src")
-                }
-            }
-        }
+        val candidates = listOf("data-src", "data-original", "data-lazy-src", "src")
+        return candidates.firstNotNullOfOrNull { attr(it).takeIf { v -> v.isNotBlank() } } ?: ""
     }
 
     protected fun resolveUrl(path: String): String {
@@ -51,7 +39,7 @@ abstract class BaseJsoupSource : NovelSource {
             path.startsWith("http") -> path
             path.startsWith("//") -> "https:$path"
             path.startsWith("/") -> "$baseUrl$path"
-            else -> "$baseUrl/$path"
-        }
+            else -> if (path.startsWith(baseUrl)) path else "$baseUrl/$path"
+        }.replace(Regex("/+"), "/").replace("https:/", "https://").replace("http:/", "http://")
     }
 }

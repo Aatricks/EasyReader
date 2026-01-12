@@ -110,17 +110,17 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
-    private fun checkForLibraryUpdates() {
+    private fun checkForLibraryUpdates(): Unit {
         val prefs = io.aatricks.novelscraper.data.local.PreferencesManager(applicationContext)
         lifecycleScope.launch {
-            try {
+            runCatching {
                 libraryRepository.refreshLibraryUpdates(exploreRepository)
                 prefs.lastUpdateCheckTime = System.currentTimeMillis()
-            } catch (_: Exception) {}
+            }
         }
     }
 
-    private fun handleIntent(intent: Intent?) {
+    private fun handleIntent(intent: Intent?): Unit {
         intent ?: return
         when (intent.action) {
             Intent.ACTION_VIEW -> {
@@ -143,80 +143,82 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun handleWebUrl(url: String) {
+    private fun handleWebUrl(url: String): Unit {
         val title = io.aatricks.novelscraper.util.TextUtils.extractTitleFromUrl(url)
         libraryViewModel.addItem(title = title, url = url, contentType = ContentType.WEB)
         readerViewModel.loadContent(url)
     }
 
-    private fun handleFilePicked(uri: Uri) {
+    private fun handleFilePicked(uri: Uri): Unit {
         if (uri.scheme == "content") {
-            try {
+            runCatching {
                 contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            } catch (e: Exception) {}
-        }
-        
-        val fileName = FileUtils.getFileName(this, uri) ?: "Unknown"
-        val fileType = FileUtils.detectFileType(this, uri)
-        val contentType = when (fileType) {
-            FileUtils.FileType.PDF -> ContentType.PDF
-            FileUtils.FileType.HTML -> ContentType.HTML
-            FileUtils.FileType.EPUB -> ContentType.EPUB
-            else -> {
-                Toast.makeText(this, "Unsupported file type", Toast.LENGTH_SHORT).show()
-                return
             }
         }
+        
+        val fileType = FileUtils.detectFileType(this, uri)
+        val contentType = mapFileTypeToContentType(fileType) ?: run {
+            Toast.makeText(this, "Unsupported file type", Toast.LENGTH_SHORT).show()
+            return
+        }
 
+        val fileName = FileUtils.getFileName(this, uri) ?: "Unknown"
         val title = fileName.substringBeforeLast('.')
         libraryViewModel.addItem(title = title, url = uri.toString(), contentType = contentType)
 
         if (contentType == ContentType.EPUB) {
-            lifecycleScope.launch {
-                try {
-                    val epubBook = contentRepository.getEpubBook(uri.toString())
-                    val firstHref = epubBook?.toc?.firstOrNull()?.href
-                    if (firstHref != null) {
-                        readerViewModel.loadEpubChapter(uri.toString(), firstHref, null)
-                    } else {
-                        readerViewModel.loadContent(uri.toString())
-                    }
-                } catch (e: Exception) {
-                    readerViewModel.loadContent(uri.toString())
-                }
-            }
+            loadEpubChapter(uri)
         } else {
             readerViewModel.loadContent(uri.toString())
         }
     }
 
-    private fun checkPermissionsAndOpenFilePicker() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED) {
-                openFilePicker()
-            } else {
-                storagePermissionLauncher.launch(Manifest.permission.READ_MEDIA_IMAGES)
-            }
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            openFilePicker()
-        } else {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
-                openFilePicker()
-            } else {
-                storagePermissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+    private fun mapFileTypeToContentType(fileType: FileUtils.FileType): ContentType? = when (fileType) {
+        FileUtils.FileType.PDF -> ContentType.PDF
+        FileUtils.FileType.HTML -> ContentType.HTML
+        FileUtils.FileType.EPUB -> ContentType.EPUB
+        else -> null
+    }
+
+    private fun loadEpubChapter(uri: Uri): Unit {
+        lifecycleScope.launch {
+            runCatching {
+                val epubBook = contentRepository.getEpubBook(uri.toString())
+                val firstHref = epubBook?.toc?.firstOrNull()?.href
+                if (firstHref != null) {
+                    readerViewModel.loadEpubChapter(uri.toString(), firstHref, null)
+                } else {
+                    readerViewModel.loadContent(uri.toString())
+                }
+            }.onFailure {
+                readerViewModel.loadContent(uri.toString())
             }
         }
     }
 
-    private fun openFilePicker() {
+    private fun checkPermissionsAndOpenFilePicker(): Unit {
+        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_IMAGES
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+
+        when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> openFilePicker()
+            ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED -> openFilePicker()
+            else -> storagePermissionLauncher.launch(permission)
+        }
+    }
+
+    private fun openFilePicker(): Unit {
         val mimeTypes = arrayOf("text/html", "application/xhtml+xml", "application/pdf", "application/epub+zip")
         filePickerLauncher.launch(mimeTypes)
     }
 
-    override fun onPause() {
+    override fun onPause(): Unit {
         super.onPause()
-        try {
+        runCatching {
             readerViewModel.updateReadingProgress(readerViewModel.uiState.value.scrollProgress)
-        } catch (_: Exception) {}
+        }
     }
 }

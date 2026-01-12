@@ -35,23 +35,20 @@ class SummaryViewModel @Inject constructor(
     /**
      * Initialize the summary service (loads AI model)
      */
-    fun initializeSummaryService() {
+    fun initializeSummaryService(): Unit {
         viewModelScope.launch {
             updateState { it.copy(isInitializing = true, error = null) }
             
-            val result = summaryService.initialize()
-            
-            if (result.isSuccess) {
-                Log.d(TAG, "Summary service initialized successfully")
-                updateState { it.copy(isInitializing = false) }
-            } else {
-                val error = result.exceptionOrNull()?.message ?: "Failed to initialize"
-                Log.e(TAG, "Summary service initialization failed: $error")
-                updateState { it.copy(
-                    isInitializing = false,
-                    error = error
-                ) }
-            }
+            summaryService.initialize()
+                .onSuccess {
+                    Log.d(TAG, "Summary service initialized successfully")
+                    updateState { it.copy(isInitializing = false) }
+                }
+                .onFailure { e ->
+                    val error = e.message ?: "Failed to initialize"
+                    Log.e(TAG, "Summary service initialization failed: $error")
+                    updateState { it.copy(isInitializing = false, error = error) }
+                }
         }
     }
     
@@ -63,9 +60,8 @@ class SummaryViewModel @Inject constructor(
         chapterTitle: String?,
         content: List<String>,
         onComplete: (String) -> Unit
-    ) {
-        val cached = _uiState.value.summariesCache[chapterUrl]
-        if (cached != null) {
+    ): Unit {
+        _uiState.value.summariesCache[chapterUrl]?.let { cached ->
             updateState { it.copy(currentSummary = cached) }
             onComplete(cached)
             return
@@ -80,48 +76,58 @@ class SummaryViewModel @Inject constructor(
             ) }
             
             val sb = StringBuilder()
-            val result = summaryService.generateSummary(chapterTitle, content, onProgress = { token ->
+            summaryService.generateSummary(chapterTitle, content, onProgress = { token ->
                 sb.append(token)
                 updateState { it.copy(currentSummary = sb.toString()) }
-            })
-            
-            if (result.isSuccess) {
-                val summary = result.getOrNull() ?: "Summary generated"
-                val updatedCache = _uiState.value.summariesCache.toMutableMap()
-                updatedCache[chapterUrl] = summary
-                
-                updateState { it.copy(
-                    isGenerating = false,
-                    activeChapterUrl = null,
-                    currentSummary = summary,
-                    summariesCache = updatedCache
-                ) }
-                onComplete(summary)
-            } else {
-                val error = result.exceptionOrNull()?.message ?: "Failed to generate summary"
-                updateState { it.copy(
-                    isGenerating = false,
-                    activeChapterUrl = null,
-                    error = error
-                ) }
+            }).onSuccess { summary ->
+                handleGenerationSuccess(chapterUrl, summary, onComplete)
+            }.onFailure { e ->
+                handleGenerationFailure(e)
             }
         }
     }
 
-    fun cancelGeneration() {
-        try { io.aatricks.llmedge.LLMEdgeManager.cancelGeneration() } catch (_: Throwable) {}
+    private fun handleGenerationSuccess(
+        chapterUrl: String,
+        summary: String,
+        onComplete: (String) -> Unit
+    ): Unit {
+        val updatedCache = _uiState.value.summariesCache.toMutableMap().apply {
+            put(chapterUrl, summary)
+        }
+        
+        updateState { it.copy(
+            isGenerating = false,
+            activeChapterUrl = null,
+            currentSummary = summary,
+            summariesCache = updatedCache
+        ) }
+        onComplete(summary)
+    }
+
+    private fun handleGenerationFailure(e: Throwable): Unit {
+        val error = e.message ?: "Failed to generate summary"
+        updateState { it.copy(
+            isGenerating = false,
+            activeChapterUrl = null,
+            error = error
+        ) }
+    }
+
+    fun cancelGeneration(): Unit {
+        runCatching { io.aatricks.llmedge.LLMEdgeManager.cancelGeneration() }
         updateState { it.copy(isGenerating = false, activeChapterUrl = null) }
     }
     
     fun getCachedSummary(chapterUrl: String): String? = _uiState.value.summariesCache[chapterUrl]
     
-    fun clearError() {
+    fun clearError(): Unit {
         updateState { it.copy(error = null) }
     }
     
     fun isServiceReady(): Boolean = summaryService.isReady()
     
-    override fun onCleared() {
+    override fun onCleared(): Unit {
         super.onCleared()
         summaryService.release()
     }

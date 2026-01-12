@@ -48,129 +48,152 @@ class HtmlParser @Inject constructor() {
     }
 
     fun parse(document: Document, url: String): List<ContentElement> {
-        // Remove advertisements
-        document.select("""
-            .ads-banner, [class*="ads-banner"], [class*="bats-ads"], .ads-responsive, .ads-chapter-bottom,
-            .bats-detail-bottom-pos-1-detail-bottom-72, .sh-recommend, .cm-info, .next-chapter-img,
-            [id*="ads-"], [class*="footer-ads"], .ads-contain, .banner-owner, .banner-ads, [class*="ads-contain"]
-        """.trimIndent().replace("\n", "")).remove()
+        cleanDocument(document)
 
-        document.select("img[alt*='credit'], img[alt*='recommend'], img[src*='credit'], img[src*='recommend'], img[alt*='ei0qg'], img[title*='ei0qg']").remove()
+        val images = parseImages(document, url)
+        val paragraphs = parseParagraphs(document)
 
-        val title = document.title().takeIf { it.isNotBlank() }
-        val imagesFromSelectors = mutableListOf<ContentElement.Image>()
-        val imageElements = document.select(MANGA_IMAGE_SELECTOR)
-        
-        if (imageElements.isNotEmpty()) {
-            val adDomains = listOf("yougetwhatyoupayfor.net", "bemobtrcks.com", "xpoker24.com", "coolgamesunblocked.com", "crazygamesunblocked.net", "abcya3.games", "eos.co.com")
-            
-            imageElements.forEach { element ->
-                val parentLink = element.parents().firstOrNull { it.tagName() == "a" }
-                if (parentLink != null) {
-                    val href = parentLink.attr("href")
-                    if (adDomains.any { href.contains(it) } || href.contains("facebook.com") || href.contains("twitter.com")) return@forEach
-                }
+        val filteredParagraphs = filterParagraphs(paragraphs, document.title())
 
-                val src = element.attr("data-src").ifEmpty { element.attr("data-original") }.ifEmpty { element.attr("src") }
-
-                if (src.isNotBlank()) {
-                    if (src.contains("/thumb/") || src.contains("og-image-bat.png") || src.contains("logo") || src.contains("banner") || adDomains.any { src.contains(it) }) return@forEach
-
-                    val absoluteUrl = if (src.startsWith("http")) src else {
-                        val domain = try { URL(url).let { "${it.protocol}://${it.host}" } } catch (e: Exception) { "" }
-                        if (src.startsWith("/")) "$domain$src" else {
-                            val base = url.substringBeforeLast("/")
-                            "$base/$src"
-                        }
-                    }
-
-                    val width = element.attr("width").toIntOrNull() ?: element.attr("data-width").toIntOrNull() ?: 0
-                    val height = element.attr("height").toIntOrNull() ?: element.attr("data-height").toIntOrNull() ?: 0
-
-                    imagesFromSelectors.add(ContentElement.Image(
-                        url = absoluteUrl,
-                        width = width,
-                        height = height
-                    ))
-                }
-            }
-            
-            if ((url.contains("mangabats.com") || url.contains("manganato.com")) && imagesFromSelectors.size > 5) {
-                val lastImg = imagesFromSelectors.last()
-                val firstHost = try { URL(imagesFromSelectors.first().url).host } catch (_: Exception) { "" }
-                val lastHost = try { URL(lastImg.url).host } catch (_: Exception) { "" }
-                
-                if (lastImg.url.contains("recommend") || lastImg.url.contains("banner") || lastImg.url.contains("next") || 
-                    lastImg.url.contains("/thumb/") || (lastHost.isNotBlank() && firstHost != lastHost)) {
-                    imagesFromSelectors.removeAt(imagesFromSelectors.size - 1)
-                }
-            }
-        }
-
-        val paragraphs = mutableListOf<String>()
-        val novelElements = document.select(NOVEL_CONTENT_SELECTOR)
-        
-        if (novelElements.isNotEmpty()) {
-            novelElements.forEach { element ->
-                val text = extractTextPreservingLineBreaks(element)
-                if (text.isNotBlank()) paragraphs.add(text)
-            }
-        }
-
-        if (paragraphs.isEmpty() && imagesFromSelectors.size <= 5) {
-            document.select("p").forEach { element ->
-                val text = extractTextPreservingLineBreaks(element)
-                if (text.isNotBlank()) paragraphs.add(text)
-            }
-        }
-
-        val filteredParagraphs = paragraphs.filter { raw ->
-            val p = raw.trim()
-            if (p.isEmpty() || p.matches(DIGIT_ONLY_REGEX) || CHAPTER_CLEANUP_PATTERN.containsMatchIn(p)) return@filter false
-            if (p.length <= 80 && p.contains(CHAPTER_WORD_PATTERN) && p.any { it.isDigit() }) return@filter false
-            if (title != null && (p.equals(title.trim(), ignoreCase = true) || p.startsWith(title.trim()))) return@filter false
-            true
-        }
-
-        if (imagesFromSelectors.size > 5 || (imageElements.isNotEmpty() && filteredParagraphs.size < 10)) {
-            return imagesFromSelectors
+        // If it looks like a manga (many images or few paragraphs), return images
+        if (images.size > 5 || (images.isNotEmpty() && filteredParagraphs.size < 10)) {
+            return images
         }
 
         if (filteredParagraphs.isEmpty()) {
-            return if (imagesFromSelectors.isNotEmpty()) imagesFromSelectors else emptyList()
+            return if (images.isNotEmpty()) images else emptyList()
         }
 
+        return mergeAndFormatParagraphs(filteredParagraphs)
+    }
+
+    private fun cleanDocument(document: Document): Unit {
+        // Remove advertisements
+        val adSelectors = listOf(
+            ".ads-banner", "[class*=\"ads-banner\"]", "[class*=\"bats-ads\"]", ".ads-responsive",
+            ".ads-chapter-bottom", ".bats-detail-bottom-pos-1-detail-bottom-72", ".sh-recommend",
+            ".cm-info", ".next-chapter-img", "[id*=\"ads-\"]", "[class*=\"footer-ads\"]",
+            ".ads-contain", ".banner-owner", ".banner-ads", "[class*=\"ads-contain\"]"
+        )
+        document.select(adSelectors.joinToString(", ")).remove()
+
+        // Remove credit/recommend images
+        document.select("img[alt*='credit'], img[alt*='recommend'], img[src*='credit'], img[src*='recommend'], img[alt*='ei0qg'], img[title*='ei0qg']").remove()
+    }
+
+    private fun parseImages(document: Document, url: String): List<ContentElement.Image> {
+        val imageElements = document.select(MANGA_IMAGE_SELECTOR)
+        if (imageElements.isEmpty()) return emptyList()
+
+        val adDomains = listOf(
+            "yougetwhatyoupayfor.net", "bemobtrcks.com", "xpoker24.com",
+            "coolgamesunblocked.com", "crazygamesunblocked.net", "abcya3.games", "eos.co.com"
+        )
+        
+        val images = mutableListOf<ContentElement.Image>()
+        imageElements.forEach { element ->
+            if (isAdImage(element, adDomains)) return@forEach
+
+            val src = element.attr("data-src").ifEmpty { element.attr("data-original") }.ifEmpty { element.attr("src") }
+            if (src.isBlank() || isThumbnailOrLogo(src, adDomains)) return@forEach
+
+            val absoluteUrl = resolveImageUrl(src, url)
+            val width = element.attr("width").toIntOrNull() ?: element.attr("data-width").toIntOrNull() ?: 0
+            val height = element.attr("height").toIntOrNull() ?: element.attr("data-height").toIntOrNull() ?: 0
+
+            images.add(ContentElement.Image(url = absoluteUrl, width = width, height = height))
+        }
+
+        return filterLastMangaImage(images, url)
+    }
+
+    private fun isAdImage(element: Element, adDomains: List<String>): Boolean {
+        val parentLink = element.parents().firstOrNull { it.tagName() == "a" } ?: return false
+        val href = parentLink.attr("href")
+        return adDomains.any { href.contains(it) } || href.contains("facebook.com") || href.contains("twitter.com")
+    }
+
+    private fun isThumbnailOrLogo(src: String, adDomains: List<String>): Boolean {
+        return src.contains("/thumb/") || src.contains("og-image-bat.png") || 
+               src.contains("logo") || src.contains("banner") || 
+               adDomains.any { src.contains(it) }
+    }
+
+    private fun resolveImageUrl(src: String, pageUrl: String): String {
+        if (src.startsWith("http")) return src
+        
+        val domain = runCatching { URL(pageUrl).let { "${it.protocol}://${it.host}" } }.getOrDefault("")
+        return if (src.startsWith("/")) {
+            "$domain$src"
+        } else {
+            val base = pageUrl.substringBeforeLast("/")
+            "$base/$src"
+        }
+    }
+
+    private fun filterLastMangaImage(images: MutableList<ContentElement.Image>, url: String): List<ContentElement.Image> {
+        if (images.size <= 5 || !(url.contains("mangabats.com") || url.contains("manganato.com"))) {
+            return images
+        }
+
+        val lastImg = images.last()
+        val firstHost = runCatching { URL(images.first().url).host }.getOrDefault("")
+        val lastHost = runCatching { URL(lastImg.url).host }.getOrDefault("")
+        
+        val isSuspect = lastImg.url.contains("recommend") || lastImg.url.contains("banner") || 
+                        lastImg.url.contains("next") || lastImg.url.contains("/thumb/") || 
+                        (lastHost.isNotBlank() && firstHost != lastHost)
+
+        if (isSuspect) {
+            images.removeAt(images.size - 1)
+        }
+        return images
+    }
+
+    private fun parseParagraphs(document: Document): List<String> {
+        val novelElements = document.select(NOVEL_CONTENT_SELECTOR)
+        if (novelElements.isNotEmpty()) {
+            return novelElements.mapNotNull { extractTextPreservingLineBreaks(it).takeIf { t -> t.isNotBlank() } }
+        }
+
+        return document.select("p").mapNotNull { extractTextPreservingLineBreaks(it).takeIf { t -> t.isNotBlank() } }
+    }
+
+    private fun filterParagraphs(paragraphs: List<String>, title: String?): List<String> {
+        val cleanTitle = title?.trim()?.lowercase()
+        return paragraphs.filter { raw ->
+            val p = raw.trim()
+            val lowerP = p.lowercase()
+            
+            if (p.isEmpty() || p.matches(DIGIT_ONLY_REGEX) || CHAPTER_CLEANUP_PATTERN.containsMatchIn(p)) return@filter false
+            if (p.length <= 80 && p.contains(CHAPTER_WORD_PATTERN) && p.any { it.isDigit() }) return@filter false
+            if (cleanTitle != null && (lowerP == cleanTitle || lowerP.startsWith(cleanTitle))) return@filter false
+            true
+        }
+    }
+
+    private fun mergeAndFormatParagraphs(paragraphs: List<String>): List<ContentElement.Text> {
         val merged = mutableListOf<String>()
         var idx = 0
-        while (idx < filteredParagraphs.size) {
-            var cur = filteredParagraphs[idx].trim()
+        while (idx < paragraphs.size) {
+            var cur = paragraphs[idx].trim()
             if (cur.isEmpty()) { idx++; continue }
 
-            if (idx + 1 < filteredParagraphs.size) {
-                val next = filteredParagraphs[idx + 1].trim()
-                if (next.isNotEmpty()) {
-                    val lastChar = cur.lastOrNull()
-                    val lastW = cur.trim().split(WHITESPACE_REGEX).lastOrNull()?.lowercase() ?: ""
-                    val wordCount = cur.split(WHITESPACE_REGEX).size
-
-                    val shouldMerge = (lastChar != null && !SENTENCE_ENDERS.contains(lastChar)) &&
-                            (wordCount <= 8 || lastW in CONTINUATION_WORDS || lastW.length <= 4) &&
-                            !(cur.contains(':') && next.contains(':'))
-
-                    if (shouldMerge) {
-                        cur = (cur + " " + next).replace(MULTIPLE_SPACES_REGEX, " ")
-                        idx += 2
-                        while (idx < filteredParagraphs.size) {
-                            val peek = filteredParagraphs[idx].trim()
-                            if (peek.isEmpty()) { idx++; continue }
-                            val peekFirst = peek.firstOrNull()
-                            if (peekFirst != null && peekFirst.isUpperCase() && cur.trim().lastOrNull()?.let { SENTENCE_ENDERS.contains(it) } == true) break
-                            cur = (cur + " " + peek).replace(MULTIPLE_SPACES_REGEX, " ")
-                            idx++
-                        }
-                        merged.add(cur)
-                        continue
+            if (idx + 1 < paragraphs.size) {
+                val next = paragraphs[idx + 1].trim()
+                if (next.isNotEmpty() && shouldMerge(cur, next)) {
+                    cur = (cur + " " + next).replace(MULTIPLE_SPACES_REGEX, " ")
+                    idx += 2
+                    // Deep merging
+                    while (idx < paragraphs.size) {
+                        val peek = paragraphs[idx].trim()
+                        if (peek.isEmpty()) { idx++; continue }
+                        if (shouldStopMerging(cur, peek)) break
+                        cur = (cur + " " + peek).replace(MULTIPLE_SPACES_REGEX, " ")
+                        idx++
                     }
+                    merged.add(cur)
+                    continue
                 }
             }
             merged.add(cur)
@@ -183,6 +206,22 @@ class HtmlParser @Inject constructor() {
                 .map { it.trim() }
                 .filter { it.isNotBlank() }
                 .map { ContentElement.Text(it) }
+    }
+
+    private fun shouldMerge(cur: String, next: String): Boolean {
+        val lastChar = cur.lastOrNull() ?: return false
+        val lastWord = cur.trim().split(WHITESPACE_REGEX).lastOrNull()?.lowercase() ?: ""
+        val wordCount = cur.split(WHITESPACE_REGEX).size
+
+        return !SENTENCE_ENDERS.contains(lastChar) &&
+                (wordCount <= 8 || lastWord in CONTINUATION_WORDS || lastWord.length <= 4) &&
+                !(cur.contains(':') && next.contains(':'))
+    }
+
+    private fun shouldStopMerging(cur: String, peek: String): Boolean {
+        val peekFirst = peek.firstOrNull() ?: return true
+        val curLast = cur.trim().lastOrNull() ?: return true
+        return peekFirst.isUpperCase() && SENTENCE_ENDERS.contains(curLast)
     }
 
     private fun extractTextPreservingLineBreaks(element: Element): String {
