@@ -36,6 +36,12 @@ interface LibraryDao {
     @Query("UPDATE library_items SET isCurrentlyReading = 1, lastRead = :timestamp WHERE id = :id")
     suspend fun markAsCurrentlyReading(id: String, timestamp: Long)
 
+    @Query("UPDATE library_items SET hasUpdates = 0 WHERE baseTitle = :baseTitle")
+    suspend fun clearUpdatesForBaseTitle(baseTitle: String)
+
+    @Query("UPDATE library_items SET hasUpdates = 0 WHERE id = :id")
+    suspend fun clearUpdatesForId(id: String)
+
     @Transaction
     suspend fun setCurrentReading(id: String, timestamp: Long = System.currentTimeMillis()) {
         clearCurrentlyReading()

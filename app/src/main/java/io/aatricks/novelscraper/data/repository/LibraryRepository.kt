@@ -192,6 +192,14 @@ class LibraryRepository @Inject constructor(
     }
     
     suspend fun markAsCurrentlyReading(itemId: String): Boolean = runCatching("Failed to mark as reading", false) {
+        val item = libraryDao.getItemById(itemId)
+        if (item != null) {
+            if (item.baseTitle.isNotBlank()) {
+                libraryDao.clearUpdatesForBaseTitle(item.baseTitle)
+            } else {
+                libraryDao.clearUpdatesForId(itemId)
+            }
+        }
         libraryDao.setCurrentReading(itemId)
         true
     } ?: false

@@ -79,4 +79,28 @@ class LibraryRepositoryTest {
         repository.clearSelection()
         assertEquals(0, repository.selectedItems.value.size)
     }
+
+    @Test
+    fun testMarkAsCurrentlyReadingClearsUpdates() = runBlocking {
+        val itemId = "test-id"
+        val item = LibraryItem(id = itemId, title = "Test", url = "url", baseTitle = "Test Base", hasUpdates = true)
+        whenever(libraryDao.getItemById(itemId)).thenReturn(item)
+
+        repository.markAsCurrentlyReading(itemId)
+
+        verify(libraryDao).clearUpdatesForBaseTitle("Test Base")
+        verify(libraryDao).setCurrentReading(eq(itemId), any())
+    }
+
+    @Test
+    fun testMarkAsCurrentlyReadingClearsUpdatesNoBaseTitle() = runBlocking {
+        val itemId = "test-id-2"
+        val item = LibraryItem(id = itemId, title = "Test", url = "url", baseTitle = "", hasUpdates = true)
+        whenever(libraryDao.getItemById(itemId)).thenReturn(item)
+
+        repository.markAsCurrentlyReading(itemId)
+
+        verify(libraryDao).clearUpdatesForId(itemId)
+        verify(libraryDao).setCurrentReading(eq(itemId), any())
+    }
 }

@@ -264,10 +264,10 @@ fun LibraryDrawerContent(
                     if (isSourceExpanded) {
                         novels.forEach { novelEntry ->
                             val groupTitle = novelEntry.key
-                            val items = novelEntry.value
+                            val chapterItems = novelEntry.value
                             
                             item(key = groupTitle) {
-                                val firstItem = items.firstOrNull()
+                                val firstItem = chapterItems.firstOrNull()
                                 if (firstItem != null && firstItem.contentType == ContentType.EPUB) {
                                     EpubItemCard(
                                         item = firstItem,
@@ -278,7 +278,7 @@ fun LibraryDrawerContent(
                                     )
                                 } else {
                                     val isExpanded = expandedNovelState.getOrPut(groupTitle) { false }
-                                    val isGroupSelected = items.all { it.id in libraryUiState.selectedIds }
+                                    val isGroupSelected = chapterItems.all { it.id in libraryUiState.selectedIds }
                                     val isSelectionMode = libraryUiState.isSelectionMode
                                     val showFullChapters = showFullChaptersState[groupTitle] ?: false
 
@@ -306,9 +306,9 @@ fun LibraryDrawerContent(
                                                                     if (isSelectionMode) {
                                                                         libraryViewModel.toggleGroupSelection(groupTitle)
                                                                     } else {
-                                                                        val current = items.find { it.isCurrentlyReading }
-                                                                            ?: items.maxByOrNull { it.lastRead }
-                                                                            ?: items.first()
+                                                                        val current = chapterItems.find { it.isCurrentlyReading }
+                                                                            ?: chapterItems.maxByOrNull { it.lastRead }
+                                                                            ?: chapterItems.first()
                                                                         val loadUrl = if (current.currentChapterUrl.isNotBlank()) current.currentChapterUrl else current.url
                                                                         readerViewModel.loadContent(loadUrl, current.id)
                                                                         libraryViewModel.markAsCurrentlyReading(current.id)
@@ -319,8 +319,8 @@ fun LibraryDrawerContent(
                                                             )
                                                     ) {
                                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                                            val hasUpdates = items.any { it.hasUpdates }
-                                                            val lastItem = items.lastOrNull()
+                                                            val hasUpdates = chapterItems.any { it.hasUpdates }
+                                                            val lastItem = chapterItems.lastOrNull()
                                                             val isCaughtUp = lastItem?.let { it.isCurrentlyReading || it.progress > 0 } ?: false
                                                             
                                                             Text(
@@ -334,6 +334,15 @@ fun LibraryDrawerContent(
                                                                 Spacer(modifier = Modifier.width(8.dp))
                                                                 Badge(
                                                                     containerColor = MaterialTheme.colorScheme.tertiary,
+                                                                    modifier = Modifier.clickable {
+                                                                        val targetItem = chapterItems.lastOrNull()
+                                                                        if (targetItem != null) {
+                                                                            val loadUrl = if (targetItem.currentChapterUrl.isNotBlank()) targetItem.currentChapterUrl else targetItem.url
+                                                                            readerViewModel.loadContent(loadUrl, targetItem.id)
+                                                                            libraryViewModel.markAsCurrentlyReading(targetItem.id)
+                                                                            onCloseDrawer()
+                                                                        }
+                                                                    }
                                                                 ) {
                                                                     Text(
                                                                         text = "NEW",
@@ -344,7 +353,7 @@ fun LibraryDrawerContent(
                                                             }
                                                         }
                                                         if (!isExpanded) {
-                                                            val current = items.find { it.isCurrentlyReading } ?: items.maxByOrNull { it.lastRead } ?: items.first()
+                                                            val current = chapterItems.find { it.isCurrentlyReading } ?: chapterItems.maxByOrNull { it.lastRead } ?: chapterItems.first()
                                                             Text(
                                                                 text = current.currentChapter.ifBlank { "Chapter 1" },
                                                                 style = MaterialTheme.typography.bodySmall,
@@ -374,7 +383,7 @@ fun LibraryDrawerContent(
                                             if (isExpanded) {
                                                 Spacer(modifier = Modifier.height(8.dp))
                                                 
-                                                val lastRead = items.find { it.isCurrentlyReading } ?: items.maxByOrNull { it.lastRead }
+                                                val lastRead = chapterItems.find { it.isCurrentlyReading } ?: chapterItems.maxByOrNull { it.lastRead }
                                                 if (lastRead != null && lastRead.progress > 0) {
                                                     Button(
                                                         onClick = {
@@ -391,7 +400,7 @@ fun LibraryDrawerContent(
                                                     Spacer(modifier = Modifier.height(8.dp))
                                                 }
 
-                                                val visibleChapters = if (showFullChapters) items else items.take(3)
+                                                val visibleChapters = if (showFullChapters) chapterItems else chapterItems.take(3)
                                                 
                                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                                     visibleChapters.forEach { chapterItem ->
@@ -458,13 +467,13 @@ fun LibraryDrawerContent(
                                                         }
                                                     }
                                                     
-                                                    if (items.size > 3) {
+                                                    if (chapterItems.size > 3) {
                                                         TextButton(
                                                             onClick = { showFullChaptersState[groupTitle] = !showFullChapters },
                                                             modifier = Modifier.fillMaxWidth()
                                                         ) {
                                                             Text(
-                                                                text = if (showFullChapters) "Show Less" else "Show All (${items.size})",
+                                                                text = if (showFullChapters) "Show Less" else "Show All (${chapterItems.size})",
                                                                 color = Color(0xFF4CAF50)
                                                             )
                                                         }
