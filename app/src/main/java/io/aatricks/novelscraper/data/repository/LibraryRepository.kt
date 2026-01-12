@@ -56,7 +56,7 @@ class LibraryRepository @Inject constructor(
         }
     }
 
-    private suspend fun migrateIfNecessary() = io {
+    private suspend fun migrateIfNecessary(): Unit = io {
         runCatching("Migration failed") {
             val legacyItems = preferencesManager.loadLibraryItems()
             if (legacyItems.isNotEmpty()) {
@@ -99,11 +99,10 @@ class LibraryRepository @Inject constructor(
     }
     
     suspend fun removeItem(itemId: String): Boolean = runCatching("Failed to remove item", false) {
-        val item = libraryDao.getItemById(itemId)
-        if (item != null) {
+        libraryDao.getItemById(itemId)?.let { item ->
             libraryDao.deleteItem(item)
             true
-        } else false
+        } ?: false
     } ?: false
     
     suspend fun removeItems(itemIds: Set<String>): Int = runCatching("Failed to remove items", 0) {
@@ -117,29 +116,25 @@ class LibraryRepository @Inject constructor(
     } ?: false
     
     suspend fun updateReadingMode(itemId: String, readingMode: ReadingMode): Boolean = runCatching("Failed to update reading mode", false) {
-        val item = libraryDao.getItemById(itemId)
-        if (item != null) {
-            val baseTitle = item.baseTitle
+        libraryDao.getItemById(itemId)?.let { item ->
             val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
-            val itemsToUpdate = allItems.filter { it.baseTitle == baseTitle }
-            val updatedItems = itemsToUpdate.map { it.copy(readingMode = readingMode) }
+            val updatedItems = allItems
+                .filter { it.baseTitle == item.baseTitle }
+                .map { it.copy(readingMode = readingMode) }
             libraryDao.insertItems(updatedItems)
             true
-        } else false
+        } ?: false
     } ?: false
 
     suspend fun updateNovelInfo(itemId: String, baseNovelUrl: String, sourceName: String): Boolean = runCatching("Failed to update novel info", false) {
-        val item = libraryDao.getItemById(itemId)
-        if (item != null) {
-            val baseTitle = item.baseTitle
+        libraryDao.getItemById(itemId)?.let { item ->
             val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
-            val itemsToUpdate = allItems.filter { it.baseTitle == baseTitle }
-            val updatedItems = itemsToUpdate.map { 
-                it.copy(baseNovelUrl = baseNovelUrl, sourceName = sourceName) 
-            }
+            val updatedItems = allItems
+                .filter { it.baseTitle == item.baseTitle }
+                .map { it.copy(baseNovelUrl = baseNovelUrl, sourceName = sourceName) }
             libraryDao.insertItems(updatedItems)
             true
-        } else false
+        } ?: false
     } ?: false
 
     fun saveProgress(
@@ -150,7 +145,7 @@ class LibraryRepository @Inject constructor(
         lastScrollProgress: Float? = null,
         lastReadIndex: Int? = null,
         lastReadOffset: Int? = null
-    ) {
+    ): Unit {
         repositoryScope.launch {
             updateProgress(
                 itemId,
@@ -174,10 +169,9 @@ class LibraryRepository @Inject constructor(
         lastReadOffset: Int? = null
     ): Boolean = progressMutex.withLock {
         runCatching("Failed to update progress", false) {
-            val item = libraryDao.getItemById(itemId)
-            if (item != null) {
+            libraryDao.getItemById(itemId)?.let { item ->
                 val updated = item.copy(
-                    currentChapter = if (currentChapter.isNotBlank()) currentChapter else item.currentChapter,
+                    currentChapter = currentChapter.ifBlank { item.currentChapter },
                     progress = progress,
                     currentChapterUrl = currentChapterUrl ?: item.currentChapterUrl,
                     lastScrollPosition = lastScrollProgress ?: item.lastScrollPosition,
@@ -187,13 +181,12 @@ class LibraryRepository @Inject constructor(
                 )
                 libraryDao.insertItem(updated)
                 true
-            } else false
+            } ?: false
         } ?: false
     }
     
     suspend fun markAsCurrentlyReading(itemId: String): Boolean = runCatching("Failed to mark as reading", false) {
-        val item = libraryDao.getItemById(itemId)
-        if (item != null) {
+        libraryDao.getItemById(itemId)?.let { item ->
             if (item.baseTitle.isNotBlank()) {
                 libraryDao.clearUpdatesForBaseTitle(item.baseTitle)
             } else {
@@ -220,8 +213,8 @@ class LibraryRepository @Inject constructor(
         val targetItems = items ?: libraryItems.value
         return targetItems.groupBy { item ->
             item.baseTitle.ifBlank { item.title }
-        }.mapValues { (_, items) ->
-            sortChapters(items)
+        }.mapValues { (_, group) ->
+            sortChapters(group)
         }
     }
 
@@ -248,16 +241,11 @@ class LibraryRepository @Inject constructor(
     }
 
     private fun parseChapterNumberOrNull(item: LibraryItem): Int? {
-        val cc = item.currentChapter
-        if (cc.isNotBlank()) {
-            val num = TextUtils.extractChapterNumber(cc)
-            if (num != null) return num
+        if (item.currentChapter.isNotBlank()) {
+            TextUtils.extractChapterNumber(item.currentChapter)?.let { return it }
         }
-        val titleNum = TextUtils.extractChapterNumber(item.title)
-        if (titleNum != null) return titleNum
-        
-        val urlNum = TextUtils.extractChapterNumber(item.url)
-        if (urlNum != null) return urlNum
+        TextUtils.extractChapterNumber(item.title)?.let { return it }
+        TextUtils.extractChapterNumber(item.url)?.let { return it }
         return null
     }
 
@@ -272,7 +260,7 @@ class LibraryRepository @Inject constructor(
         }
     }
     
-    fun toggleSelection(itemId: String) {
+    fun toggleSelection(itemId: String): Unit {
         val currentSelection = _selectedItems.value.toMutableSet()
         if (itemId in currentSelection) {
             currentSelection.remove(itemId)
@@ -282,35 +270,27 @@ class LibraryRepository @Inject constructor(
         _selectedItems.value = currentSelection
     }
     
-    fun selectItem(itemId: String) {
-        val currentSelection = _selectedItems.value.toMutableSet()
-        currentSelection.add(itemId)
-        _selectedItems.value = currentSelection
+    fun selectItem(itemId: String): Unit {
+        _selectedItems.update { it + itemId }
     }
     
-    fun deselectItem(itemId: String) {
-        val currentSelection = _selectedItems.value.toMutableSet()
-        currentSelection.remove(itemId)
-        _selectedItems.value = currentSelection
+    fun deselectItem(itemId: String): Unit {
+        _selectedItems.update { it - itemId }
     }
 
-    fun selectItems(itemIds: List<String>) {
-        val currentSelection = _selectedItems.value.toMutableSet()
-        currentSelection.addAll(itemIds)
-        _selectedItems.value = currentSelection
+    fun selectItems(itemIds: List<String>): Unit {
+        _selectedItems.update { it + itemIds }
     }
 
-    fun deselectItems(itemIds: List<String>) {
-        val currentSelection = _selectedItems.value.toMutableSet()
-        currentSelection.removeAll(itemIds)
-        _selectedItems.value = currentSelection
+    fun deselectItems(itemIds: List<String>): Unit {
+        _selectedItems.update { it - itemIds }
     }
     
-    fun selectAll() {
+    fun selectAll(): Unit {
         _selectedItems.value = libraryItems.value.map { it.id }.toSet()
     }
     
-    fun clearSelection() {
+    fun clearSelection(): Unit {
         _selectedItems.value = emptySet()
     }
 
@@ -319,7 +299,7 @@ class LibraryRepository @Inject constructor(
         return libraryItems.value.filter { it.id in selectedIds }
     }
     
-    suspend fun clearLibrary() = io {
+    suspend fun clearLibrary(): Unit = io {
         runCatching("Failed to clear library") {
             _selectedItems.value = emptySet()
             val all = libraryDao.getAllItems().firstOrNull() ?: emptyList()
@@ -327,7 +307,7 @@ class LibraryRepository @Inject constructor(
         }
     }
 
-    suspend fun refreshLibraryUpdates(exploreRepository: ExploreRepository) = io {
+    suspend fun refreshLibraryUpdates(exploreRepository: ExploreRepository): Unit = io {
         runCatching("Refresh updates failed") {
             val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
             val groupedItems = getGroupedByTitle(allItems)
@@ -359,14 +339,15 @@ class LibraryRepository @Inject constructor(
     }
 
     suspend fun clearUpdateIndicator(itemId: String): Boolean = runCatching("Failed to clear update indicator", false) {
-        val item = libraryDao.getItemById(itemId)
-        if (item != null && item.hasUpdates) {
-            libraryDao.insertItem(item.copy(hasUpdates = false))
-            true
-        } else false
+        libraryDao.getItemById(itemId)?.let { item ->
+            if (item.hasUpdates) {
+                libraryDao.insertItem(item.copy(hasUpdates = false))
+                true
+            } else false
+        } ?: false
     } ?: false
 
-    fun toggleSourceExpansion(sourceName: String) {
+    fun toggleSourceExpansion(sourceName: String): Unit {
         val current = _collapsedSources.value.toMutableSet()
         if (current.contains(sourceName)) {
             current.remove(sourceName)

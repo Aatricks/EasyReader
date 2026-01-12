@@ -9,147 +9,120 @@ class MangaBatSource : BaseJsoupSource() {
 
     override suspend fun getPopularNovels(page: Int, tags: List<String>): List<ExploreItem> = io {
         val url = if (tags.isNotEmpty()) {
-            val tag = tags.first() // MangaBat only supports one tag in URL
-            val tagSlug = tag.lowercase().replace(" ", "-")
+            val tagSlug = tags.first().lowercase().replace(" ", "-")
             "$baseUrl/genre/$tagSlug?page=$page"
         } else {
             "$baseUrl/manga-list/hot-manga?page=$page"
         }
         val document = getDocument(url)
-
-        val items = mutableListOf<ExploreItem>()
-        // Add .itemupdate for the main page style list
-        val elements = document.select(".list-story-item, .item-story, .story_item, .itemupdate, .list-comic-item-wrap")
-
-        elements.forEach { element ->
-            // Try to find the title element - prioritize h3 a or specific title classes
-            val titleElement = element.select("h3 a, .item-title, .story_name a").first() 
-                ?: element.select("a").firstOrNull { it.text().isNotBlank() }
-            
-            val title = titleElement?.text() ?: ""
-            val href = titleElement?.attr("href") ?: ""
-            
-            // Find the image - it might be in a different link than the title
-            val img = element.select("img").first()
-            val coverUrl = img?.findImage()?.let { resolveUrl(it) } ?: ""
-
-            if (title.isNotBlank() && href.isNotBlank()) {
-                val absoluteUrl = resolveUrl(href)
-                items.add(ExploreItem(
-                    title = title.trim(),
-                    url = absoluteUrl,
-                    coverUrl = if (coverUrl.isBlank()) null else coverUrl,
-                    source = name
-                ))
-            }
-        }
+        val items = parseListElements(document)
         
-        // Generic fallback for homepage (unchanged)
         if (items.isEmpty()) {
-            document.select("a[href*='/manga/']").forEach { link ->
-                val title = link.text().trim()
-                val href = link.attr("href")
-                if (title.length > 5 && !title.contains("Chapter", ignoreCase = true) && items.none { it.url.contains(href) }) {
-                    val absoluteUrl = resolveUrl(href)
-                    val img = link.parent()?.select("img")?.first() ?: link.closest("div")?.select("img")?.first()
-                    val coverUrl = img?.findImage()?.let { resolveUrl(it) } ?: ""
-
-                    items.add(ExploreItem(
-                        title = title,
-                        url = absoluteUrl,
-                        coverUrl = if (coverUrl.isBlank()) null else coverUrl,
-                        source = name
-                    ))
-                }
-            }
+            return@io parseFallbackHomepageLinks(document).distinctBy { it.url }
         }
         
         items.distinctBy { it.url }
+    }
+
+    private fun parseListElements(document: org.jsoup.nodes.Document): List<ExploreItem> {
+        val elements = document.select(".list-story-item, .item-story, .story_item, .itemupdate, .list-comic-item-wrap")
+        return elements.mapNotNull { element ->
+            val titleElement = element.select("h3 a, .item-title, .story_name a").first() 
+                ?: element.select("a").firstOrNull { it.text().isNotBlank() }
+            
+            val title = titleElement?.text() ?: return@mapNotNull null
+            val href = titleElement.attr("href")
+            if (href.isBlank()) return@mapNotNull null
+            
+            val img = element.select("img").first()
+            val coverUrl = img?.findImage()?.let { resolveUrl(it) }
+
+            ExploreItem(
+                title = title.trim(),
+                url = resolveUrl(href),
+                coverUrl = coverUrl?.ifBlank { null },
+                source = name
+            )
+        }
+    }
+
+    private fun parseFallbackHomepageLinks(document: org.jsoup.nodes.Document): List<ExploreItem> {
+        return document.select("a[href*='/manga/']").mapNotNull { link ->
+            val title = link.text().trim()
+            val href = link.attr("href")
+            if (title.length <= 5 || title.contains("Chapter", ignoreCase = true)) return@mapNotNull null
+
+            val img = link.parent()?.select("img")?.first() ?: link.closest("div")?.select("img")?.first()
+            val coverUrl = img?.findImage()?.let { resolveUrl(it) }
+
+            ExploreItem(
+                title = title,
+                url = resolveUrl(href),
+                coverUrl = coverUrl?.ifBlank { null },
+                source = name
+            )
+        }
     }
 
     override suspend fun searchNovels(query: String, page: Int): List<ExploreItem> = io {
         val encodedQuery = URLEncoder.encode(query.replace(" ", "_"), "UTF-8")
-        // Correct search URL for Mangabat is /search/story/
         val url = "$baseUrl/search/story/$encodedQuery?page=$page"
-        
         val document = getDocument(url)
-
-        val items = mutableListOf<ExploreItem>()
-        val elements = document.select(".list-story-item, .item-story, .story_item, .itemupdate")
-
-        elements.forEach { element ->
-            // Try to find the title element - prioritize h3 a or specific title classes
-            val titleElement = element.select("h3 a, .item-title, .story_name a").first() 
-                ?: element.select("a").firstOrNull { it.text().isNotBlank() }
-            
-            val title = titleElement?.text() ?: ""
-            val href = titleElement?.attr("href") ?: ""
-            
-            // Find the image - it might be in a different link than the title
-            val img = element.select("img").first()
-            val coverUrl = img?.findImage()?.let { resolveUrl(it) } ?: ""
-
-            if (title.isNotBlank() && href.isNotBlank()) {
-                val absoluteUrl = resolveUrl(href)
-                items.add(ExploreItem(
-                    title = title.trim(),
-                    url = absoluteUrl,
-                    coverUrl = if (coverUrl.isBlank()) null else coverUrl,
-                    source = name
-                ))
-            }
-        }
-        items.distinctBy { it.url }
+        parseListElements(document).distinctBy { it.url }
     }
 
     override suspend fun getNovelDetails(url: String): ExploreItem = io {
         val document = connect(url).referrer(url).get()
-
         val title = document.select(".story-info-right h1, h1").text()
         
-        // Robust author scraping
-        var author = document.select(".table-value a[href*='search/author'], .info-author a").text()
-        if (author.isBlank()) {
-            author = document.select("li:contains(Author) :not(p)").text()
-                .ifBlank { document.select("li:contains(Author)").text().replace("Author(s) :", "").replace("Author(s):", "").trim() }
-        }
+        val author = extractAuthor(document)
+        val summary = document.select("#contentBox, .panel-story-info-description, .story-info-description")
+            .first()?.text()?.replace("Description :", "")
+            ?.replace(Regex(".*summary: ", RegexOption.IGNORE_CASE), "")?.trim()
         
-        // Improved summary selector
-        val summaryElement = document.select("#contentBox, .panel-story-info-description, .story-info-description").first()
-        val summary = summaryElement?.text()?.replace("Description :", "")?.replace(Regex(".*summary: ", RegexOption.IGNORE_CASE), "")?.trim()
-        
-        // Improved coverUrl selector using OpenGraph or specific image alt
-        val coverImg = document.select(".info-image img, .story-info-left img, .manga-info-pic img").first()
-        val coverUrl = document.select("meta[property='og:image']").attr("content")
-            .ifBlank { coverImg?.findImage() ?: "" }
-            .let { resolveUrl(it) }
+        val coverUrl = extractCoverUrl(document)
         
         val chapters = document.select(".chapter-name, .chapter-list a, .row a[href*='/chapter-']")
-        val chapterCount = chapters.size
-        
         val chapterList = chapters.map { element ->
-            val chapterUrl = resolveUrl(element.attr("href"))
             io.aatricks.novelscraper.data.model.ChapterInfo(
                 title = element.text(),
-                url = chapterUrl
+                url = resolveUrl(element.attr("href"))
             )
-        }.reversed() // Unify to Ascending (1 to N)
-
-        // First chapter is the first one in the ascending list
-        val readingUrl = chapterList.firstOrNull()?.url
+        }.reversed()
 
         ExploreItem(
             title = title,
             url = url,
-            coverUrl = if (coverUrl.isBlank()) null else coverUrl,
+            coverUrl = coverUrl.ifBlank { null },
             author = author,
             summary = summary,
-            chapterCount = chapterCount,
+            chapterCount = chapterList.size,
             source = name,
-            readingUrl = readingUrl,
+            readingUrl = chapterList.firstOrNull()?.url,
             chapters = chapterList
         )
     }
+
+    private fun extractAuthor(document: org.jsoup.nodes.Document): String {
+        val authorByLink = document.select(".table-value a[href*='search/author'], .info-author a").text()
+        if (authorByLink.isNotBlank()) return authorByLink
+        
+        val authorByLabel = document.select("li:contains(Author) :not(p)").text()
+        if (authorByLabel.isNotBlank()) return authorByLabel
+        
+        return document.select("li:contains(Author)").text()
+            .replace("Author(s) :", "")
+            .replace("Author(s):", "").trim()
+    }
+
+    private fun extractCoverUrl(document: org.jsoup.nodes.Document): String {
+        val ogImage = document.select("meta[property='og:image']").attr("content")
+        if (ogImage.isNotBlank()) return resolveUrl(ogImage)
+        
+        val coverImg = document.select(".info-image img, .story-info-left img, .manga-info-pic img").first()
+        return resolveUrl(coverImg?.findImage() ?: "")
+    }
+
 
     override suspend fun getTags(): List<String> = listOf(
         "Action", "Adult", "Adventure", "Comedy", "Cooking", "Doujinshi", "Drama", "Ecchi", "Fantasy", 

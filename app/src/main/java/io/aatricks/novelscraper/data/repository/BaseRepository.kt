@@ -14,11 +14,8 @@ abstract class BaseRepository(protected val tag: String) {
         fallback: T? = null,
         block: suspend () -> T
     ): T? = withContext(Dispatchers.IO) {
-        try {
-            block()
-        } catch (e: Exception) {
-            Log.e(tag, errorMessage, e)
-            fallback
-        }
+        kotlin.runCatching { block() }
+            .onFailure { e -> Log.e(tag, errorMessage, e) }
+            .getOrDefault(fallback)
     }
 }
