@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -357,7 +358,7 @@ private fun SourceHeader(
             modifier = Modifier.weight(1f)
         )
         Icon(
-            imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.Filled.KeyboardArrowRight,
+            imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -508,7 +509,7 @@ private fun NovelGroupHeader(
         }
         IconButton(onClick = onToggleExpand) {
             Icon(
-                imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.Filled.KeyboardArrowRight,
+                imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null
             )
         }
@@ -715,7 +716,7 @@ private fun EpubItemCard(
 
                 IconButton(onClick = { isExpanded = !isExpanded }) {
                     Icon(
-                        imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.Filled.KeyboardArrowRight,
+                        imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = if (isExpanded) "Collapse" else "Expand",
                         tint = Color.White
                     )
@@ -783,7 +784,7 @@ private fun EpubTocItemView(
                     modifier = Modifier.size(20.dp)
                 ) {
                     Icon(
-                        imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.Filled.KeyboardArrowRight,
+                        imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = if (isExpanded) "Collapse" else "Expand",
                         tint = Color.Gray,
                         modifier = Modifier.size(16.dp)

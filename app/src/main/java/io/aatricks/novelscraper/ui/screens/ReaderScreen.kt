@@ -174,7 +174,6 @@ fun ReaderScreen(
                 ReaderContent(
                     uiState = uiState,
                     readerViewModel = readerViewModel,
-                    libraryViewModel = libraryViewModel,
                     onOpenLibrary = { scope.launch { drawerState.open() } },
                     onShowChapterList = { showChapterList = true },
                     onShowSettings = { showSettings = true }
@@ -268,7 +267,6 @@ private fun CloudflareDialog(
 private fun ReaderContent(
     uiState: ReaderViewModel.ReaderUiState,
     readerViewModel: ReaderViewModel,
-    libraryViewModel: LibraryViewModel,
     onOpenLibrary: () -> Unit,
     onShowChapterList: () -> Unit,
     onShowSettings: () -> Unit
@@ -283,7 +281,6 @@ private fun ReaderContent(
         else -> ContentArea(
             content = uiState.content,
             readerViewModel = readerViewModel,
-            libraryViewModel = libraryViewModel,
             onLibraryClick = onOpenLibrary,
             onShowChapterList = onShowChapterList,
             onShowSettings = onShowSettings
@@ -309,7 +306,6 @@ private fun NavigationOverlay(): Unit {
 private fun ContentArea(
     content: ChapterContent,
     readerViewModel: ReaderViewModel,
-    libraryViewModel: LibraryViewModel,
     onLibraryClick: () -> Unit,
     onShowChapterList: () -> Unit,
     onShowSettings: () -> Unit

@@ -1,7 +1,6 @@
 package io.aatricks.novelscraper.util
 
 import java.net.URI
-import java.util.regex.Pattern
 
 /**
  * Utility functions for text processing and manipulation.
@@ -33,13 +32,13 @@ object TextUtils {
         return s.trim().split(WHITESPACE_REGEX).lastOrNull() ?: ""
     }
 
-    private val CHAPTER_URL_PATTERN: Pattern = Pattern.compile("(\\d+)(?!.*\\d)")
+    private val CHAPTER_URL_REGEX = Regex("(\\d+)(?!.*\\d)")
 
-    private val CHAPTER_NUMBER_PATTERNS: List<Pattern> = listOf(
-        Pattern.compile("chapter[\\s-_]*?(\\d+)", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("ch[\\s-_]*?(\\d+)", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("c[\\s-_]*?(\\d+)", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("(\\d+)(?!.*\\d)", Pattern.CASE_INSENSITIVE)
+    private val CHAPTER_NUMBER_REGEXES = listOf(
+        Regex("chapter[\\s-_]*?(\\d+)", RegexOption.IGNORE_CASE),
+        Regex("ch[\\s-_]*?(\\d+)", RegexOption.IGNORE_CASE),
+        Regex("c[\\s-_]*?(\\d+)", RegexOption.IGNORE_CASE),
+        Regex("(\\d+)(?!.*\\d)", RegexOption.IGNORE_CASE)
     )
 
     /**
@@ -62,11 +61,11 @@ object TextUtils {
      */
     fun incrementChapterInUrl(url: String): String {
         if (url.isEmpty()) return url
-        val matcher = CHAPTER_URL_PATTERN.matcher(url)
-        return if (matcher.find()) {
-            val group = matcher.group(1) ?: return url
+        val match = CHAPTER_URL_REGEX.find(url)
+        return if (match != null) {
+            val group = match.groupValues[1]
             val num = group.toInt()
-            matcher.replaceFirst((num + 1).toString())
+            url.replaceRange(match.range, (num + 1).toString())
         } else url
     }
 
@@ -75,11 +74,11 @@ object TextUtils {
      */
     fun decrementChapterInUrl(url: String): String {
         if (url.isEmpty()) return url
-        val matcher = CHAPTER_URL_PATTERN.matcher(url)
-        return if (matcher.find()) {
-            val group = matcher.group(1) ?: return url
+        val match = CHAPTER_URL_REGEX.find(url)
+        return if (match != null) {
+            val group = match.groupValues[1]
             val num = group.toInt()
-            if (num > 1) matcher.replaceFirst((num - 1).toString()) else url
+            if (num > 1) url.replaceRange(match.range, (num - 1).toString()) else url
         } else url
     }
 
@@ -182,10 +181,8 @@ object TextUtils {
      */
     fun extractChapterNumber(text: String): Int? {
         if (text.isEmpty()) return null
-        return CHAPTER_NUMBER_PATTERNS.firstNotNullOfOrNull {
-            p ->
-            val m = p.matcher(text)
-            if (m.find()) m.group(1)?.toIntOrNull() else null
+        return CHAPTER_NUMBER_REGEXES.firstNotNullOfOrNull { r ->
+            r.find(text)?.groupValues?.get(1)?.toIntOrNull()
         }
     }
 
