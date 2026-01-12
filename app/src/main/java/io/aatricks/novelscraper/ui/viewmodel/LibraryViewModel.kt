@@ -17,7 +17,8 @@ import android.util.Log
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     val repository: LibraryRepository,
-    private val contentRepository: ContentRepository
+    private val contentRepository: ContentRepository,
+    private val exploreRepository: ExploreRepository
 ) : BaseViewModel<LibraryViewModel.LibraryUiState>(LibraryUiState()) {
 
     private val TAG = "LibraryViewModel"
@@ -280,6 +281,58 @@ class LibraryViewModel @Inject constructor(
                 updateState { it.copy(isLoading = false) }
             } catch (e: Exception) {
                 updateState { it.copy(isLoading = false, error = "Failed to add item: ${e.message}") }
+            }
+        }
+    }
+
+    fun openNewChapter(
+        baseTitle: String,
+        baseNovelUrl: String,
+        sourceName: String,
+        onChapterLoaded: (String, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                updateState { it.copy(isLoading = true) }
+                val details = exploreRepository.getNovelDetails(baseNovelUrl, sourceName)
+                if (details != null && details.chapters.isNotEmpty()) {
+                    // Chapters are unified to Ascending in sources (1 to N)
+                    // We want the latest one
+                    val latestChapter = details.chapters.last()
+                    
+                    var item = repository.getItemByUrl(latestChapter.url)
+                    if (item == null) {
+                        item = repository.addItem(
+                            title = latestChapter.title,
+                            url = latestChapter.url,
+                            contentType = ContentType.WEB,
+                            currentChapter = TextUtils.extractChapterLabel(latestChapter.title) 
+                                ?: TextUtils.extractChapterLabelFromUrl(latestChapter.url) 
+                                ?: latestChapter.title,
+                            baseTitle = baseTitle,
+                            baseNovelUrl = baseNovelUrl,
+                            sourceName = sourceName,
+                            totalChapters = details.chapters.size
+                        )
+                        contentRepository.prefetch(latestChapter.url)
+                    } else {
+                        // If it's already in library, just update its metadata if needed
+                        if (item.totalChapters < details.chapters.size) {
+                            repository.updateItem(item.copy(totalChapters = details.chapters.size))
+                        }
+                    }
+                    
+                    // Clear update indicator for this novel
+                    repository.clearUpdateIndicator(item.id)
+                    
+                    onChapterLoaded(item.url, item.id)
+                } else {
+                    updateState { it.copy(error = "No chapters found for this novel") }
+                }
+                updateState { it.copy(isLoading = false) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to open new chapter", e)
+                updateState { it.copy(isLoading = false, error = "Failed to load new chapter: ${e.message}") }
             }
         }
     }

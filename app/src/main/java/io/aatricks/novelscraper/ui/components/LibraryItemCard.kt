@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -47,7 +48,8 @@ fun LibraryItemCard(
     isSelected: Boolean,
     isCurrent: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    onNewTagClick: (() -> Unit)? = null
 ) {
     val targetBackgroundColor = when {
         isSelected -> MaterialTheme.colorScheme.surfaceVariant
@@ -129,7 +131,13 @@ fun LibraryItemCard(
                 } else if (item.hasUpdates) {
                     Badge(
                         containerColor = MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier.padding(start = 8.dp)
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .then(
+                                if (onNewTagClick != null) {
+                                    Modifier.clickable { onNewTagClick() }
+                                } else Modifier
+                            )
                     ) {
                         Text(
                             text = "NEW",
@@ -238,7 +246,8 @@ fun LibraryItemCardPreview() {
             isSelected = false,
             isCurrent = true,
             onClick = {},
-            onLongClick = {}
+            onLongClick = {},
+            onNewTagClick = {}
         )
         
         LibraryItemCard(
@@ -254,7 +263,8 @@ fun LibraryItemCardPreview() {
             isSelected = true,
             isCurrent = false,
             onClick = {},
-            onLongClick = {}
+            onLongClick = {},
+            onNewTagClick = {}
         )
         
         LibraryItemCard(
@@ -270,7 +280,8 @@ fun LibraryItemCardPreview() {
             isSelected = false,
             isCurrent = false,
             onClick = {},
-            onLongClick = {}
+            onLongClick = {},
+            onNewTagClick = {}
         )
     }
 }

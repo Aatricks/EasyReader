@@ -335,12 +335,25 @@ fun LibraryDrawerContent(
                                                                 Badge(
                                                                     containerColor = MaterialTheme.colorScheme.tertiary,
                                                                     modifier = Modifier.clickable {
-                                                                        val targetItem = chapterItems.lastOrNull()
-                                                                        if (targetItem != null) {
-                                                                            val loadUrl = if (targetItem.currentChapterUrl.isNotBlank()) targetItem.currentChapterUrl else targetItem.url
-                                                                            readerViewModel.loadContent(loadUrl, targetItem.id)
-                                                                            libraryViewModel.markAsCurrentlyReading(targetItem.id)
-                                                                            onCloseDrawer()
+                                                                        val lastItem = chapterItems.lastOrNull()
+                                                                        if (lastItem != null) {
+                                                                            if (lastItem.baseNovelUrl.isNotBlank() && lastItem.sourceName.isNotBlank()) {
+                                                                                libraryViewModel.openNewChapter(
+                                                                                    baseTitle = groupTitle,
+                                                                                    baseNovelUrl = lastItem.baseNovelUrl,
+                                                                                    sourceName = lastItem.sourceName,
+                                                                                    onChapterLoaded = { url, id ->
+                                                                                        readerViewModel.loadContent(url, id)
+                                                                                        libraryViewModel.markAsCurrentlyReading(id)
+                                                                                        onCloseDrawer()
+                                                                                    }
+                                                                                )
+                                                                            } else {
+                                                                                val loadUrl = if (lastItem.currentChapterUrl.isNotBlank()) lastItem.currentChapterUrl else lastItem.url
+                                                                                readerViewModel.loadContent(loadUrl, lastItem.id)
+                                                                                libraryViewModel.markAsCurrentlyReading(lastItem.id)
+                                                                                onCloseDrawer()
+                                                                            }
                                                                         }
                                                                     }
                                                                 ) {
