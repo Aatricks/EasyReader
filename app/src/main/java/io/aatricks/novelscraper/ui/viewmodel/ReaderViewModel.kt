@@ -64,9 +64,11 @@ class ReaderViewModel @Inject constructor(
         // Load last read item
         viewModelScope.launch {
             val last = libraryRepository.getCurrentlyReading()
-            last?.let { item ->
-                val loadUrl = if (item.currentChapterUrl.isNotBlank()) item.currentChapterUrl else item.url
-                loadContent(loadUrl, item.id)
+            if (last != null) {
+                val loadUrl = if (last.currentChapterUrl.isNotBlank()) last.currentChapterUrl else last.url
+                loadContent(loadUrl, last.id)
+            } else {
+                updateState { it.copy(isLoading = false) }
             }
         }
     }
@@ -76,7 +78,7 @@ class ReaderViewModel @Inject constructor(
      */
     data class ReaderUiState(
         val content: ChapterContent? = null,
-        val isLoading: Boolean = false,
+        val isLoading: Boolean = true,
         val isNavigating: Boolean = false, // Loading next/prev chapter in background
         val error: String? = null,
         val toastMessage: String? = null, // Temporary message to show (Toast/Snackbar)
@@ -189,7 +191,9 @@ class ReaderViewModel @Inject constructor(
 
                 when (val result = contentRepository.loadContent(url)) {
                     is ContentRepository.ContentResult.Success -> {
-                        currentLibraryItemId = libraryItemId
+                        val effectiveLibraryItemId = libraryItemId ?: libraryRepository.getItemByUrl(url)?.id
+                        currentLibraryItemId = effectiveLibraryItemId
+                        
                         val content = ChapterContent(
                             paragraphs = result.elements,
                             title = result.title,
@@ -198,7 +202,7 @@ class ReaderViewModel @Inject constructor(
                             previousChapterUrl = contentRepository.decrementChapterUrl(result.url)
                         )
 
-                        val libraryItem = libraryItemId?.let { libraryRepository.getItemById(it) }
+                        val libraryItem = effectiveLibraryItemId?.let { libraryRepository.getItemById(it) }
                         val baseTitle = libraryItem?.baseTitle?.ifBlank { null }
                             ?: (libraryItem?.title?.let { TextUtils.extractBaseTitle(it, ContentType.WEB) })
                             ?: (content.title?.let { TextUtils.extractBaseTitle(it, ContentType.WEB) })
@@ -270,7 +274,7 @@ class ReaderViewModel @Inject constructor(
                             }
                         }
 
-                        libraryItemId?.let {
+                        effectiveLibraryItemId?.let {
                             libraryRepository.markAsCurrentlyReading(it)
                         }
                         
@@ -437,7 +441,8 @@ class ReaderViewModel @Inject constructor(
                     return@launch
                 }
                 
-                currentLibraryItemId = libraryItemId
+                val effectiveLibraryItemId = libraryItemId ?: libraryRepository.getItemByUrl(epubPath)?.id
+                currentLibraryItemId = effectiveLibraryItemId
                 val chapter = contentRepository.loadEpubChapterFull(epubPath, href)
                 if (chapter == null) {
                     updateState {
@@ -487,7 +492,7 @@ class ReaderViewModel @Inject constructor(
                         ?: epubBook.getPreviousHref(href)?.let { "$epubPath#${it}" }
                 )
 
-                val libraryItem = libraryItemId?.let { libraryRepository.getItemById(it) }
+                val libraryItem = effectiveLibraryItemId?.let { libraryRepository.getItemById(it) }
                 val baseTitle = libraryItem?.baseTitle?.ifBlank { null } 
                     ?: content.title?.let { TextUtils.extractBaseTitle(it, ContentType.EPUB) }
                     ?: libraryItem?.title?.let { TextUtils.extractBaseTitle(it, ContentType.EPUB) }
@@ -537,7 +542,7 @@ class ReaderViewModel @Inject constructor(
                     )
                 }
 
-                libraryItemId?.let {
+                effectiveLibraryItemId?.let {
                     libraryRepository.markAsCurrentlyReading(it)
                 }
                 
@@ -553,6 +558,10 @@ class ReaderViewModel @Inject constructor(
                 isExplicitNavigation = false
             }
         }
+    }
+
+    fun onUserInteraction() {
+        suppressAutoNavUntilUserInteraction = false
     }
 
     fun updateScrollPosition(
@@ -591,11 +600,12 @@ class ReaderViewModel @Inject constructor(
         progressUpdateJob = viewModelScope.launch {
             delay(100) // Slightly longer delay to allow layout to settle
             
-            if (suppressAutoNavUntilUserInteraction && progress < 99.9f) {
-                if (abs(progress - restoredScrollPercent) > 1f) {
+            if (suppressAutoNavUntilUserInteraction) {
+                // Only allow saving progress if we are very close to the restored position
+                // or if we have moved significantly (user interaction handled via explicit call)
+                if (abs(progress - restoredScrollPercent) < 1f) {
                     suppressAutoNavUntilUserInteraction = false
                 } else {
-                    // Still in restoration phase, don't save yet
                     lastRawScrollOffset = scrollOffset
                     return@launch
                 }

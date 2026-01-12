@@ -205,7 +205,7 @@ class LibraryRepository @Inject constructor(
     } ?: false
     
     suspend fun getCurrentlyReading(): LibraryItem? = runCatching("Failed to get currently reading") {
-        libraryDao.getCurrentlyReading()
+        libraryDao.getCurrentlyReading() ?: libraryDao.getAllItems().firstOrNull()?.firstOrNull()
     }
     
     suspend fun getItemById(itemId: String): LibraryItem? = io {

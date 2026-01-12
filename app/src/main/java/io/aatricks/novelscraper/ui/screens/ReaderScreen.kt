@@ -422,8 +422,9 @@ private fun ContentArea(
     val nestedScrollConnection = remember(content, uiState.isPagedMode, uiState.isRtl, pagerState.currentPage) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if ((abs(available.y) > 5f || abs(available.x) > 5f) && source == NestedScrollSource.Drag) {
+                if ((abs(available.y) > 5f || abs(available.x) > 5f) && source == NestedScrollSource.UserInput) {
                     readerViewModel.hideControls()
+                    readerViewModel.onUserInteraction()
                 }
 
                 if (uiState.isPagedMode) {
@@ -457,7 +458,7 @@ private fun ContentArea(
                 available: Offset,
                 source: NestedScrollSource
             ): Offset {
-                if (source == NestedScrollSource.Drag) {
+                if (source == NestedScrollSource.UserInput) {
                     if (uiState.isPagedMode) {
                         val isAtStart = pagerState.currentPage == 0
                         val isAtEnd = pagerState.currentPage == content.paragraphs.size - 1
