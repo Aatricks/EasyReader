@@ -493,16 +493,49 @@ class ContentRepository @Inject constructor(
         val doc = Jsoup.parse(String(bytes ?: throw Exception("No chapter bytes")))
         val els = mutableListOf<ContentElement>()
         
-        doc.select("body").first()?.children()?.forEach { e ->
-            when (e.tagName()) {
-                "p", "div", "h1", "h2", "h3", "h4", "li" -> {
-                    if (e.select("img, image").isEmpty()) {
-                        e.text().trim().let { if (it.length > 1) els.add(ContentElement.Text(it)) }
+        fun traverse(element: org.jsoup.nodes.Element) {
+            val tagName = element.tagName().lowercase()
+            when {
+                tagName == "img" || tagName == "image" -> {
+                    val src = if (tagName == "img") {
+                        element.attr("src")
+                    } else {
+                        element.attr("xlink:href").ifEmpty { element.attr("href") }
+                    }
+                    if (src.isNotBlank()) {
+                        els.add(ContentElement.Image("$filePath#img:${resolveEpubPath(href, src)}", element.attr("alt")))
                     }
                 }
-                "img" -> els.add(ContentElement.Image("$filePath#img:${resolveEpubPath(href, e.attr("src"))}", e.attr("alt")))
+                tagName in setOf("p", "h1", "h2", "h3", "h4", "li") -> {
+                    val text = element.text().trim()
+                    if (text.length > 1) {
+                        els.add(ContentElement.Text(text))
+                    }
+                    // Also check for images nested inside this block element
+                    element.select("img, image").forEach { img ->
+                        val iTagName = img.tagName().lowercase()
+                        val src = if (iTagName == "img") {
+                            img.attr("src")
+                        } else {
+                            img.attr("xlink:href").ifEmpty { img.attr("href") }
+                        }
+                        if (src.isNotBlank()) {
+                            els.add(ContentElement.Image("$filePath#img:${resolveEpubPath(href, src)}", img.attr("alt")))
+                        }
+                    }
+                }
+                else -> {
+                    element.children().forEach { traverse(it) }
+                    // If an element like <div> contains direct text, handle it
+                    val ownText = element.ownText().trim()
+                    if (ownText.length > 1 && element.children().none { it.tagName().lowercase() in setOf("p", "div", "h1", "h2", "h3", "h4", "li") }) {
+                        els.add(ContentElement.Text(ownText))
+                    }
+                }
             }
         }
+
+        doc.body()?.let { traverse(it) }
         
         return EpubChapter(
             href = href,
@@ -516,7 +549,18 @@ class ContentRepository @Inject constructor(
     private fun resolveEpubPath(base: String, rel: String): String {
         if (rel.startsWith("/")) return rel.drop(1)
         val parent = base.substringBeforeLast("/", "")
-        return if (parent.isNotBlank()) "$parent/$rel" else rel
+        val combined = if (parent.isNotBlank()) "$parent/$rel" else rel
+        
+        val parts = combined.split("/")
+        val result = mutableListOf<String>()
+        for (part in parts) {
+            when (part) {
+                "." -> {}
+                ".." -> if (result.isNotEmpty()) result.removeAt(result.size - 1)
+                else -> if (part.isNotBlank()) result.add(part)
+            }
+        }
+        return result.joinToString("/")
     }
 
     suspend fun incrementChapterUrl(url: String): String? = adjustChapterUrl(url, 1)
@@ -584,7 +628,7 @@ class ContentRepository @Inject constructor(
         runCatching {
             val parts = url.split("#img:", limit = 2).takeIf { it.size == 2 } ?: return@withContext null
             val epubPath = parts[0]
-            val imgHref = parts[1]
+            val imgHref = parts[1].replace("\\", "/").removePrefix("/")
             
             val stream = if (epubPath.startsWith("content://")) {
                 context.contentResolver.openInputStream(Uri.parse(epubPath)) ?: return@withContext null
@@ -595,7 +639,11 @@ class ContentRepository @Inject constructor(
             ZipInputStream(stream).use { zip ->
                 var e = zip.nextEntry
                 while (e != null) {
-                    if (e.name == imgHref || e.name.endsWith(imgHref)) return@runCatching zip.readBytes()
+                    val entryName = e.name.replace("\\", "/").removePrefix("/")
+                    if (entryName == imgHref || entryName.endsWith("/$imgHref")) {
+                        val bytes = zip.readBytes()
+                        return@runCatching bytes
+                    }
                     zip.closeEntry()
                     e = zip.nextEntry
                 }
