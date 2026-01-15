@@ -35,7 +35,8 @@ import javax.inject.Singleton
 @Singleton
 class ContentRepository @Inject constructor(
     @ApplicationContext private val context: android.content.Context,
-    private val htmlParser: HtmlParser
+    private val htmlParser: HtmlParser,
+    private val okHttpClient: OkHttpClient
 ) {
 
     companion object {
@@ -44,11 +45,6 @@ class ContentRepository @Inject constructor(
     }
 
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
-    private val okHttpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .build()
 
     private val cacheDir: File get() = File(context.cacheDir, "html_cache").apply { if (!exists()) mkdirs() }
     private val mediaCacheDir: File get() = File(context.cacheDir, "media_cache").apply { if (!exists()) mkdirs() }
