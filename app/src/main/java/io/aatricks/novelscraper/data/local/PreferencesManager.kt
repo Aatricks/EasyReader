@@ -123,6 +123,10 @@ class PreferencesManager @Inject constructor(
             ?: io.aatricks.novelscraper.data.model.ReaderTheme.DARK.name
         set(value) = prefs.edit().putString(KEY_READER_THEME, value).apply()
     
+    var ignoreSslErrors: Boolean
+        get() = prefs.getBoolean(KEY_IGNORE_SSL_ERRORS, false)
+        set(value) = prefs.edit().putBoolean(KEY_IGNORE_SSL_ERRORS, value).apply()
+    
     // Clear all preferences
     fun clearAll() {
         prefs.edit().clear().apply()
@@ -154,5 +158,6 @@ class PreferencesManager @Inject constructor(
         private const val KEY_MARGINS = "reader_margins"
         private const val KEY_PARAGRAPH_SPACING = "reader_paragraph_spacing"
         private const val KEY_READER_THEME = "reader_theme"
+        private const val KEY_IGNORE_SSL_ERRORS = "ignore_ssl_errors"
     }
 }

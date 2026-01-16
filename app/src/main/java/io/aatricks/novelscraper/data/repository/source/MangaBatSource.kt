@@ -1,9 +1,14 @@
 package io.aatricks.novelscraper.data.repository.source
 
+import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.model.ExploreItem
 import java.net.URLEncoder
+import javax.inject.Inject
 
-class MangaBatSource : BaseJsoupSource() {
+class MangaBatSource @Inject constructor(
+    override val preferencesManager: PreferencesManager,
+    override val okHttpClient: okhttp3.OkHttpClient
+) : BaseJsoupSource(preferencesManager, okHttpClient) {
     override val name = "MangaBat"
     override val baseUrl = "https://www.mangabats.com"
 

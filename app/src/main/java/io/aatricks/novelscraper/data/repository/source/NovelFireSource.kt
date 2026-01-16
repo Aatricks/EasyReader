@@ -1,5 +1,6 @@
 package io.aatricks.novelscraper.data.repository.source
 
+import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.model.ExploreItem
 import io.aatricks.novelscraper.data.model.ChapterInfo
 import kotlinx.coroutines.Dispatchers
@@ -9,8 +10,12 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import java.net.URLEncoder
+import javax.inject.Inject
 
-class NovelFireSource : BaseJsoupSource() {
+class NovelFireSource @Inject constructor(
+    override val preferencesManager: PreferencesManager,
+    override val okHttpClient: okhttp3.OkHttpClient
+) : BaseJsoupSource(preferencesManager, okHttpClient) {
     override val name = "NovelFire"
     override val baseUrl = "https://novelfire.net"
 

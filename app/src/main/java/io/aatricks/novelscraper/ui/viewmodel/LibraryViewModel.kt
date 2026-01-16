@@ -1,10 +1,11 @@
 package io.aatricks.novelscraper.ui.viewmodel
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.model.LibraryItem
+import io.aatricks.novelscraper.data.model.SortMode
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
@@ -18,10 +19,18 @@ import android.util.Log
 class LibraryViewModel @Inject constructor(
     val repository: LibraryRepository,
     private val contentRepository: ContentRepository,
-    private val exploreRepository: ExploreRepository
+    private val exploreRepository: ExploreRepository,
+    private val preferencesManager: PreferencesManager
 ) : BaseViewModel<LibraryViewModel.LibraryUiState>(LibraryUiState()) {
 
     private val TAG = "LibraryViewModel"
+
+    var ignoreSslErrors: Boolean
+        get() = preferencesManager.ignoreSslErrors
+        set(value) {
+            preferencesManager.ignoreSslErrors = value
+            updateState { it.copy(ignoreSslErrors = value) }
+        }
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -48,15 +57,9 @@ class LibraryViewModel @Inject constructor(
         val selectedIds: Set<String> = emptySet(),
         val selectedCount: Int = 0,
         val isEmpty: Boolean = true,
-        val currentlyReading: LibraryItem? = null
+        val currentlyReading: LibraryItem? = null,
+        val ignoreSslErrors: Boolean = false
     )
-
-    enum class SortMode {
-        LAST_READ,
-        DATE_ADDED,
-        TITLE,
-        PROGRESS
-    }
 
     private fun observeLibraryChanges(): Unit {
         viewModelScope.launch {
@@ -88,7 +91,8 @@ class LibraryViewModel @Inject constructor(
                     selectedIds = selectedIds,
                     selectedCount = selectedIds.size,
                     isEmpty = items.isEmpty(),
-                    currentlyReading = items.find { it.isCurrentlyReading }
+                    currentlyReading = items.find { it.isCurrentlyReading },
+                    ignoreSslErrors = preferencesManager.ignoreSslErrors
                 )
             }.collect { newState ->
                 updateState { newState }

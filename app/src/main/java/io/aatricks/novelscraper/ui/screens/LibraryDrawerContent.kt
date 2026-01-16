@@ -49,6 +49,7 @@ fun LibraryDrawerContent(
 
     var urlInput by remember { mutableStateOf("") }
     var isAddSectionVisible by remember { mutableStateOf(false) }
+    var isSettingsVisible by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -67,8 +68,17 @@ fun LibraryDrawerContent(
             onExploreClick = {
                 onCloseDrawer()
                 navController.navigate(ExploreRoute)
-            }
+            },
+            onSettingsClick = { isSettingsVisible = true }
         )
+
+        if (isSettingsVisible) {
+            SettingsDialog(
+                ignoreSslErrors = libraryUiState.ignoreSslErrors,
+                onIgnoreSslErrorsChange = { libraryViewModel.ignoreSslErrors = it },
+                onDismiss = { isSettingsVisible = false }
+            )
+        }
 
         androidx.compose.animation.AnimatedVisibility(visible = isAddSectionVisible) {
             AddNovelSection(
@@ -120,7 +130,8 @@ fun LibraryDrawerContent(
 private fun LibraryHeader(
     isAddVisible: Boolean,
     onToggleAdd: () -> Unit,
-    onExploreClick: () -> Unit
+    onExploreClick: () -> Unit,
+    onSettingsClick: () -> Unit
 ): Unit {
     Row(
         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
@@ -134,6 +145,13 @@ private fun LibraryHeader(
             color = MaterialTheme.colorScheme.onSurface
         )
         Row {
+            IconButton(onClick = onSettingsClick) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Settings",
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
             IconButton(onClick = onExploreClick) {
                 Icon(
                     imageVector = Icons.Default.Image,
@@ -618,6 +636,45 @@ private fun NovelChapterList(
             }
         }
     }
+}
+
+@Composable
+private fun SettingsDialog(
+    ignoreSslErrors: Boolean,
+    onIgnoreSslErrorsChange: (Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("App Settings") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Ignore SSL Errors", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Enable if you encounter certificate errors on public Wi-Fi. USE WITH CAUTION.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = ignoreSslErrors,
+                        onCheckedChange = onIgnoreSslErrorsChange
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
 }
 
 @Composable
