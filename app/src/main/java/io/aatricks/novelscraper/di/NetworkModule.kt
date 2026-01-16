@@ -34,8 +34,12 @@ object NetworkModule {
     fun provideOkHttpClient(preferencesManager: PreferencesManager): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .addInterceptor(HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BODY
+                level = HttpLoggingInterceptor.Level.HEADERS // Reduced verbosity for performance
             })
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .followSslRedirects(true)
+            .followRedirects(true)
 
         try {
             val trustManagerFactory = javax.net.ssl.TrustManagerFactory.getInstance(
@@ -52,26 +56,43 @@ object NetworkModule {
                 }
 
                 override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
-                    if (!preferencesManager.ignoreSslErrors) {
+                    if (preferencesManager.ignoreSslErrors) return
+                    
+                    try {
                         defaultTrustManager.checkServerTrusted(chain, authType)
+                    } catch (e: Exception) {
+                        // Double check in case of race condition or update
+                        if (!preferencesManager.ignoreSslErrors) throw e
                     }
                 }
 
                 override fun getAcceptedIssuers(): Array<X509Certificate> = defaultTrustManager.getAcceptedIssuers()
             }
 
-            val sslContext = SSLContext.getInstance("SSL")
+            val sslContext = SSLContext.getInstance("TLS")
             sslContext.init(null, arrayOf(dynamicTrustManager), SecureRandom())
             
             builder.sslSocketFactory(sslContext.socketFactory, dynamicTrustManager)
             
-            val defaultHostnameVerifier = okhttp3.internal.tls.OkHostnameVerifier
             builder.hostnameVerifier { hostname, session -> 
                 if (preferencesManager.ignoreSslErrors) true 
-                else defaultHostnameVerifier.verify(hostname, session)
+                else okhttp3.internal.tls.OkHostnameVerifier.verify(hostname, session)
             }
         } catch (e: Exception) {
-            // Fallback to default if something goes wrong
+            // Fallback to a basic trust-all if something fails during setup and user wants to ignore errors
+            if (preferencesManager.ignoreSslErrors) {
+                try {
+                    val trustAllCerts = object : X509TrustManager {
+                        override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
+                        override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
+                        override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+                    }
+                    val sslContext = SSLContext.getInstance("TLS")
+                    sslContext.init(null, arrayOf(trustAllCerts), SecureRandom())
+                    builder.sslSocketFactory(sslContext.socketFactory, trustAllCerts)
+                    builder.hostnameVerifier { _, _ -> true }
+                } catch (inner: Exception) {}
+            }
         }
 
         return builder.build()

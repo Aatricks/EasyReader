@@ -13,8 +13,9 @@ import java.net.URLEncoder
 import javax.inject.Inject
 
 class NovelFireSource @Inject constructor(
-    override val preferencesManager: PreferencesManager
-) : BaseJsoupSource(preferencesManager) {
+    override val preferencesManager: PreferencesManager,
+    override val okHttpClient: okhttp3.OkHttpClient
+) : BaseJsoupSource(preferencesManager, okHttpClient) {
     override val name = "NovelFire"
     override val baseUrl = "https://novelfire.net"
 

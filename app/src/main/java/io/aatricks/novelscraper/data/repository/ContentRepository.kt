@@ -96,8 +96,12 @@ class ContentRepository @Inject constructor(
         }
 
     private fun getReferer(url: String): String = try {
-        val uri = java.net.URI(url)
-        "${uri.scheme}://${uri.host}/"
+        if (url.contains("mangabat") || url.contains("manganato")) {
+            "https://manganato.com/"
+        } else {
+            val uri = java.net.URI(url)
+            "${uri.scheme}://${uri.host}/"
+        }
     } catch (e: Exception) {
         url
     }

@@ -3,6 +3,9 @@ package io.aatricks.novelscraper.ui.screens
 import android.app.Activity
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebSettings
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
@@ -16,6 +19,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
@@ -38,6 +45,8 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -88,7 +97,7 @@ fun ReaderScreen(
 
     LaunchedEffect(uiState.error) {
         if (uiState.error?.contains("403") == true || uiState.error?.contains("503") == true) {
-            cloudflareUrl = uiState.content?.url ?: ""
+            cloudflareUrl = uiState.lastAttemptedUrl ?: uiState.content?.url ?: ""
             if (cloudflareUrl.startsWith("http")) {
                 showCloudflareWebView = true
             }
@@ -140,7 +149,8 @@ fun ReaderScreen(
             onRetry = {
                 showCloudflareWebView = false
                 readerViewModel.retryLoad()
-            }
+            },
+            ignoreSslErrors = libraryViewModel.ignoreSslErrors
         )
     }
 
@@ -221,46 +231,165 @@ fun ReaderScreen(
 private fun CloudflareDialog(
     url: String,
     onDismiss: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    ignoreSslErrors: Boolean = false
 ): Unit {
-    AlertDialog(
+    val context = LocalContext.current
+    var webViewError by remember { mutableStateOf<String?>(null) }
+    
+    Dialog(
         onDismissRequest = onDismiss,
-        title = { Text("Solve Challenge") },
-        text = {
-            Column {
-                Text(
-                    "Please solve the challenge to continue reading.",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Box(
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.85f)
+                .clip(RoundedCornerShape(16.dp)),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 8.dp
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Header
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(400.dp)
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    AndroidView(factory = { ctx ->
-                        WebView(ctx).apply {
-                            settings.javaScriptEnabled = true
-                            settings.userAgentString =
-                                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                            webViewClient = object : WebViewClient() {}
-                            loadUrl(url)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Network Access Required",
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                        Text(
+                            "Solve the challenge or login below",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (webViewError != null) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+
+                if (webViewError != null) {
+                    Text(
+                        text = "Error: $webViewError",
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+
+                // WebView Container
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 16.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                        .background(Color.White)
+                ) {
+                    var internalWebView by remember { mutableStateOf<WebView?>(null) }
+                    
+                    AndroidView(
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                internalWebView = this
+                                settings.apply {
+                                    javaScriptEnabled = true
+                                    domStorageEnabled = true
+                                    loadWithOverviewMode = true
+                                    useWideViewPort = true
+                                    builtInZoomControls = true
+                                    displayZoomControls = false
+                                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                    javaScriptCanOpenWindowsAutomatically = true
+                                    userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                                }
+                                webViewClient = object : WebViewClient() {
+                                    override fun onReceivedSslError(
+                                        view: WebView?,
+                                        handler: android.webkit.SslErrorHandler?,
+                                        error: android.net.http.SslError?
+                                    ) {
+                                        if (ignoreSslErrors) handler?.proceed()
+                                        else super.onReceivedSslError(view, handler, error)
+                                    }
+
+                                    override fun onReceivedError(
+                                        view: WebView?,
+                                        request: android.webkit.WebResourceRequest?,
+                                        error: android.webkit.WebResourceError?
+                                    ) {
+                                        if (request?.isForMainFrame == true) {
+                                            webViewError = error?.description?.toString()
+                                        }
+                                    }
+                                }
+                                loadUrl(url)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // Floating Reload Button
+                    if (webViewError != null) {
+                        FilledIconButton(
+                            onClick = { 
+                                webViewError = null
+                                internalWebView?.reload() 
+                            },
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Reload")
                         }
-                    })
+                    }
+                }
+
+                // Footer Actions
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = {
+                            runCatching {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                context.startActivity(intent)
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Open in Browser")
+                    }
+                    
+                    Spacer(modifier = Modifier.weight(1f))
+                    
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel")
+                    }
+                    
+                    Button(
+                        onClick = onRetry,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Done")
+                    }
                 }
             }
-        },
-        confirmButton = {
-            Button(onClick = onRetry) {
-                Text("Done")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
         }
-    )
+    }
 }
 
 @Composable

@@ -72,6 +72,7 @@ class ReaderViewModel @Inject constructor(
         val isLoading: Boolean = true,
         val isNavigating: Boolean = false,
         val error: String? = null,
+        val lastAttemptedUrl: String? = null,
         val toastMessage: String? = null,
         val scrollPosition: Float = 0f,
         val scrollProgress: Int = 0,
@@ -150,10 +151,20 @@ class ReaderViewModel @Inject constructor(
             if (handleEpubUrl(url, libraryItemId, fromBottom, isSilent)) return@launch
 
             saveCurrentProgress()
-            updateState { it.copy(isLoading = !isSilent, error = null) }
+            updateState { 
+                it.copy(
+                    isLoading = !isSilent, 
+                    error = null, 
+                    lastAttemptedUrl = url,
+                    content = if (isSilent) it.content else null
+                ) 
+            }
 
             when (val result = contentRepository.loadContent(url)) {
-                is ContentRepository.ContentResult.Success -> handleLoadSuccess(result, libraryItemId, fromBottom)
+                is ContentRepository.ContentResult.Success -> {
+                    updateState { it.copy(lastAttemptedUrl = null) }
+                    handleLoadSuccess(result, libraryItemId, fromBottom)
+                }
                 is ContentRepository.ContentResult.Error -> handleLoadError(result)
             }
         }
@@ -570,8 +581,9 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun retryLoad(): Unit {
-        _uiState.value.content?.url?.let { url ->
-            loadContent(url, currentLibraryItemId)
+        val url = _uiState.value.lastAttemptedUrl ?: _uiState.value.content?.url
+        url?.let {
+            loadContent(it, currentLibraryItemId)
         }
     }
 

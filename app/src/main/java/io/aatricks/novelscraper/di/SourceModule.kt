@@ -17,10 +17,16 @@ object SourceModule {
     @Provides
     @Singleton
     @IntoSet
-    fun provideNovelFireSource(preferencesManager: PreferencesManager): NovelSource = NovelFireSource(preferencesManager)
+    fun provideNovelFireSource(
+        preferencesManager: PreferencesManager,
+        okHttpClient: okhttp3.OkHttpClient
+    ): NovelSource = NovelFireSource(preferencesManager, okHttpClient)
 
     @Provides
     @Singleton
     @IntoSet
-    fun provideMangaBatSource(preferencesManager: PreferencesManager): NovelSource = MangaBatSource(preferencesManager)
+    fun provideMangaBatSource(
+        preferencesManager: PreferencesManager,
+        okHttpClient: okhttp3.OkHttpClient
+    ): NovelSource = MangaBatSource(preferencesManager, okHttpClient)
 }

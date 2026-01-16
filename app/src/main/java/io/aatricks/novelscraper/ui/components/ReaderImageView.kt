@@ -51,7 +51,13 @@ fun ReaderImageView(
 
         val imageRequest = remember(imageUrl, pageUrl) {
             val uri = try { java.net.URI(pageUrl) } catch (e: Exception) { null }
-            val referer = if (uri != null) "${uri.scheme}://${uri.host}/" else pageUrl
+            var referer = if (uri != null) "${uri.scheme}://${uri.host}/" else pageUrl
+            
+            // Special handling for MangaBat/Manganato images which often require specific referers
+            if (referer.contains("mangabat") || referer.contains("manganato")) {
+                referer = "https://manganato.com/"
+            }
+            
             val isCached = cachedFile.exists()
 
             ImageRequest.Builder(context)
