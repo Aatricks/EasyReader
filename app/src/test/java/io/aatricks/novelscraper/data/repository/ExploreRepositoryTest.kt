@@ -1,21 +1,22 @@
 package io.aatricks.novelscraper.data.repository
 
-import io.aatricks.novelscraper.data.model.ExploreItem
+import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.repository.source.NovelFireSource
 import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
 import org.junit.Test
 import org.junit.Assert.*
+import org.mockito.Mockito.mock
 
 class ExploreRepositoryTest {
 
     @Test
     fun testNovelFireSourceScraping() = runBlocking {
-        // Mock scraping not really possible without mockwebserver or network access in tests (and tests usually run offline or controlled)
-        // Since I cannot really test network calls in unit tests without mocking, I will just validate the parsing logic if I could inject html.
-        // However, the source classes use Jsoup.connect() directly.
-        // I will write a test that instantiates them to ensure compilation.
+        // Mock scraping not really possible without mockwebserver or network access in tests
+        val preferencesManager = mock(PreferencesManager::class.java)
+        val okHttpClient = mock(OkHttpClient::class.java)
 
-        val source = NovelFireSource()
+        val source = NovelFireSource(preferencesManager, okHttpClient)
         assertEquals("NovelFire", source.name)
         assertEquals("https://novelfire.net", source.baseUrl)
     }
