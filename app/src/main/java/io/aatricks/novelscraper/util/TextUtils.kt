@@ -25,7 +25,25 @@ object TextUtils {
 
     private val SENTENCE_ENDERS = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
     private val CONTINUATION_WORDS = setOf(
-        "of", "to", "for", "and", "but", "or", "the", "a", "an", "my", "his", "her", "their", "its", "in", "on", "at", "from", "with"
+        "of",
+        "to",
+        "for",
+        "and",
+        "but",
+        "or",
+        "the",
+        "a",
+        "an",
+        "my",
+        "his",
+        "her",
+        "their",
+        "its",
+        "in",
+        "on",
+        "at",
+        "from",
+        "with"
     )
 
     private fun lastWord(s: String): String {
@@ -35,10 +53,10 @@ object TextUtils {
     private val CHAPTER_URL_REGEX = Regex("(\\d+)(?!.*\\d)")
 
     private val CHAPTER_NUMBER_REGEXES = listOf(
-        Regex("chapter[\\s-_]*?(\\d+)", RegexOption.IGNORE_CASE),
-        Regex("ch[\\s-_]*?(\\d+)", RegexOption.IGNORE_CASE),
-        Regex("c[\\s-_]*?(\\d+)", RegexOption.IGNORE_CASE),
-        Regex("(\\d+)(?!.*\\d)", RegexOption.IGNORE_CASE)
+        Regex("chapter[\\s-_]*?(\\d+(?:\\.\\d+)?)", RegexOption.IGNORE_CASE),
+        Regex("ch[\\s-_]*?(\\d+(?:\\.\\d+)?)", RegexOption.IGNORE_CASE),
+        Regex("c[\\s-_]*?(\\d+(?:\\.\\d+)?)", RegexOption.IGNORE_CASE),
+        Regex("(\\d+(?:\\.\\d+)?)(?!.*\\d)", RegexOption.IGNORE_CASE)
     )
 
     /**
@@ -90,7 +108,7 @@ object TextUtils {
         return runCatching {
             val uri = URI(url)
             val lastSegment = uri.path.split("/").filter { it.isNotEmpty() }.lastOrNull()
-            
+
             lastSegment?.let { segment ->
                 segment.replace("-", " ")
                     .replace("_", " ")
@@ -106,7 +124,7 @@ object TextUtils {
      */
     fun extractBaseTitle(title: String, contentType: io.aatricks.novelscraper.data.model.ContentType): String {
         if (contentType != io.aatricks.novelscraper.data.model.ContentType.WEB) return title
-        
+
         var normalized = removeCommonJunk(title)
         normalized = removeChapterMarkers(normalized)
         normalized = cleanSeparators(normalized)
@@ -147,15 +165,15 @@ object TextUtils {
      */
     fun extractChapterLabel(title: String?): String? {
         if (title.isNullOrBlank()) return null
-        
+
         Regex("(?i)(?:chapter|ch|ch\\.|c)\\s*(\\d+)").find(title)?.let {
             return "Chapter " + it.groupValues[1]
         }
-        
+
         Regex("[\\s:\\-—–|](\\d+)\\s*$").find(title)?.let {
             return "Chapter " + it.groupValues[1]
         }
-        
+
         return Regex("\\b(\\d+)\\b").findAll(title).lastOrNull()?.let {
             "Chapter " + it.groupValues[1]
         }
@@ -179,10 +197,10 @@ object TextUtils {
     /**
      * Extract chapter number from URL or text
      */
-    fun extractChapterNumber(text: String): Int? {
+    fun extractChapterNumber(text: String): Double? {
         if (text.isEmpty()) return null
         return CHAPTER_NUMBER_REGEXES.firstNotNullOfOrNull { r ->
-            r.find(text)?.groupValues?.get(1)?.toIntOrNull()
+            r.find(text)?.groupValues?.get(1)?.toDoubleOrNull()
         }
     }
 
@@ -205,7 +223,7 @@ object TextUtils {
         if (text.isEmpty()) return text
         val replacements = mapOf(
             "&nbsp;" to " ", "&amp;" to "&", "&lt;" to "<", "&gt;" to ">",
-            "&quot;" to "\"", "&#39;" to "'" , "&mdash;" to "—", "&ndash;" to "–", "&hellip;" to "…"
+            "&quot;" to "\"", "&#39;" to "'", "&mdash;" to "—", "&ndash;" to "–", "&hellip;" to "…"
         )
         return replacements.entries.fold(text) { acc, (k, v) -> acc.replace(k, v) }
     }
@@ -237,12 +255,12 @@ object TextUtils {
     fun formatChapterText(text: String): String {
         if (text.isEmpty()) return text
         val normalized = text.trim().replace(LINE_BREAK_REGEX, "\n")
-        
+
         val rawParagraphs = initialParagraphSplit(normalized)
         val initialMerged = mergeAccidentalSplits(rawParagraphs, normalized)
         val compacted = compactParagraphs(initialMerged, normalized)
         val processed = processIndividualParagraphs(compacted)
-        
+
         return finalCollapse(processed, normalized)
     }
 
@@ -264,10 +282,12 @@ object TextUtils {
                 if (next.isNotEmpty() && shouldMerge(cur, next)) {
                     cur = (cur + " " + next).replace(MULTIPLE_SPACES_REGEX, " ")
                     i++
-                    
+
                     while (i < paragraphs.size) {
                         val peek = paragraphs[i].first.trim()
-                        if (peek.isEmpty()) { i++; continue }
+                        if (peek.isEmpty()) {
+                            i++; continue
+                        }
                         if (shouldStopGreedyMerge(cur, peek)) break
                         cur = (cur + " " + peek).replace(MULTIPLE_SPACES_REGEX, " ")
                         i++
@@ -283,7 +303,7 @@ object TextUtils {
         val lastChar = cur.lastOrNull() ?: return false
         val lastW = lastWord(cur).lowercase()
         val wordCount = cur.split(WHITESPACE_REGEX).size
-        
+
         return !SENTENCE_ENDERS.contains(lastChar) &&
                 (wordCount <= 8 || lastW in CONTINUATION_WORDS || lastW.length <= 4) &&
                 !isHeading(next) && !(cur.contains(':') && next.contains(':'))
@@ -310,8 +330,10 @@ object TextUtils {
 
             while (pi < paragraphs.size) {
                 val nxt = paragraphs[pi].trim()
-                if (nxt.isEmpty()) { pi++; continue }
-                
+                if (nxt.isEmpty()) {
+                    pi++; continue
+                }
+
                 val shouldMerge = shouldMergeAggressive(cur, nxt) && !original.contains(cur + "\n\n" + nxt)
                 if (shouldMerge) {
                     cur = (cur + " " + nxt).replace(MULTIPLE_SPACES_REGEX, " ")
@@ -328,7 +350,7 @@ object TextUtils {
         val lastW = lastWord(cur).lowercase()
         val wordCount = cur.split(WHITESPACE_REGEX).size
         val isSentenceEnd = SENTENCE_ENDERS.contains(lastChar)
-        
+
         return !isSentenceEnd &&
                 (wordCount <= 10 || lastW in CONTINUATION_WORDS || lastW.length <= 4) &&
                 !isHeading(next) && !(cur.contains(':') && next.contains(':'))
@@ -337,17 +359,20 @@ object TextUtils {
     private fun processIndividualParagraphs(paragraphs: List<String>): List<String> {
         return paragraphs.map { p ->
             if (p.trim().isEmpty()) return@map ""
-            
+
             val lines = p.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
             if (lines.size <= 1) return@map p.trim()
-            
+
             val sb = StringBuilder(lines[0])
             for (i in 1 until lines.size) {
                 val prevLine = lines[i - 1]
                 val curLine = lines[i]
                 val lastChar = prevLine.lastOrNull() ?: ' '
-                
-                if (SENTENCE_ENDERS.contains(lastChar) || isHeading(curLine) || LIST_MARKER_REGEX.containsMatchIn(curLine)) {
+
+                if (SENTENCE_ENDERS.contains(lastChar) || isHeading(curLine) || LIST_MARKER_REGEX.containsMatchIn(
+                        curLine
+                    )
+                ) {
                     sb.append("\n\n").append(curLine)
                 } else {
                     sb.append(" ").append(curLine)
@@ -362,9 +387,9 @@ object TextUtils {
     private fun finalCollapse(processed: List<String>, original: String): String {
         val joined = processed.joinToString("\n\n").replace(THREE_PLUS_NEWLINES_REGEX, "\n\n")
         val parts = joined.split("\n\n").map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
-        
+
         collapseContinuationParagraphs(parts, original)
-        
+
         var result = parts.joinToString("\n\n")
         result = result.replace(SINGLE_NEWLINE_REGEX, " ")
         result = result.replace(TWO_PLUS_SPACES_REGEX, " ")
@@ -376,13 +401,15 @@ object TextUtils {
         while (i < parts.size - 1) {
             val left = parts[i]
             val right = parts[i + 1]
-            if (original.contains(left + "\n\n" + right)) { i++; continue }
+            if (original.contains(left + "\n\n" + right)) {
+                i++; continue
+            }
 
             val leftLast = left.lastOrNull() ?: ' '
             val rightFirst = right.firstOrNull() ?: ' '
 
-            val shouldCollapse = !SENTENCE_ENDERS.contains(leftLast) && 
-                                (rightFirst.isLowerCase() || rightFirst.isDigit())
+            val shouldCollapse = !SENTENCE_ENDERS.contains(leftLast) &&
+                    (rightFirst.isLowerCase() || rightFirst.isDigit())
 
             if (shouldCollapse) {
                 parts[i] = left + " " + right
@@ -398,14 +425,18 @@ object TextUtils {
     fun cleanChapterTitle(fullTitle: String?, novelName: String): String {
         if (fullTitle.isNullOrBlank()) return ""
         var cleaned = removeCommonJunk(fullTitle)
-        
+
         if (novelName.isNotBlank() && cleaned.contains(novelName, ignoreCase = true)) {
             cleaned = cleaned.replace(novelName, "", ignoreCase = true)
         }
-        
+
         cleaned = cleanSeparators(cleaned)
-        
-        if (cleaned.length > 40 || cleaned.contains("Chapter", ignoreCase = true) || cleaned.contains("Ch.", ignoreCase = true)) {
+
+        if (cleaned.length > 40 || cleaned.contains("Chapter", ignoreCase = true) || cleaned.contains(
+                "Ch.",
+                ignoreCase = true
+            )
+        ) {
             val label = extractChapterLabel(cleaned)
             if (label != null) {
                 val subTitleRegex = Regex("(?i)(?:chapter|ch|ch\\.)\\s*\\d+[\\s:\\-—–|]+(.+)")
@@ -413,8 +444,12 @@ object TextUtils {
                 return if (!subTitle.isNullOrBlank() && subTitle.length > 2) (label + ": " + subTitle) else label
             }
         }
-        
-        return if (cleaned.isBlank() || (novelName.isNotBlank() && fullTitle.equals(novelName, ignoreCase = true))) "" else cleaned
+
+        return if (cleaned.isBlank() || (novelName.isNotBlank() && fullTitle.equals(
+                novelName,
+                ignoreCase = true
+            ))
+        ) "" else cleaned
     }
 
     /**

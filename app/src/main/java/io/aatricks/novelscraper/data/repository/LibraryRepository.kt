@@ -28,23 +28,23 @@ class LibraryRepository @Inject constructor(
     private val libraryDao: LibraryDao,
     private val preferencesManager: PreferencesManager
 ) : BaseRepository("LibraryRepository") {
-    
+
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val progressMutex = Mutex()
-    
+
     val libraryItems: StateFlow<List<LibraryItem>> = libraryDao.getAllItems()
-        .catch { e -> 
+        .catch { e ->
             Log.e(tag, "Error collecting library items", e)
-            emit(emptyList()) 
+            emit(emptyList())
         }
         .stateIn(repositoryScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    
+
     private val _selectedItems = MutableStateFlow<Set<String>>(emptySet())
     val selectedItems: StateFlow<Set<String>> = _selectedItems.asStateFlow()
 
     private val _collapsedSources = MutableStateFlow<Set<String>>(emptySet())
     val collapsedSources: StateFlow<Set<String>> = _collapsedSources.asStateFlow()
-    
+
     init {
         repositoryScope.launch {
             try {
@@ -68,7 +68,7 @@ class LibraryRepository @Inject constructor(
             }
         }
     }
-    
+
     suspend fun addItem(
         title: String,
         url: String,
@@ -93,49 +93,51 @@ class LibraryRepository @Inject constructor(
             sourceName = sourceName,
             totalChapters = totalChapters
         )
-        
+
         libraryDao.insertItem(newItem)
         newItem
     }
-    
+
     suspend fun removeItem(itemId: String): Boolean = runCatching("Failed to remove item", false) {
         libraryDao.getItemById(itemId)?.let { item ->
             libraryDao.deleteItem(item)
             true
         } ?: false
     } ?: false
-    
+
     suspend fun removeItems(itemIds: Set<String>): Int = runCatching("Failed to remove items", 0) {
         libraryDao.deleteItemsByIds(itemIds)
         itemIds.size
     } ?: 0
-    
+
     suspend fun updateItem(updatedItem: LibraryItem): Boolean = runCatching("Failed to update item", false) {
         libraryDao.insertItem(updatedItem)
         true
     } ?: false
-    
-    suspend fun updateReadingMode(itemId: String, readingMode: ReadingMode): Boolean = runCatching("Failed to update reading mode", false) {
-        libraryDao.getItemById(itemId)?.let { item ->
-            val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
-            val updatedItems = allItems
-                .filter { it.baseTitle == item.baseTitle }
-                .map { it.copy(readingMode = readingMode) }
-            libraryDao.insertItems(updatedItems)
-            true
-        } ?: false
-    } ?: false
 
-    suspend fun updateNovelInfo(itemId: String, baseNovelUrl: String, sourceName: String): Boolean = runCatching("Failed to update novel info", false) {
-        libraryDao.getItemById(itemId)?.let { item ->
-            val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
-            val updatedItems = allItems
-                .filter { it.baseTitle == item.baseTitle }
-                .map { it.copy(baseNovelUrl = baseNovelUrl, sourceName = sourceName) }
-            libraryDao.insertItems(updatedItems)
-            true
+    suspend fun updateReadingMode(itemId: String, readingMode: ReadingMode): Boolean =
+        runCatching("Failed to update reading mode", false) {
+            libraryDao.getItemById(itemId)?.let { item ->
+                val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
+                val updatedItems = allItems
+                    .filter { it.baseTitle == item.baseTitle }
+                    .map { it.copy(readingMode = readingMode) }
+                libraryDao.insertItems(updatedItems)
+                true
+            } ?: false
         } ?: false
-    } ?: false
+
+    suspend fun updateNovelInfo(itemId: String, baseNovelUrl: String, sourceName: String): Boolean =
+        runCatching("Failed to update novel info", false) {
+            libraryDao.getItemById(itemId)?.let { item ->
+                val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
+                val updatedItems = allItems
+                    .filter { it.baseTitle == item.baseTitle }
+                    .map { it.copy(baseNovelUrl = baseNovelUrl, sourceName = sourceName) }
+                libraryDao.insertItems(updatedItems)
+                true
+            } ?: false
+        } ?: false
 
     fun saveProgress(
         itemId: String,
@@ -184,7 +186,7 @@ class LibraryRepository @Inject constructor(
             } ?: false
         } ?: false
     }
-    
+
     suspend fun markAsCurrentlyReading(itemId: String): Boolean = runCatching("Failed to mark as reading", false) {
         libraryDao.getItemById(itemId)?.let { item ->
             if (item.baseTitle.isNotBlank()) {
@@ -196,19 +198,19 @@ class LibraryRepository @Inject constructor(
         libraryDao.setCurrentReading(itemId)
         true
     } ?: false
-    
+
     suspend fun getCurrentlyReading(): LibraryItem? = runCatching("Failed to get currently reading") {
         libraryDao.getCurrentlyReading() ?: libraryDao.getAllItems().firstOrNull()?.firstOrNull()
     }
-    
+
     suspend fun getItemById(itemId: String): LibraryItem? = io {
         libraryDao.getItemById(itemId)
     }
-    
+
     suspend fun getItemByUrl(url: String): LibraryItem? = io {
         libraryDao.getItemByUrl(url)
     }
-    
+
     fun getGroupedByTitle(items: List<LibraryItem>? = null): Map<String, List<LibraryItem>> {
         val targetItems = items ?: libraryItems.value
         return targetItems.groupBy { item ->
@@ -223,7 +225,7 @@ class LibraryRepository @Inject constructor(
         return targetItems.groupBy { it.sourceName.ifBlank { "Local" } }
             .mapValues { (_, sourceItems) ->
                 sourceItems.groupBy { it.baseTitle.ifBlank { it.title } }
-                    .mapValues { (_, novelItems) -> 
+                    .mapValues { (_, novelItems) ->
                         sortChapters(novelItems)
                     }.toSortedMap()
             }.toSortedMap()
@@ -240,7 +242,7 @@ class LibraryRepository @Inject constructor(
         }
     }
 
-    private fun parseChapterNumberOrNull(item: LibraryItem): Int? {
+    private fun parseChapterNumberOrNull(item: LibraryItem): Double? {
         if (item.currentChapter.isNotBlank()) {
             TextUtils.extractChapterNumber(item.currentChapter)?.let { return it }
         }
@@ -252,14 +254,14 @@ class LibraryRepository @Inject constructor(
     fun searchItems(query: String): List<LibraryItem> {
         val allItems = libraryItems.value
         if (query.isBlank()) return allItems
-        
+
         val lowercaseQuery = query.trim().lowercase()
         return allItems.filter {
             it.title.lowercase().contains(lowercaseQuery) ||
-            it.baseTitle.lowercase().contains(lowercaseQuery)
+                    it.baseTitle.lowercase().contains(lowercaseQuery)
         }
     }
-    
+
     fun toggleSelection(itemId: String): Unit {
         val currentSelection = _selectedItems.value.toMutableSet()
         if (itemId in currentSelection) {
@@ -269,11 +271,11 @@ class LibraryRepository @Inject constructor(
         }
         _selectedItems.value = currentSelection
     }
-    
+
     fun selectItem(itemId: String): Unit {
         _selectedItems.update { it + itemId }
     }
-    
+
     fun deselectItem(itemId: String): Unit {
         _selectedItems.update { it - itemId }
     }
@@ -285,11 +287,11 @@ class LibraryRepository @Inject constructor(
     fun deselectItems(itemIds: List<String>): Unit {
         _selectedItems.update { it - itemIds }
     }
-    
+
     fun selectAll(): Unit {
         _selectedItems.value = libraryItems.value.map { it.id }.toSet()
     }
-    
+
     fun clearSelection(): Unit {
         _selectedItems.value = emptySet()
     }
@@ -298,7 +300,7 @@ class LibraryRepository @Inject constructor(
         val selectedIds = _selectedItems.value
         return libraryItems.value.filter { it.id in selectedIds }
     }
-    
+
     suspend fun clearLibrary(): Unit = io {
         runCatching("Failed to clear library") {
             _selectedItems.value = emptySet()
@@ -318,7 +320,8 @@ class LibraryRepository @Inject constructor(
                 if (latestInLibrary.baseNovelUrl.isBlank() || latestInLibrary.sourceName.isBlank()) continue
 
                 runCatching("Failed to refresh updates for $baseTitle") {
-                    val details = exploreRepository.getNovelDetails(latestInLibrary.baseNovelUrl, latestInLibrary.sourceName)
+                    val details =
+                        exploreRepository.getNovelDetails(latestInLibrary.baseNovelUrl, latestInLibrary.sourceName)
                     if (details != null && details.chapters.isNotEmpty()) {
                         val sourceChapterCount = details.chapters.size
                         if (sourceChapterCount > latestInLibrary.totalChapters) {

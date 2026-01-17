@@ -6,6 +6,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlaylistAddCheck
+import androidx.compose.material.icons.filled.LibraryAddCheck
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
@@ -80,11 +82,41 @@ fun ChapterListSheet(
                         else "Download Chapters (${selectedChapterUrls.size})"
                     } else "Chapters",
                     style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
                 )
 
-                if (isSelectionMode) {
-                    Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val readUrls = libraryItemsInGroup.filter { it.progress == 100 }.map { it.url }.toSet()
+
+                    IconButton(onClick = {
+                        isSelectionMode = true
+                        isDeleteMode = false
+                        selectedChapterUrls.clear()
+                        val unread = allChapters.filter { it.url !in readUrls && it.url !in downloadedUrls }
+                        selectedChapterUrls.addAll(unread.map { it.url })
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.PlaylistAddCheck,
+                            contentDescription = "Select All Unread",
+                            tint = if (isSelectionMode && !isDeleteMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    IconButton(onClick = {
+                        isSelectionMode = true
+                        isDeleteMode = true
+                        selectedChapterUrls.clear()
+                        selectedChapterUrls.addAll(downloadedUrls)
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.LibraryAddCheck,
+                            contentDescription = "Select All Downloaded",
+                            tint = if (isSelectionMode && isDeleteMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (isSelectionMode) {
                         IconButton(onClick = {
                             if (isDeleteMode) {
                                 val idsToRemove = selectedChapterUrls.mapNotNull { url ->
@@ -119,7 +151,11 @@ fun ChapterListSheet(
                             isSelectionMode = false
                             selectedChapterUrls.clear()
                         }) {
-                            Icon(Icons.Default.Close, contentDescription = "Cancel", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Cancel",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
@@ -151,7 +187,12 @@ fun ChapterListSheet(
                             },
                             trailingContent = {
                                 if (!isSelectionMode && isDownloaded) {
-                                    Icon(Icons.Default.Check, contentDescription = "Downloaded", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = "Downloaded",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                 } else if (isSelectionMode) {
                                     Checkbox(
                                         checked = isSelected,
