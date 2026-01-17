@@ -34,8 +34,10 @@ class TextUtilsTest {
         assertEquals(expected5, TextUtils.formatChapterText(input5))
 
         // Test case 6: HTML-like input
-        val input6 = "‘No.’<br><br>I processed a dozen responses to Fate’s simple statement.<br><br>Then a dozen likely answers to each response. And my counter to each of<br><br>Fate’s answers."
-        val expected6 = "‘No.’\n\nI processed a dozen responses to Fate’s simple statement.\n\nThen a dozen likely answers to each response. And my counter to each of\n\nFate’s answers."
+        val input6 =
+            "‘No.’<br><br>I processed a dozen responses to Fate’s simple statement.<br><br>Then a dozen likely answers to each response. And my counter to each of<br><br>Fate’s answers."
+        val expected6 =
+            "‘No.’\n\nI processed a dozen responses to Fate’s simple statement.\n\nThen a dozen likely answers to each response. And my counter to each of\n\nFate’s answers."
         val formattedWithBr = input6.replace("<br>", "\n")
         val actual6 = TextUtils.formatChapterText(formattedWithBr)
         assertEquals(expected6, actual6)
@@ -46,10 +48,10 @@ class TextUtilsTest {
         val url = "https://novelfire.net/book/novel-title/chapter-5"
         assertEquals("https://novelfire.net/book/novel-title/chapter-6", TextUtils.incrementChapterInUrl(url))
         assertEquals("https://novelfire.net/book/novel-title/chapter-4", TextUtils.decrementChapterInUrl(url))
-        
+
         val urlWithDots = "https://example.com/123.html"
         assertEquals("https://example.com/124.html", TextUtils.incrementChapterInUrl(urlWithDots))
-        
+
         val urlAtOne = "https://example.com/ch-1"
         assertEquals("https://example.com/ch-2", TextUtils.incrementChapterInUrl(urlAtOne))
         assertEquals("https://example.com/ch-1", TextUtils.decrementChapterInUrl(urlAtOne))
@@ -58,15 +60,18 @@ class TextUtilsTest {
     @Test
     fun testExtractTitleFromUrl() {
         assertEquals("Novel Title", TextUtils.extractTitleFromUrl("https://novelfire.net/book/novel-title"))
-        assertEquals("Mercenary Enrollment", TextUtils.extractTitleFromUrl("https://www.mangabats.com/manga/mercenary-enrollment"))
+        assertEquals(
+            "Mercenary Enrollment",
+            TextUtils.extractTitleFromUrl("https://www.mangabats.com/manga/mercenary-enrollment")
+        )
         assertEquals("Chapter 5", TextUtils.extractTitleFromUrl("https://example.com/chapter-5/"))
     }
 
     @Test
     fun testExtractChapterNumber() {
-        assertEquals(5, TextUtils.extractChapterNumber("Chapter 5: The Battle"))
-        assertEquals(123, TextUtils.extractChapterNumber("https://example.com/manga/123"))
-        assertEquals(1, TextUtils.extractChapterNumber("CH 1"))
+        assertEquals(5.0, TextUtils.extractChapterNumber("Chapter 5: The Battle"))
+        assertEquals(123.0, TextUtils.extractChapterNumber("https://example.com/manga/123"))
+        assertEquals(1.0, TextUtils.extractChapterNumber("CH 1"))
         assertEquals(null, TextUtils.extractChapterNumber("No Number Here"))
     }
 
@@ -76,7 +81,7 @@ class TextUtilsTest {
         // PDF filtering is aggressive, might remove numbers in the middle
         assertTrue(TextUtils.removePageNumbers(pdfText, true).contains("Line one"))
         assertTrue(TextUtils.removePageNumbers(pdfText, true).contains("Line two"))
-        
+
         val pageWordText = "Page | 123 Some content"
         assertEquals("123 Some content", TextUtils.removePageWord(pageWordText))
     }
@@ -86,68 +91,75 @@ class TextUtilsTest {
         val text = "This is a simple sentence with seven words."
         assertEquals(8, TextUtils.countWords(text))
         assertEquals(1, TextUtils.estimateReadingTime(text))
-        
+
         val longText = (1..400).joinToString(" ") { "word" }
         assertEquals(400, TextUtils.countWords(longText))
         assertEquals(2, TextUtils.estimateReadingTime(longText))
     }
 
-        @Test
+    @Test
 
-        fun testCleanHtmlEntities() {
+    fun testCleanHtmlEntities() {
 
-            assertEquals("&", TextUtils.cleanHtmlEntities("&amp;"))
+        assertEquals("&", TextUtils.cleanHtmlEntities("&amp;"))
 
-            assertEquals("\"Quote\"", TextUtils.cleanHtmlEntities("&quot;Quote&quot;"))
+        assertEquals("\"Quote\"", TextUtils.cleanHtmlEntities("&quot;Quote&quot;"))
 
-            assertEquals("—", TextUtils.cleanHtmlEntities("&mdash;"))
-
-        }
-
-    
-
-        @Test
-
-        fun testExtractBaseTitle() {
-
-            val web = io.aatricks.novelscraper.data.model.ContentType.WEB
-
-            assertEquals("Solo Max-Level Newbie", TextUtils.extractBaseTitle("Read Solo Max-Level Newbie Chapter 233 Free Online | MangaBat", web))
-
-            assertEquals("The Beginning After The End", TextUtils.extractBaseTitle("The Beginning After The End - Chapter 175", web))
-
-            assertEquals("Omniscient Reader’s Viewpoint", TextUtils.extractBaseTitle("Read Omniscient Reader’s Viewpoint at MangaBat", web))
-
-            assertEquals("The Great Mage Returns After 4000 Years", TextUtils.extractBaseTitle("The Great Mage Returns After 4000 Years: 150", web))
-
-            
-
-            // Should not clean non-WEB content
-
-            val epub = io.aatricks.novelscraper.data.model.ContentType.EPUB
-
-            assertEquals("Some Book - Chapter 1", TextUtils.extractBaseTitle("Some Book - Chapter 1", epub))
-
-        }
-
-    
-
-        @Test
-
-        fun testExtractChapterLabel() {
-
-            assertEquals("Chapter 233", TextUtils.extractChapterLabel("Read Chapter 233 Free Online | MangaBat"))
-
-            assertEquals("Chapter 175", TextUtils.extractChapterLabel("Chapter 175 - The End"))
-
-            assertEquals("Chapter 150", TextUtils.extractChapterLabel("The Great Mage Returns After 4000 Years: 150"))
-
-            assertEquals("Chapter 10", TextUtils.extractChapterLabel("Ch. 10"))
-
-            assertEquals(null, TextUtils.extractChapterLabel("Just some title"))
-
-        }
+        assertEquals("—", TextUtils.cleanHtmlEntities("&mdash;"))
 
     }
 
-    
+
+    @Test
+
+    fun testExtractBaseTitle() {
+
+        val web = io.aatricks.novelscraper.data.model.ContentType.WEB
+
+        assertEquals(
+            "Solo Max-Level Newbie",
+            TextUtils.extractBaseTitle("Read Solo Max-Level Newbie Chapter 233 Free Online | MangaBat", web)
+        )
+
+        assertEquals(
+            "The Beginning After The End",
+            TextUtils.extractBaseTitle("The Beginning After The End - Chapter 175", web)
+        )
+
+        assertEquals(
+            "Omniscient Reader’s Viewpoint",
+            TextUtils.extractBaseTitle("Read Omniscient Reader’s Viewpoint at MangaBat", web)
+        )
+
+        assertEquals(
+            "The Great Mage Returns After 4000 Years",
+            TextUtils.extractBaseTitle("The Great Mage Returns After 4000 Years: 150", web)
+        )
+
+
+        // Should not clean non-WEB content
+
+        val epub = io.aatricks.novelscraper.data.model.ContentType.EPUB
+
+        assertEquals("Some Book - Chapter 1", TextUtils.extractBaseTitle("Some Book - Chapter 1", epub))
+
+    }
+
+
+    @Test
+
+    fun testExtractChapterLabel() {
+
+        assertEquals("Chapter 233", TextUtils.extractChapterLabel("Read Chapter 233 Free Online | MangaBat"))
+
+        assertEquals("Chapter 175", TextUtils.extractChapterLabel("Chapter 175 - The End"))
+
+        assertEquals("Chapter 150", TextUtils.extractChapterLabel("The Great Mage Returns After 4000 Years: 150"))
+
+        assertEquals("Chapter 10", TextUtils.extractChapterLabel("Ch. 10"))
+
+        assertEquals(null, TextUtils.extractChapterLabel("Just some title"))
+
+    }
+
+}

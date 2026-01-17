@@ -7,6 +7,7 @@ import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Before
@@ -20,11 +21,18 @@ import org.mockito.kotlin.*
 class ReaderViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
-    
-    @Mock lateinit var contentRepository: ContentRepository
-    @Mock lateinit var libraryRepository: LibraryRepository
-    @Mock lateinit var exploreRepository: ExploreRepository
-    @Mock lateinit var preferencesManager: PreferencesManager
+
+    @Mock
+    lateinit var contentRepository: ContentRepository
+
+    @Mock
+    lateinit var libraryRepository: LibraryRepository
+
+    @Mock
+    lateinit var exploreRepository: ExploreRepository
+
+    @Mock
+    lateinit var preferencesManager: PreferencesManager
 
     private lateinit var viewModel: ReaderViewModel
 
@@ -32,21 +40,22 @@ class ReaderViewModelTest {
     fun setup() {
         MockitoAnnotations.openMocks(this)
         Dispatchers.setMain(testDispatcher)
-        
+
         whenever(preferencesManager.fontSize).thenReturn(18f)
         whenever(preferencesManager.lineHeight).thenReturn(1.5f)
         whenever(preferencesManager.fontFamily).thenReturn("Default")
         whenever(preferencesManager.readerTheme).thenReturn(ReaderTheme.DARK.name)
         whenever(preferencesManager.margins).thenReturn(16)
         whenever(preferencesManager.paragraphSpacing).thenReturn(1.0f)
-        
+
         runTest {
+            whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(emptyList()))
             whenever(libraryRepository.getCurrentlyReading()).thenReturn(null)
             whenever(libraryRepository.markAsCurrentlyReading(any())).thenReturn(true)
             whenever(libraryRepository.updateProgress(any(), any(), any(), any(), any(), any(), any())).thenReturn(true)
             whenever(libraryRepository.updateReadingMode(any(), any())).thenReturn(true)
         }
-        
+
         viewModel = ReaderViewModel(
             contentRepository,
             libraryRepository,
@@ -72,7 +81,7 @@ class ReaderViewModelTest {
         // Setup initial item
         val initialItemId = "item-1"
         val initialUrl = "https://example.com/1"
-        
+
         // Mock success for first load
         val result1 = ContentRepository.ContentResult.Success(
             elements = emptyList(),
@@ -89,7 +98,7 @@ class ReaderViewModelTest {
 
         viewModel.loadContent(initialUrl)
         advanceUntilIdle()
-        
+
         assertEquals(initialUrl, viewModel.uiState.value.content?.url)
 
         // Now load a second item
@@ -97,10 +106,10 @@ class ReaderViewModelTest {
         whenever(contentRepository.loadContent(nextUrl)).thenReturn(
             ContentRepository.ContentResult.Success(emptyList(), "Title 2", nextUrl)
         )
-        
+
         viewModel.loadContent(nextUrl)
         advanceUntilIdle()
-        
+
         // Verify updateProgress was called for the INITIAL item
         verify(libraryRepository).updateProgress(
             itemId = eq(initialItemId),
@@ -117,7 +126,7 @@ class ReaderViewModelTest {
     fun `updateScrollPosition saves progress after delay`() = runTest {
         val itemId = "item-1"
         val url = "https://example.com/1"
-        
+
         // Set up current item
         whenever(contentRepository.loadContent(url)).thenReturn(
             ContentRepository.ContentResult.Success(listOf(ContentElement.Text("Test")), "Test", url)
@@ -128,23 +137,23 @@ class ReaderViewModelTest {
         whenever(libraryRepository.getItemById(itemId)).thenReturn(
             LibraryItem(id = itemId, title = "Test", url = url)
         )
-        
+
         viewModel.loadContent(url)
         advanceUntilIdle()
-        
+
         viewModel.onUserInteraction()
-        
+
         // Update scroll
         viewModel.updateScrollPosition(50f, 100f, 10f, 5, 10)
-        
+
         // Should NOT have saved yet (debounced)
         verify(libraryRepository, never()).saveProgress(any(), any(), any(), any(), any(), any(), any())
-        
+
         // Advance time
         advanceTimeBy(200)
         runCurrent()
         advanceUntilIdle()
-        
+
         // Now it should have saved
         verify(libraryRepository).saveProgress(
             itemId = eq(itemId),
@@ -161,7 +170,7 @@ class ReaderViewModelTest {
     fun `toggleReadingMode updates repository`() = runTest {
         val itemId = "item-1"
         val url = "https://example.com/1"
-        
+
         whenever(contentRepository.loadContent(url)).thenReturn(
             ContentRepository.ContentResult.Success(emptyList(), "Test", url)
         )
@@ -171,14 +180,14 @@ class ReaderViewModelTest {
         whenever(libraryRepository.getItemById(itemId)).thenReturn(
             LibraryItem(id = itemId, title = "Test", url = url)
         )
-        
+
         viewModel.loadContent(url)
         advanceUntilIdle()
-        
+
         val initialPagedMode = viewModel.uiState.value.isPagedMode
         viewModel.toggleReadingMode()
         advanceUntilIdle()
-        
+
         assertNotEquals(initialPagedMode, viewModel.uiState.value.isPagedMode)
         verify(libraryRepository).updateReadingMode(eq(itemId), any())
     }
