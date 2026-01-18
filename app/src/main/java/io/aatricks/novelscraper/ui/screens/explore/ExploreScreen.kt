@@ -429,12 +429,21 @@ fun ExploreItemCard(item: ExploreItem, onClick: () -> Unit): Unit {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = item.source,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = item.source,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            fontWeight = FontWeight.Medium
+                        )
+                        if (item.chapterCount > 0) {
+                            Text(
+                                text = "${item.chapterCount} Chapters",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.LightGray.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
                     item.author?.let { author ->
                         Text(
                             text = author,

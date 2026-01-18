@@ -2,6 +2,8 @@ package io.aatricks.novelscraper.data.repository.source
 
 import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.model.ExploreItem
+import io.aatricks.novelscraper.data.model.ChapterInfo
+import org.json.JSONObject
 import java.net.URLEncoder
 import javax.inject.Inject
 
@@ -42,11 +44,15 @@ class MangaBatSource @Inject constructor(
             val img = element.select("img").first()
             val coverUrl = img?.findImage()?.let { resolveUrl(it) }
 
+            val chapterText = element.select(".list-story-item-wrap-chapter, .item-chapter a, .chapter").text()
+            val chapterCount = io.aatricks.novelscraper.util.TextUtils.extractChapterNumber(chapterText)?.toInt() ?: 0
+
             ExploreItem(
                 title = title.trim(),
                 url = resolveUrl(href),
                 coverUrl = coverUrl?.ifBlank { null },
-                source = name
+                source = name,
+                chapterCount = chapterCount
             )
         }
     }
@@ -77,7 +83,7 @@ class MangaBatSource @Inject constructor(
     }
 
     override suspend fun getNovelDetails(url: String): ExploreItem = io {
-        val document = connect(url).referrer(url).get()
+        val document = getDocument(url)
         val title = document.select(".story-info-right h1, h1").text()
         
         val author = extractAuthor(document)
@@ -87,13 +93,12 @@ class MangaBatSource @Inject constructor(
         
         val coverUrl = extractCoverUrl(document)
         
-        val chapters = document.select(".chapter-name, .chapter-list a, .row a[href*='/chapter-']")
-        val chapterList = chapters.map { element ->
-            io.aatricks.novelscraper.data.model.ChapterInfo(
-                title = element.text(),
-                url = resolveUrl(element.attr("href"))
-            )
-        }.reversed()
+        // Chapters are loaded via API on www.mangabats.com
+        val comicSlug = document.select("#chapter-list-container").attr("data-comic-slug").ifBlank {
+            url.substringAfterLast("/").substringBefore("?")
+        }
+        
+        val chapterList = fetchAllChaptersFromApi(comicSlug)
 
         ExploreItem(
             title = title,
@@ -106,6 +111,62 @@ class MangaBatSource @Inject constructor(
             readingUrl = chapterList.firstOrNull()?.url,
             chapters = chapterList
         )
+    }
+
+    private suspend fun fetchAllChaptersFromApi(slug: String): List<ChapterInfo> = io {
+        if (slug.isBlank()) return@io emptyList<ChapterInfo>()
+        
+        val allChapters = mutableListOf<ChapterInfo>()
+        var offset = 0
+        val limit = 50
+        var hasMore = true
+        
+        while (hasMore) {
+            val apiUrl = "$baseUrl/api/manga/$slug/chapters?offset=$offset&limit=$limit"
+            runCatching {
+                val response = okHttpClient.newCall(
+                    okhttp3.Request.Builder()
+                        .url(apiUrl)
+                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                        .header("Referer", "$baseUrl/manga/$slug")
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .build()
+                ).execute().use { it.body?.string() ?: "" }
+                
+                val json = JSONObject(response)
+                if (!json.getBoolean("success")) {
+                    hasMore = false
+                    return@runCatching
+                }
+                
+                val dataObj = json.getJSONObject("data")
+                val chaptersArray = dataObj.getJSONArray("chapters")
+                
+                for (i in 0 until chaptersArray.length()) {
+                    val obj = chaptersArray.getJSONObject(i)
+                    val chapterSlug = obj.getString("chapter_slug")
+                    allChapters.add(ChapterInfo(
+                        title = obj.getString("chapter_name"),
+                        url = "$baseUrl/manga/$slug/$chapterSlug"
+                    ))
+                }
+                
+                val pagination = dataObj.optJSONObject("pagination")
+                hasMore = pagination?.optBoolean("has_more") ?: false
+                offset += limit
+            }.onFailure { 
+                it.printStackTrace()
+                hasMore = false
+            }
+        }
+        
+        // API returns newest first, so we reverse to get oldest first (normal order)
+        allChapters.reversed()
+    }
+
+    private suspend fun fetchChaptersFromApi(slug: String): List<ChapterInfo> {
+        // Fallback for list elements if needed, but we now use fetchAllChaptersFromApi in getNovelDetails
+        return fetchAllChaptersFromApi(slug)
     }
 
     private fun extractAuthor(document: org.jsoup.nodes.Document): String {

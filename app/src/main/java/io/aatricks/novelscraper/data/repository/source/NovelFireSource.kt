@@ -53,13 +53,17 @@ class NovelFireSource @Inject constructor(
                  val img = parent?.select("img")?.first()
                  val coverUrl = img?.findImage()?.let { resolveUrl(it) } ?: ""
 
+                 val chapterText = parent?.select(".novel-stats, .stats, .chapters")?.text() ?: ""
+                 val chapterCount = extractChapterCount(chapterText)
+
                  val absoluteUrl = resolveUrl(href)
                  if (items.none { it.url == absoluteUrl }) {
                      items.add(ExploreItem(
                          title = title,
                          url = absoluteUrl,
                          coverUrl = coverUrl.ifBlank { null },
-                         source = name
+                         source = name,
+                         chapterCount = chapterCount
                      ))
                  }
             }
@@ -116,12 +120,16 @@ class NovelFireSource @Inject constructor(
                      val coverUrl = img?.findImage()?.let { resolveUrl(it) } ?: ""
                      val absoluteUrl = resolveUrl(href)
 
+                     val chapterText = parent?.select(".novel-stats, .stats, .chapters")?.text() ?: ""
+                     val chapterCount = extractChapterCount(chapterText)
+
                      if (items.none { it.url == absoluteUrl }) {
                          items.add(ExploreItem(
                              title = title,
                              url = absoluteUrl,
                              coverUrl = coverUrl.ifBlank { null },
-                             source = name
+                             source = name,
+                             chapterCount = chapterCount
                          ))
                      }
                  }

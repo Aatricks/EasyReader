@@ -33,6 +33,7 @@ class HtmlParser @Inject constructor() {
             ".chapter-content img",
             ".chapter-img img",
             ".read-content img",
+            ".container-reading img",
             "div.page-break img"
         ).joinToString(", ")
 
