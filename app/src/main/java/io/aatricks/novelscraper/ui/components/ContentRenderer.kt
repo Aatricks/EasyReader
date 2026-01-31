@@ -20,14 +20,20 @@ import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import coil3.network.NetworkHeaders
+import coil3.network.httpHeaders
+import androidx.compose.ui.graphics.graphicsLayer
 import io.aatricks.novelscraper.data.model.ContentElement
+import io.aatricks.novelscraper.ui.util.imageAspectRatio
+import io.aatricks.novelscraper.ui.util.splitImageLayer
 
 @Composable
 fun ContentRenderer(
     elements: List<ContentElement>,
     modifier: Modifier = Modifier,
     backgroundColor: Color = Color.Black,
-    textColor: Color = Color.White
+    textColor: Color = Color.White,
+    pageUrl: String = ""
 ) {
     LazyColumn(
         modifier = modifier
@@ -46,12 +52,26 @@ fun ContentRenderer(
                     )
                 }
                 is ContentElement.Image -> {
-                    AsyncImageElement(url = element.url, altText = element.altText)
+                    AsyncImageElement(
+                        url = element.url, 
+                        altText = element.altText,
+                        side = element.side,
+                        width = element.width,
+                        height = element.height,
+                        pageUrl = pageUrl
+                    )
                 }
                 is ContentElement.ImageGroup -> {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         element.images.forEach { image ->
-                            AsyncImageElement(url = image.url, altText = image.altText)
+                            AsyncImageElement(
+                                url = image.url, 
+                                altText = image.altText,
+                                side = image.side,
+                                width = image.width,
+                                height = image.height,
+                                pageUrl = pageUrl
+                            )
                         }
                     }
                 }
@@ -61,19 +81,42 @@ fun ContentRenderer(
 }
 
 @Composable
-fun AsyncImageElement(url: String, altText: String?) {
+fun AsyncImageElement(
+    url: String, 
+    altText: String?,
+    side: ContentElement.Image.Side = ContentElement.Image.Side.FULL,
+    width: Int = 0,
+    height: Int = 0,
+    pageUrl: String = ""
+) {
     val context = LocalContext.current
-    val painter = rememberAsyncImagePainter(
-        model = ImageRequest.Builder(context)
+    
+    val imageRequest = remember(url, pageUrl) {
+        val uri = try { java.net.URI(pageUrl) } catch (ex: Exception) { null }
+        var referer = if (uri != null) "${uri.scheme}://${uri.host}/" else pageUrl
+        
+        if (referer.contains("mangabat") || referer.contains("manganato")) {
+            referer = "https://manganato.com/"
+        }
+
+        ImageRequest.Builder(context)
             .data(url)
+            .httpHeaders(NetworkHeaders.Builder()
+                .set("Referer", referer)
+                .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                .build())
             .crossfade(true)
             .build()
-    )
+    }
+
+    val painter = rememberAsyncImagePainter(model = imageRequest)
+
+    val aspectRatioModifier = Modifier.imageAspectRatio(side, width, height)
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .wrapContentHeight()
+            .then(aspectRatioModifier)
             .clip(RoundedCornerShape(8.dp))
             .background(Color.DarkGray.copy(alpha = 0.3f)),
         contentAlignment = Alignment.Center
@@ -81,7 +124,10 @@ fun AsyncImageElement(url: String, altText: String?) {
         Image(
             painter = painter,
             contentDescription = altText,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(aspectRatioModifier)
+                .splitImageLayer(side, width, height),
             contentScale = ContentScale.Fit
         )
 

@@ -117,11 +117,7 @@ class ContentRepository @Inject constructor(
         }
 
         val elements = htmlParser.parse(document, url)
-        val finalElements = if (elements.any { it is ContentElement.Image }) {
-            processImages(elements.filterIsInstance<ContentElement.Image>(), url)
-        } else {
-            elements
-        }
+        val finalElements = processChapterElements(elements, url)
 
         backgroundCacheImages(finalElements, url)
         
@@ -272,39 +268,78 @@ class ContentRepository @Inject constructor(
         }.getOrDefault(false)
     }
 
-    private suspend fun processImages(images: List<ContentElement.Image>, url: String): List<ContentElement> {
+    private suspend fun processChapterElements(elements: List<ContentElement>, url: String): List<ContentElement> {
+        val imageElements = elements.flatMap { element ->
+            when (element) {
+                is ContentElement.Image -> listOf(element)
+                is ContentElement.ImageGroup -> element.images
+                else -> emptyList()
+            }
+        }
+
+        if (imageElements.isEmpty()) return elements
+
         val imagesWithDims = withContext(Dispatchers.IO) {
-            images.map { img -> 
-                async { 
-                    DIMENSION_SEMAPHORE.withPermit { 
+            imageElements.map { img ->
+                async {
+                    DIMENSION_SEMAPHORE.withPermit {
                         fetchImageDimensions(img.url, url)?.let { (w, h) ->
                             img.copy(width = w, height = h)
                         } ?: img
-                    } 
-                } 
+                    }
+                }
             }.awaitAll()
         }
-        
-        return groupSimilarImages(imagesWithDims)
+
+        val dimMap = imageElements.zip(imagesWithDims).toMap()
+
+        val expandedElements = mutableListOf<ContentElement>()
+        for (element in elements) {
+            when (element) {
+                is ContentElement.Image -> {
+                    val img = dimMap[element] ?: element
+                    if (img.width > img.height * 1.2 && img.height > 0) {
+                        expandedElements.add(img.copy(side = ContentElement.Image.Side.RIGHT))
+                        expandedElements.add(img.copy(side = ContentElement.Image.Side.LEFT))
+                    } else {
+                        expandedElements.add(img)
+                    }
+                }
+                is ContentElement.ImageGroup -> {
+                    val updatedImages = element.images.map { dimMap[it] ?: it }
+                    expandedElements.add(element.copy(images = updatedImages))
+                }
+                else -> expandedElements.add(element)
+            }
+        }
+
+        return groupSimilarElements(expandedElements)
     }
 
-    private fun groupSimilarImages(images: List<ContentElement.Image>): List<ContentElement> {
-        if (images.isEmpty()) return emptyList()
-        val processed = mutableListOf<ContentElement>(images[0])
+    private fun groupSimilarElements(elements: List<ContentElement>): List<ContentElement> {
+        if (elements.isEmpty()) return emptyList()
+        val processed = mutableListOf<ContentElement>()
         
-        for (i in 1 until images.size) {
-            val current = images[i]
-            val last = processed.last()
+        for (element in elements) {
+            if (processed.isEmpty()) {
+                processed.add(element)
+                continue
+            }
             
-            when {
-                shouldGroupWithLastImage(last, current) -> {
-                    processed[processed.size - 1] = ContentElement.ImageGroup(listOf(last as ContentElement.Image, current))
+            val last = processed.last()
+            if (element is ContentElement.Image) {
+                when {
+                    shouldGroupWithLastImage(last, element) -> {
+                        processed[processed.size - 1] = ContentElement.ImageGroup(listOf(last as ContentElement.Image, element))
+                    }
+                    shouldGroupWithLastGroup(last, element) -> {
+                        val group = last as ContentElement.ImageGroup
+                        processed[processed.size - 1] = ContentElement.ImageGroup(group.images + element)
+                    }
+                    else -> processed.add(element)
                 }
-                shouldGroupWithLastGroup(last, current) -> {
-                    val group = last as ContentElement.ImageGroup
-                    processed[processed.size - 1] = ContentElement.ImageGroup(group.images + current)
-                }
-                else -> processed.add(current)
+            } else {
+                processed.add(element)
             }
         }
         return processed
@@ -314,6 +349,10 @@ class ContentRepository @Inject constructor(
         if (last !is ContentElement.Image || last.width <= 0 || current.width <= 0 || last.width != current.width) {
             return false
         }
+        // Don't group split images
+        if (last.side != ContentElement.Image.Side.FULL || current.side != ContentElement.Image.Side.FULL) {
+            return false
+        }
         val lastRatio = last.height.toFloat() / last.width
         val currentRatio = current.height.toFloat() / current.width
         return (currentRatio < 0.8f || lastRatio < 0.8f) && lastRatio + currentRatio < 2.1f
@@ -321,6 +360,10 @@ class ContentRepository @Inject constructor(
 
     private fun shouldGroupWithLastGroup(last: ContentElement, current: ContentElement.Image): Boolean {
         if (last !is ContentElement.ImageGroup) return false
+        // Don't group split images into groups
+        if (current.side != ContentElement.Image.Side.FULL) {
+            return false
+        }
         val lastInGroup = last.images.last()
         if (lastInGroup.width <= 0 || current.width <= 0 || lastInGroup.width != current.width) {
             return false

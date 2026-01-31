@@ -22,6 +22,7 @@ sealed class ContentElement {
      * @property caption Optional image caption
      * @property width Image width in pixels (0 if unknown)
      * @property height Image height in pixels (0 if unknown)
+     * @property side Which part of the image to display (for split pages)
      */
     data class Image(
         val url: String,
@@ -29,8 +30,11 @@ sealed class ContentElement {
         val caption: String? = null,
         val description: String? = null,
         val width: Int = 0,
-        val height: Int = 0
+        val height: Int = 0,
+        val side: Side = Side.FULL
     ) : ContentElement() {
+        enum class Side { FULL, LEFT, RIGHT }
+
         init {
             require(url.isNotBlank()) { "Image URL cannot be blank" }
         }

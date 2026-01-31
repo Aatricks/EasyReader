@@ -11,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -20,6 +21,9 @@ import coil3.network.NetworkHeaders
 import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import io.aatricks.novelscraper.data.model.ContentElement
+import io.aatricks.novelscraper.ui.util.imageAspectRatio
+import io.aatricks.novelscraper.ui.util.splitImageLayer
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -34,13 +38,14 @@ fun ReaderImageView(
     contentScale: ContentScale = ContentScale.FillWidth,
     backgroundColor: Color = Color.Black,
     width: Int = 0,
-    height: Int = 0
+    height: Int = 0,
+    side: ContentElement.Image.Side = ContentElement.Image.Side.FULL
 ) {
-    val aspectRatioModifier = if (width > 0 && height > 0) {
-        Modifier.aspectRatio(width.toFloat() / height.toFloat())
-    } else {
-        Modifier
-    }
+    val aspectRatioModifier = Modifier.imageAspectRatio(side, width, height)
+    val imageModifier = Modifier
+        .fillMaxWidth()
+        .then(aspectRatioModifier)
+        .splitImageLayer(side, width, height)
 
     if (imageUrl.startsWith("http")) {
         val context = LocalContext.current
@@ -83,7 +88,7 @@ fun ReaderImageView(
             AsyncImage(
                 model = imageRequest,
                 contentDescription = altText,
-                modifier = Modifier.fillMaxWidth().then(aspectRatioModifier),
+                modifier = imageModifier,
                 contentScale = contentScale,
                 onSuccess = { isLoading = false },
                 onError = { 
@@ -137,12 +142,14 @@ fun ReaderImageView(
             when {
                 isLoading -> CircularProgressIndicator(color = Color.Gray, modifier = Modifier.size(32.dp).padding(16.dp))
                 hasError -> Text(text = altText ?: "Image unavailable", color = Color.Gray, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
-                imageData != null -> Image(
-                    bitmap = imageData!!.asImageBitmap(), 
-                    contentDescription = altText, 
-                    modifier = Modifier.fillMaxWidth().then(aspectRatioModifier), 
-                    contentScale = contentScale
-                )
+                imageData != null -> imageData?.let { bitmap ->
+                    Image(
+                        bitmap = bitmap.asImageBitmap(), 
+                        contentDescription = altText, 
+                        modifier = imageModifier, 
+                        contentScale = contentScale
+                    )
+                }
             }
         }
     }

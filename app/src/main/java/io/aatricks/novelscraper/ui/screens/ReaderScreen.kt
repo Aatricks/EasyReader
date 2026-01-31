@@ -709,7 +709,8 @@ private fun PagedReaderView(
                             contentScale = ContentScale.Fit,
                             backgroundColor = bgColor,
                             width = el.width,
-                            height = el.height
+                            height = el.height,
+                            side = el.side
                         )
                     }
                     is ContentElement.ImageGroup -> {
@@ -729,7 +730,8 @@ private fun PagedReaderView(
                                     contentScale = ContentScale.FillWidth,
                                     backgroundColor = bgColor,
                                     width = img.width,
-                                    height = img.height
+                                    height = img.height,
+                                    side = img.side
                                 )
                             }
                         }
@@ -792,7 +794,8 @@ private fun ScrollingReaderView(
                         contentScale = ContentScale.FillWidth,
                         backgroundColor = bgColor,
                         width = element.width,
-                        height = element.height
+                        height = element.height,
+                        side = element.side
                     )
                 }
                 is ContentElement.ImageGroup -> {
@@ -809,7 +812,8 @@ private fun ScrollingReaderView(
                                 contentScale = ContentScale.FillWidth,
                                 backgroundColor = bgColor,
                                 width = img.width,
-                                height = img.height
+                                height = img.height,
+                                side = img.side
                             )
                         }
                     }
