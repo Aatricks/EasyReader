@@ -39,7 +39,9 @@ fun ReaderImageView(
     backgroundColor: Color = Color.Black,
     width: Int = 0,
     height: Int = 0,
-    side: ContentElement.Image.Side = ContentElement.Image.Side.FULL
+    side: ContentElement.Image.Side = ContentElement.Image.Side.FULL,
+    enableZoom: Boolean = false,
+    onTap: (() -> Unit)? = null
 ) {
     val aspectRatioModifier = Modifier.imageAspectRatio(side, width, height)
     val imageModifier = Modifier
@@ -85,17 +87,23 @@ fun ReaderImageView(
                 .wrapContentHeight(),
             contentAlignment = Alignment.Center
         ) {
-            AsyncImage(
-                model = imageRequest,
-                contentDescription = altText,
-                modifier = imageModifier,
-                contentScale = contentScale,
-                onSuccess = { isLoading = false },
-                onError = { 
-                    isError = true
-                    isLoading = false 
-                }
-            )
+            ZoomableBox(
+                modifier = Modifier.matchParentSize(),
+                enableZoom = enableZoom,
+                onTap = onTap
+            ) {
+                AsyncImage(
+                    model = imageRequest,
+                    contentDescription = altText,
+                    modifier = imageModifier,
+                    contentScale = contentScale,
+                    onSuccess = { isLoading = false },
+                    onError = {
+                        isError = true
+                        isLoading = false
+                    }
+                )
+            }
 
             if (isLoading && !cachedFile.exists()) {
                 CircularProgressIndicator(
@@ -139,17 +147,28 @@ fun ReaderImageView(
                 .background(backgroundColor), 
             contentAlignment = Alignment.Center
         ) {
-            when {
-                isLoading -> CircularProgressIndicator(color = Color.Gray, modifier = Modifier.size(32.dp).padding(16.dp))
-                hasError -> Text(text = altText ?: "Image unavailable", color = Color.Gray, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
-                imageData != null -> imageData?.let { bitmap ->
-                    Image(
-                        bitmap = bitmap.asImageBitmap(), 
-                        contentDescription = altText, 
-                        modifier = imageModifier, 
-                        contentScale = contentScale
-                    )
+            ZoomableBox(
+                modifier = Modifier.matchParentSize(),
+                enableZoom = enableZoom,
+                onTap = onTap
+            ) {
+                if (imageData != null) {
+                    imageData?.let { bitmap ->
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = altText,
+                            modifier = imageModifier,
+                            contentScale = contentScale
+                        )
+                    }
                 }
+            }
+
+            if (isLoading) {
+                CircularProgressIndicator(color = Color.Gray, modifier = Modifier.size(32.dp).padding(16.dp))
+            }
+            if (hasError) {
+                Text(text = altText ?: "Image unavailable", color = Color.Gray, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
             }
         }
     }

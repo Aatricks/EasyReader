@@ -564,7 +564,8 @@ private fun ContentArea(
                 fontFamily = fontFamily,
                 bgColor = bgColor,
                 textColor = textColor,
-                readerViewModel = readerViewModel
+                readerViewModel = readerViewModel,
+                isZoomable = isManhwa
             )
         } else {
             ScrollingReaderView(
@@ -633,7 +634,8 @@ private fun PagedReaderView(
     fontFamily: FontFamily,
     bgColor: Color,
     textColor: Color,
-    readerViewModel: ReaderViewModel
+    readerViewModel: ReaderViewModel,
+    isZoomable: Boolean
 ): Unit {
     HorizontalPager(
         state = pagerState,
@@ -675,7 +677,9 @@ private fun PagedReaderView(
                             backgroundColor = bgColor,
                             width = el.width,
                             height = el.height,
-                            side = el.side
+                            side = el.side,
+                            enableZoom = isZoomable,
+                            onTap = { readerViewModel.toggleControls() }
                         )
                     }
                     is ContentElement.ImageGroup -> {
@@ -696,7 +700,9 @@ private fun PagedReaderView(
                                     backgroundColor = bgColor,
                                     width = img.width,
                                     height = img.height,
-                                    side = img.side
+                                    side = img.side,
+                                    enableZoom = isZoomable,
+                                    onTap = { readerViewModel.toggleControls() }
                                 )
                             }
                         }
@@ -760,7 +766,9 @@ private fun ScrollingReaderView(
                         backgroundColor = bgColor,
                         width = element.width,
                         height = element.height,
-                        side = element.side
+                        side = element.side,
+                        enableZoom = isManhwa,
+                        onTap = { readerViewModel.toggleControls() }
                     )
                 }
                 is ContentElement.ImageGroup -> {
@@ -778,7 +786,9 @@ private fun ScrollingReaderView(
                                 backgroundColor = bgColor,
                                 width = img.width,
                                 height = img.height,
-                                side = img.side
+                                side = img.side,
+                                enableZoom = isManhwa,
+                                onTap = { readerViewModel.toggleControls() }
                             )
                         }
                     }
