@@ -149,8 +149,7 @@ fun ReaderScreen(
             onRetry = {
                 showCloudflareWebView = false
                 readerViewModel.retryLoad()
-            },
-            ignoreSslErrors = libraryViewModel.ignoreSslErrors
+            }
         )
     }
 
@@ -231,8 +230,7 @@ fun ReaderScreen(
 private fun CloudflareDialog(
     url: String,
     onDismiss: () -> Unit,
-    onRetry: () -> Unit,
-    ignoreSslErrors: Boolean = false
+    onRetry: () -> Unit
 ): Unit {
     val context = LocalContext.current
     var webViewError by remember { mutableStateOf<String?>(null) }
@@ -314,15 +312,6 @@ private fun CloudflareDialog(
                                     userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                                 }
                                 webViewClient = object : WebViewClient() {
-                                    override fun onReceivedSslError(
-                                        view: WebView?,
-                                        handler: android.webkit.SslErrorHandler?,
-                                        error: android.net.http.SslError?
-                                    ) {
-                                        if (ignoreSslErrors) handler?.proceed()
-                                        else super.onReceivedSslError(view, handler, error)
-                                    }
-
                                     override fun onReceivedError(
                                         view: WebView?,
                                         request: android.webkit.WebResourceRequest?,

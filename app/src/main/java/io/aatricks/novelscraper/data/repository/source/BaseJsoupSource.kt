@@ -8,12 +8,6 @@ import org.jsoup.Connection
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
-import javax.net.ssl.SSLContext
-import javax.net.ssl.SSLSocketFactory
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
 
 abstract class BaseJsoupSource(
     protected open val preferencesManager: PreferencesManager? = null,
@@ -49,21 +43,6 @@ abstract class BaseJsoupSource(
             .timeout(timeout.toInt())
             .followRedirects(true)
         
-        if (preferencesManager?.ignoreSslErrors == true) {
-            val trustAllCerts = arrayOf<TrustManager>(
-                object : X509TrustManager {
-                    override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-                    override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-                    override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-                }
-            )
-            val sslContext = SSLContext.getInstance("TLS")
-            sslContext.init(null, trustAllCerts, java.security.SecureRandom())
-            connection.sslSocketFactory(sslContext.socketFactory)
-            // Note: setDefaultHostnameVerifier is global and might affect other parts of the app
-            javax.net.ssl.HttpsURLConnection.setDefaultHostnameVerifier { _, _ -> true }
-        }
-        
         return connection.get()
     }
 
@@ -74,20 +53,6 @@ abstract class BaseJsoupSource(
             .referrer(baseUrl)
             .timeout(timeout.toInt())
             .followRedirects(true)
-        
-        if (preferencesManager?.ignoreSslErrors == true) {
-            val trustAllCerts = arrayOf<TrustManager>(
-                object : X509TrustManager {
-                    override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-                    override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-                    override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-                }
-            )
-            val sslContext = SSLContext.getInstance("TLS")
-            sslContext.init(null, trustAllCerts, java.security.SecureRandom())
-            connection.sslSocketFactory(sslContext.socketFactory)
-            javax.net.ssl.HttpsURLConnection.setDefaultHostnameVerifier { _, _ -> true }
-        }
         
         return connection
     }
