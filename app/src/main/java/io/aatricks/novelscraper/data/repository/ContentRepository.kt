@@ -305,9 +305,19 @@ class ContentRepository @Inject constructor(
             when (element) {
                 is ContentElement.Image -> {
                     val img = dimMap[element] ?: element
-                    if (img.width > img.height * 1.2 && img.height > 0) {
-                        expandedElements.add(img.copy(side = ContentElement.Image.Side.RIGHT))
-                        expandedElements.add(img.copy(side = ContentElement.Image.Side.LEFT))
+                    // Conservative splitting: only for very wide images that are likely double-page spreads
+                    if (img.width > img.height * 1.5 && img.width > 1600 && img.height > 0) {
+                        // For manga-like sources, we might want RIGHT then LEFT, but for general web 
+                        // content or Manhwa/Manhua, LEFT then RIGHT is more appropriate.
+                        // Given the name "EasyReader", we'll stick to a default.
+                        val isManga = url.contains("manga", ignoreCase = true) && !url.contains("manhwa", ignoreCase = true)
+                        if (isManga) {
+                            expandedElements.add(img.copy(side = ContentElement.Image.Side.RIGHT))
+                            expandedElements.add(img.copy(side = ContentElement.Image.Side.LEFT))
+                        } else {
+                            expandedElements.add(img.copy(side = ContentElement.Image.Side.LEFT))
+                            expandedElements.add(img.copy(side = ContentElement.Image.Side.RIGHT))
+                        }
                     } else {
                         expandedElements.add(img)
                     }

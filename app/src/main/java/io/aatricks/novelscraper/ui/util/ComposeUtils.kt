@@ -16,7 +16,7 @@ fun Modifier.splitImageLayer(
         .graphicsLayer {
             clip = true
             scaleX = 2f
-            scaleY = 2f
+            scaleY = 1f
             translationX = if (side == ContentElement.Image.Side.LEFT) {
                 size.width / 2
             } else {
