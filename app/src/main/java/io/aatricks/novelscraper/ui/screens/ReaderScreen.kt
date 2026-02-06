@@ -450,29 +450,13 @@ private fun ContentArea(
         }
     }
 
+    val requestedIndices = remember(content.url) { mutableSetOf<Int>() }
+
     LaunchedEffect(listState.firstVisibleItemIndex, pagerState.currentPage, content.url) {
         val currentIndex = if (uiState.isPagedMode) pagerState.currentPage else listState.firstVisibleItemIndex
-        val prefetchRange = 10 
-        
-        val startRange = (currentIndex - 3).coerceAtLeast(0)
-        val endRange = (currentIndex + prefetchRange).coerceAtMost(content.paragraphs.size - 1)
-        
-        for (i in startRange..endRange) {
-            content.paragraphs.getOrNull(i)?.let { element ->
-                when (element) {
-                    is ContentElement.Image -> {
-                        val request = ImageRequest.Builder(context).data(element.url).build()
-                        SingletonImageLoader.get(context).enqueue(request)
-                    }
-                    is ContentElement.ImageGroup -> {
-                        element.images.forEach { img ->
-                            val request = ImageRequest.Builder(context).data(img.url).build()
-                            SingletonImageLoader.get(context).enqueue(request)
-                        }
-                    }
-                    else -> {}
-                }
-            }
+        prefetchImages(currentIndex, content, requestedIndices) { url ->
+            val request = ImageRequest.Builder(context).data(url).build()
+            SingletonImageLoader.get(context).enqueue(request)
         }
     }
 
@@ -1001,6 +985,40 @@ private fun rememberReaderNestedScrollConnection(
                 pullAmount = 0f
                 onPullAmountChange(0f)
                 return Velocity.Zero
+            }
+        }
+    }
+}
+
+internal fun prefetchImages(
+    currentIndex: Int,
+    content: ChapterContent,
+    requestedIndices: MutableSet<Int>,
+    onEnqueue: (String) -> Unit
+) {
+    val prefetchRange = 10
+
+    val startRange = (currentIndex - 3).coerceAtLeast(0)
+    val endRange = (currentIndex + prefetchRange).coerceAtMost(content.paragraphs.size - 1)
+
+    for (i in startRange..endRange) {
+        if (i in requestedIndices) continue
+
+        content.paragraphs.getOrNull(i)?.let { element ->
+            when (element) {
+                is ContentElement.Image -> {
+                    onEnqueue(element.url)
+                    requestedIndices.add(i)
+                }
+                is ContentElement.ImageGroup -> {
+                    element.images.forEach { img ->
+                        onEnqueue(img.url)
+                    }
+                    requestedIndices.add(i)
+                }
+                else -> {
+                    requestedIndices.add(i)
+                }
             }
         }
     }
