@@ -10,11 +10,16 @@ import io.aatricks.novelscraper.data.model.ReadingMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -313,30 +318,42 @@ class LibraryRepository @Inject constructor(
         runCatching("Refresh updates failed") {
             val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
             val groupedItems = getGroupedByTitle(allItems)
+            val semaphore = Semaphore(5)
 
-            for ((baseTitle, items) in groupedItems) {
-                if (items.isEmpty()) continue
-                val latestInLibrary = items.last()
-                if (latestInLibrary.baseNovelUrl.isBlank() || latestInLibrary.sourceName.isBlank()) continue
-
-                runCatching("Failed to refresh updates for $baseTitle") {
-                    val details =
-                        exploreRepository.getNovelDetails(latestInLibrary.baseNovelUrl, latestInLibrary.sourceName)
-                    if (details != null && details.chapters.isNotEmpty()) {
-                        val sourceChapterCount = details.chapters.size
-                        if (sourceChapterCount > latestInLibrary.totalChapters) {
-                            val itemToMark = items.find { it.isCurrentlyReading } ?: latestInLibrary
-                            val updatedItems = items.map { item ->
-                                var newItem = item.copy(totalChapters = sourceChapterCount)
-                                if (item.id == itemToMark.id && !item.hasUpdates) {
-                                    newItem = newItem.copy(hasUpdates = true)
+            coroutineScope {
+                groupedItems.map { (baseTitle, items) ->
+                    async {
+                        semaphore.withPermit {
+                            if (items.isNotEmpty()) {
+                                val latestInLibrary = items.last()
+                                if (latestInLibrary.baseNovelUrl.isNotBlank() && latestInLibrary.sourceName.isNotBlank()) {
+                                    runCatching("Failed to refresh updates for $baseTitle") {
+                                        val details =
+                                            exploreRepository.getNovelDetails(
+                                                latestInLibrary.baseNovelUrl,
+                                                latestInLibrary.sourceName
+                                            )
+                                        if (details != null && details.chapters.isNotEmpty()) {
+                                            val sourceChapterCount = details.chapters.size
+                                            if (sourceChapterCount > latestInLibrary.totalChapters) {
+                                                val itemToMark =
+                                                    items.find { it.isCurrentlyReading } ?: latestInLibrary
+                                                val updatedItems = items.map { item ->
+                                                    var newItem = item.copy(totalChapters = sourceChapterCount)
+                                                    if (item.id == itemToMark.id && !item.hasUpdates) {
+                                                        newItem = newItem.copy(hasUpdates = true)
+                                                    }
+                                                    newItem
+                                                }
+                                                libraryDao.insertItems(updatedItems)
+                                            }
+                                        }
+                                    }
                                 }
-                                newItem
                             }
-                            libraryDao.insertItems(updatedItems)
                         }
                     }
-                }
+                }.awaitAll()
             }
         }
     }
