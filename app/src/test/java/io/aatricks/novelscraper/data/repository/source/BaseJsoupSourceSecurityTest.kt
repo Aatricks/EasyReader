@@ -29,11 +29,10 @@ class BaseJsoupSourceSecurityTest {
     }
 
     @Test
-    fun `connect does NOT set global hostname verifier when ignoreSslErrors is true`() {
+    fun `connect does NOT set global hostname verifier`() {
         val originalVerifier = HttpsURLConnection.getDefaultHostnameVerifier()
         try {
             val prefs = mock(PreferencesManager::class.java)
-            `when`(prefs.ignoreSslErrors).thenReturn(true)
 
             val source = TestSource(prefs, null)
 

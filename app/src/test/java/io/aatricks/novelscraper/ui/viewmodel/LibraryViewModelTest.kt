@@ -1,5 +1,7 @@
 package io.aatricks.novelscraper.ui.viewmodel
 
+import io.aatricks.novelscraper.data.local.LibraryDao
+import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.model.LibraryItem
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
@@ -7,6 +9,7 @@ import io.aatricks.novelscraper.data.repository.LibraryRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Before
@@ -21,25 +24,23 @@ class LibraryViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
 
-    @Mock
-    lateinit var libraryRepository: LibraryRepository
+    private val libraryDao: LibraryDao = mock {
+        on { getAllItems() } doReturn flowOf(emptyList())
+    }
+    private val preferencesManager: PreferencesManager = mock {
+        on { loadLibraryItems() } doReturn emptyList()
+        on { loadCollapsedSources() } doReturn emptySet()
+    }
+    private val libraryRepository by lazy { LibraryRepository(libraryDao, preferencesManager) }
 
-    @Mock
-    lateinit var contentRepository: ContentRepository
-
-    @Mock
-    lateinit var exploreRepository: ExploreRepository
+    private val contentRepository: ContentRepository = mock()
+    private val exploreRepository: ExploreRepository = mock()
 
     private lateinit var viewModel: LibraryViewModel
 
     @Before
     fun setup() {
-        MockitoAnnotations.openMocks(this)
         Dispatchers.setMain(testDispatcher)
-
-        whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(emptyList()))
-        whenever(libraryRepository.selectedItems).thenReturn(MutableStateFlow(emptySet()))
-        whenever(libraryRepository.collapsedSources).thenReturn(MutableStateFlow(emptySet()))
 
         viewModel = LibraryViewModel(
             libraryRepository,
