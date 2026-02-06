@@ -55,6 +55,7 @@ import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import io.aatricks.novelscraper.data.model.*
 import io.aatricks.novelscraper.ui.components.*
+import io.aatricks.novelscraper.util.WebViewUtils
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import kotlinx.coroutines.launch
@@ -303,17 +304,7 @@ private fun CloudflareDialog(
                         factory = { ctx ->
                             WebView(ctx).apply {
                                 internalWebView = this
-                                settings.apply {
-                                    javaScriptEnabled = true
-                                    domStorageEnabled = true
-                                    loadWithOverviewMode = true
-                                    useWideViewPort = true
-                                    builtInZoomControls = true
-                                    displayZoomControls = false
-                                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                    javaScriptCanOpenWindowsAutomatically = true
-                                    userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                                }
+                                WebViewUtils.configureCloudflareWebView(this)
                                 webViewClient = object : WebViewClient() {
                                     override fun onReceivedSslError(
                                         view: WebView?,
