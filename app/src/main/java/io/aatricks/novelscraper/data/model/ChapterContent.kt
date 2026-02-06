@@ -12,6 +12,8 @@ import io.aatricks.novelscraper.util.TextUtils
  * @property chapterNumber Optional chapter number for ordering
  * @property nextChapterUrl Optional URL to the next chapter for navigation
  * @property previousChapterUrl Optional URL to the previous chapter for navigation
+ * @property preCalculatedTextCount Optional pre-calculated text count for lazy loading
+ * @property preCalculatedImageCount Optional pre-calculated image count for lazy loading
  */
 data class ChapterContent(
     val paragraphs: List<ContentElement>,
@@ -19,7 +21,9 @@ data class ChapterContent(
     val url: String,
     val chapterNumber: Int? = null,
     val nextChapterUrl: String? = null,
-    val previousChapterUrl: String? = null
+    val previousChapterUrl: String? = null,
+    private val preCalculatedTextCount: Int? = null,
+    private val preCalculatedImageCount: Int? = null
 ) {
     init {
         require(url.isNotBlank()) { "URL cannot be blank" }
@@ -33,12 +37,12 @@ data class ChapterContent(
     /**
      * Returns the number of text elements in the chapter
      */
-    fun getTextCount(): Int = paragraphs.count { it is ContentElement.Text }
+    fun getTextCount(): Int = preCalculatedTextCount ?: paragraphs.count { it is ContentElement.Text }
     
     /**
      * Returns the number of image elements in the chapter
      */
-    fun getImageCount(): Int = paragraphs.sumOf { 
+    fun getImageCount(): Int = preCalculatedImageCount ?: paragraphs.sumOf {
         when (it) {
             is ContentElement.Image -> 1
             is ContentElement.ImageGroup -> it.images.size
