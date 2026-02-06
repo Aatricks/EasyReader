@@ -10,6 +10,7 @@ import io.aatricks.novelscraper.data.model.*
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -673,25 +674,43 @@ class ContentRepository @Inject constructor(
             val epubPath = parts[0]
             val imgHref = parts[1].replace("\\", "/").removePrefix("/")
             
-            val stream = if (epubPath.startsWith("content://")) {
-                context.contentResolver.openInputStream(Uri.parse(epubPath)) ?: return@withContext null
+            val fileToRead = if (epubPath.startsWith("content://")) {
+                val finalFile = File(epubCacheDir, "${epubPath.hashCode()}.epub")
+                if (!finalFile.exists()) {
+                    val tmpFile = File(epubCacheDir, "${epubPath.hashCode()}.tmp")
+                    try {
+                        context.contentResolver.openInputStream(Uri.parse(epubPath))?.use { input ->
+                            tmpFile.outputStream().use { output -> input.copyTo(output) }
+                        } ?: return@withContext null
+
+                        if (!tmpFile.renameTo(finalFile) && !finalFile.exists()) {
+                             throw Exception("Failed to cache EPUB")
+                        }
+                    } finally {
+                        if (tmpFile.exists()) tmpFile.delete()
+                    }
+                }
+                finalFile
             } else {
-                File(epubPath).inputStream()
+                File(epubPath)
             }
             
-            ZipInputStream(stream).use { zip ->
-                var e = zip.nextEntry
-                while (e != null) {
-                    val entryName = e.name.replace("\\", "/").removePrefix("/")
-                    if (entryName == imgHref || entryName.endsWith("/$imgHref")) {
-                        val bytes = zip.readBytes()
-                        return@runCatching bytes
-                    }
-                    zip.closeEntry()
-                    e = zip.nextEntry
+            if (!fileToRead.exists()) return@withContext null
+
+            try {
+                ZipFile(fileToRead).use { zip ->
+                    val entry = zip.getEntry(imgHref)
+                        ?: zip.entries().asSequence().firstOrNull {
+                            val name = it.name.replace("\\", "/").removePrefix("/")
+                            name == imgHref || name.endsWith("/$imgHref")
+                        }
+
+                    entry?.let { zip.getInputStream(it).readBytes() }
                 }
+            } catch (e: Exception) {
+                if (epubPath.startsWith("content://")) fileToRead.delete()
+                throw e
             }
-            null
         }.getOrNull()
     }
 
@@ -699,6 +718,7 @@ class ContentRepository @Inject constructor(
         if (url.contains("epub")) {
             epubBookCache.remove(url)
             File(epubCacheDir, url.hashCode().toString()).deleteRecursively()
+            File(epubCacheDir, "${url.hashCode()}.epub").delete()
         } else {
             getCachedFile(url).delete()
         }
