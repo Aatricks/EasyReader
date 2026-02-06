@@ -76,10 +76,13 @@ class NovelFireSource @Inject constructor(
         val url = "$baseUrl/ajax/searchLive?inputContent=$encodedQuery"
         
         runCatching {
-            val response = connect(url)
-                .ignoreContentType(true)
-                .execute()
-                .body()
+            val request = okhttp3.Request.Builder()
+                .url(url)
+                .header("User-Agent", userAgent)
+                .header("Referer", baseUrl)
+                .build()
+
+            val response = okHttpClient.newCall(request).execute().use { it.body?.string() ?: "" }
             
             val json = JSONObject(response)
             val data = json.getJSONArray("data")
