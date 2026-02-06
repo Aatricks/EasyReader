@@ -2,7 +2,6 @@ package io.aatricks.novelscraper.ui.viewmodel
 
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.model.LibraryItem
 import io.aatricks.novelscraper.data.model.SortMode
@@ -19,18 +18,10 @@ import android.util.Log
 class LibraryViewModel @Inject constructor(
     val repository: LibraryRepository,
     private val contentRepository: ContentRepository,
-    private val exploreRepository: ExploreRepository,
-    private val preferencesManager: PreferencesManager
+    private val exploreRepository: ExploreRepository
 ) : BaseViewModel<LibraryViewModel.LibraryUiState>(LibraryUiState()) {
 
     private val TAG = "LibraryViewModel"
-
-    var ignoreSslErrors: Boolean
-        get() = preferencesManager.ignoreSslErrors
-        set(value) {
-            preferencesManager.ignoreSslErrors = value
-            updateState { it.copy(ignoreSslErrors = value) }
-        }
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -57,8 +48,7 @@ class LibraryViewModel @Inject constructor(
         val selectedIds: Set<String> = emptySet(),
         val selectedCount: Int = 0,
         val isEmpty: Boolean = true,
-        val currentlyReading: LibraryItem? = null,
-        val ignoreSslErrors: Boolean = false
+        val currentlyReading: LibraryItem? = null
     )
 
     private fun observeLibraryChanges(): Unit {
@@ -91,8 +81,7 @@ class LibraryViewModel @Inject constructor(
                     selectedIds = selectedIds,
                     selectedCount = selectedIds.size,
                     isEmpty = items.isEmpty(),
-                    currentlyReading = items.find { it.isCurrentlyReading },
-                    ignoreSslErrors = preferencesManager.ignoreSslErrors
+                    currentlyReading = items.find { it.isCurrentlyReading }
                 )
             }.collect { newState ->
                 updateState { newState }

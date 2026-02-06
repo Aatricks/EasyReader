@@ -8,12 +8,6 @@ import org.jsoup.Connection
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
-import javax.net.ssl.SSLContext
-import javax.net.ssl.SSLSocketFactory
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
 
 abstract class BaseJsoupSource(
     protected open val preferencesManager: PreferencesManager? = null,
@@ -34,34 +28,21 @@ abstract class BaseJsoupSource(
                 .header("User-Agent", userAgent)
                 .header("Referer", baseUrl)
                 .build()
-            
+
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) throw java.io.IOException("Unexpected code $response")
                 val html = response.body?.string() ?: throw java.io.IOException("Empty response")
                 return Jsoup.parse(html, url)
             }
         }
-        
+
         // Fallback to Jsoup's connection if okHttpClient is not available
         val connection = Jsoup.connect(url)
             .userAgent(userAgent)
             .referrer(baseUrl)
             .timeout(timeout.toInt())
             .followRedirects(true)
-        
-        if (preferencesManager?.ignoreSslErrors == true) {
-            val trustAllCerts = arrayOf<TrustManager>(
-                object : X509TrustManager {
-                    override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-                    override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-                    override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-                }
-            )
-            val sslContext = SSLContext.getInstance("TLS")
-            sslContext.init(null, trustAllCerts, java.security.SecureRandom())
-            connection.sslSocketFactory(sslContext.socketFactory)
-        }
-        
+
         return connection.get()
     }
 
@@ -72,20 +53,7 @@ abstract class BaseJsoupSource(
             .referrer(baseUrl)
             .timeout(timeout.toInt())
             .followRedirects(true)
-        
-        if (preferencesManager?.ignoreSslErrors == true) {
-            val trustAllCerts = arrayOf<TrustManager>(
-                object : X509TrustManager {
-                    override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-                    override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-                    override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-                }
-            )
-            val sslContext = SSLContext.getInstance("TLS")
-            sslContext.init(null, trustAllCerts, java.security.SecureRandom())
-            connection.sslSocketFactory(sslContext.socketFactory)
-        }
-        
+
         return connection
     }
 
