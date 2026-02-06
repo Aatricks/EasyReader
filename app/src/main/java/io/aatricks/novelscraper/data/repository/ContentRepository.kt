@@ -54,7 +54,13 @@ class ContentRepository @Inject constructor(
     private val epubBookCache = mutableMapOf<String, EpubBook>()
 
     sealed class ContentResult {
-        data class Success(val elements: List<ContentElement>, val title: String? = null, val url: String) : ContentResult()
+        data class Success(
+            val elements: List<ContentElement>,
+            val title: String? = null,
+            val url: String,
+            val textCount: Int? = null,
+            val imageCount: Int? = null
+        ) : ContentResult()
         data class Error(val message: String, val exception: Exception? = null) : ContentResult()
     }
 
@@ -402,41 +408,75 @@ class ContentRepository @Inject constructor(
         }.getOrNull()
     }
 
-    private suspend fun loadPdfContent(filePath: String): ContentResult = withContext(Dispatchers.IO) {
-        runCatching {
-            val paragraphs = mutableListOf<String>()
+    private inner class PdfLazyList(
+        private val filePath: String,
+        private val totalPages: Int
+    ) : AbstractList<ContentElement>() {
+        override val size: Int get() = totalPages
+
+        override fun get(index: Int): ContentElement {
+            if (index < 0 || index >= size) throw IndexOutOfBoundsException("Index: $index, Size: $size")
+            val text = loadPdfPageText(filePath, index + 1)
+            return ContentElement.Text(text)
+        }
+    }
+
+    private fun loadPdfPageText(filePath: String, pageNum: Int): String {
+        return runCatching {
             val pdfDoc = if (filePath.startsWith("content://")) {
                 val uri = Uri.parse(filePath)
-                context.contentResolver.openInputStream(uri)?.use { 
-                    PdfDocument(PdfReader(it)) 
+                context.contentResolver.openInputStream(uri)?.use {
+                    PdfDocument(PdfReader(it))
+                } ?: return ""
+            } else {
+                val file = File(filePath)
+                if (!file.exists()) return ""
+                PdfDocument(PdfReader(file))
+            }
+
+            pdfDoc.use { doc ->
+                if (pageNum > doc.numberOfPages) return@use ""
+                val rawText = PdfTextExtractor.getTextFromPage(doc.getPage(pageNum))
+
+                rawText.lines()
+                    .filterNot { it.trim().matches(Regex("^\\d+$")) }
+                    .joinToString("\n")
+                    .split(Regex("\\n\\s*\\n"))
+                    .map { it.trim() }
+                    .filter { it.length > 20 }
+                    .joinToString("\n\n")
+            }
+        }.getOrDefault("")
+    }
+
+    private suspend fun loadPdfContent(filePath: String): ContentResult = withContext(Dispatchers.IO) {
+        runCatching {
+            val pageCount = if (filePath.startsWith("content://")) {
+                val uri = Uri.parse(filePath)
+                context.contentResolver.openInputStream(uri)?.use {
+                    PdfDocument(PdfReader(it)).use { doc -> doc.numberOfPages }
                 } ?: throw Exception("PDF not found")
             } else {
                 val file = File(filePath)
                 if (!file.exists()) throw Exception("PDF not found")
-                PdfDocument(PdfReader(file))
+                PdfDocument(PdfReader(file)).use { doc -> doc.numberOfPages }
             }
-            
-            pdfDoc.use { doc ->
-                for (i in 1..doc.numberOfPages) {
-                    PdfTextExtractor.getTextFromPage(doc.getPage(i)).lines()
-                        .filterNot { it.trim().matches(Regex("^\\d+$")) }
-                        .joinToString("\n")
-                        .split(Regex("\n\\s*\\n"))
-                        .map { it.trim() }
-                        .filter { it.length > 20 }
-                        .forEach { paragraphs.add(it) }
-                }
-            }
-            
-            if (paragraphs.isEmpty()) throw Exception("No text in PDF")
-            
+
+            if (pageCount == 0) throw Exception("No text in PDF")
+
             val title = if (filePath.startsWith("content://")) {
                 Uri.parse(filePath).lastPathSegment ?: "PDF"
             } else {
                 File(filePath).nameWithoutExtension
             }
-            
-            ContentResult.Success(paragraphs.map { ContentElement.Text(it) }, title, filePath)
+
+            ContentResult.Success(
+                elements = PdfLazyList(filePath, pageCount),
+                title = title,
+                url = filePath,
+                textCount = pageCount,
+                imageCount = 0
+            )
         }.getOrElse { e ->
             ContentResult.Error("PDF Error: ${e.message}")
         }

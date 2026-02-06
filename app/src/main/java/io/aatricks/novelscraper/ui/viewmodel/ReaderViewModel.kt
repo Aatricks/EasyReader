@@ -252,7 +252,9 @@ class ReaderViewModel @Inject constructor(
             title = result.title,
             url = result.url,
             nextChapterUrl = contentRepository.incrementChapterUrl(result.url),
-            previousChapterUrl = contentRepository.decrementChapterUrl(result.url)
+            previousChapterUrl = contentRepository.decrementChapterUrl(result.url),
+            preCalculatedTextCount = result.textCount,
+            preCalculatedImageCount = result.imageCount
         )
 
         val libraryItem = effectiveLibraryItemId?.let { libraryRepository.getItemById(it) }
