@@ -79,6 +79,25 @@ class MainActivity : ComponentActivity() {
                 dynamicColor = true
             ) {
                 val navController = rememberNavController()
+                val readerUiState by readerViewModel.uiState.collectAsState()
+
+                if (readerUiState.showExternalUrlConfirmation && readerUiState.pendingExternalUrl != null) {
+                    io.aatricks.novelscraper.ui.components.ExternalUrlConfirmationDialog(
+                        url = readerUiState.pendingExternalUrl!!,
+                        onConfirm = {
+                            readerViewModel.confirmExternalUrl()
+                            navController.navigate(ReaderRoute) {
+                                popUpTo(navController.graph.startDestinationId) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        onCancel = { readerViewModel.cancelExternalUrl() }
+                    )
+                }
+
                 NavHost(navController = navController, startDestination = ReaderRoute) {
                     composable<ReaderRoute> {
                         ReaderScreen(
@@ -144,9 +163,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleWebUrl(url: String): Unit {
-        val title = io.aatricks.novelscraper.util.TextUtils.extractTitleFromUrl(url)
-        libraryViewModel.addItem(title = title, url = url, contentType = ContentType.WEB)
-        readerViewModel.loadContent(url)
+        readerViewModel.requestOpenUrl(url)
     }
 
     private fun handleFilePicked(uri: Uri): Unit {

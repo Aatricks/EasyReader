@@ -9,6 +9,8 @@ import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
 import io.aatricks.novelscraper.util.TextUtils
+import io.aatricks.novelscraper.util.UrlSecurity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -105,8 +107,30 @@ class ReaderViewModel @Inject constructor(
         val fontFamily: String = "Default",
         val margins: Int = 16,
         val paragraphSpacing: Float = 1.0f,
-        val readerTheme: ReaderTheme = ReaderTheme.DARK
+        val readerTheme: ReaderTheme = ReaderTheme.DARK,
+        val pendingExternalUrl: String? = null,
+        val showExternalUrlConfirmation: Boolean = false
     )
+
+    fun requestOpenUrl(url: String): Unit {
+        viewModelScope.launch {
+            if (UrlSecurity.isSafeUrl(url)) {
+                updateState { it.copy(pendingExternalUrl = url, showExternalUrlConfirmation = true) }
+            } else {
+                updateState { it.copy(toastMessage = "Blocked unsafe or invalid URL") }
+            }
+        }
+    }
+
+    fun confirmExternalUrl(): Unit {
+        val url = _uiState.value.pendingExternalUrl ?: return
+        updateState { it.copy(pendingExternalUrl = null, showExternalUrlConfirmation = false) }
+        loadContent(url)
+    }
+
+    fun cancelExternalUrl(): Unit {
+        updateState { it.copy(pendingExternalUrl = null, showExternalUrlConfirmation = false) }
+    }
 
     fun updateFontSize(newSize: Float): Unit {
         val size = newSize.coerceIn(12f, 32f)
