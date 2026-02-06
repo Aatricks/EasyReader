@@ -60,8 +60,6 @@ abstract class BaseJsoupSource(
             val sslContext = SSLContext.getInstance("TLS")
             sslContext.init(null, trustAllCerts, java.security.SecureRandom())
             connection.sslSocketFactory(sslContext.socketFactory)
-            // Note: setDefaultHostnameVerifier is global and might affect other parts of the app
-            javax.net.ssl.HttpsURLConnection.setDefaultHostnameVerifier { _, _ -> true }
         }
         
         return connection.get()
@@ -86,7 +84,6 @@ abstract class BaseJsoupSource(
             val sslContext = SSLContext.getInstance("TLS")
             sslContext.init(null, trustAllCerts, java.security.SecureRandom())
             connection.sslSocketFactory(sslContext.socketFactory)
-            javax.net.ssl.HttpsURLConnection.setDefaultHostnameVerifier { _, _ -> true }
         }
         
         return connection
