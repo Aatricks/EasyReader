@@ -11,6 +11,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -121,8 +122,8 @@ fun ReaderScreen(
             val windowInsetsController = WindowCompat.getInsetsController(window, view)
             windowInsetsController.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            
-            val isDarkReader = readerTheme == ReaderTheme.DARK || 
+
+            val isDarkReader = readerTheme == ReaderTheme.DARK ||
                                readerTheme == ReaderTheme.OLED
 
             if (!uiState.showControls) {
@@ -130,7 +131,7 @@ fun ReaderScreen(
                 windowInsetsController.isAppearanceLightStatusBars = !isDarkReader
             } else {
                 windowInsetsController.show(WindowInsetsCompat.Type.statusBars())
-                windowInsetsController.isAppearanceLightStatusBars = false 
+                windowInsetsController.isAppearanceLightStatusBars = false
             }
         }
     }
@@ -236,7 +237,7 @@ private fun CloudflareDialog(
 ): Unit {
     val context = LocalContext.current
     var webViewError by remember { mutableStateOf<String?>(null) }
-    
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -297,7 +298,7 @@ private fun CloudflareDialog(
                         .background(Color.White)
                 ) {
                     var internalWebView by remember { mutableStateOf<WebView?>(null) }
-                    
+
                     AndroidView(
                         factory = { ctx ->
                             WebView(ctx).apply {
@@ -323,9 +324,9 @@ private fun CloudflareDialog(
                     // Floating Reload Button
                     if (webViewError != null) {
                         FilledIconButton(
-                            onClick = { 
+                            onClick = {
                                 webViewError = null
-                                internalWebView?.reload() 
+                                internalWebView?.reload()
                             },
                             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
                         ) {
@@ -354,13 +355,13 @@ private fun CloudflareDialog(
                         Spacer(Modifier.width(4.dp))
                         Text("Open in Browser")
                     }
-                    
+
                     Spacer(modifier = Modifier.weight(1f))
-                    
+
                     TextButton(onClick = onDismiss) {
                         Text("Cancel")
                     }
-                    
+
                     Button(
                         onClick = onRetry,
                         shape = RoundedCornerShape(8.dp)
@@ -565,7 +566,7 @@ private fun ContentArea(
                 bgColor = bgColor,
                 textColor = textColor,
                 readerViewModel = readerViewModel,
-                isZoomable = isManhwa
+                isZoomable = isManhwa // True if image content
             )
         } else {
             ScrollingReaderView(
@@ -641,18 +642,22 @@ private fun PagedReaderView(
         state = pagerState,
         reverseLayout = uiState.isRtl,
         userScrollEnabled = !uiState.showControls,
-        modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { readerViewModel.toggleControls() })
-            }
+        modifier = Modifier.fillMaxSize()
     ) { page ->
         val element = content.paragraphs.getOrNull(page)
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             element?.let { el ->
                 when (el) {
                     is ContentElement.Text -> {
-                        Box(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                        Box(modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { readerViewModel.toggleControls() }
+                            )
+                        ) {
                             Text(
                                 text = el.content,
                                 color = textColor,
@@ -726,11 +731,7 @@ private fun ScrollingReaderView(
 ): Unit {
     LazyColumn(
         state = listState,
-        modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { readerViewModel.toggleControls() })
-            },
+        modifier = Modifier.fillMaxSize(),
         verticalArrangement = if (isManhwa) {
             Arrangement.spacedBy(0.dp)
         } else {
@@ -754,6 +755,11 @@ private fun ScrollingReaderView(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = uiState.margins.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { readerViewModel.toggleControls() }
+                            )
                     )
                 }
                 is ContentElement.Image -> {
@@ -767,7 +773,8 @@ private fun ScrollingReaderView(
                         width = element.width,
                         height = element.height,
                         side = element.side,
-                        enableZoom = isManhwa,
+                        enableZoom = false,
+                        dynamicHeight = false,
                         onTap = { readerViewModel.toggleControls() }
                     )
                 }
@@ -787,7 +794,8 @@ private fun ScrollingReaderView(
                                 width = img.width,
                                 height = img.height,
                                 side = img.side,
-                                enableZoom = isManhwa,
+                                enableZoom = false,
+                                dynamicHeight = false,
                                 onTap = { readerViewModel.toggleControls() }
                             )
                         }
