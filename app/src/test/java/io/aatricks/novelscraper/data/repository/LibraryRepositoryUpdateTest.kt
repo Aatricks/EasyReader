@@ -2,6 +2,9 @@ package io.aatricks.novelscraper.data.repository
 
 import io.aatricks.novelscraper.data.local.LibraryDao
 import io.aatricks.novelscraper.data.local.PreferencesManager
+import io.aatricks.novelscraper.data.model.ChapterInfo
+import io.aatricks.novelscraper.data.model.ExploreItem
+import io.aatricks.novelscraper.data.model.LibraryItem
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -15,10 +18,13 @@ import org.mockito.kotlin.*
 class LibraryRepositoryUpdateTest {
 
     @Mock
+    private lateinit var preferencesManager: PreferencesManager
+
+    @Mock
     private lateinit var libraryDao: LibraryDao
 
     @Mock
-    private lateinit var preferencesManager: PreferencesManager
+    private lateinit var exploreRepository: ExploreRepository
 
     private lateinit var repository: LibraryRepository
 
@@ -65,5 +71,67 @@ class LibraryRepositoryUpdateTest {
 
         verify(libraryDao).updateNovelInfo(itemId, "new-url", "new-source")
         Unit
+    }
+
+    @Test
+    fun testRefreshLibraryUpdates_batches_updates() = runBlocking {
+        // Setup 3 novels with updates
+        val item1 = LibraryItem(
+            id = "1", title = "Novel 1", url = "url1",
+            baseTitle = "Novel 1", baseNovelUrl = "novel1", sourceName = "Source1",
+            totalChapters = 10
+        )
+        val item2 = LibraryItem(
+            id = "2", title = "Novel 2", url = "url2",
+            baseTitle = "Novel 2", baseNovelUrl = "novel2", sourceName = "Source1",
+            totalChapters = 20
+        )
+        val item3 = LibraryItem(
+            id = "3", title = "Novel 3", url = "url3",
+            baseTitle = "Novel 3", baseNovelUrl = "novel3", sourceName = "Source1",
+            totalChapters = 30
+        )
+
+        whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(item1, item2, item3)))
+
+        // Mock explore repo to return more chapters for each
+        val chapters1 = List(15) { ChapterInfo("Ch $it", "url") }
+        val chapters2 = List(25) { ChapterInfo("Ch $it", "url") }
+        val chapters3 = List(35) { ChapterInfo("Ch $it", "url") }
+
+        whenever(exploreRepository.getNovelDetails("novel1", "Source1"))
+            .thenReturn(ExploreItem("Novel 1", "novel1", source = "Source1", chapters = chapters1))
+        whenever(exploreRepository.getNovelDetails("novel2", "Source1"))
+            .thenReturn(ExploreItem("Novel 2", "novel2", source = "Source1", chapters = chapters2))
+        whenever(exploreRepository.getNovelDetails("novel3", "Source1"))
+            .thenReturn(ExploreItem("Novel 3", "novel3", source = "Source1", chapters = chapters3))
+
+        // Execute
+        repository.refreshLibraryUpdates(exploreRepository)
+
+        // Verify behavior: Optimized behavior calls insertItems once with all updates.
+        verify(libraryDao, times(1)).insertItems(any())
+    }
+
+    @Test
+    fun testRefreshLibraryUpdates_partial_failure() = runBlocking {
+        // Setup 2 novels, one will fail
+        val item1 = LibraryItem(id = "1", title = "Novel 1", url = "url1", baseTitle = "Novel 1", baseNovelUrl = "novel1", sourceName = "Source1", totalChapters = 10)
+        val item2 = LibraryItem(id = "2", title = "Novel 2", url = "url2", baseTitle = "Novel 2", baseNovelUrl = "novel2", sourceName = "Source1", totalChapters = 20)
+
+        whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(item1, item2)))
+
+        // Mock explore repo: novel1 succeeds, novel2 fails
+        val chapters1 = List(15) { ChapterInfo("Ch $it", "url") }
+        whenever(exploreRepository.getNovelDetails("novel1", "Source1")).thenReturn(ExploreItem("Novel 1", "novel1", source = "Source1", chapters = chapters1))
+        whenever(exploreRepository.getNovelDetails("novel2", "Source1")).thenThrow(RuntimeException("Network error"))
+
+        // Execute
+        repository.refreshLibraryUpdates(exploreRepository)
+
+        // Verify behavior: It should still update the successful one
+        verify(libraryDao, times(1)).insertItems(argThat { 
+            size == 1 && first().id == "1" && first().totalChapters == 15 
+        })
     }
 }
