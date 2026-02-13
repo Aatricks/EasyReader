@@ -14,11 +14,26 @@ android {
     defaultConfig {
         applicationId = "io.aatricks.novelscraper"
         minSdk = 30
-        targetSdk = 36
-        versionCode = 2
-        versionName = "0.4.4"
+        targetSdk = 34
+        versionCode = 3
+        versionName = "0.5.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("release") {
+            val keystorePropertiesFile = rootProject.file("keystore.properties")
+            if (keystorePropertiesFile.exists()) {
+                val properties = java.util.Properties().apply {
+                    load(keystorePropertiesFile.inputStream())
+                }
+                storeFile = properties.getProperty("storeFile")?.let { file(it) }
+                storePassword = properties.getProperty("storePassword")
+                keyAlias = properties.getProperty("keyAlias")
+                keyPassword = properties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -28,7 +43,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
         debug {
             isMinifyEnabled = false
