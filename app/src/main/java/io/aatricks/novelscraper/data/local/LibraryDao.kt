@@ -2,6 +2,7 @@ package io.aatricks.novelscraper.data.local
 
 import androidx.room.*
 import io.aatricks.novelscraper.data.model.LibraryItem
+import io.aatricks.novelscraper.data.model.ReadingMode
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -41,6 +42,9 @@ interface LibraryDao {
 
     @Query("UPDATE library_items SET hasUpdates = 0 WHERE id = :id")
     suspend fun clearUpdatesForId(id: String)
+
+    @Query("UPDATE library_items SET readingMode = :readingMode WHERE baseTitle = :baseTitle")
+    suspend fun updateReadingModeByBaseTitle(baseTitle: String, readingMode: ReadingMode)
 
     @Transaction
     suspend fun setCurrentReading(id: String, timestamp: Long = System.currentTimeMillis()) {
