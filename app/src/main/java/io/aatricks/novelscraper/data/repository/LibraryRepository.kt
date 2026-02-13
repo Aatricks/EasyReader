@@ -134,14 +134,8 @@ class LibraryRepository @Inject constructor(
 
     suspend fun updateNovelInfo(itemId: String, baseNovelUrl: String, sourceName: String): Boolean =
         runCatching("Failed to update novel info", false) {
-            libraryDao.getItemById(itemId)?.let { item ->
-                val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
-                val updatedItems = allItems
-                    .filter { it.baseTitle == item.baseTitle }
-                    .map { it.copy(baseNovelUrl = baseNovelUrl, sourceName = sourceName) }
-                libraryDao.insertItems(updatedItems)
-                true
-            } ?: false
+            val updatedCount = libraryDao.updateNovelInfo(itemId, baseNovelUrl, sourceName)
+            updatedCount > 0
         } ?: false
 
     fun saveProgress(
