@@ -43,6 +43,7 @@ class ContentRepository @Inject constructor(
     companion object {
         private const val TAG = "ContentRepository"
         private val DIMENSION_SEMAPHORE = Semaphore(10)
+        private val DOWNLOAD_SEMAPHORE = Semaphore(5)
     }
 
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -139,9 +140,17 @@ class ContentRepository @Inject constructor(
         repositoryScope.launch {
             elements.forEach { element ->
                 when (element) {
-                    is ContentElement.Image -> launch { downloadAndCacheImage(element.url, pageUrl) }
-                    is ContentElement.ImageGroup -> element.images.forEach { img -> 
-                        launch { downloadAndCacheImage(img.url, pageUrl) } 
+                    is ContentElement.Image -> launch {
+                        DOWNLOAD_SEMAPHORE.withPermit {
+                            downloadAndCacheImage(element.url, pageUrl)
+                        }
+                    }
+                    is ContentElement.ImageGroup -> element.images.forEach { img ->
+                        launch {
+                            DOWNLOAD_SEMAPHORE.withPermit {
+                                downloadAndCacheImage(img.url, pageUrl)
+                            }
+                        }
                     }
                     else -> {}
                 }
