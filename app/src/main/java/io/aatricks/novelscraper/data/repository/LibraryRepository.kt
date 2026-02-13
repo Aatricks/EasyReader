@@ -123,11 +123,7 @@ class LibraryRepository @Inject constructor(
     suspend fun updateReadingMode(itemId: String, readingMode: ReadingMode): Boolean =
         runCatching("Failed to update reading mode", false) {
             libraryDao.getItemById(itemId)?.let { item ->
-                val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
-                val updatedItems = allItems
-                    .filter { it.baseTitle == item.baseTitle }
-                    .map { it.copy(readingMode = readingMode) }
-                libraryDao.insertItems(updatedItems)
+                libraryDao.updateReadingModeByBaseTitle(item.baseTitle, readingMode)
                 true
             } ?: false
         } ?: false
