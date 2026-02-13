@@ -12,7 +12,10 @@ import io.aatricks.novelscraper.util.TextUtils
 import io.aatricks.novelscraper.util.UrlSecurity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -335,8 +338,10 @@ class ReaderViewModel @Inject constructor(
             if (toDelete.isNotEmpty()) {
                 val ids = toDelete.map { it.id }.toSet()
                 libraryRepository.removeItems(ids)
-                toDelete.forEach { item ->
-                    contentRepository.clearCache(item.url)
+                supervisorScope {
+                    toDelete.map { item ->
+                        async { contentRepository.clearCache(item.url) }
+                    }.awaitAll()
                 }
             }
         }
