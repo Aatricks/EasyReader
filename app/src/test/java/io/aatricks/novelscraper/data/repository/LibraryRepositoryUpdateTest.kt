@@ -73,4 +73,26 @@ class LibraryRepositoryUpdateTest {
         // Verify behavior: Optimized behavior calls insertItems once with all updates.
         verify(libraryDao, times(1)).insertItems(any())
     }
+
+    @Test
+    fun testRefreshLibraryUpdates_partial_failure() = runBlocking {
+        // Setup 2 novels, one will fail
+        val item1 = LibraryItem(id = "1", title = "Novel 1", url = "url1", baseTitle = "Novel 1", baseNovelUrl = "novel1", sourceName = "Source1", totalChapters = 10)
+        val item2 = LibraryItem(id = "2", title = "Novel 2", url = "url2", baseTitle = "Novel 2", baseNovelUrl = "novel2", sourceName = "Source1", totalChapters = 20)
+
+        whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(item1, item2)))
+
+        // Mock explore repo: novel1 succeeds, novel2 fails
+        val chapters1 = List(15) { ChapterInfo("Ch $it", "url") }
+        whenever(exploreRepository.getNovelDetails("novel1", "Source1")).thenReturn(ExploreItem("Novel 1", "novel1", source = "Source1", chapters = chapters1))
+        whenever(exploreRepository.getNovelDetails("novel2", "Source1")).thenThrow(RuntimeException("Network error"))
+
+        // Execute
+        repository.refreshLibraryUpdates(exploreRepository)
+
+        // Verify behavior: It should still update the successful one
+        verify(libraryDao, times(1)).insertItems(argThat { 
+            size == 1 && first().id == "1" && first().totalChapters == 15 
+        })
+    }
 }
