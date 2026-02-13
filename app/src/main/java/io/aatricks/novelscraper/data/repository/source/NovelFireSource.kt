@@ -6,6 +6,8 @@ import io.aatricks.novelscraper.data.model.ChapterInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.jsoup.Jsoup
@@ -243,12 +245,15 @@ class NovelFireSource @Inject constructor(
     }
 
     private suspend fun loadAdditionalChapterPages(chaptersUrl: String, maxPage: Int): List<ChapterInfo> = kotlinx.coroutines.coroutineScope {
+        val semaphore = Semaphore(3)
         (2..maxPage).map { page ->
             async {
-                runCatching {
-                    val pageUrl = if (chaptersUrl.contains("?")) "$chaptersUrl&page=$page" else "$chaptersUrl?page=$page"
-                    parseChapters(getDocument(pageUrl))
-                }.getOrDefault(emptyList())
+                semaphore.withPermit {
+                    runCatching {
+                        val pageUrl = if (chaptersUrl.contains("?")) "$chaptersUrl&page=$page" else "$chaptersUrl?page=$page"
+                        parseChapters(getDocument(pageUrl))
+                    }.getOrDefault(emptyList())
+                }
             }
         }.awaitAll().flatten()
     }
