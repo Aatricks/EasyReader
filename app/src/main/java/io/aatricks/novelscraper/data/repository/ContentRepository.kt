@@ -8,6 +8,12 @@ import com.itextpdf.kernel.pdf.canvas.parser.PdfTextExtractor
 import android.graphics.BitmapFactory
 import io.aatricks.novelscraper.data.model.*
 import java.io.File
+import java.io.IOException
+import java.nio.file.FileVisitResult
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.SimpleFileVisitor
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
@@ -802,7 +808,23 @@ class ContentRepository @Inject constructor(
 
     suspend fun getCacheSize(): Long = withContext(Dispatchers.IO) {
         listOf(cacheDir, mediaCacheDir, epubCacheDir).sumOf { dir ->
-            dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+            if (!dir.exists()) return@sumOf 0L
+            val path = dir.toPath()
+            var size = 0L
+            try {
+                Files.walkFileTree(path, object : SimpleFileVisitor<Path>() {
+                    override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                        size += attrs.size()
+                        return FileVisitResult.CONTINUE
+                    }
+                    override fun visitFileFailed(file: Path, exc: IOException?): FileVisitResult {
+                        return FileVisitResult.CONTINUE
+                    }
+                })
+            } catch (e: Exception) {
+                // Ignore
+            }
+            size
         }
     }
 }
