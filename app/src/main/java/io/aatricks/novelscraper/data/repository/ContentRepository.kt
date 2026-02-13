@@ -43,6 +43,8 @@ class ContentRepository @Inject constructor(
     companion object {
         private const val TAG = "ContentRepository"
         private val DIMENSION_SEMAPHORE = Semaphore(10)
+        private val PAGE_NUMBER_REGEX = Regex("^\\d+$")
+        private val PARAGRAPH_SPLIT_REGEX = Regex("\\n\\s*\\n")
     }
 
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -449,9 +451,9 @@ class ContentRepository @Inject constructor(
                 val rawText = PdfTextExtractor.getTextFromPage(doc.getPage(pageNum))
 
                 rawText.lines()
-                    .filterNot { it.trim().matches(Regex("^\\d+$")) }
+                    .filterNot { it.trim().matches(PAGE_NUMBER_REGEX) }
                     .joinToString("\n")
-                    .split(Regex("\\n\\s*\\n"))
+                    .split(PARAGRAPH_SPLIT_REGEX)
                     .map { it.trim() }
                     .filter { it.length > 20 }
                     .joinToString("\n\n")
