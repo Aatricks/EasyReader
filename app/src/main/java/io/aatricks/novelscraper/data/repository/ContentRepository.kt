@@ -45,6 +45,12 @@ class ContentRepository @Inject constructor(
         private val DIMENSION_SEMAPHORE = Semaphore(10)
         private val PAGE_NUMBER_REGEX = Regex("^\\d+$")
         private val PARAGRAPH_SPLIT_REGEX = Regex("\\n\\s*\\n")
+
+        // Optimization: Define Regex patterns as constants
+        private val CHAPTER_URL_PATTERNS = listOf(
+            Regex("(chapter[-_/])(\\d+)", RegexOption.IGNORE_CASE),
+            Regex("(ch[-_/]?)(\\d+)", RegexOption.IGNORE_CASE)
+        )
     }
 
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -663,11 +669,7 @@ class ContentRepository @Inject constructor(
     suspend fun decrementChapterUrl(url: String): String? = adjustChapterUrl(url, -1)
     
     private fun adjustChapterUrl(url: String, delta: Int): String? {
-        val patterns = listOf(
-            Regex("(chapter[-_/])(\\d+)", RegexOption.IGNORE_CASE),
-            Regex("(ch[-_/]?)(\\d+)", RegexOption.IGNORE_CASE)
-        )
-        for (p in patterns) {
+        for (p in CHAPTER_URL_PATTERNS) {
             val m = p.find(url) ?: continue
             val lastGroup = m.groupValues.last()
             val n = (lastGroup.toIntOrNull() ?: continue) + delta
