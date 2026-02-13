@@ -320,14 +320,14 @@ class LibraryRepository @Inject constructor(
             val groupedItems = getGroupedByTitle(allItems)
             val semaphore = Semaphore(5)
 
-            coroutineScope {
+            val allUpdates = coroutineScope {
                 groupedItems.map { (baseTitle, items) ->
                     async {
                         semaphore.withPermit {
                             if (items.isNotEmpty()) {
                                 val latestInLibrary = items.last()
                                 if (latestInLibrary.baseNovelUrl.isNotBlank() && latestInLibrary.sourceName.isNotBlank()) {
-                                    runCatching("Failed to refresh updates for $baseTitle") {
+                                    runCatching("Failed to refresh updates for $baseTitle", emptyList()) {
                                         val details =
                                             exploreRepository.getNovelDetails(
                                                 latestInLibrary.baseNovelUrl,
@@ -345,15 +345,27 @@ class LibraryRepository @Inject constructor(
                                                     }
                                                     newItem
                                                 }
-                                                libraryDao.insertItems(updatedItems)
+                                                updatedItems
+                                            } else {
+                                                emptyList()
                                             }
+                                        } else {
+                                            emptyList()
                                         }
-                                    }
+                                    } ?: emptyList()
+                                } else {
+                                    emptyList()
                                 }
+                            } else {
+                                emptyList()
                             }
                         }
                     }
-                }.awaitAll()
+                }.awaitAll().flatten()
+            }
+
+            if (allUpdates.isNotEmpty()) {
+                libraryDao.insertItems(allUpdates)
             }
         }
     }
