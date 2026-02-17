@@ -85,6 +85,7 @@ class ReaderViewModel @Inject constructor(
         val isNavigating: Boolean = false,
         val error: String? = null,
         val lastAttemptedUrl: String? = null,
+        val lastFromBottom: Boolean = false,
         val toastMessage: String? = null,
         val scrollPosition: Float = 0f,
         val scrollProgress: Int = 0,
@@ -190,6 +191,7 @@ class ReaderViewModel @Inject constructor(
                     isLoading = !isSilent,
                     error = null,
                     lastAttemptedUrl = url,
+                    lastFromBottom = fromBottom,
                     content = if (isSilent) it.content else null
                 )
             }
@@ -349,7 +351,6 @@ class ReaderViewModel @Inject constructor(
 
     private fun handleLoadError(result: ContentRepository.ContentResult.Error): Unit {
         updateState { it.copy(isLoading = false, isNavigating = false, error = result.message) }
-        isExplicitNavigation = false
     }
 
     private fun getBaseTitle(content: ChapterContent, libraryItem: LibraryItem?): String {
@@ -381,6 +382,7 @@ class ReaderViewModel @Inject constructor(
                 offset = libraryItem.lastReadOffset
             )
         } else {
+            suppressAutoNavUntilUserInteraction = false
             ScrollState(
                 index = if (fromBottom) (content.paragraphs.size - 1).coerceAtLeast(0) else 0,
                 position = if (fromBottom) 100f else 0f,
@@ -666,8 +668,10 @@ class ReaderViewModel @Inject constructor(
 
     fun retryLoad(): Unit {
         val url = _uiState.value.lastAttemptedUrl ?: _uiState.value.content?.url
+        val fromBottom = _uiState.value.lastFromBottom
         url?.let {
-            loadContent(it, currentLibraryItemId)
+            val itemId = if (it == _uiState.value.content?.url) currentLibraryItemId else null
+            loadContent(it, itemId, fromBottom = fromBottom)
         }
     }
 
