@@ -86,6 +86,7 @@ class ReaderViewModel @Inject constructor(
         val error: String? = null,
         val lastAttemptedUrl: String? = null,
         val lastFromBottom: Boolean = false,
+        val lastIsExplicitNavigation: Boolean = false,
         val toastMessage: String? = null,
         val scrollPosition: Float = 0f,
         val scrollProgress: Int = 0,
@@ -178,11 +179,13 @@ class ReaderViewModel @Inject constructor(
         url: String,
         libraryItemId: String? = null,
         fromBottom: Boolean = false,
-        isSilent: Boolean = false
+        isSilent: Boolean = false,
+        isExplicitNavigation: Boolean = this.isExplicitNavigation
     ): Unit {
         loadJob?.cancel()
         progressUpdateJob?.cancel()
         loadJob = viewModelScope.launch {
+            this@ReaderViewModel.isExplicitNavigation = isExplicitNavigation
             if (handleEpubUrl(url, libraryItemId, fromBottom, isSilent)) return@launch
 
             saveCurrentProgress()
@@ -192,6 +195,7 @@ class ReaderViewModel @Inject constructor(
                     error = null,
                     lastAttemptedUrl = url,
                     lastFromBottom = fromBottom,
+                    lastIsExplicitNavigation = isExplicitNavigation,
                     content = if (isSilent) it.content else null
                 )
             }
@@ -249,8 +253,18 @@ class ReaderViewModel @Inject constructor(
         libraryItemId: String?,
         fromBottom: Boolean
     ): Unit {
-        val effectiveLibraryItemId = libraryItemId ?: libraryRepository.getItemByUrl(result.url)?.id
-        currentLibraryItemId = effectiveLibraryItemId
+        var effectiveId = libraryItemId ?: libraryRepository.getItemByUrl(result.url)?.id
+
+        if (isExplicitNavigation && currentLibraryItemId != null) {
+            val currentItem = libraryRepository.getItemById(currentLibraryItemId!!)
+            if (currentItem != null && currentItem.url != result.url && currentItem.contentType == ContentType.WEB) {
+                // We are navigating to a new chapter. Ensure it's in the library.
+                val existing = libraryRepository.getItemByUrl(result.url)
+                effectiveId = existing?.id ?: addChapterToLibrary(result.url, result.title, isNext = !fromBottom) ?: effectiveId
+            }
+        }
+
+        currentLibraryItemId = effectiveId
 
         val content = ChapterContent(
             paragraphs = result.elements,
@@ -262,7 +276,7 @@ class ReaderViewModel @Inject constructor(
             preCalculatedImageCount = result.imageCount
         )
 
-        val libraryItem = effectiveLibraryItemId?.let { libraryRepository.getItemById(it) }
+        val libraryItem = effectiveId?.let { libraryRepository.getItemById(it) }
         val baseTitle = getBaseTitle(content, libraryItem)
         val novelName = baseTitle.ifBlank { content.title ?: libraryItem?.title ?: "" }
         val chapterTitle = TextUtils.cleanChapterTitle(content.title, novelName).ifBlank {
@@ -282,6 +296,7 @@ class ReaderViewModel @Inject constructor(
                 isLoading = false,
                 isNavigating = false,
                 error = null,
+                lastIsExplicitNavigation = false,
                 canNavigateNext = content.hasNextChapter(),
                 canNavigatePrevious = content.hasPreviousChapter(),
                 scrollPosition = initialScroll.position,
@@ -406,7 +421,7 @@ class ReaderViewModel @Inject constructor(
         loadJob = viewModelScope.launch {
             isExplicitNavigation = true
             libraryRepository.getItemByUrl(url)?.let { existingItem ->
-                loadContent(url, existingItem.id, fromBottom = fromBottom, isSilent = true)
+                loadContent(url, existingItem.id, fromBottom = fromBottom, isSilent = true, isExplicitNavigation = true)
                 return@launch
             }
 
@@ -417,7 +432,7 @@ class ReaderViewModel @Inject constructor(
             when (result) {
                 is ContentRepository.ContentResult.Success -> {
                     val itemId = addChapterToLibrary(url, result.title, isNext = isNext)
-                    loadContent(url, itemId, fromBottom = fromBottom, isSilent = true)
+                    loadContent(url, itemId, fromBottom = fromBottom, isSilent = true, isExplicitNavigation = true)
                 }
 
                 is ContentRepository.ContentResult.Error -> {
@@ -425,7 +440,7 @@ class ReaderViewModel @Inject constructor(
                         val msg = if (isNext) "Next chapter not found (404)" else "Previous chapter not found (404)"
                         updateState { it.copy(toastMessage = msg) }
                     } else {
-                        loadContent(url, fromBottom = fromBottom, isSilent = false)
+                        loadContent(url, fromBottom = fromBottom, isSilent = false, isExplicitNavigation = true)
                     }
                 }
             }
@@ -669,9 +684,9 @@ class ReaderViewModel @Inject constructor(
     fun retryLoad(): Unit {
         val url = _uiState.value.lastAttemptedUrl ?: _uiState.value.content?.url
         val fromBottom = _uiState.value.lastFromBottom
+        val isExplicit = _uiState.value.lastIsExplicitNavigation
         url?.let {
-            val itemId = if (it == _uiState.value.content?.url) currentLibraryItemId else null
-            loadContent(it, itemId, fromBottom = fromBottom)
+            loadContent(it, currentLibraryItemId, fromBottom = fromBottom, isExplicitNavigation = isExplicit)
         }
     }
 
@@ -752,7 +767,7 @@ class ReaderViewModel @Inject constructor(
         loadJob = viewModelScope.launch {
             isExplicitNavigation = true
             libraryRepository.getItemByUrl(url)?.let { existingItem ->
-                loadContent(url, existingItem.id)
+                loadContent(url, existingItem.id, isExplicitNavigation = true)
                 return@launch
             }
             updateState { it.copy(isNavigating = true) }
@@ -761,13 +776,13 @@ class ReaderViewModel @Inject constructor(
             when (result) {
                 is ContentRepository.ContentResult.Success -> {
                     val itemId = addChapterToLibrary(url, result.title, isNext = true)
-                    loadContent(url, itemId, isSilent = true)
+                    loadContent(url, itemId, isSilent = true, isExplicitNavigation = true)
                 }
 
                 is ContentRepository.ContentResult.Error -> {
                     if (result.message.contains("404")) {
                         updateState { it.copy(toastMessage = "Chapter not found (404)") }
-                    } else loadContent(url, isSilent = false)
+                    } else loadContent(url, isSilent = false, isExplicitNavigation = true)
                 }
             }
         }
