@@ -114,8 +114,18 @@ class ReaderViewModel @Inject constructor(
         val paragraphSpacing: Float = 1.0f,
         val readerTheme: ReaderTheme = ReaderTheme.DARK,
         val pendingExternalUrl: String? = null,
-        val showExternalUrlConfirmation: Boolean = false
+        val showExternalUrlConfirmation: Boolean = false,
+        val pendingFileConfirmationUri: String? = null,
+        val showFileConfirmationDialog: Boolean = false
     )
+
+    fun requestOpenFile(uri: String): Unit {
+        updateState { it.copy(pendingFileConfirmationUri = uri, showFileConfirmationDialog = true) }
+    }
+
+    fun dismissFileConfirmation(): Unit {
+        updateState { it.copy(pendingFileConfirmationUri = null, showFileConfirmationDialog = false) }
+    }
 
     fun requestOpenUrl(url: String): Unit {
         viewModelScope.launch {
