@@ -98,6 +98,18 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                if (readerUiState.showFileConfirmationDialog && readerUiState.pendingFileConfirmationUri != null) {
+                    io.aatricks.novelscraper.ui.components.FileConfirmationDialog(
+                        fileUri = readerUiState.pendingFileConfirmationUri!!,
+                        onConfirm = {
+                            val uriString = readerUiState.pendingFileConfirmationUri
+                            readerViewModel.dismissFileConfirmation()
+                            uriString?.let { handleFilePicked(Uri.parse(it)) }
+                        },
+                        onCancel = { readerViewModel.dismissFileConfirmation() }
+                    )
+                }
+
                 NavHost(navController = navController, startDestination = ReaderRoute) {
                     composable<ReaderRoute> {
                         ReaderScreen(
@@ -146,6 +158,8 @@ class MainActivity : ComponentActivity() {
                 intent.data?.let { uri ->
                     if (uri.scheme == "http" || uri.scheme == "https") {
                         handleWebUrl(uri.toString())
+                    } else if (uri.scheme == "file") {
+                        readerViewModel.requestOpenFile(uri.toString())
                     } else {
                         handleFilePicked(uri)
                     }
