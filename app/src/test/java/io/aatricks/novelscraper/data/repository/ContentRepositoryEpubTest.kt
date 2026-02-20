@@ -92,14 +92,16 @@ class ContentRepositoryEpubTest {
 
             // Container
             zip.putNextEntry(ZipEntry("META-INF/container.xml"))
-            zip.write("""
-                <?xml version="1.0"?>
-                <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-                    <rootfiles>
-                        <rootfile full-path="content.opf" media-type="application/oebps-package+xml"/>
-                    </rootfiles>
-                </container>
-            """.trimIndent().toByteArray())
+            zip.write(
+                """
+                    <?xml version="1.0"?>
+                    <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                        <rootfiles>
+                            <rootfile full-path="content.opf" media-type="application/oebps-package+xml"/>
+                        </rootfiles>
+                    </container>
+                """.trimIndent().toByteArray()
+            )
             zip.closeEntry()
 
             // OPF
@@ -112,63 +114,71 @@ class ContentRepositoryEpubTest {
             }
 
             zip.putNextEntry(ZipEntry("content.opf"))
-            zip.write("""
-                <?xml version="1.0"?>
-                <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="bookid" version="2.0">
-                    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-                        <dc:title>Benchmark Book</dc:title>
-                        <dc:identifier id="bookid">urn:uuid:12345</dc:identifier>
-                        <dc:language>en</dc:language>
-                    </metadata>
-                    <manifest>
-                        <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
-                        $manifestItems
-                    </manifest>
-                    <spine toc="ncx">
-                        $spineItems
-                    </spine>
-                </package>
-            """.trimIndent().toByteArray())
+            zip.write(
+                """
+                    <?xml version="1.0"?>
+                    <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="bookid" version="2.0">
+                        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+                            <dc:title>Benchmark Book</dc:title>
+                            <dc:identifier id="bookid">urn:uuid:12345</dc:identifier>
+                            <dc:language>en</dc:language>
+                        </metadata>
+                        <manifest>
+                            <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+                            $manifestItems
+                        </manifest>
+                        <spine toc="ncx">
+                            $spineItems
+                        </spine>
+                    </package>
+                """.trimIndent().toByteArray()
+            )
             zip.closeEntry()
 
             // NCX (TOC)
             val navPoints = StringBuilder()
             for (i in 1..chapters) {
-                navPoints.append("""
-                    <navPoint id="navPoint-$i" playOrder="$i">
-                        <navLabel><text>Chapter $i</text></navLabel>
-                        <content src="chapter_$i.html"/>
-                    </navPoint>
-                """)
+                navPoints.append(
+                    """
+                        <navPoint id="navPoint-$i" playOrder="$i">
+                            <navLabel><text>Chapter $i</text></navLabel>
+                            <content src="chapter_$i.html"/>
+                        </navPoint>
+                    """.trimIndent()
+                )
             }
 
             zip.putNextEntry(ZipEntry("toc.ncx"))
-            zip.write("""
-                <?xml version="1.0"?>
-                <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
-                    <head><meta name="dtb:uid" content="urn:uuid:12345"/></head>
-                    <docTitle><text>Benchmark Book</text></docTitle>
-                    <navMap>
-                        $navPoints
-                    </navMap>
-                </ncx>
-            """.trimIndent().toByteArray())
+            zip.write(
+                """
+                    <?xml version="1.0"?>
+                    <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+                        <head><meta name="dtb:uid" content="urn:uuid:12345"/></head>
+                        <docTitle><text>Benchmark Book</text></docTitle>
+                        <navMap>
+                            $navPoints
+                        </navMap>
+                    </ncx>
+                """.trimIndent().toByteArray()
+            )
             zip.closeEntry()
 
             // Chapters
             val padding = "x".repeat(1024) // 1KB of padding per chapter
             for (i in 1..chapters) {
                 zip.putNextEntry(ZipEntry("chapter_$i.html"))
-                zip.write("""
-                    <html>
-                    <head><title>Chapter $i</title></head>
-                    <body>
-                        <h1>Chapter $i</h1>
-                        <p>This is the content of chapter $i.</p>
-                        <!-- $padding -->
-                    </body>
-                    </html>
-                """.trimIndent().toByteArray())
+                zip.write(
+                    """
+                        <html>
+                        <head><title>Chapter $i</title></head>
+                        <body>
+                            <h1>Chapter $i</h1>
+                            <p>This is the content of chapter $i.</p>
+                            <!-- $padding -->
+                        </body>
+                        </html>
+                    """.trimIndent().toByteArray()
+                )
                 zip.closeEntry()
             }
         }
