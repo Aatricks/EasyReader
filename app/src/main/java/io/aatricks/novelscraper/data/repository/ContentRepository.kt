@@ -58,6 +58,8 @@ class ContentRepository @Inject constructor(
             Regex("(chapter[-_/])(\\d+)", RegexOption.IGNORE_CASE),
             Regex("(ch[-_/]?)(\\d+)", RegexOption.IGNORE_CASE)
         )
+        // Threshold for skipping dimension checks to avoid N+1 requests
+        private const val SKIP_DIMENSION_CHECK_THRESHOLD = 50
     }
 
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -308,6 +310,15 @@ class ContentRepository @Inject constructor(
         }
 
         if (imageElements.isEmpty()) return elements
+
+        // Performance Optimization:
+        // For chapters with many images (e.g., Manhwa/Webtoons), fetching dimensions for every image
+        // causes N+1 network requests, blocking the UI and wasting data.
+        // We heuristically skip this step if the image count exceeds a threshold or if the URL indicates Manhwa content.
+        val isManhwa = url.contains("manhwa", ignoreCase = true) || url.contains("webtoon", ignoreCase = true)
+        if (isManhwa || imageElements.size > SKIP_DIMENSION_CHECK_THRESHOLD) {
+            return elements
+        }
 
         val imagesWithDims = withContext(Dispatchers.IO) {
             imageElements.map { img ->
