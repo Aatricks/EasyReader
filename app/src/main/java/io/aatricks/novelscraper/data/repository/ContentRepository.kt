@@ -527,51 +527,43 @@ class ContentRepository @Inject constructor(
     }
 
     private fun parseEpubFile(filePath: String): EpubBook {
-        val stream = if (filePath.startsWith("content://")) {
-            context.contentResolver.openInputStream(Uri.parse(filePath)) ?: throw Exception("EPUB stream error")
-        } else {
-            File(filePath).inputStream()
-        }
+        val file = resolveEpubFile(filePath)
         
-        val entries = mutableMapOf<String, ByteArray>()
-        ZipInputStream(stream).use { zip ->
-            var e = zip.nextEntry
-            while (e != null) {
-                if (!e.isDirectory) entries[e.name] = zip.readBytes()
-                zip.closeEntry()
-                e = zip.nextEntry
+        ZipFile(file).use { zip ->
+            val cont = readZipEntrySafely(zip, "META-INF/container.xml") ?: throw Exception("No container.xml")
+            val opfPath = Jsoup.parse(String(cont), "", org.jsoup.parser.Parser.xmlParser()).select("rootfile").attr("full-path")
+            val opfContent = readZipEntrySafely(zip, opfPath) ?: throw Exception("No OPF")
+            val opfDoc = Jsoup.parse(String(opfContent), "", org.jsoup.parser.Parser.xmlParser())
+
+            val meta = EpubMetadata(
+                title = opfDoc.select("metadata dc|title, title").first()?.text() ?: "Unknown",
+                author = opfDoc.select("dc|creator").first()?.text()
+            )
+
+            val base = opfPath.substringBeforeLast("/", "")
+            val manifest = mutableMapOf<String, String>()
+            opfDoc.select("manifest item").forEach {
+                val id = it.attr("id")
+                if (id.isNotBlank()) {
+                    val href = it.attr("href")
+                    manifest[id] = if (base.isNotBlank()) "$base/$href" else href
+                }
             }
+
+            val spine = mutableListOf<String>()
+            opfDoc.select("spine itemref").forEach { manifest[it.attr("idref")]?.let { h -> spine.add(h) } }
+
+            val ncxPath = manifest.values.firstOrNull { it.endsWith("toc.ncx") }
+            val ncxBytes = if (ncxPath != null) readZipEntrySafely(zip, ncxPath) else null
+
+            val toc = parseTocNcx(ncxBytes, manifest, base) ?: emptyList()
+            return EpubBook(meta, toc, spine, manifest)
         }
-        
-        val cont = entries["META-INF/container.xml"] ?: throw Exception("No container.xml")
-        val opfPath = Jsoup.parse(String(cont), "", org.jsoup.parser.Parser.xmlParser()).select("rootfile").attr("full-path")
-        val opfDoc = Jsoup.parse(String(entries[opfPath] ?: throw Exception("No OPF")), "", org.jsoup.parser.Parser.xmlParser())
-        
-        val meta = EpubMetadata(
-            title = opfDoc.select("metadata dc|title, title").first()?.text() ?: "Unknown",
-            author = opfDoc.select("dc|creator").first()?.text()
-        )
-        
-        val base = opfPath.substringBeforeLast("/", "")
-        val manifest = mutableMapOf<String, String>()
-        opfDoc.select("manifest item").forEach { 
-            val id = it.attr("id")
-            if (id.isNotBlank()) {
-                val href = it.attr("href")
-                manifest[id] = if (base.isNotBlank()) "$base/$href" else href
-            }
-        }
-        
-        val spine = mutableListOf<String>()
-        opfDoc.select("spine itemref").forEach { manifest[it.attr("idref")]?.let { h -> spine.add(h) } }
-        
-        val toc = parseTocNcx(entries, manifest, base) ?: emptyList()
-        return EpubBook(meta, toc, spine, manifest)
     }
 
-    private fun parseTocNcx(entries: Map<String, ByteArray>, manifest: Map<String, String>, base: String): List<EpubTocItem>? {
-        val ncx = manifest.values.firstOrNull { it.endsWith("toc.ncx") } ?: return null
-        val doc = Jsoup.parse(String(entries[ncx] ?: return null), "", org.jsoup.parser.Parser.xmlParser())
+    private fun parseTocNcx(ncxBytes: ByteArray?, manifest: Map<String, String>, base: String): List<EpubTocItem>? {
+        if (ncxBytes == null) return null
+        val doc = Jsoup.parse(String(ncxBytes), "", org.jsoup.parser.Parser.xmlParser())
         
         fun parsePoint(e: org.jsoup.nodes.Element): EpubTocItem {
             val src = e.select("content").attr("src").let { if (it.startsWith("/")) it.drop(1) else it }
@@ -588,22 +580,24 @@ class ContentRepository @Inject constructor(
     }
 
     private fun loadEpubChapter(filePath: String, book: EpubBook, href: String): EpubChapter {
-        val stream = if (filePath.startsWith("content://")) {
-            context.contentResolver.openInputStream(Uri.parse(filePath)) ?: throw Exception("EPUB stream error")
-        } else {
-            File(filePath).inputStream()
-        }
+        val file = resolveEpubFile(filePath)
         
         var bytes: ByteArray? = null
-        ZipInputStream(stream).use { zip ->
-            var e = zip.nextEntry
-            while (e != null) {
-                if (e.name == href || e.name.endsWith(href)) {
-                    bytes = zip.readBytes()
-                    break
+        ZipFile(file).use { zip ->
+            var entry = zip.getEntry(href)
+            if (entry == null) {
+                val entries = zip.entries()
+                while (entries.hasMoreElements()) {
+                    val e = entries.nextElement()
+                    if (e.name == href || e.name.endsWith(href)) {
+                        entry = e
+                        break
+                    }
                 }
-                zip.closeEntry()
-                e = zip.nextEntry
+            }
+
+            if (entry != null) {
+                 bytes = readZipEntrySafely(zip, entry.name)
             }
         }
         
@@ -701,21 +695,17 @@ class ContentRepository @Inject constructor(
             val book = getEpubBook(path) ?: throw Exception("Failed to load EPUB")
             val dir = File(epubCacheDir, path.hashCode().toString()).apply { mkdirs() }
             
-            val stream = if (path.startsWith("content://")) {
-                context.contentResolver.openInputStream(Uri.parse(path)) ?: return@withContext false
-            } else {
-                File(path).inputStream()
-            }
-            
-            ZipInputStream(stream).use { zip ->
-                var e = zip.nextEntry
-                while (e != null) {
+            val file = resolveEpubFile(path)
+            ZipFile(file).use { zip ->
+                val entries = zip.entries()
+                while (entries.hasMoreElements()) {
+                    val e = entries.nextElement()
                     if (!e.isDirectory && isImageFile(e.name)) {
                         val outFile = File(dir, e.name.replace("/", "_"))
-                        outFile.outputStream().use { zip.copyTo(it) }
+                        zip.getInputStream(e).use { input ->
+                            outFile.outputStream().use { output -> input.copyTo(output) }
+                        }
                     }
-                    zip.closeEntry()
-                    e = zip.nextEntry
                 }
             }
             true
@@ -743,27 +733,7 @@ class ContentRepository @Inject constructor(
             val epubPath = parts[0]
             val imgHref = parts[1].replace("\\", "/").removePrefix("/")
             
-            val fileToRead = if (epubPath.startsWith("content://")) {
-                val finalFile = File(epubCacheDir, "${epubPath.hashCode()}.epub")
-                if (!finalFile.exists()) {
-                    val tmpFile = File(epubCacheDir, "${epubPath.hashCode()}.tmp")
-                    try {
-                        context.contentResolver.openInputStream(Uri.parse(epubPath))?.use { input ->
-                            tmpFile.outputStream().use { output -> input.copyTo(output) }
-                        } ?: return@withContext null
-
-                        if (!tmpFile.renameTo(finalFile) && !finalFile.exists()) {
-                             throw Exception("Failed to cache EPUB")
-                        }
-                    } finally {
-                        if (tmpFile.exists()) tmpFile.delete()
-                    }
-                }
-                finalFile
-            } else {
-                File(epubPath)
-            }
-            
+            val fileToRead = resolveEpubFile(epubPath)
             if (!fileToRead.exists()) return@withContext null
 
             try {
@@ -774,10 +744,12 @@ class ContentRepository @Inject constructor(
                             name == imgHref || name.endsWith("/$imgHref")
                         }
 
-                    entry?.let { zip.getInputStream(it).readBytes() }
+                    entry?.let {
+                        readZipEntrySafely(zip, it.name, 50 * 1024 * 1024)
+                    }
                 }
             } catch (e: Exception) {
-                if (epubPath.startsWith("content://")) fileToRead.delete()
+                // Don't delete cached file just because of read error
                 throw e
             }
         }.getOrNull()
@@ -825,6 +797,47 @@ class ContentRepository @Inject constructor(
                 // Ignore
             }
             size
+        }
+    }
+
+    private fun resolveEpubFile(path: String): File {
+        return if (path.startsWith("content://")) {
+            val finalFile = File(epubCacheDir, "${path.hashCode()}.epub")
+            if (!finalFile.exists()) {
+                val tmpFile = File(epubCacheDir, "${path.hashCode()}.tmp")
+                try {
+                    context.contentResolver.openInputStream(Uri.parse(path))?.use { input ->
+                        tmpFile.outputStream().use { output -> input.copyTo(output) }
+                    } ?: throw Exception("Failed to open content URI")
+
+                    if (!tmpFile.renameTo(finalFile) && !finalFile.exists()) {
+                         throw Exception("Failed to cache EPUB")
+                    }
+                } finally {
+                    if (tmpFile.exists()) tmpFile.delete()
+                }
+            }
+            finalFile
+        } else {
+            File(path).also { if (!it.exists()) throw Exception("File not found") }
+        }
+    }
+
+    private fun readZipEntrySafely(zip: ZipFile, name: String, limit: Long = 10 * 1024 * 1024): ByteArray? {
+        val entry = zip.getEntry(name) ?: return null
+        if (entry.size > limit) throw Exception("File too large")
+
+        zip.getInputStream(entry).use { input ->
+            val baos = java.io.ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            var total = 0L
+            var count: Int
+            while (input.read(buffer).also { count = it } != -1) {
+                total += count
+                if (total > limit) throw Exception("File too large")
+                baos.write(buffer, 0, count)
+            }
+            return baos.toByteArray()
         }
     }
 }
