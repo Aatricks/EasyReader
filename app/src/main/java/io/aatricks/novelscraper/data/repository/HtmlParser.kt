@@ -177,23 +177,24 @@ class HtmlParser @Inject constructor() {
         val merged = mutableListOf<String>()
         var idx = 0
         while (idx < paragraphs.size) {
-            var cur = paragraphs[idx].trim()
+            val cur = paragraphs[idx].trim()
             if (cur.isEmpty()) { idx++; continue }
 
             if (idx + 1 < paragraphs.size) {
                 val next = paragraphs[idx + 1].trim()
                 if (next.isNotEmpty() && shouldMerge(cur, next)) {
-                    cur = (cur + " " + next).replace(MULTIPLE_SPACES_REGEX, " ")
+                    val sb = StringBuilder(cur)
+                    sb.append(" ").append(next)
                     idx += 2
                     // Deep merging
                     while (idx < paragraphs.size) {
                         val peek = paragraphs[idx].trim()
                         if (peek.isEmpty()) { idx++; continue }
-                        if (shouldStopMerging(cur, peek)) break
-                        cur = (cur + " " + peek).replace(MULTIPLE_SPACES_REGEX, " ")
+                        if (shouldStopMerging(sb, peek)) break
+                        sb.append(" ").append(peek)
                         idx++
                     }
-                    merged.add(cur)
+                    merged.add(sb.toString().replace(MULTIPLE_SPACES_REGEX, " "))
                     continue
                 }
             }
@@ -219,7 +220,7 @@ class HtmlParser @Inject constructor() {
                 !(cur.contains(':') && next.contains(':'))
     }
 
-    private fun shouldStopMerging(cur: String, peek: String): Boolean {
+    private fun shouldStopMerging(cur: CharSequence, peek: String): Boolean {
         val peekFirst = peek.firstOrNull() ?: return true
         val curLast = cur.trim().lastOrNull() ?: return true
         return peekFirst.isUpperCase() && SENTENCE_ENDERS.contains(curLast)

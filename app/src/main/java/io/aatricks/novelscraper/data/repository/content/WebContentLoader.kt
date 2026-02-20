@@ -38,6 +38,7 @@ class WebContentLoader @Inject constructor(
     companion object {
         private val DIMENSION_SEMAPHORE = Semaphore(10)
         private const val MAX_CONCURRENT_DOWNLOADS = 5
+        private const val SKIP_DIMENSION_CHECK_THRESHOLD = 50
     }
 
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -198,6 +199,12 @@ class WebContentLoader @Inject constructor(
         }
 
         if (imageElements.isEmpty()) return elements
+
+        // Performance Optimization:
+        val isManhwa = url.contains("manhwa", ignoreCase = true) || url.contains("webtoon", ignoreCase = true)
+        if (isManhwa || imageElements.size > SKIP_DIMENSION_CHECK_THRESHOLD) {
+            return elements
+        }
 
         val imagesWithDims = withContext(Dispatchers.IO) {
             imageElements.map { img ->
