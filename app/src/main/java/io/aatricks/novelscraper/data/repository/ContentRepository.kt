@@ -29,12 +29,14 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import androidx.annotation.VisibleForTesting
 
 /**
  * Repository for content loading and processing (Web, PDF, HTML, EPUB)
@@ -49,7 +51,7 @@ class ContentRepository @Inject constructor(
     companion object {
         private const val TAG = "ContentRepository"
         private val DIMENSION_SEMAPHORE = Semaphore(10)
-        private val DOWNLOAD_SEMAPHORE = Semaphore(5)
+        private const val MAX_CONCURRENT_DOWNLOADS = 5
         private val PAGE_NUMBER_REGEX = Regex("^\\d+$")
         private val PARAGRAPH_SPLIT_REGEX = Regex("\\n\\s*\\n")
 
@@ -150,25 +152,29 @@ class ContentRepository @Inject constructor(
         )
     }
 
-    private fun backgroundCacheImages(elements: List<ContentElement>, pageUrl: String): Unit {
+    @VisibleForTesting
+    internal fun backgroundCacheImages(elements: List<ContentElement>, pageUrl: String): Unit {
         repositoryScope.launch {
+            val imageChannel = Channel<String>(Channel.UNLIMITED)
+
+            repeat(MAX_CONCURRENT_DOWNLOADS) {
+                launch {
+                    for (url in imageChannel) {
+                        downloadAndCacheImage(url, pageUrl)
+                    }
+                }
+            }
+
             elements.forEach { element ->
                 when (element) {
-                    is ContentElement.Image -> launch {
-                        DOWNLOAD_SEMAPHORE.withPermit {
-                            downloadAndCacheImage(element.url, pageUrl)
-                        }
-                    }
+                    is ContentElement.Image -> imageChannel.trySend(element.url)
                     is ContentElement.ImageGroup -> element.images.forEach { img ->
-                        launch {
-                            DOWNLOAD_SEMAPHORE.withPermit {
-                                downloadAndCacheImage(img.url, pageUrl)
-                            }
-                        }
+                        imageChannel.trySend(img.url)
                     }
                     else -> {}
                 }
             }
+            imageChannel.close()
         }
     }
 
