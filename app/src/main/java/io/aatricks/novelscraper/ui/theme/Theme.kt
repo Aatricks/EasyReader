@@ -93,11 +93,6 @@ fun NovelScraperTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            val colorSurface = colorScheme.surface.toArgb()
-            
-            // Set status bar and nav bar colors based on surface color for a unified M3 look
-            window.statusBarColor = colorSurface
-            window.navigationBarColor = colorSurface
             
             // Set light/dark icons based on theme
             val windowInsetsController = WindowCompat.getInsetsController(window, view)

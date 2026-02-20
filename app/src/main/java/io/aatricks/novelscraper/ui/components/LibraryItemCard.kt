@@ -186,7 +186,7 @@ fun LibraryItemCard(
             
             // Progress Bar
             LinearProgressIndicator(
-                progress = item.progress / 100f,
+                progress = { item.progress / 100f },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(6.dp)

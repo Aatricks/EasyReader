@@ -6,7 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlaylistAddCheck
+import androidx.compose.material.icons.automirrored.filled.PlaylistAddCheck
 import androidx.compose.material.icons.filled.LibraryAddCheck
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -97,7 +97,7 @@ fun ChapterListSheet(
                         selectedChapterUrls.addAll(unread.map { it.url })
                     }) {
                         Icon(
-                            imageVector = Icons.Default.PlaylistAddCheck,
+                            imageVector = Icons.AutoMirrored.Filled.PlaylistAddCheck,
                             contentDescription = "Select All Unread",
                             tint = if (isSelectionMode && !isDeleteMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )

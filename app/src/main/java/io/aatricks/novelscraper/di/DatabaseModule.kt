@@ -22,7 +22,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "easy_reader_v2.db"
         )
-        .fallbackToDestructiveMigration()
+        .fallbackToDestructiveMigration(false)
         .build()
     }
 
