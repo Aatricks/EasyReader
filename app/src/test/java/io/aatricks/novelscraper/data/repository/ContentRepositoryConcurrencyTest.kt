@@ -2,6 +2,10 @@ package io.aatricks.novelscraper.data.repository
 
 import android.content.Context
 import io.aatricks.novelscraper.data.model.ContentElement
+import io.aatricks.novelscraper.data.repository.content.EpubContentLoader
+import io.aatricks.novelscraper.data.repository.content.LocalContentLoader
+import io.aatricks.novelscraper.data.repository.content.PdfContentLoader
+import io.aatricks.novelscraper.data.repository.content.WebContentLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -22,7 +26,11 @@ class ContentRepositoryConcurrencyTest {
         val mockContext = mock<Context>()
         val mockHtmlParser = mock<HtmlParser>()
         val cacheDir = File(System.getProperty("java.io.tmpdir"), "test_cache_${System.currentTimeMillis()}")
+        val mediaCacheDir = File(cacheDir, "media_cache")
+        val epubCacheDir = File(cacheDir, "epub_cache")
         cacheDir.mkdirs()
+        mediaCacheDir.mkdirs()
+        epubCacheDir.mkdirs()
 
         whenever(mockContext.cacheDir).thenReturn(cacheDir)
 
@@ -86,18 +94,18 @@ class ContentRepositoryConcurrencyTest {
             .addInterceptor(interceptor)
             .build()
 
-        val repository = ContentRepository(mockContext, mockHtmlParser, okHttpClient)
+        val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, cacheDir, mediaCacheDir)
+        val pdfLoader = PdfContentLoader(mockContext)
+        val epubLoader = EpubContentLoader(mockContext, epubCacheDir)
+        val localLoader = LocalContentLoader(mockContext, mockHtmlParser)
+        
+        val repository = ContentRepository(webLoader, pdfLoader, epubLoader, localLoader)
 
         // Mock HtmlParser to return many images
         val images = (1..50).map { ContentElement.Image("http://example.com/img$it.jpg", width = 100, height = 100) }
         whenever(mockHtmlParser.parse(any(), any())).thenReturn(images)
 
         // Call loadContent
-        // We need to bypass processChapterElements dimension check logic if possible or just assume it happens quickly
-        // processChapterElements calls fetchImageDimensions which also hits the interceptor.
-        // It uses a Semaphore(10). So initially maxConcurrentRequests will hit 10.
-        // Then backgroundCacheImages runs. If unbounded, it will hit > 10.
-
         repository.loadContent("http://example.com/chapter1")
 
         // Wait for background tasks to finish

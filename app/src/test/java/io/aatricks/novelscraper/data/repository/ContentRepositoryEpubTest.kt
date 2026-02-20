@@ -3,6 +3,10 @@ package io.aatricks.novelscraper.data.repository
 import android.content.Context
 import android.net.Uri
 import io.aatricks.novelscraper.data.model.EpubBook
+import io.aatricks.novelscraper.data.repository.content.EpubContentLoader
+import io.aatricks.novelscraper.data.repository.content.LocalContentLoader
+import io.aatricks.novelscraper.data.repository.content.PdfContentLoader
+import io.aatricks.novelscraper.data.repository.content.WebContentLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -49,9 +53,9 @@ class ContentRepositoryEpubTest {
         val cacheDir = File(tempDir, "cache")
         cacheDir.mkdirs()
         // Ensure subdirectories exist as ContentRepository expects them
-        File(cacheDir, "html_cache").mkdirs()
-        File(cacheDir, "media_cache").mkdirs()
-        File(cacheDir, "epub_cache").mkdirs()
+        val htmlCache = File(cacheDir, "html_cache").apply { mkdirs() }
+        val mediaCache = File(cacheDir, "media_cache").apply { mkdirs() }
+        val epubCache = File(cacheDir, "epub_cache").apply { mkdirs() }
 
         whenever(mockContext.cacheDir).thenReturn(cacheDir)
         whenever(mockContext.contentResolver).thenReturn(mockContentResolver)
@@ -69,7 +73,12 @@ class ContentRepositoryEpubTest {
         // Use anyString() for Uri.parse
         mockedUriStatic.`when`<Uri> { Uri.parse(org.mockito.ArgumentMatchers.anyString()) }.thenReturn(mockUri)
 
-        repository = ContentRepository(mockContext, mockHtmlParser, mockOkHttpClient)
+        val webLoader = WebContentLoader(mockHtmlParser, mockOkHttpClient, htmlCache, mediaCache)
+        val pdfLoader = PdfContentLoader(mockContext)
+        val epubLoader = EpubContentLoader(mockContext, epubCache)
+        val localLoader = LocalContentLoader(mockContext, mockHtmlParser)
+
+        repository = ContentRepository(webLoader, pdfLoader, epubLoader, localLoader)
     }
 
     @After

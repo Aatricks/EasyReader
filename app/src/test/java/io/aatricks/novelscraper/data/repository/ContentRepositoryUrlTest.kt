@@ -1,33 +1,39 @@
 package io.aatricks.novelscraper.data.repository
 
-import android.content.Context
-import okhttp3.OkHttpClient
-import org.junit.Test
+import io.aatricks.novelscraper.data.repository.content.EpubContentLoader
+import io.aatricks.novelscraper.data.repository.content.LocalContentLoader
+import io.aatricks.novelscraper.data.repository.content.PdfContentLoader
+import io.aatricks.novelscraper.data.repository.content.WebContentLoader
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
 import org.mockito.Mockito.mock
-import kotlinx.coroutines.runBlocking
 
+@ExperimentalCoroutinesApi
 class ContentRepositoryUrlTest {
 
+    // Since we are only testing URL logic which is in companion object or utils, 
+    // we can instantiate with mocks easily.
+    // However, the logic is now inside ContentRepository's private helper or moved out?
+    // Let's check ContentRepository logic. It delegates adjustChapterUrl.
+    
+    private val repository = ContentRepository(
+        mock(WebContentLoader::class.java),
+        mock(PdfContentLoader::class.java),
+        mock(EpubContentLoader::class.java),
+        mock(LocalContentLoader::class.java)
+    )
+
     @Test
-    fun verifyChapterUrlLogic() {
-        // Mock dependencies
-        val context = mock(Context::class.java)
-        val htmlParser = mock(HtmlParser::class.java)
-        val okHttpClient = mock(OkHttpClient::class.java)
-        val repository = ContentRepository(context, htmlParser, okHttpClient)
-
-        runBlocking {
-            val url = "https://example.com/chapter-100"
-            val next = repository.incrementChapterUrl(url)
-            assertEquals("https://example.com/chapter-101", next)
-
-            val prev = repository.decrementChapterUrl("https://example.com/chapter-101")
-            assertEquals("https://example.com/chapter-100", prev)
-
-            val url2 = "https://example.com/ch-50"
-            val next2 = repository.incrementChapterUrl(url2)
-            assertEquals("https://example.com/ch-51", next2)
-        }
+    fun verifyChapterUrlLogic() = runTest {
+        assertEquals("http://example.com/chapter-2", repository.incrementChapterUrl("http://example.com/chapter-1"))
+        assertEquals("http://example.com/ch2", repository.incrementChapterUrl("http://example.com/ch1"))
+        assertEquals("http://example.com/chapter_2", repository.incrementChapterUrl("http://example.com/chapter_1"))
+        
+        assertEquals("http://example.com/chapter-1", repository.decrementChapterUrl("http://example.com/chapter-2"))
+        
+        assertNull(repository.decrementChapterUrl("http://example.com/chapter-1"))
     }
 }

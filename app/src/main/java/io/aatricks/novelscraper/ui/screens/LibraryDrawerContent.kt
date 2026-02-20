@@ -588,7 +588,7 @@ private fun NovelChapterList(
                     onGenerateSummary = {
                         scope.launch {
                             val result = readerViewModel.contentRepository.loadContent(chapterUrl)
-                            if (result is ContentRepository.ContentResult.Success) {
+                            if (result is ContentResult.Success) {
                                 summaryViewModel.generateSummary(
                                     chapterUrl = chapterUrl,
                                     chapterTitle = chapterItem.currentChapter.ifBlank { chapterItem.title },

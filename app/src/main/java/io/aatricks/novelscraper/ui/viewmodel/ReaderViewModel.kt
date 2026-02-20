@@ -216,12 +216,12 @@ class ReaderViewModel @Inject constructor(
             }
 
             when (val result = contentRepository.loadContent(url)) {
-                is ContentRepository.ContentResult.Success -> {
+                is ContentResult.Success -> {
                     updateState { it.copy(lastAttemptedUrl = null) }
                     handleLoadSuccess(result, libraryItemId, fromBottom)
                 }
 
-                is ContentRepository.ContentResult.Error -> handleLoadError(result)
+                is ContentResult.Error -> handleLoadError(result)
             }
         }
     }
@@ -264,7 +264,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     private suspend fun handleLoadSuccess(
-        result: ContentRepository.ContentResult.Success,
+        result: ContentResult.Success,
         libraryItemId: String?,
         fromBottom: Boolean
     ): Unit {
@@ -380,7 +380,7 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    private fun handleLoadError(result: ContentRepository.ContentResult.Error): Unit {
+    private fun handleLoadError(result: ContentResult.Error): Unit {
         updateState { it.copy(isLoading = false, isNavigating = false, error = result.message) }
     }
 
@@ -446,12 +446,12 @@ class ReaderViewModel @Inject constructor(
             updateState { it.copy(isNavigating = false) }
 
             when (result) {
-                is ContentRepository.ContentResult.Success -> {
+                is ContentResult.Success -> {
                     val itemId = addChapterToLibrary(url, result.title, isNext = isNext)
                     loadContent(url, itemId, fromBottom = fromBottom, isSilent = true, isExplicitNavigation = true)
                 }
 
-                is ContentRepository.ContentResult.Error -> {
+                is ContentResult.Error -> {
                     if (result.message.contains("404")) {
                         val msg = if (isNext) "Next chapter not found (404)" else "Previous chapter not found (404)"
                         updateState { it.copy(toastMessage = msg) }
@@ -515,13 +515,13 @@ class ReaderViewModel @Inject constructor(
 
             val epubBook = contentRepository.getEpubBook(epubPath)
             if (epubBook == null) {
-                handleLoadError(ContentRepository.ContentResult.Error("Failed to load EPUB structure"))
+                handleLoadError(ContentResult.Error("Failed to load EPUB structure"))
                 return@launch
             }
 
             val chapter = contentRepository.loadEpubChapterFull(epubPath, href)
             if (chapter == null) {
-                handleLoadError(ContentRepository.ContentResult.Error("Failed to load chapter content"))
+                handleLoadError(ContentResult.Error("Failed to load chapter content"))
                 return@launch
             }
 
@@ -797,12 +797,12 @@ class ReaderViewModel @Inject constructor(
             val result = contentRepository.loadContent(url)
             updateState { it.copy(isNavigating = false) }
             when (result) {
-                is ContentRepository.ContentResult.Success -> {
+                is ContentResult.Success -> {
                     val itemId = addChapterToLibrary(url, result.title, isNext = true)
                     loadContent(url, itemId, isSilent = true, isExplicitNavigation = true)
                 }
 
-                is ContentRepository.ContentResult.Error -> {
+                is ContentResult.Error -> {
                     if (result.message.contains("404")) {
                         updateState { it.copy(toastMessage = "Chapter not found (404)") }
                     } else loadContent(url, isSilent = false, isExplicitNavigation = true)

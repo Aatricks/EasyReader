@@ -2,6 +2,8 @@ package io.aatricks.novelscraper.ui.viewmodel
 
 import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.model.*
+import io.aatricks.novelscraper.data.model.ContentResult
+import io.aatricks.novelscraper.data.model.ReadingMode
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
@@ -83,7 +85,7 @@ class ReaderViewModelTest {
         val initialUrl = "https://example.com/1"
 
         // Mock success for first load
-        val result1 = ContentRepository.ContentResult.Success(
+        val result1 = ContentResult.Success(
             elements = emptyList(),
             title = "Title 1",
             url = initialUrl
@@ -104,7 +106,7 @@ class ReaderViewModelTest {
         // Now load a second item
         val nextUrl = "https://example.com/2"
         whenever(contentRepository.loadContent(nextUrl)).thenReturn(
-            ContentRepository.ContentResult.Success(emptyList(), "Title 2", nextUrl)
+            ContentResult.Success(emptyList(), "Title 2", nextUrl)
         )
 
         viewModel.loadContent(nextUrl)
@@ -129,7 +131,7 @@ class ReaderViewModelTest {
 
         // Set up current item
         whenever(contentRepository.loadContent(url)).thenReturn(
-            ContentRepository.ContentResult.Success(listOf(ContentElement.Text("Test")), "Test", url)
+            ContentResult.Success(listOf(ContentElement.Text("Test")), "Test", url)
         )
         whenever(libraryRepository.getItemByUrl(url)).thenReturn(
             LibraryItem(id = itemId, title = "Test", url = url)
@@ -172,7 +174,7 @@ class ReaderViewModelTest {
         val url = "https://example.com/1"
 
         whenever(contentRepository.loadContent(url)).thenReturn(
-            ContentRepository.ContentResult.Success(emptyList(), "Test", url)
+            ContentResult.Success(emptyList(), "Test", url)
         )
         whenever(libraryRepository.getItemByUrl(url)).thenReturn(
             LibraryItem(id = itemId, title = "Test", url = url)

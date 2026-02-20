@@ -2,6 +2,7 @@ package io.aatricks.novelscraper.data.repository
 
 import android.content.Context
 import io.aatricks.novelscraper.data.model.ContentElement
+import io.aatricks.novelscraper.data.repository.content.WebContentLoader
 import kotlinx.coroutines.runBlocking
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
@@ -50,8 +51,8 @@ class ContentRepositoryBenchmarkTest {
             .addInterceptor(interceptor)
             .build()
 
-        val repository = ContentRepository(mockContext, mockHtmlParser, okHttpClient)
-
+        val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, cacheDir, mediaCacheDir)
+        
         // Generate images
         val images = (1..imageCount).map {
             ContentElement.Image("http://example.com/img_$it.jpg", width = 100, height = 100)
@@ -60,7 +61,13 @@ class ContentRepositoryBenchmarkTest {
         println("Starting benchmark with $imageCount images...")
 
         val time = measureTimeMillis {
-            repository.backgroundCacheImages(images, "http://example.com/chapter1")
+            // Testing internal method via reflection or just calling the public method on the loader if accessible
+            // Since we refactored, we can test WebContentLoader directly or via reflection if private
+            
+            // Using reflection to access private backgroundCacheImages on WebContentLoader
+            val method = WebContentLoader::class.java.getDeclaredMethod("backgroundCacheImages", List::class.java, String::class.java)
+            method.isAccessible = true
+            method.invoke(webLoader, images, "http://example.com/chapter1")
 
             // Wait for all to finish
             val completed = latch.await(30, TimeUnit.SECONDS)
