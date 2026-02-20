@@ -4,6 +4,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import io.aatricks.novelscraper.util.SafeRedirectInterceptor
 import io.ktor.client.*
 import io.ktor.client.engine.okhttp.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -32,8 +33,9 @@ object NetworkModule {
             })
             .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-            .followSslRedirects(true)
-            .followRedirects(true)
+            .followSslRedirects(false)
+            .followRedirects(false)
+            .addInterceptor(SafeRedirectInterceptor())
 
         return builder.build()
     }

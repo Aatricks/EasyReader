@@ -8,7 +8,11 @@ import java.net.URL
 object UrlSecurity {
 
     suspend fun isSafeUrl(url: String): Boolean = withContext(Dispatchers.IO) {
-        runCatching {
+        isSafeUrlSynchronous(url)
+    }
+
+    fun isSafeUrlSynchronous(url: String): Boolean {
+        return runCatching {
             val uri = URL(url)
 
             // 1. Validate Scheme
