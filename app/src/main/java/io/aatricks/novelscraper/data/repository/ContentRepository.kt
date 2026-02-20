@@ -444,31 +444,48 @@ class ContentRepository @Inject constructor(
     private inner class PdfLazyList(
         private val filePath: String,
         private val totalPages: Int
-    ) : AbstractList<ContentElement>() {
+    ) : AbstractList<ContentElement>(), java.io.Closeable {
+        private var pdfDocument: PdfDocument? = null
+        private var inputStream: java.io.InputStream? = null
+        private val lock = Any()
+
         override val size: Int get() = totalPages
 
         override fun get(index: Int): ContentElement {
             if (index < 0 || index >= size) throw IndexOutOfBoundsException("Index: $index, Size: $size")
-            val text = loadPdfPageText(filePath, index + 1)
+            val text = loadPageText(index + 1)
             return ContentElement.Text(text)
         }
-    }
 
-    private fun loadPdfPageText(filePath: String, pageNum: Int): String {
-        return runCatching {
-            val pdfDoc = if (filePath.startsWith("content://")) {
-                val uri = Uri.parse(filePath)
-                context.contentResolver.openInputStream(uri)?.use {
-                    PdfDocument(PdfReader(it))
-                } ?: return ""
-            } else {
-                val file = File(filePath)
-                if (!file.exists()) return ""
-                PdfDocument(PdfReader(file))
+        private fun getOrOpenDocument(): PdfDocument? {
+            synchronized(lock) {
+                if (pdfDocument != null && !pdfDocument!!.isClosed) {
+                    return pdfDocument
+                }
+
+                val doc = runCatching {
+                    if (filePath.startsWith("content://")) {
+                        val uri = Uri.parse(filePath)
+                        val stream = context.contentResolver.openInputStream(uri) ?: return null
+                        inputStream = stream
+                        PdfDocument(PdfReader(stream))
+                    } else {
+                        val file = File(filePath)
+                        if (!file.exists()) return null
+                        PdfDocument(PdfReader(file))
+                    }
+                }.getOrNull()
+
+                pdfDocument = doc
+                return doc
             }
+        }
 
-            pdfDoc.use { doc ->
-                if (pageNum > doc.numberOfPages) return@use ""
+        private fun loadPageText(pageNum: Int): String {
+            return runCatching {
+                val doc = getOrOpenDocument() ?: return ""
+                if (pageNum > doc.numberOfPages) return ""
+
                 val rawText = PdfTextExtractor.getTextFromPage(doc.getPage(pageNum))
 
                 rawText.lines()
@@ -478,8 +495,26 @@ class ContentRepository @Inject constructor(
                     .map { it.trim() }
                     .filter { it.length > 20 }
                     .joinToString("\n\n")
+            }.getOrDefault("")
+        }
+
+        override fun close() {
+            synchronized(lock) {
+                try {
+                    pdfDocument?.close()
+                } catch (e: Exception) {
+                    // Ignore close errors
+                }
+                pdfDocument = null
+
+                try {
+                    inputStream?.close()
+                } catch (e: Exception) {
+                    // Ignore stream close errors
+                }
+                inputStream = null
             }
-        }.getOrDefault("")
+        }
     }
 
     private suspend fun loadPdfContent(filePath: String): ContentResult = withContext(Dispatchers.IO) {
