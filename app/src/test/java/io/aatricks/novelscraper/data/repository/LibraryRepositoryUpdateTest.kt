@@ -134,4 +134,78 @@ class LibraryRepositoryUpdateTest {
             size == 1 && first().id == "1" && first().totalChapters == 15 
         })
     }
+
+    @Test
+    fun testRefreshLibraryUpdates_skips_old_novels() = runBlocking {
+        // Setup 1 recent novel (updated recently) and 1 old novel (not updated/read recently)
+        val recentCutoff = System.currentTimeMillis() - 2 * 24 * 60 * 60 * 1000L
+        val oldCutoff = System.currentTimeMillis() - 10 * 24 * 60 * 60 * 1000L
+
+        val recentItem = LibraryItem(
+            id = "recent", title = "Recent Novel", url = "url_recent",
+            baseTitle = "Recent Novel", baseNovelUrl = "novel_recent", sourceName = "Source1",
+            totalChapters = 10,
+            lastRead = recentCutoff,
+            dateAdded = recentCutoff
+        )
+        val oldItem = LibraryItem(
+            id = "old", title = "Old Novel", url = "url_old",
+            baseTitle = "Old Novel", baseNovelUrl = "novel_old", sourceName = "Source1",
+            totalChapters = 10,
+            lastRead = oldCutoff,
+            dateAdded = oldCutoff
+        )
+
+        whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(recentItem, oldItem)))
+
+        // Mock explore repo
+        val chapters = List(15) { ChapterInfo("Ch $it", "url") }
+        whenever(exploreRepository.getNovelDetails("novel_recent", "Source1"))
+            .thenReturn(ExploreItem("Recent Novel", "novel_recent", source = "Source1", chapters = chapters))
+
+        // Execute
+        repository.refreshLibraryUpdates(exploreRepository)
+
+        // Verify that only the recent novel was checked
+        verify(exploreRepository).getNovelDetails("novel_recent", "Source1")
+        verify(exploreRepository, never()).getNovelDetails("novel_old", "Source1")
+
+        // Verify that only recent items were updated in DB
+        verify(libraryDao).insertItems(argThat {
+            size == 1 && first().id == "recent" && first().totalChapters == 15
+        })
+    }
+
+    @Test
+    fun testRefreshLibraryUpdates_includes_old_but_currently_reading_novels() = runBlocking {
+        // Setup 1 old novel (lastRead > 7 days ago) but currently reading
+        val oldCutoff = System.currentTimeMillis() - 10 * 24 * 60 * 60 * 1000L
+
+        val oldButReadingItem = LibraryItem(
+            id = "old_but_reading", title = "Old Novel Reading", url = "url_old_reading",
+            baseTitle = "Old Novel Reading", baseNovelUrl = "novel_old_reading", sourceName = "Source1",
+            totalChapters = 10,
+            lastRead = oldCutoff,
+            dateAdded = oldCutoff,
+            isCurrentlyReading = true
+        )
+
+        whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(oldButReadingItem)))
+
+        // Mock explore repo
+        val chapters = List(15) { ChapterInfo("Ch $it", "url") }
+        whenever(exploreRepository.getNovelDetails("novel_old_reading", "Source1"))
+            .thenReturn(ExploreItem("Old Novel Reading", "novel_old_reading", source = "Source1", chapters = chapters))
+
+        // Execute
+        repository.refreshLibraryUpdates(exploreRepository)
+
+        // Verify that the novel was checked
+        verify(exploreRepository).getNovelDetails("novel_old_reading", "Source1")
+
+        // Verify that it was updated
+        verify(libraryDao).insertItems(argThat {
+            size == 1 && first().id == "old_but_reading" && first().totalChapters == 15
+        })
+    }
 }

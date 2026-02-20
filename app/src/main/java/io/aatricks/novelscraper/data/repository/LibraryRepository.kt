@@ -50,6 +50,10 @@ class LibraryRepository @Inject constructor(
     private val _collapsedSources = MutableStateFlow<Set<String>>(emptySet())
     val collapsedSources: StateFlow<Set<String>> = _collapsedSources.asStateFlow()
 
+    companion object {
+        private const val UPDATE_CHECK_THRESHOLD_DAYS = 7L
+    }
+
     init {
         repositoryScope.launch {
             try {
@@ -310,8 +314,17 @@ class LibraryRepository @Inject constructor(
             val groupedItems = getGroupedByTitle(allItems)
             val semaphore = Semaphore(5)
 
+            // Only check for updates on novels that have been read recently or were added recently.
+            // This prevents checking hundreds of abandoned novels on every app launch.
+            val threshold = System.currentTimeMillis() - UPDATE_CHECK_THRESHOLD_DAYS * 24 * 60 * 60 * 1000L
+            val activeGroups = groupedItems.filter { (_, items) ->
+                items.isNotEmpty() && items.any {
+                    it.isCurrentlyReading || it.lastRead > threshold || it.dateAdded > threshold
+                }
+            }
+
             val allUpdates = coroutineScope {
-                groupedItems.map { (baseTitle, items) ->
+                activeGroups.map { (baseTitle, items) ->
                     async {
                         semaphore.withPermit {
                             if (items.isNotEmpty()) {
