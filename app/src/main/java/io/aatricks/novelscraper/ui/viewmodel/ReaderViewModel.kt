@@ -189,6 +189,11 @@ class ReaderViewModel @Inject constructor(
             if (handleEpubUrl(url, libraryItemId, fromBottom, isSilent)) return@launch
 
             saveCurrentProgress()
+
+            if (!isSilent) {
+                closeContent(_uiState.value.content)
+            }
+
             updateState {
                 it.copy(
                     isLoading = !isSilent,
@@ -253,6 +258,7 @@ class ReaderViewModel @Inject constructor(
         libraryItemId: String?,
         fromBottom: Boolean
     ): Unit {
+        closeContent(_uiState.value.content)
         var effectiveId = libraryItemId ?: libraryRepository.getItemByUrl(result.url)?.id
 
         if (isExplicitNavigation && currentLibraryItemId != null) {
@@ -535,6 +541,7 @@ class ReaderViewModel @Inject constructor(
 
             val initialScroll = calculateInitialScroll(content, libraryItem, fromBottom)
 
+            closeContent(_uiState.value.content)
             updateState {
                 it.copy(
                     content = content,
@@ -691,8 +698,13 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun resetState(): Unit {
+        closeContent(_uiState.value.content)
         _uiState.value = ReaderUiState()
         currentLibraryItemId = null
+    }
+
+    private fun closeContent(content: ChapterContent?) {
+        (content?.paragraphs as? java.io.Closeable)?.close()
     }
 
     fun isContentCached(url: String): Boolean = contentRepository.isCached(url)
@@ -743,6 +755,7 @@ class ReaderViewModel @Inject constructor(
 
     override fun onCleared(): Unit {
         super.onCleared()
+        closeContent(_uiState.value.content)
         val progress = _uiState.value.scrollProgress
         if (progress >= 0) updateReadingProgress(progress)
     }
