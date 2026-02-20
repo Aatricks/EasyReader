@@ -587,24 +587,52 @@ class ContentRepository @Inject constructor(
         return doc.select("navMap > navPoint").map { parsePoint(it) }
     }
 
-    private fun loadEpubChapter(filePath: String, book: EpubBook, href: String): EpubChapter {
-        val stream = if (filePath.startsWith("content://")) {
-            context.contentResolver.openInputStream(Uri.parse(filePath)) ?: throw Exception("EPUB stream error")
+    private fun ensureLocalEpubFile(path: String): File {
+        if (path.startsWith("content://")) {
+            val finalFile = File(epubCacheDir, "${path.hashCode()}.epub")
+            if (!finalFile.exists()) {
+                // Use a unique temp file to avoid race conditions during concurrent downloads
+                val tmpFile = File.createTempFile("epub_", ".tmp", epubCacheDir)
+                try {
+                    context.contentResolver.openInputStream(Uri.parse(path))?.use { input ->
+                        tmpFile.outputStream().use { output -> input.copyTo(output) }
+                    } ?: throw Exception("Failed to open stream")
+
+                    // Atomic rename. If it fails (e.g. target exists because another thread finished), check existence.
+                    if (!tmpFile.renameTo(finalFile) && !finalFile.exists()) {
+                        throw Exception("Failed to cache EPUB")
+                    }
+                } finally {
+                    if (tmpFile.exists()) tmpFile.delete()
+                }
+            }
+            return finalFile
         } else {
-            File(filePath).inputStream()
+            return File(path)
         }
+    }
+
+    private fun loadEpubChapter(filePath: String, book: EpubBook, href: String): EpubChapter {
+        val file = ensureLocalEpubFile(filePath)
         
         var bytes: ByteArray? = null
-        ZipInputStream(stream).use { zip ->
-            var e = zip.nextEntry
-            while (e != null) {
-                if (e.name == href || e.name.endsWith(href)) {
-                    bytes = zip.readBytes()
-                    break
+        try {
+            ZipFile(file).use { zip ->
+                // Try direct lookup first (O(1))
+                val entry = zip.getEntry(href) ?: run {
+                    // Fallback to linear scan of headers if exact match fails
+                    zip.entries().asSequence().firstOrNull {
+                        it.name == href || it.name.endsWith(href)
+                    }
                 }
-                zip.closeEntry()
-                e = zip.nextEntry
+
+                if (entry != null) {
+                    bytes = zip.getInputStream(entry).readBytes()
+                }
             }
+        } catch (e: Exception) {
+            if (filePath.startsWith("content://")) file.delete()
+            throw e
         }
         
         val doc = Jsoup.parse(String(bytes ?: throw Exception("No chapter bytes")))
@@ -743,27 +771,7 @@ class ContentRepository @Inject constructor(
             val epubPath = parts[0]
             val imgHref = parts[1].replace("\\", "/").removePrefix("/")
             
-            val fileToRead = if (epubPath.startsWith("content://")) {
-                val finalFile = File(epubCacheDir, "${epubPath.hashCode()}.epub")
-                if (!finalFile.exists()) {
-                    val tmpFile = File(epubCacheDir, "${epubPath.hashCode()}.tmp")
-                    try {
-                        context.contentResolver.openInputStream(Uri.parse(epubPath))?.use { input ->
-                            tmpFile.outputStream().use { output -> input.copyTo(output) }
-                        } ?: return@withContext null
-
-                        if (!tmpFile.renameTo(finalFile) && !finalFile.exists()) {
-                             throw Exception("Failed to cache EPUB")
-                        }
-                    } finally {
-                        if (tmpFile.exists()) tmpFile.delete()
-                    }
-                }
-                finalFile
-            } else {
-                File(epubPath)
-            }
-            
+            val fileToRead = ensureLocalEpubFile(epubPath)
             if (!fileToRead.exists()) return@withContext null
 
             try {
