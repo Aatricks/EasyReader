@@ -132,6 +132,11 @@ class MainActivity : ComponentActivity() {
     private fun checkForLibraryUpdates(): Unit {
         val prefs = io.aatricks.novelscraper.data.local.PreferencesManager(applicationContext)
         lifecycleScope.launch {
+            val lastUpdate = prefs.lastUpdateCheckTime
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastUpdate < UPDATE_INTERVAL_MS) {
+                return@launch
+            }
             runCatching {
                 libraryRepository.refreshLibraryUpdates(exploreRepository)
                 prefs.lastUpdateCheckTime = System.currentTimeMillis()
@@ -237,5 +242,9 @@ class MainActivity : ComponentActivity() {
         runCatching {
             readerViewModel.updateReadingProgress(readerViewModel.uiState.value.scrollProgress)
         }
+    }
+
+    companion object {
+        private const val UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000L // 6 hours
     }
 }
