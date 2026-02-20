@@ -2,14 +2,20 @@ package io.aatricks.novelscraper.data.repository.content
 
 import android.content.Context
 import android.net.Uri
+import androidx.compose.runtime.mutableStateMapOf
 import com.itextpdf.kernel.pdf.PdfDocument
 import com.itextpdf.kernel.pdf.PdfReader
 import com.itextpdf.kernel.pdf.canvas.parser.PdfTextExtractor
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.data.model.ContentResult
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -22,6 +28,8 @@ class PdfContentLoader @Inject constructor(
         private val PAGE_NUMBER_REGEX = Regex("^\\d+$")
         private val PARAGRAPH_SPLIT_REGEX = Regex("\\n\\s*\\n")
     }
+
+    private val loaderScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     suspend fun loadPdfContent(filePath: String): ContentResult = withContext(Dispatchers.IO) {
         runCatching {
@@ -60,6 +68,14 @@ class PdfContentLoader @Inject constructor(
         private val filePath: String,
         private val totalPages: Int
     ) : AbstractList<ContentElement>(), java.io.Closeable {
+        
+        // Cache to store loaded page text. 
+        // Using mutableStateMapOf allows Compose to observe reads and trigger recomposition when data arrives.
+        private val pageCache = mutableStateMapOf<Int, String>()
+        
+        // Track currently loading pages to prevent duplicate requests
+        private val loadingPages = Collections.newSetFromMap(ConcurrentHashMap<Int, Boolean>())
+        
         private var pdfDocument: PdfDocument? = null
         private var inputStream: java.io.InputStream? = null
         private val lock = Any()
@@ -68,8 +84,24 @@ class PdfContentLoader @Inject constructor(
 
         override fun get(index: Int): ContentElement {
             if (index < 0 || index >= size) throw IndexOutOfBoundsException("Index: $index, Size: $size")
-            val text = loadPageText(index + 1)
-            return ContentElement.Text(text)
+            
+            // 1. Return cached content if available
+            // Reading from SnapshotStateMap records the dependency for Compose
+            pageCache[index]?.let { return ContentElement.Text(it) }
+
+            // 2. If not cached, trigger load and return placeholder
+            if (loadingPages.add(index)) { // add returns true if it was not already present
+                loaderScope.launch {
+                    val text = loadPageText(index + 1)
+                    // Update cache on Main thread to ensure safe Snapshot write
+                    withContext(Dispatchers.Main) {
+                        pageCache[index] = text
+                        loadingPages.remove(index)
+                    }
+                }
+            }
+
+            return ContentElement.Text("...")
         }
 
         private fun getOrOpenDocument(): PdfDocument? {
