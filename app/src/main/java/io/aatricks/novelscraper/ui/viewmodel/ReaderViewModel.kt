@@ -807,9 +807,9 @@ class ReaderViewModel @Inject constructor(
     fun navigateToChapter(url: String, title: String): Unit {
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            isExplicitNavigation = true
+            isExplicitNavigation = false
             libraryRepository.getItemByUrl(url)?.let { existingItem ->
-                loadContent(url, existingItem.id, isExplicitNavigation = true)
+                loadContent(url, existingItem.id, isExplicitNavigation = false)
                 return@launch
             }
             updateState { it.copy(isNavigating = true) }
@@ -818,13 +818,13 @@ class ReaderViewModel @Inject constructor(
             when (result) {
                 is ContentResult.Success -> {
                     val itemId = addChapterToLibrary(url, result.title, isNext = true)
-                    loadContent(url, itemId, isSilent = true, isExplicitNavigation = true)
+                    loadContent(url, itemId, isSilent = true, isExplicitNavigation = false)
                 }
 
                 is ContentResult.Error -> {
                     if (result.message.contains("404")) {
                         updateState { it.copy(toastMessage = "Chapter not found (404)") }
-                    } else loadContent(url, isSilent = false, isExplicitNavigation = true)
+                    } else loadContent(url, isSilent = false, isExplicitNavigation = false)
                 }
             }
         }
