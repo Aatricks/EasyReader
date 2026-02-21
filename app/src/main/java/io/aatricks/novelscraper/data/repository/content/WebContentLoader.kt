@@ -195,7 +195,7 @@ class WebContentLoader @Inject constructor(
         }
     }
 
-    private fun getReferer(url: String): String = try {
+    fun getReferer(url: String): String = try {
         if (url.contains("mangabat") || url.contains("manganato")) {
             "https://manganato.com/"
         } else {

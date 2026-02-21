@@ -15,6 +15,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import coil3.network.NetworkHeaders
+import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import io.aatricks.novelscraper.data.model.ContentElement
@@ -65,8 +67,13 @@ fun ReaderImageView(
 
         val imageRequest = remember(imageUrl, pageUrl) {
             val isCached = cachedFile.exists()
+            val referer = readerViewModel.contentRepository.getReferer(pageUrl)
             ImageRequest.Builder(context)
                 .data(if (isCached) cachedFile else imageUrl)
+                .httpHeaders(NetworkHeaders.Builder()
+                    .set("Referer", referer)
+                    .set("User-Agent", "Mozilla/5.0")
+                    .build())
                 .crossfade(!isCached)
                 .build()
         }

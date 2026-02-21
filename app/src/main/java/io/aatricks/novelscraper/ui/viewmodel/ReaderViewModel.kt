@@ -107,6 +107,7 @@ class ReaderViewModel @Inject constructor(
         val fullChapterList: List<ChapterInfo> = emptyList(),
         val isChaptersLoading: Boolean = false,
         val seekTrigger: Long = 0L,
+        val targetScrollPosition: Float? = null,
         val fontSize: Float = 18f,
         val lineHeight: Float = 1.5f,
         val fontFamily: String = "Default",
@@ -338,6 +339,7 @@ class ReaderViewModel @Inject constructor(
                 scrollProgress = initialScroll.progress,
                 scrollIndex = initialScroll.index,
                 scrollOffset = initialScroll.offset,
+                targetScrollPosition = initialScroll.targetPosition,
                 hasReachedQuarterScreen = fromBottom || initialScroll.progress >= 25,
                 novelName = novelName,
                 chapterTitle = chapterTitle,
@@ -414,7 +416,8 @@ class ReaderViewModel @Inject constructor(
         val index: Int,
         val position: Float,
         val progress: Int,
-        val offset: Int
+        val offset: Int,
+        val targetPosition: Float? = null
     )
 
     private fun calculateInitialScroll(
@@ -429,15 +432,18 @@ class ReaderViewModel @Inject constructor(
                 index = libraryItem.lastReadIndex,
                 position = libraryItem.lastScrollPosition,
                 progress = libraryItem.progress,
-                offset = libraryItem.lastReadOffset
+                offset = libraryItem.lastReadOffset,
+                targetPosition = libraryItem.lastScrollPosition
             )
         } else {
-            suppressAutoNavUntilUserInteraction = false
+            restoredScrollPercent = if (fromBottom) 100f else 0f
+            suppressAutoNavUntilUserInteraction = true
             ScrollState(
                 index = if (fromBottom) (content.paragraphs.size - 1).coerceAtLeast(0) else 0,
                 position = if (fromBottom) 100f else 0f,
                 progress = if (fromBottom) 100 else 0,
-                offset = 0
+                offset = if (fromBottom) 10000000 else 0,
+                targetPosition = if (fromBottom) 100f else 0f
             )
         }
     }
@@ -583,6 +589,7 @@ class ReaderViewModel @Inject constructor(
                     scrollProgress = initialScroll.progress,
                     scrollIndex = initialScroll.index,
                     scrollOffset = initialScroll.offset,
+                    targetScrollPosition = initialScroll.targetPosition,
                     hasReachedQuarterScreen = fromBottom || initialScroll.progress >= 25,
                     novelName = novelName,
                     chapterTitle = chapterTitle,
@@ -626,6 +633,7 @@ class ReaderViewModel @Inject constructor(
 
     fun onUserInteraction(): Unit {
         suppressAutoNavUntilUserInteraction = false
+        updateState { it.copy(targetScrollPosition = null) }
     }
 
     fun updateScrollPosition(
@@ -667,12 +675,8 @@ class ReaderViewModel @Inject constructor(
             delay(100)
 
             if (suppressAutoNavUntilUserInteraction) {
-                if (abs(progress - restoredScrollPercent) < 1f) {
-                    suppressAutoNavUntilUserInteraction = false
-                } else {
-                    lastRawScrollOffset = scrollOffset
-                    return@launch
-                }
+                lastRawScrollOffset = scrollOffset
+                return@launch
             }
 
             if (progressInt >= 0) {
@@ -763,14 +767,16 @@ class ReaderViewModel @Inject constructor(
 
         val preciseItemIndex = (targetPercent / 100f) * (totalItems - 1).coerceAtLeast(0)
         val roughIndex = preciseItemIndex.toInt().coerceIn(0, (totalItems - 1).coerceAtLeast(0))
+        val offset = if (targetPercent == 100f) 10000000 else 0
 
         updateState {
             it.copy(
                 scrollPosition = targetPercent,
                 scrollProgress = targetPercent.toInt(),
                 scrollIndex = roughIndex,
-                scrollOffset = 0,
-                seekTrigger = System.currentTimeMillis()
+                scrollOffset = offset,
+                seekTrigger = System.currentTimeMillis(),
+                targetScrollPosition = if (targetPercent == 100f) 100f else null
             )
         }
 
@@ -778,7 +784,7 @@ class ReaderViewModel @Inject constructor(
             progress = targetPercent.toInt(),
             scrollPosition = targetPercent,
             index = roughIndex,
-            offset = 0
+            offset = offset
         )
     }
 

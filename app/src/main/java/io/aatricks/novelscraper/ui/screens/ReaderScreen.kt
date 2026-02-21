@@ -729,6 +729,14 @@ private fun ScrollingReaderView(
     textColor: Color,
     readerViewModel: ReaderViewModel
 ): Unit {
+    LaunchedEffect(uiState.targetScrollPosition, listState.canScrollForward) {
+        if (uiState.targetScrollPosition == 100f && content.paragraphs.isNotEmpty()) {
+            if (listState.canScrollForward) {
+                listState.scrollToItem(content.paragraphs.size - 1, 10000000)
+            }
+        }
+    }
+
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
@@ -902,8 +910,10 @@ private fun rememberReaderNestedScrollConnection(
     return remember(content, uiState.isPagedMode, uiState.isRtl, pagerState.currentPage) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if ((abs(available.y) > 5f || abs(available.x) > 5f) && source == NestedScrollSource.UserInput) {
-                    onHideControls()
+                if (source == NestedScrollSource.UserInput) {
+                    if (abs(available.y) > 5f || abs(available.x) > 5f) {
+                        onHideControls()
+                    }
                     onUserInteraction()
                 }
 

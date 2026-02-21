@@ -51,6 +51,8 @@ class ContentRepository @Inject constructor(
 
     fun getCachedMediaFile(url: String): File = webLoader.getCachedMediaFile(url)
 
+    fun getReferer(url: String): String = webLoader.getReferer(url)
+
     fun isCached(url: String): Boolean = webLoader.isCached(url)
 
     suspend fun fetchTitle(url: String): String? = withContext(Dispatchers.IO) {
