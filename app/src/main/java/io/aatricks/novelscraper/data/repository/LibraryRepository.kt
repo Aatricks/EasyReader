@@ -210,6 +210,14 @@ class LibraryRepository @Inject constructor(
         libraryDao.getItemByUrl(url)
     }
 
+    fun getChaptersByBaseTitle(baseTitle: String): List<LibraryItem> {
+        val allItems = libraryItems.value
+        val filtered = allItems.filter {
+            (it.baseTitle.ifBlank { it.title }) == baseTitle
+        }
+        return sortChapters(filtered)
+    }
+
     fun getGroupedByTitle(items: List<LibraryItem>? = null): Map<String, List<LibraryItem>> {
         val targetItems = items ?: libraryItems.value
         return targetItems.groupBy { item ->

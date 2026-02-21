@@ -306,6 +306,25 @@ class ReaderViewModel @Inject constructor(
 
         val initialScroll = calculateInitialScroll(content, libraryItem, fromBottom)
 
+        var currentFullList = _uiState.value.fullChapterList
+        // If we switched novels, discard the old list
+        if (_uiState.value.baseTitle != baseTitle) {
+            currentFullList = emptyList()
+        }
+
+        if (currentFullList.isEmpty() && baseTitle.isNotBlank()) {
+            val libChapters = libraryRepository.getChaptersByBaseTitle(baseTitle)
+            if (libChapters.isNotEmpty()) {
+                currentFullList = libChapters.map {
+                    ChapterInfo(
+                        title = it.title,
+                        url = it.url,
+                        number = TextUtils.extractChapterNumber(it.currentChapter.ifBlank { it.title })
+                    )
+                }
+            }
+        }
+
         updateState {
             it.copy(
                 content = content,
@@ -326,7 +345,7 @@ class ReaderViewModel @Inject constructor(
                 baseNovelUrl = libraryItem?.baseNovelUrl ?: "",
                 sourceName = libraryItem?.sourceName ?: "",
                 isPagedMode = isPaged,
-                fullChapterList = emptyList()
+                fullChapterList = currentFullList
             )
         }
 
