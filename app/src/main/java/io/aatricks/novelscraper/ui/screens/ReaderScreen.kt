@@ -610,7 +610,7 @@ private fun ContentArea(
                 progress = uiState.scrollPosition,
                 canNavigatePrevious = uiState.canNavigatePrevious,
                 canNavigateNext = uiState.canNavigateNext,
-                onPreviousClick = { readerViewModel.navigateToPreviousChapter() },
+                onPreviousClick = { readerViewModel.navigateToPreviousChapter(fromBottom = true) },
                 onNextClick = { readerViewModel.navigateToNextChapter() },
                 onProgressChange = { readerViewModel.seekToProgress(it) }
             )
