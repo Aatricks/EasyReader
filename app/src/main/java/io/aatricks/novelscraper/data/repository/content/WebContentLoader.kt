@@ -37,7 +37,7 @@ class WebContentLoader @Inject constructor(
 ) {
     companion object {
         private val DIMENSION_SEMAPHORE = Semaphore(10)
-        private const val MAX_CONCURRENT_DOWNLOADS = 5
+        private const val MAX_CONCURRENT_DOWNLOADS = 3
         private const val SKIP_DIMENSION_CHECK_THRESHOLD = 50
     }
 
@@ -112,8 +112,25 @@ class WebContentLoader @Inject constructor(
             okHttpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@runCatching null
                 response.body?.let { body ->
-                    cachedFile.writeBytes(body.bytes())
-                    cachedFile
+                    val tempFile = File(cachedFile.parent, "${cachedFile.name}.tmp")
+                    try {
+                        tempFile.writeBytes(body.bytes())
+                        if (tempFile.renameTo(cachedFile)) {
+                            cachedFile
+                        } else {
+                            // If rename fails, check if the file was created by another process
+                            if (cachedFile.exists()) {
+                                tempFile.delete()
+                                cachedFile
+                            } else {
+                                tempFile.delete()
+                                null
+                            }
+                        }
+                    } catch (e: Exception) {
+                        tempFile.delete()
+                        throw e
+                    }
                 }
             }
         }.getOrNull()
