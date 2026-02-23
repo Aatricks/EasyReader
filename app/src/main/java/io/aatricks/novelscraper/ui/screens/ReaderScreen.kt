@@ -503,7 +503,7 @@ private fun ContentArea(
             )
         }
     } else {
-        LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
+        LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, listState.canScrollForward) {
             if (content.paragraphs.isNotEmpty()) {
                 val layoutInfo = listState.layoutInfo
                 val visibleItems = layoutInfo.visibleItemsInfo
@@ -523,7 +523,8 @@ private fun ContentArea(
                         maxScrollOffset = maxScrollOffset + viewportHeightInItems,
                         viewportHeight = viewportHeightInItems,
                         index = listState.firstVisibleItemIndex,
-                        offset = listState.firstVisibleItemScrollOffset
+                        offset = listState.firstVisibleItemScrollOffset,
+                        canScrollForward = listState.canScrollForward
                     )
                 }
             }

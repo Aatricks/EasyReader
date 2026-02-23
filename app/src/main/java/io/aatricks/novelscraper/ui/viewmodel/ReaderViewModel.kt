@@ -641,12 +641,14 @@ class ReaderViewModel @Inject constructor(
         maxScrollOffset: Float,
         viewportHeight: Float,
         index: Int,
-        offset: Int
+        offset: Int,
+        canScrollForward: Boolean = true
     ): Unit {
         val deltaRaw = if (lastRawScrollOffset < 0f) 0f else scrollOffset - lastRawScrollOffset
         val isScrollingDown = deltaRaw > 0f
 
         val progress = when {
+            !canScrollForward -> 100f
             maxScrollOffset > viewportHeight -> ((scrollOffset / (maxScrollOffset - viewportHeight)) * 100f).coerceIn(
                 0f,
                 100f
