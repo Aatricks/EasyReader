@@ -2,9 +2,12 @@ package io.aatricks.novelscraper.data.repository.content
 
 import android.content.Context
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import androidx.compose.runtime.mutableStateMapOf
+import com.itextpdf.io.source.RandomAccessSourceFactory
 import com.itextpdf.kernel.pdf.PdfDocument
 import com.itextpdf.kernel.pdf.PdfReader
+import com.itextpdf.kernel.pdf.ReaderProperties
 import com.itextpdf.kernel.pdf.canvas.parser.PdfTextExtractor
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.data.model.ContentResult
@@ -12,13 +15,17 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileInputStream
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.abs
 
 @Singleton
 class PdfContentLoader @Inject constructor(
@@ -27,21 +34,31 @@ class PdfContentLoader @Inject constructor(
     companion object {
         private val PAGE_NUMBER_REGEX = Regex("^\\d+$")
         private val PARAGRAPH_SPLIT_REGEX = Regex("\\n\\s*\\n")
+        private const val MAX_CACHE_SIZE = 100
     }
 
     private val loaderScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     suspend fun loadPdfContent(filePath: String): ContentResult = withContext(Dispatchers.IO) {
-        runCatching {
+        try {
             val pageCount = if (filePath.startsWith("content://")) {
                 val uri = Uri.parse(filePath)
-                context.contentResolver.openInputStream(uri)?.use {
-                    PdfDocument(PdfReader(it)).use { doc -> doc.numberOfPages }
+                context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                    val channel = FileInputStream(pfd.fileDescriptor).channel
+                    val source = com.itextpdf.io.source.FileChannelRandomAccessSource(channel)
+                    val reader = PdfReader(source, ReaderProperties())
+                    val doc = PdfDocument(reader)
+                    val count = doc.numberOfPages
+                    doc.close()
+                    count
                 } ?: throw Exception("PDF not found")
             } else {
                 val file = File(filePath)
                 if (!file.exists()) throw Exception("PDF not found")
-                PdfDocument(PdfReader(file)).use { doc -> doc.numberOfPages }
+                val doc = PdfDocument(PdfReader(file))
+                val count = doc.numberOfPages
+                doc.close()
+                count
             }
 
             if (pageCount == 0) throw Exception("No text in PDF")
@@ -59,7 +76,7 @@ class PdfContentLoader @Inject constructor(
                 textCount = pageCount,
                 imageCount = 0
             )
-        }.getOrElse { e ->
+        } catch (e: Exception) {
             ContentResult.Error("PDF Error: ${e.message}")
         }
     }
@@ -77,8 +94,9 @@ class PdfContentLoader @Inject constructor(
         private val loadingPages = Collections.newSetFromMap(ConcurrentHashMap<Int, Boolean>())
         
         private var pdfDocument: PdfDocument? = null
-        private var inputStream: java.io.InputStream? = null
+        private var pfd: ParcelFileDescriptor? = null
         private val lock = Any()
+        private val mutex = Mutex()
 
         override val size: Int get() = totalPages
 
@@ -86,16 +104,14 @@ class PdfContentLoader @Inject constructor(
             if (index < 0 || index >= size) throw IndexOutOfBoundsException("Index: $index, Size: $size")
             
             // 1. Return cached content if available
-            // Reading from SnapshotStateMap records the dependency for Compose
             pageCache[index]?.let { return ContentElement.Text(it) }
 
             // 2. If not cached, trigger load and return placeholder
-            if (loadingPages.add(index)) { // add returns true if it was not already present
+            if (loadingPages.add(index)) {
                 loaderScope.launch {
                     val text = loadPageText(index + 1)
-                    // Update cache on Main thread to ensure safe Snapshot write
                     withContext(Dispatchers.Main) {
-                        pageCache[index] = text
+                        addToCache(index, text)
                         loadingPages.remove(index)
                     }
                 }
@@ -104,18 +120,33 @@ class PdfContentLoader @Inject constructor(
             return ContentElement.Text("...")
         }
 
+        private fun addToCache(index: Int, text: String) {
+            pageCache[index] = text
+            if (pageCache.size > MAX_CACHE_SIZE) {
+                // Evict the page furthest from the current index to keep memory stable
+                val furthestKey = pageCache.keys.maxByOrNull { abs(it - index) }
+                furthestKey?.let { pageCache.remove(it) }
+            }
+        }
+
         private fun getOrOpenDocument(): PdfDocument? {
             synchronized(lock) {
                 if (pdfDocument != null && !pdfDocument!!.isClosed) {
                     return pdfDocument
                 }
 
+                // If we are reopening, make sure previous resources are cleared
+                try { pfd?.close() } catch (e: Exception) {}
+                pfd = null
+
                 val doc = runCatching {
                     if (filePath.startsWith("content://")) {
                         val uri = Uri.parse(filePath)
-                        val stream = context.contentResolver.openInputStream(uri) ?: return null
-                        inputStream = stream
-                        PdfDocument(PdfReader(stream))
+                        val pfd = context.contentResolver.openFileDescriptor(uri, "r") ?: return null
+                        this@PdfLazyList.pfd = pfd
+                        val channel = FileInputStream(pfd.fileDescriptor).channel
+                        val source = com.itextpdf.io.source.FileChannelRandomAccessSource(channel)
+                        PdfDocument(PdfReader(source, ReaderProperties()))
                     } else {
                         val file = File(filePath)
                         if (!file.exists()) return null
@@ -128,8 +159,8 @@ class PdfContentLoader @Inject constructor(
             }
         }
 
-        private fun loadPageText(pageNum: Int): String {
-            return runCatching {
+        private suspend fun loadPageText(pageNum: Int): String = mutex.withLock {
+            runCatching {
                 val doc = getOrOpenDocument() ?: return ""
                 if (pageNum > doc.numberOfPages) return ""
 
@@ -149,17 +180,13 @@ class PdfContentLoader @Inject constructor(
             synchronized(lock) {
                 try {
                     pdfDocument?.close()
-                } catch (e: Exception) {
-                    // Ignore close errors
-                }
+                } catch (e: Exception) {}
                 pdfDocument = null
 
                 try {
-                    inputStream?.close()
-                } catch (e: Exception) {
-                    // Ignore stream close errors
-                }
-                inputStream = null
+                    pfd?.close()
+                } catch (e: Exception) {}
+                pfd = null
             }
         }
     }
