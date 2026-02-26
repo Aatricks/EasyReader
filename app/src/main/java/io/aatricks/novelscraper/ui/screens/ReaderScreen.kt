@@ -488,16 +488,11 @@ private fun ContentArea(
         LaunchedEffect(pagerState.currentPage) {
             val totalItems = content.paragraphs.size
             val currentItem = pagerState.currentPage
-            val progress = if (totalItems > 0) {
-                ((currentItem.toFloat() / (totalItems - 1).coerceAtLeast(1)) * 100f).coerceIn(0f, 100f)
-            } else {
-                0f
-            }
 
             readerViewModel.updateScrollPosition(
-                scrollOffset = progress,
-                maxScrollOffset = 100f,
-                viewportHeight = 1f,
+                scrollOffset = currentItem.toFloat(),
+                maxScrollOffset = (totalItems - 1).coerceAtLeast(0).toFloat(),
+                viewportHeight = 0f,
                 index = currentItem,
                 offset = 0
             )
@@ -515,8 +510,8 @@ private fun ContentArea(
                     val currentScrollOffset = firstItem.index.toFloat() +
                         (listState.firstVisibleItemScrollOffset.toFloat() / firstItem.size.coerceAtLeast(1).toFloat())
 
-                    val maxScrollOffset = (totalItems - 1).coerceAtLeast(0).toFloat()
                     val viewportHeightInItems = layoutInfo.viewportSize.height.toFloat() / firstItem.size.coerceAtLeast(1).toFloat()
+                    val maxScrollOffset = (totalItems - 1).coerceAtLeast(0).toFloat()
 
                     readerViewModel.updateScrollPosition(
                         scrollOffset = currentScrollOffset,

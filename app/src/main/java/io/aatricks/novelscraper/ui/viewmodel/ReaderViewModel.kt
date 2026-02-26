@@ -706,6 +706,17 @@ class ReaderViewModel @Inject constructor(
                 val lastIndex = index ?: _uiState.value.scrollIndex
                 val lastOffset = offset ?: _uiState.value.scrollOffset
 
+                // Check if we are trying to save a PDF placeholder state.
+                // If the current paragraph starts with "Loading page", it's a placeholder.
+                // We should NOT save progress in this state to avoid corrupting the actual last read position.
+                val paragraphs = _uiState.value.content?.paragraphs
+                if (paragraphs != null) {
+                    val currentItem = paragraphs.getOrNull(lastIndex)
+                    if (currentItem is ContentElement.Text && currentItem.content.startsWith("Loading page")) {
+                        return@runCatching
+                    }
+                }
+
                 libraryRepository.saveProgress(
                     itemId = itemId,
                     currentChapter = "",

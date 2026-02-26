@@ -117,7 +117,9 @@ class PdfContentLoader @Inject constructor(
                 }
             }
 
-            return ContentElement.Text("...")
+            // Return a "tall" placeholder to prevent LazyListState from clamping scroll offset during restoration.
+            // Using a large number of newlines ensures the placeholder is likely taller than any typical page.
+            return ContentElement.Text("Loading page ${index + 1}..." + "\n".repeat(100))
         }
 
         private fun addToCache(index: Int, text: String) {
@@ -171,7 +173,7 @@ class PdfContentLoader @Inject constructor(
                     .joinToString("\n")
                     .split(PARAGRAPH_SPLIT_REGEX)
                     .map { it.trim() }
-                    .filter { it.length > 20 }
+                    .filter { it.length > 2 } // Relaxed filter to keep more PDF content
                     .joinToString("\n\n")
             }.getOrDefault("")
         }

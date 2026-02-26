@@ -193,4 +193,48 @@ class ReaderViewModelTest {
         assertNotEquals(initialPagedMode, viewModel.uiState.value.isPagedMode)
         verify(libraryRepository).updateReadingMode(eq(itemId), any())
     }
+
+    @Test
+    fun `updateReadingProgress ignores placeholder content`() = runTest {
+        val itemId = "item-1"
+        val url = "https://example.com/pdf"
+
+        // Setup item with placeholder content
+        val placeholderContent = listOf(ContentElement.Text("Loading page 5..."))
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(placeholderContent, "PDF", url)
+        )
+        whenever(libraryRepository.getItemByUrl(url)).thenReturn(
+            LibraryItem(id = itemId, title = "PDF", url = url)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(
+            LibraryItem(id = itemId, title = "PDF", url = url)
+        )
+
+        viewModel.loadContent(url)
+        advanceUntilIdle()
+
+        // Try to update progress while index 0 is a placeholder
+        viewModel.updateReadingProgress(50, 50f, 0, 0)
+        advanceUntilIdle()
+
+        // Should NOT have called libraryRepository.saveProgress
+        verify(libraryRepository, never()).saveProgress(any(), any(), any(), any(), any(), any(), any())
+
+        // Now setup item with REAL content
+        val realContent = listOf(ContentElement.Text("Real page content"))
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(realContent, "PDF", url)
+        )
+        
+        viewModel.loadContent(url)
+        advanceUntilIdle()
+
+        // Try to update progress while index 0 is real content
+        viewModel.updateReadingProgress(60, 60f, 0, 0)
+        advanceUntilIdle()
+
+        // Should HAVE called libraryRepository.saveProgress
+        verify(libraryRepository).saveProgress(eq(itemId), any(), eq(60), any(), eq(60f), eq(0), eq(0))
+    }
 }
