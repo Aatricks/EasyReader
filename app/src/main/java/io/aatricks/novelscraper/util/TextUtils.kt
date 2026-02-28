@@ -59,6 +59,38 @@ object TextUtils {
         Regex("(\\d+(?:\\.\\d+)?)(?!.*\\d)", RegexOption.IGNORE_CASE)
     )
 
+    private val COMMON_JUNK_REGEXES = listOf(
+        Regex("(?i)^read\\s+"),
+        Regex("(?i)\\s+free\\s+online.*\$"),
+        Regex("(?i)\\s+online\\s+free.*\$"),
+        Regex("(?i)\\s*\\|\\s*.*\$"),
+        Regex("(?i)\\s+at\\s+.*\$"),
+        Regex("(?i)[\\s–—\\-:]*(MangaBat|NovelFire|MangaPark|MangaKakalot).*\$"),
+        Regex("(?i)[\\s–—\\-:]*Scan.*\$")
+    )
+
+    private val CHAPTER_MARKERS_REGEXES = listOf(
+        Regex("[–—\\-:]?\\s*(?:chapter|ch|ch\\.)\\s*\\d+.*$", RegexOption.IGNORE_CASE),
+        Regex("\\s*[–—\\-]\\s*\\d+.*$"),
+        Regex("\\s*:\\s*\\d+.*$")
+    )
+
+    private val CLEAN_SEPARATORS_START_REGEX = Regex("^[\\s–—\\-:\\|]+")
+    private val CLEAN_SEPARATORS_END_REGEX = Regex("[\\s–—\\-:\\|]+$")
+
+    private val EXTRACT_CHAPTER_LABEL_REGEX_1 = Regex("(?i)(?:chapter|ch|ch\\.|c)\\s*(\\d+)")
+    private val EXTRACT_CHAPTER_LABEL_REGEX_2 = Regex("[\\s:\\-—–|](\\d+)\\s*$")
+    private val EXTRACT_CHAPTER_LABEL_REGEX_3 = Regex("\\b(\\d+)\\b")
+
+    private val EXTRACT_CHAPTER_LABEL_URL_REGEXES = listOf(
+        Regex("chapter\\s*(\\d+)", RegexOption.IGNORE_CASE),
+        Regex("ch(?:apter)?\\D*(\\d+)", RegexOption.IGNORE_CASE),
+        Regex("/(\\d+)(?:/|$)"),
+        Regex("-" + "(\\d+)(?:\\D|$)")
+    )
+
+    private val CLEAN_CHAPTER_TITLE_SUBTITLE_REGEX = Regex("(?i)(?:chapter|ch|ch\\.)\\s*\\d+[\\s:\\-—–|]+(.+)")
+
     /**
      * Remove page numbers from text content.
      */
@@ -133,30 +165,16 @@ object TextUtils {
     }
 
     private fun removeCommonJunk(text: String): String {
-        val patterns = listOf(
-            Regex("(?i)^read\\s+"),
-            Regex("(?i)\\s+free\\s+online.*\$"),
-            Regex("(?i)\\s+online\\s+free.*\$"),
-            Regex("(?i)\\s*\\|\\s*.*\$"),
-            Regex("(?i)\\s+at\\s+.*\$"),
-            Regex("(?i)[\\s–—\\-:]*(MangaBat|NovelFire|MangaPark|MangaKakalot).*\$"),
-            Regex("(?i)[\\s–—\\-:]*Scan.*\$")
-        )
-        return patterns.fold(text) { acc, pattern -> acc.replace(pattern, "") }
+        return COMMON_JUNK_REGEXES.fold(text) { acc, pattern -> acc.replace(pattern, "") }
     }
 
     private fun removeChapterMarkers(text: String): String {
-        val patterns = listOf(
-            Regex("[–—\\-:]?\\s*(?:chapter|ch|ch\\.)\\s*\\d+.*$", RegexOption.IGNORE_CASE),
-            Regex("\\s*[–—\\-]\\s*\\d+.*$"),
-            Regex("\\s*:\\s*\\d+.*$")
-        )
-        return patterns.fold(text) { acc, pattern -> acc.replace(pattern, "").trim() }
+        return CHAPTER_MARKERS_REGEXES.fold(text) { acc, pattern -> acc.replace(pattern, "").trim() }
     }
 
     private fun cleanSeparators(text: String): String {
-        return text.replace(Regex("^[\\s–—\\-:\\|]+"), "")
-            .replace(Regex("[\\s–—\\-:\\|]+$"), "")
+        return text.replace(CLEAN_SEPARATORS_START_REGEX, "")
+            .replace(CLEAN_SEPARATORS_END_REGEX, "")
             .trim()
     }
 
@@ -166,15 +184,15 @@ object TextUtils {
     fun extractChapterLabel(title: String?): String? {
         if (title.isNullOrBlank()) return null
 
-        Regex("(?i)(?:chapter|ch|ch\\.|c)\\s*(\\d+)").find(title)?.let {
+        EXTRACT_CHAPTER_LABEL_REGEX_1.find(title)?.let {
             return "Chapter " + it.groupValues[1]
         }
 
-        Regex("[\\s:\\-—–|](\\d+)\\s*$").find(title)?.let {
+        EXTRACT_CHAPTER_LABEL_REGEX_2.find(title)?.let {
             return "Chapter " + it.groupValues[1]
         }
 
-        return Regex("\\b(\\d+)\\b").findAll(title).lastOrNull()?.let {
+        return EXTRACT_CHAPTER_LABEL_REGEX_3.findAll(title).lastOrNull()?.let {
             "Chapter " + it.groupValues[1]
         }
     }
@@ -183,13 +201,7 @@ object TextUtils {
      * Extract chapter label from URL
      */
     fun extractChapterLabelFromUrl(url: String): String? {
-        val patterns = listOf(
-            Regex("chapter\\s*(\\d+)", RegexOption.IGNORE_CASE),
-            Regex("ch(?:apter)?\\D*(\\d+)", RegexOption.IGNORE_CASE),
-            Regex("/(\\d+)(?:/|$)"),
-            Regex("-" + "(\\d+)(?:\\D|$)")
-        )
-        return patterns.firstNotNullOfOrNull { r ->
+        return EXTRACT_CHAPTER_LABEL_URL_REGEXES.firstNotNullOfOrNull { r ->
             r.find(url)?.groupValues?.get(1)?.let { "Chapter " + it }
         }
     }
@@ -439,8 +451,7 @@ object TextUtils {
         ) {
             val label = extractChapterLabel(cleaned)
             if (label != null) {
-                val subTitleRegex = Regex("(?i)(?:chapter|ch|ch\\.)\\s*\\d+[\\s:\\-—–|]+(.+)")
-                val subTitle = subTitleRegex.find(cleaned)?.groupValues?.get(1)?.trim()
+                val subTitle = CLEAN_CHAPTER_TITLE_SUBTITLE_REGEX.find(cleaned)?.groupValues?.get(1)?.trim()
                 return if (!subTitle.isNullOrBlank() && subTitle.length > 2) (label + ": " + subTitle) else label
             }
         }
