@@ -43,6 +43,7 @@ class NovelFireSource @Inject constructor(
         val document = getDocument(url)
 
         val items = mutableListOf<ExploreItem>()
+        val addedUrls = HashSet<String>()
         val bookLinks = document.select("a[href^='/book/']")
 
         bookLinks.forEach { link ->
@@ -59,7 +60,7 @@ class NovelFireSource @Inject constructor(
                  val chapterCount = extractChapterCount(chapterText)
 
                  val absoluteUrl = resolveUrl(href)
-                 if (items.none { it.url == absoluteUrl }) {
+                 if (addedUrls.add(absoluteUrl)) {
                      items.add(ExploreItem(
                          title = title,
                          url = absoluteUrl,
@@ -89,6 +90,7 @@ class NovelFireSource @Inject constructor(
             val json = JSONObject(response)
             val data = json.getJSONArray("data")
             val items = mutableListOf<ExploreItem>()
+            val addedUrls = java.util.HashSet<String>()
             
             for (i in 0 until data.length()) {
                 val obj = data.getJSONObject(i)
@@ -96,15 +98,18 @@ class NovelFireSource @Inject constructor(
                 val title = cleanNovelTitle(rawTitle)
                 val slug = obj.getString("slug")
                 val image = obj.getString("image")
+                val url = "$baseUrl/book/$slug"
                 
-                items.add(ExploreItem(
-                    title = title,
-                    url = "$baseUrl/book/$slug",
-                    coverUrl = resolveUrl(image),
-                    source = name,
-                    rank = obj.optInt("rank").toString(),
-                    chapterCount = obj.optInt("total_chapter")
-                ))
+                if (addedUrls.add(url)) {
+                    items.add(ExploreItem(
+                        title = title,
+                        url = url,
+                        coverUrl = resolveUrl(image),
+                        source = name,
+                        rank = obj.optInt("rank").toString(),
+                        chapterCount = obj.optInt("total_chapter")
+                    ))
+                }
             }
             items
         }.getOrElse {
@@ -112,6 +117,7 @@ class NovelFireSource @Inject constructor(
             val document = getDocument(fallbackUrl)
 
             val items = mutableListOf<ExploreItem>()
+            val addedUrls = java.util.HashSet<String>()
             val bookLinks = document.select("a[href^='/book/']")
 
             bookLinks.forEach { link ->
@@ -128,7 +134,7 @@ class NovelFireSource @Inject constructor(
                      val chapterText = parent?.select(".novel-stats, .stats, .chapters")?.text() ?: ""
                      val chapterCount = extractChapterCount(chapterText)
 
-                     if (items.none { it.url == absoluteUrl }) {
+                     if (addedUrls.add(absoluteUrl)) {
                          items.add(ExploreItem(
                              title = title,
                              url = absoluteUrl,
