@@ -21,7 +21,11 @@ class SummaryService @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     
-    private val TAG = "SummaryService"
+    companion object {
+        private const val TAG = "SummaryService"
+        private val WHITESPACE_REGEX = Regex("\\s+")
+    }
+
     private var modelFile: File? = null
     private var isInitialized = false
     private var isInitializing = false
@@ -79,7 +83,7 @@ class SummaryService @Inject constructor(
             val selectedContent = selectKeyContent(content, maxWords = 300)
             val prompt = buildPrompt(chapterTitle, selectedContent)
             
-            Log.d(TAG, "Generating summary (${selectedContent.split(Regex("\\s+")).size} words, ~${(selectedContent.length + prompt.length) / 4 + 200} tokens)")
+            Log.d(TAG, "Generating summary (${selectedContent.split(WHITESPACE_REGEX).size} words, ~${(selectedContent.length + prompt.length) / 4 + 200} tokens)")
             
             generateWithRetry(prompt, selectedContent, content, onProgress)
         }.onFailure { e ->
@@ -151,7 +155,7 @@ class SummaryService @Inject constructor(
     private fun selectKeyContent(content: List<String>, maxWords: Int): String {
         if (content.isEmpty()) return ""
         
-        val wordsPerParagraph = content.map { it.split(Regex("\\s+")) }
+        val wordsPerParagraph = content.map { it.split(WHITESPACE_REGEX) }
         val totalWords = wordsPerParagraph.sumOf { it.size }
         if (totalWords <= maxWords) return content.joinToString("\n\n")
         

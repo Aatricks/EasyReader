@@ -14,6 +14,10 @@ class MangaBatSource @Inject constructor(
     override val name = "MangaBat"
     override val baseUrl = "https://www.mangabats.com"
 
+    companion object {
+        private val SUMMARY_REGEX = Regex(".*summary: ", RegexOption.IGNORE_CASE)
+    }
+
     override suspend fun getPopularNovels(page: Int, tags: List<String>): List<ExploreItem> = io {
         val url = if (tags.isNotEmpty()) {
             val tagSlug = tags.first().lowercase().replace(" ", "-")
@@ -89,7 +93,7 @@ class MangaBatSource @Inject constructor(
         val author = extractAuthor(document)
         val summary = document.select("#contentBox, .panel-story-info-description, .story-info-description")
             .first()?.text()?.replace("Description :", "")
-            ?.replace(Regex(".*summary: ", RegexOption.IGNORE_CASE), "")?.trim()
+            ?.replace(SUMMARY_REGEX, "")?.trim()
         
         val coverUrl = extractCoverUrl(document)
         

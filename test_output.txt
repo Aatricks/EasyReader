@@ -1,0 +1,193 @@
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:processDebugNavigationResources UP-TO-DATE
+> Task :app:compileDebugNavigationResources UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:kspDebugKotlin UP-TO-DATE
+> Task :app:compileDebugKotlin UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:compileDebugJavaWithJavac UP-TO-DATE
+> Task :app:hiltAggregateDepsDebug UP-TO-DATE
+> Task :app:hiltJavaCompileDebug UP-TO-DATE
+> Task :app:transformDebugClassesWithAsm UP-TO-DATE
+> Task :app:bundleDebugClassesToRuntimeJar UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:bundleDebugClassesToCompileJar UP-TO-DATE
+> Task :app:kspDebugUnitTestKotlin UP-TO-DATE
+> Task :app:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :app:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:hiltAggregateDepsDebugUnitTest UP-TO-DATE
+> Task :app:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :app:transformDebugUnitTestClassesWithAsm UP-TO-DATE
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+
+> Task :app:testDebugUnitTest
+
+ExampleUnitTest > addition_isCorrect PASSED
+
+ContentRepositoryBenchmarkTest > benchmarkBackgroundCacheImages STANDARD_ERROR
+    WARNING: A Java agent has been loaded dynamically (/home/jules/.gradle/caches/modules-2/files-2.1/net.bytebuddy/byte-buddy-agent/1.14.15/b4cc9d88d5de562bf75b3a54ab436ad01b3f72d/byte-buddy-agent-1.14.15.jar)
+    WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+    WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+    WARNING: Dynamic loading of agents will be disallowed by default in a future release
+
+ContentRepositoryBenchmarkTest > benchmarkBackgroundCacheImages STANDARD_OUT
+    Starting benchmark with 5000 images...
+    Benchmark completed in 889ms
+
+ContentRepositoryBenchmarkTest > benchmarkBackgroundCacheImages PASSED
+
+ContentRepositoryConcurrencyTest > testBackgroundCacheImagesConcurrency STANDARD_OUT
+    Max concurrent requests: 3
+
+ContentRepositoryConcurrencyTest > testBackgroundCacheImagesConcurrency PASSED
+
+ContentRepositoryEpubTest > testLoadEpubChapterContentUri PASSED
+
+ContentRepositoryEpubTest > testLoadEpubChapterLocalFile PASSED
+
+ContentRepositoryTest > testAdRemoval PASSED
+
+ContentRepositoryTest > testMangaBatLastImageRemoval PASSED
+
+ContentRepositoryTest > testMangaDetection PASSED
+
+ContentRepositoryTest > testParseHtmlDocument STANDARD_OUT
+    Paragraphs: [This is paragraph one., This is paragraph two, which is split across two tags., This is paragraph three., Chapter 525: The Battle Some text with a line break., Dialogue line one., Dialogue line two.]
+
+ContentRepositoryTest > testParseHtmlDocument PASSED
+
+ContentRepositoryUrlTest > verifyChapterUrlLogic PASSED
+
+ExploreRepositoryTest > testNovelFireSourceScraping PASSED
+
+LibraryRepositoryBenchmarkTest > benchmarkRefreshLibraryUpdates STANDARD_OUT
+    BENCHMARK_RESULT: 116ms for 100 novels (50 recent, 50 old)
+
+LibraryRepositoryBenchmarkTest > benchmarkRefreshLibraryUpdates PASSED
+
+LibraryRepositoryTest > testAddItem PASSED
+
+LibraryRepositoryTest > testUpdateProgress PASSED
+
+LibraryRepositoryTest > testSelection PASSED
+
+LibraryRepositoryTest > testMarkAsCurrentlyReadingClearsUpdates PASSED
+
+LibraryRepositoryTest > testRemoveItem PASSED
+
+LibraryRepositoryTest > testMarkAsCurrentlyReadingClearsUpdatesNoBaseTitle PASSED
+
+LibraryRepositoryUpdateTest > testUpdateNovelInfo_ReturnsFalseOnFailure PASSED
+
+LibraryRepositoryUpdateTest > testRefreshLibraryUpdates_batches_updates PASSED
+
+LibraryRepositoryUpdateTest > testRefreshLibraryUpdates_partial_failure PASSED
+
+LibraryRepositoryUpdateTest > testUpdateNovelInfo_CallsDaoUpdate PASSED
+
+LibraryRepositoryUpdateTest > testRefreshLibraryUpdates_skips_old_novels PASSED
+
+LibraryRepositoryUpdateTest > testRefreshLibraryUpdates_includes_old_but_currently_reading_novels PASSED
+
+BaseJsoupSourceSecurityTest > connect does NOT set global hostname verifier PASSED
+
+MangaBatSourceTest > testParsePopularNovels PASSED
+
+MangaBatSourceTest > testParseNovelDetails PASSED
+
+NovelFireSourceBenchmarkTest > benchmarkCleanNovelTitle STANDARD_OUT
+    Baseline - Time to run 100000 iterations: 1897 ms
+    Optimized - Time to run 100000 iterations: 349 ms
+    Improvement: 1548 ms
+
+NovelFireSourceBenchmarkTest > benchmarkCleanNovelTitle PASSED
+
+NovelFireSourceConcurrencyTest > testLoadAdditionalChapterPagesConcurrency STANDARD_OUT
+    Max concurrency: 3
+    Total requests: 11
+
+NovelFireSourceConcurrencyTest > testLoadAdditionalChapterPagesConcurrency PASSED
+
+NovelFireSourceTest > testParsePopularNovels PASSED
+
+NovelFireSourceTest > testParseNovelDetails PASSED
+
+ReaderScreenPrefetchTest > prefetchImages enqueues requests only for new indices PASSED
+
+LibraryViewModelTest > initial state is correct PASSED
+
+ReaderViewModelNavigationTest > loadContent populates fullChapterList from library when source list is empty PASSED
+
+ReaderViewModelSecurityTest > requestOpenFile updates state correctly PASSED
+
+ReaderViewModelSecurityTest > dismissFileConfirmation clears state PASSED
+
+ReaderViewModelTest > updateReadingProgress ignores placeholder content PASSED
+
+ReaderViewModelTest > updateScrollPosition saves progress after delay PASSED
+
+ReaderViewModelTest > toggleReadingMode updates repository PASSED
+
+ReaderViewModelTest > initial state is correct PASSED
+
+ReaderViewModelTest > loadContent saves current progress before loading new PASSED
+
+SafeRedirectInterceptorTest > intercept limits redirects PASSED
+
+SafeRedirectInterceptorTest > intercept passes through normal response PASSED
+
+SafeRedirectInterceptorTest > intercept follows safe redirect STANDARD_OUT
+    DEBUG: Request URL: http://8.8.8.8/start
+    DEBUG: Request URL: http://8.8.8.8/target
+
+SafeRedirectInterceptorTest > intercept follows safe redirect PASSED
+
+SafeRedirectInterceptorTest > intercept blocks unsafe redirect to localhost PASSED
+
+TextUtilsTest > testUrlNavigation PASSED
+
+TextUtilsTest > testWordCountAndReadingTime PASSED
+
+TextUtilsTest > testExtractBaseTitle PASSED
+
+TextUtilsTest > testFormatChapterText PASSED
+
+TextUtilsTest > testExtractChapterLabel PASSED
+
+TextUtilsTest > testCleanHtmlEntities PASSED
+
+TextUtilsTest > testExtractChapterNumber PASSED
+
+TextUtilsTest > testRemovePageNumbers PASSED
+
+TextUtilsTest > testExtractTitleFromUrl PASSED
+
+UrlSecurityTest > isSafeUrl rejects non-http schemes PASSED
+
+UrlSecurityTest > isSafeUrl rejects private addresses PASSED
+
+UrlSecurityTest > isSafeUrl rejects loopback addresses PASSED
+
+UrlSecurityTest > isSafeUrl accepts public addresses PASSED
+
+WebViewUtilsTest > configureCloudflareWebView sets secure mixed content mode PASSED
+
+BUILD SUCCESSFUL in 13s
+32 actionable tasks: 1 executed, 31 up-to-date

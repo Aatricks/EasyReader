@@ -13,6 +13,11 @@ abstract class BaseJsoupSource(
     protected open val preferencesManager: PreferencesManager? = null,
     protected open val okHttpClient: okhttp3.OkHttpClient? = null
 ) : NovelSource {
+
+    companion object {
+        private val MULTIPLE_SLASHES_REGEX = Regex("/+")
+    }
+
     protected open val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     protected open val timeout = 15000L
 
@@ -73,6 +78,6 @@ abstract class BaseJsoupSource(
             path.startsWith("//") -> "https:$path"
             path.startsWith("/") -> "$baseUrl$path"
             else -> if (path.startsWith(baseUrl)) path else "$baseUrl/$path"
-        }.replace(Regex("/+"), "/").replace("https:/", "https://").replace("http:/", "http://")
+        }.replace(MULTIPLE_SLASHES_REGEX, "/").replace("https:/", "https://").replace("http:/", "http://")
     }
 }
