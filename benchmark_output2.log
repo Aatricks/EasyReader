@@ -1,0 +1,598 @@
+Initialized native services in: /home/jules/.gradle/native
+Initialized jansi services in: /home/jules/.gradle/native
+Removing 0 daemon stop events from registry
+Previous Daemon (1640) stopped at Sat Feb 28 11:07:43 UTC 2026 stop command received
+Previous Daemon (2379) stopped at Sat Feb 28 11:10:37 UTC 2026 stop command received
+Starting a Gradle Daemon, 2 stopped Daemons could not be reused, use --status for details
+Starting process 'Gradle build daemon'. Working directory: /home/jules/.gradle/daemon/8.13 Command: /usr/lib/jvm/java-21-openjdk-amd64/bin/java --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.prefs/java.util.prefs=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.prefs/java.util.prefs=ALL-UNNAMED --add-opens=java.base/java.nio.charset=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.xml/javax.xml.namespace=ALL-UNNAMED -Xmx2048m -Dfile.encoding=UTF-8 -Duser.country -Duser.language=en -Duser.variant -cp /home/jules/.gradle/wrapper/dists/gradle-8.13-bin/5xuhj0ry160q40clulazy9h7d/gradle-8.13/lib/gradle-daemon-main-8.13.jar -javaagent:/home/jules/.gradle/wrapper/dists/gradle-8.13-bin/5xuhj0ry160q40clulazy9h7d/gradle-8.13/lib/agents/gradle-instrumentation-agent-8.13.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.13
+Successfully started process 'Gradle build daemon'
+An attempt to start the daemon took 1.315 secs.
+The client will now receive all logging from the daemon (pid: 3322). The daemon log file: /home/jules/.gradle/daemon/8.13/daemon-3322.out.log
+Starting build in new daemon [memory: 2 GiB]
+Using 4 worker leases.
+Received JVM installation metadata from '/usr/lib/jvm/java-21-openjdk-amd64': {JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64, JAVA_VERSION=21.0.9, JAVA_VENDOR=Ubuntu, RUNTIME_NAME=OpenJDK Runtime Environment, RUNTIME_VERSION=21.0.9+10-Ubuntu-124.04, VM_NAME=OpenJDK 64-Bit Server VM, VM_VERSION=21.0.9+10-Ubuntu-124.04, VM_VENDOR=Ubuntu, OS_ARCH=amd64}
+Watching the file system is configured to be enabled if available
+Not watching /app since the file system is not supported
+File system watching is active
+Starting Build
+Settings evaluated using settings file '/app/settings.gradle.kts'.
+Projects loaded. Root project using build file '/app/build.gradle.kts'.
+Included projects: [root project 'Novel Scraper', project ':app']
+
+> Configure project :
+Evaluating root project 'Novel Scraper' using build file '/app/build.gradle.kts'.
+Resolved plugin [id: 'com.android.application', version: '8.13.0', apply: false]
+Resolved plugin [id: 'org.jetbrains.kotlin.android', version: '2.1.0', apply: false]
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.compose', version: '2.1.0', apply: false]
+Resolved plugin [id: 'com.google.dagger.hilt.android', version: '2.54', apply: false]
+Resolved plugin [id: 'com.google.devtools.ksp', version: '2.1.0-1.0.29', apply: false]
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.serialization', version: '2.1.0', apply: false]
+
+> Configure project :app
+Evaluating project ':app' using build file '/app/app/build.gradle.kts'.
+Resolved plugin [id: 'com.android.application', version: '8.13.0']
+Resolved plugin [id: 'org.jetbrains.kotlin.android', version: '2.1.0']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.compose', version: '2.1.0']
+Resolved plugin [id: 'com.google.dagger.hilt.android', version: '2.54']
+Resolved plugin [id: 'com.google.devtools.ksp', version: '2.1.0-1.0.29']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.serialization', version: '2.1.0']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle85 variant
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+All projects evaluated.
+Task path ':app:testDebugUnitTest' matched project ':app'
+Task name matched 'testDebugUnitTest'
+Selected primary task 'testDebugUnitTest' from project :app
+Adding -Xuse-inline-scopes-numbers Kotlin compiler flag for task :app:compileDebugKotlin
+Tasks to be executed: [task ':app:preBuild', task ':app:preDebugBuild', task ':app:checkKotlinGradlePluginConfigurationErrors', task ':app:checkDebugAarMetadata', task ':app:processDebugNavigationResources', task ':app:compileDebugNavigationResources', task ':app:generateDebugResValues', task ':app:mapDebugSourceSetPaths', task ':app:generateDebugResources', task ':app:mergeDebugResources', task ':app:packageDebugResources', task ':app:parseDebugLocalResources', task ':app:createDebugCompatibleScreenManifests', task ':app:extractDeepLinksDebug', task ':app:processDebugMainManifest', task ':app:processDebugManifest', task ':app:processDebugManifestForPackage', task ':app:processDebugResources', task ':app:kspDebugKotlin', task ':app:compileDebugKotlin', task ':app:javaPreCompileDebug', task ':app:compileDebugJavaWithJavac', task ':app:hiltAggregateDepsDebug', task ':app:hiltJavaCompileDebug', task ':app:transformDebugClassesWithAsm', task ':app:bundleDebugClassesToRuntimeJar', task ':app:preDebugUnitTestBuild', task ':app:processDebugJavaRes', task ':app:bundleDebugClassesToCompileJar', task ':app:kspDebugUnitTestKotlin', task ':app:compileDebugUnitTestKotlin', task ':app:javaPreCompileDebugUnitTest', task ':app:compileDebugUnitTestJavaWithJavac', task ':app:hiltAggregateDepsDebugUnitTest', task ':app:hiltJavaCompileDebugUnitTest', task ':app:processDebugUnitTestJavaRes', task ':app:transformDebugUnitTestClassesWithAsm', task ':app:testDebugUnitTest']
+Tasks that were excluded: []
+work action Parameters of IdentityTransform (Thread[#58,Execution worker,5,main]) started.
+work action Parameters of CopyTransform (Thread[#58,Execution worker,5,main]) started.
+work action Parameters of AggregatedPackagesTransform (Thread[#58,Execution worker,5,main]) started.
+Resolve mutations for :app:preBuild (Thread[#58,Execution worker,5,main]) started.
+:app:preBuild (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:preBuild UP-TO-DATE
+Skipping task ':app:preBuild' as it has no actions.
+Resolve mutations for :app:preDebugBuild (Thread[#58,Execution worker,5,main]) started.
+:app:preDebugBuild (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:preDebugBuild UP-TO-DATE
+Skipping task ':app:preDebugBuild' as it has no actions.
+Resolve mutations for :app:checkKotlinGradlePluginConfigurationErrors (Thread[#58,Execution worker,5,main]) started.
+:app:checkKotlinGradlePluginConfigurationErrors (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':app:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :app:checkDebugAarMetadata (Thread[#58,Execution worker,5,main]) started.
+:app:checkDebugAarMetadata (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':app:checkDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:checkDebugAarMetadata' as it is up-to-date.
+Resolve mutations for :app:processDebugNavigationResources (Thread[#58,Execution worker,5,main]) started.
+:app:processDebugNavigationResources (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':app:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':app:processDebugNavigationResources' as it is up-to-date.
+Resolve mutations for :app:compileDebugNavigationResources (Thread[#58,Execution worker,5,main]) started.
+:app:compileDebugNavigationResources (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:compileDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':app:compileDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':app:compileDebugNavigationResources' as it is up-to-date.
+Resolve mutations for :app:generateDebugResValues (Thread[#58,Execution worker,5,main]) started.
+:app:generateDebugResValues (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':app:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':app:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :app:mapDebugSourceSetPaths (Thread[#58,Execution worker,5,main]) started.
+:app:mapDebugSourceSetPaths (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+Caching disabled for task ':app:mapDebugSourceSetPaths' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:mapDebugSourceSetPaths' as it is up-to-date.
+Resolve mutations for :app:generateDebugResources (Thread[#58,Execution worker,5,main]) started.
+:app:generateDebugResources (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:generateDebugResources UP-TO-DATE
+Caching disabled for task ':app:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:generateDebugResources' as it is up-to-date.
+Resolve mutations for :app:mergeDebugResources (Thread[#58,Execution worker,5,main]) started.
+:app:mergeDebugResources (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:mergeDebugResources UP-TO-DATE
+Caching disabled for task ':app:mergeDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:mergeDebugResources' as it is up-to-date.
+Resolve mutations for :app:packageDebugResources (Thread[#58,Execution worker,5,main]) started.
+:app:packageDebugResources (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:packageDebugResources UP-TO-DATE
+Caching disabled for task ':app:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:packageDebugResources' as it is up-to-date.
+Resolve mutations for :app:parseDebugLocalResources (Thread[#58,Execution worker,5,main]) started.
+:app:parseDebugLocalResources (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':app:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':app:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :app:createDebugCompatibleScreenManifests (Thread[#57,included builds,5,main]) started.
+:app:createDebugCompatibleScreenManifests (Thread[#57,included builds,5,main]) started.
+
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+Caching disabled for task ':app:createDebugCompatibleScreenManifests' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:createDebugCompatibleScreenManifests' as it is up-to-date.
+Resolve mutations for :app:extractDeepLinksDebug (Thread[#58,Execution worker,5,main]) started.
+:app:extractDeepLinksDebug (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':app:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':app:extractDeepLinksDebug' as it is up-to-date.
+Resolve mutations for :app:processDebugMainManifest (Thread[#57,included builds,5,main]) started.
+:app:processDebugMainManifest (Thread[#57,included builds,5,main]) started.
+
+> Task :app:processDebugMainManifest UP-TO-DATE
+Caching disabled for task ':app:processDebugMainManifest' because:
+  Build cache is disabled
+Skipping task ':app:processDebugMainManifest' as it is up-to-date.
+Resolve mutations for :app:processDebugManifest (Thread[#57,included builds,5,main]) started.
+:app:processDebugManifest (Thread[#57,included builds,5,main]) started.
+
+> Task :app:processDebugManifest UP-TO-DATE
+Caching disabled for task ':app:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':app:processDebugManifest' as it is up-to-date.
+Resolve mutations for :app:processDebugManifestForPackage (Thread[#57,included builds,5,main]) started.
+:app:processDebugManifestForPackage (Thread[#57,included builds,5,main]) started.
+
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+Custom actions are attached to task ':app:processDebugManifestForPackage'.
+Caching disabled for task ':app:processDebugManifestForPackage' because:
+  Build cache is disabled
+Skipping task ':app:processDebugManifestForPackage' as it is up-to-date.
+Resolve mutations for :app:processDebugResources (Thread[#57,included builds,5,main]) started.
+:app:processDebugResources (Thread[#59,Execution worker Thread 2,5,main]) started.
+
+> Task :app:processDebugResources UP-TO-DATE
+Caching disabled for task ':app:processDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:processDebugResources' as it is up-to-date.
+Resolve mutations for :app:kspDebugKotlin (Thread[#59,Execution worker Thread 2,5,main]) started.
+:app:kspDebugKotlin (Thread[#59,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :app:javaPreCompileDebug (Thread[#60,Execution worker Thread 3,5,main]) started.
+:app:javaPreCompileDebug (Thread[#60,Execution worker Thread 3,5,main]) started.
+
+> Task :app:javaPreCompileDebug UP-TO-DATE
+Caching disabled for task ':app:javaPreCompileDebug' because:
+  Build cache is disabled
+Skipping task ':app:javaPreCompileDebug' as it is up-to-date.
+Resolve mutations for :app:preDebugUnitTestBuild (Thread[#60,Execution worker Thread 3,5,main]) started.
+:app:preDebugUnitTestBuild (Thread[#60,Execution worker Thread 3,5,main]) started.
+
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+Skipping task ':app:preDebugUnitTestBuild' as it has no actions.
+Resolve mutations for :app:javaPreCompileDebugUnitTest (Thread[#60,Execution worker Thread 3,5,main]) started.
+:app:javaPreCompileDebugUnitTest (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:javaPreCompileDebugUnitTest UP-TO-DATE
+Caching disabled for task ':app:javaPreCompileDebugUnitTest' because:
+  Build cache is disabled
+Skipping task ':app:javaPreCompileDebugUnitTest' as it is up-to-date.
+
+> Task :app:kspDebugKotlin
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+Adding -Xuse-inline-scopes-numbers Kotlin compiler flag for task :app:compileDebugAndroidTestKotlin
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+Caching disabled for task ':app:kspDebugKotlin' because:
+  Build cache is disabled
+Task ':app:kspDebugKotlin' is not up-to-date because:
+  Input property 'sources' file /app/app/src/main/java/io/aatricks/novelscraper/util/TextUtils.kt has changed.
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+Kotlin source files: /app/app/src/main/java/io/aatricks/novelscraper/data/local/AppDatabase.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/local/PreferencesManager.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/local/Converters.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/local/LibraryDao.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/BaseRepository.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/content/WebContentLoader.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/content/LocalContentLoader.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/content/EpubContentLoader.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/content/PdfContentLoader.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/ExploreRepository.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/LibraryRepository.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/source/NovelFireSource.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/source/NovelSource.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/source/BaseJsoupSource.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/source/MangaBatSource.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/SummaryService.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/ContentRepository.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/HtmlParser.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ReaderTheme.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ContentResult.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ReadingMode.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ChapterContent.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ReadingState.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ContentType.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ChapterInfo.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ExploreItem.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/SortMode.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ContentElement.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/EpubModels.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/LibraryItem.kt, /app/app/src/main/java/io/aatricks/novelscraper/EasyReaderApplication.kt, /app/app/src/main/java/io/aatricks/novelscraper/util/UrlSecurity.kt, /app/app/src/main/java/io/aatricks/novelscraper/util/FileUtils.kt, /app/app/src/main/java/io/aatricks/novelscraper/util/TextUtils.kt, /app/app/src/main/java/io/aatricks/novelscraper/util/ZipUtils.kt, /app/app/src/main/java/io/aatricks/novelscraper/util/SafeRedirectInterceptor.kt, /app/app/src/main/java/io/aatricks/novelscraper/util/WebViewUtils.kt, /app/app/src/main/java/io/aatricks/novelscraper/MainActivity.kt, /app/app/src/main/java/io/aatricks/novelscraper/di/NetworkModule.kt, /app/app/src/main/java/io/aatricks/novelscraper/di/DatabaseModule.kt, /app/app/src/main/java/io/aatricks/novelscraper/di/ContentModule.kt, /app/app/src/main/java/io/aatricks/novelscraper/di/RepositoryModule.kt, /app/app/src/main/java/io/aatricks/novelscraper/di/SourceModule.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ChapterListSheet.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ReaderStates.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ReaderImageView.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ReaderControls.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/LibraryItemCard.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ZoomableBox.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/FileConfirmationDialog.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ExternalUrlConfirmationDialog.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ContentRenderer.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ReaderSettingsSheet.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ChapterSummaryDropdown.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/screens/LibraryDrawerContent.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/screens/explore/ExploreScreen.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/screens/ReaderScreen.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/util/ComposeUtils.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/NavDestinations.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/theme/Color.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/theme/Theme.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/theme/Type.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/viewmodel/SummaryViewModel.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/viewmodel/LibraryViewModel.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/viewmodel/BaseViewModel.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/viewmodel/ExploreViewModel.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/viewmodel/ReaderViewModel.kt
+Java source files:
+Script source files:
+Script file extensions:
+[KOTLIN] Kotlin compilation 'jdkHome' argument: null
+i: starting the daemon as: /usr/lib/jvm/java-21-openjdk-amd64/bin/java -cp /home/jules/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-compiler-embeddable/2.1.0/988bf980588bbbcfa1ba19c1ffd7aa869b335a31/kotlin-compiler-embeddable-2.1.0.jar:/home/jules/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib/2.1.0/85f8b81009cda5890e54ba67d64b5e599c645020/kotlin-stdlib-2.1.0.jar:/home/jules/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-script-runtime/2.1.0/5909da8c57b75a117714ab0e348c86101b7a3284/kotlin-script-runtime-2.1.0.jar:/home/jules/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-reflect/1.6.10/1cbe9c92c12a94eea200d23c2bbaedaf3daf5132/kotlin-reflect-1.6.10.jar:/home/jules/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-daemon-embeddable/2.1.0/420bae1908e4a353f5b56c3c850d24d86367b25d/kotlin-daemon-embeddable-2.1.0.jar:/home/jules/.gradle/caches/modules-2/files-2.1/org.jetbrains.intellij.deps/trove4j/1.0.20200330/3afb14d5f9ceb459d724e907a21145e8ff394f02/trove4j-1.0.20200330.jar:/home/jules/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-coroutines-core-jvm/1.6.4/2c997cd1c0ef33f3e751d3831929aeff1390cb30/kotlinx-coroutines-core-jvm-1.6.4.jar:/home/jules/.gradle/caches/modules-2/files-2.1/org.jetbrains/annotations/13.0/919f0dfe192fb4e063e7dacadee7f8bb9a2672a9/annotations-13.0.jar -Djava.awt.headless=true -Djava.rmi.server.hostname=127.0.0.1 -Xmx2048m -XX:ReservedCodeCacheSize=320m -Dkotlin.environment.keepalive -ea -XX:+UseCodeCacheFlushing -XX:+UseParallelGC -Dkotlin.daemon.initiator.marker.file=/tmp/kotlin-compiler-in-ovelcraper-125011766413684167.alive --add-exports java.base/sun.nio.ch=ALL-UNNAMED org.jetbrains.kotlin.daemon.KotlinCompileDaemon --daemon-runFilesPath /home/jules/.local/share/kotlin/daemon --daemon-autoshutdownIdleSeconds=7200 --daemon-compilerClasspath /home/jules/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-compiler-embeddable/2.1.0/988bf980588bbbcfa1ba19c1ffd7aa869b335a31/kotlin-compiler-embeddable-2.1.0.jar:/home/jules/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib/2.1.0/85f8b81009cda5890e54ba67d64b5e599c645020/kotlin-stdlib-2.1.0.jar:/home/jules/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-script-runtime/2.1.0/5909da8c57b75a117714ab0e348c86101b7a3284/kotlin-script-runtime-2.1.0.jar:/home/jules/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-reflect/1.6.10/1cbe9c92c12a94eea200d23c2bbaedaf3daf5132/kotlin-reflect-1.6.10.jar:/home/jules/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-daemon-embeddable/2.1.0/420bae1908e4a353f5b56c3c850d24d86367b25d/kotlin-daemon-embeddable-2.1.0.jar:/home/jules/.gradle/caches/modules-2/files-2.1/org.jetbrains.intellij.deps/trove4j/1.0.20200330/3afb14d5f9ceb459d724e907a21145e8ff394f02/trove4j-1.0.20200330.jar:/home/jules/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-coroutines-core-jvm/1.6.4/2c997cd1c0ef33f3e751d3831929aeff1390cb30/kotlinx-coroutines-core-jvm-1.6.4.jar:/home/jules/.gradle/caches/modules-2/files-2.1/org.jetbrains/annotations/13.0/919f0dfe192fb4e063e7dacadee7f8bb9a2672a9/annotations-13.0.jar
+i: #1 retrying connecting to the daemon
+i: [ksp] loaded provider(s): [dagger.hilt.processor.internal.uninstallmodules.KspUninstallModulesProcessor$Provider, dagger.hilt.processor.internal.definecomponent.KspDefineComponentProcessor$Provider, dagger.hilt.android.processor.internal.androidentrypoint.KspAndroidEntryPointProcessor$Provider, dagger.hilt.processor.internal.root.KspRootProcessor$Provider, dagger.hilt.android.processor.internal.viewmodel.KspViewModelProcessor$Provider, dagger.hilt.android.processor.internal.bindvalue.KspBindValueProcessor$Provider, dagger.hilt.processor.internal.root.KspComponentTreeDepsProcessor$Provider, dagger.hilt.processor.internal.aliasof.KspAliasOfProcessor$Provider, dagger.hilt.processor.internal.generatesrootinput.KspGeneratesRootInputProcessor$Provider, dagger.hilt.processor.internal.originatingelement.KspOriginatingElementProcessor$Provider, dagger.hilt.processor.internal.earlyentrypoint.KspEarlyEntryPointProcessor$Provider, dagger.hilt.android.processor.internal.customtestapplication.KspCustomTestApplicationProcessor$Provider, dagger.hilt.processor.internal.aggregateddeps.KspAggregatedDepsProcessor$Provider, androidx.room.RoomKspProcessor$Provider, dagger.internal.codegen.KspComponentProcessor$Provider]
+Finished executing kotlin compiler using DAEMON strategy
+Resolve mutations for :app:compileDebugKotlin (Thread[#59,Execution worker Thread 2,5,main]) started.
+:app:compileDebugKotlin (Thread[#59,Execution worker Thread 2,5,main]) started.
+
+> Task :app:compileDebugKotlin
+Caching disabled for task ':app:compileDebugKotlin' because:
+  Build cache is disabled
+Task ':app:compileDebugKotlin' is not up-to-date because:
+  Input property 'sources' file /app/app/src/main/java/io/aatricks/novelscraper/util/TextUtils.kt has changed.
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/debug/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/main/kotlin', not found
+file or directory '/app/app/src/debug/java', not found
+Kotlin source files: /app/app/build/generated/ksp/debug/kotlin/io/aatricks/novelscraper/data/local/LibraryDao_Impl.kt, /app/app/build/generated/ksp/debug/kotlin/io/aatricks/novelscraper/data/local/AppDatabase_Impl.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/local/AppDatabase.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/local/PreferencesManager.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/local/Converters.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/local/LibraryDao.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/BaseRepository.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/content/WebContentLoader.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/content/LocalContentLoader.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/content/EpubContentLoader.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/content/PdfContentLoader.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/ExploreRepository.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/LibraryRepository.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/source/NovelFireSource.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/source/NovelSource.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/source/BaseJsoupSource.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/source/MangaBatSource.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/SummaryService.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/ContentRepository.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/repository/HtmlParser.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ReaderTheme.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ContentResult.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ReadingMode.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ChapterContent.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ReadingState.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ContentType.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ChapterInfo.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ExploreItem.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/SortMode.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/ContentElement.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/EpubModels.kt, /app/app/src/main/java/io/aatricks/novelscraper/data/model/LibraryItem.kt, /app/app/src/main/java/io/aatricks/novelscraper/EasyReaderApplication.kt, /app/app/src/main/java/io/aatricks/novelscraper/util/UrlSecurity.kt, /app/app/src/main/java/io/aatricks/novelscraper/util/FileUtils.kt, /app/app/src/main/java/io/aatricks/novelscraper/util/TextUtils.kt, /app/app/src/main/java/io/aatricks/novelscraper/util/ZipUtils.kt, /app/app/src/main/java/io/aatricks/novelscraper/util/SafeRedirectInterceptor.kt, /app/app/src/main/java/io/aatricks/novelscraper/util/WebViewUtils.kt, /app/app/src/main/java/io/aatricks/novelscraper/MainActivity.kt, /app/app/src/main/java/io/aatricks/novelscraper/di/NetworkModule.kt, /app/app/src/main/java/io/aatricks/novelscraper/di/DatabaseModule.kt, /app/app/src/main/java/io/aatricks/novelscraper/di/ContentModule.kt, /app/app/src/main/java/io/aatricks/novelscraper/di/RepositoryModule.kt, /app/app/src/main/java/io/aatricks/novelscraper/di/SourceModule.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ChapterListSheet.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ReaderStates.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ReaderImageView.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ReaderControls.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/LibraryItemCard.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ZoomableBox.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/FileConfirmationDialog.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ExternalUrlConfirmationDialog.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ContentRenderer.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ReaderSettingsSheet.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/components/ChapterSummaryDropdown.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/screens/LibraryDrawerContent.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/screens/explore/ExploreScreen.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/screens/ReaderScreen.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/util/ComposeUtils.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/NavDestinations.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/theme/Color.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/theme/Theme.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/theme/Type.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/viewmodel/SummaryViewModel.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/viewmodel/LibraryViewModel.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/viewmodel/BaseViewModel.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/viewmodel/ExploreViewModel.kt, /app/app/src/main/java/io/aatricks/novelscraper/ui/viewmodel/ReaderViewModel.kt
+Java source files: /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/data/local/PreferencesManager_Factory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/data/repository/LibraryRepository_Factory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/data/repository/content/EpubContentLoader_Factory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/data/repository/content/PdfContentLoader_Factory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/data/repository/content/LocalContentLoader_Factory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/data/repository/content/WebContentLoader_Factory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/data/repository/ContentRepository_Factory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/data/repository/HtmlParser_Factory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/data/repository/ExploreRepository_Factory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/data/repository/source/MangaBatSource_Factory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/data/repository/source/NovelFireSource_Factory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/data/repository/SummaryService_Factory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/EasyReaderApplication_MembersInjector.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/EasyReaderApplication_GeneratedInjector.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/Hilt_MainActivity.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/MainActivity_GeneratedInjector.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/MainActivity_MembersInjector.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/di/SourceModule_ProvideNovelFireSourceFactory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/di/SourceModule_ProvideMangaBatSourceFactory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/di/ContentModule_ProvideCacheDirFactory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/di/NetworkModule_ProvideJsonFactory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/di/NetworkModule_ProvideOkHttpClientFactory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/di/NetworkModule_ProvideKtorClientFactory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/di/DatabaseModule_ProvideLibraryDaoFactory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/di/ContentModule_ProvideMediaCacheDirFactory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/di/DatabaseModule_ProvideDatabaseFactory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/di/ContentModule_ProvideEpubCacheDirFactory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/LibraryViewModel_HiltModules_KeyModule_ProvideFactory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/ExploreViewModel_HiltModules_KeyModule_ProvideFactory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/ReaderViewModel_HiltModules.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/ReaderViewModel_Factory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/LibraryViewModel_HiltModules_BindsModule_Binds_LazyMapKey.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/SummaryViewModel_Factory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/LibraryViewModel_HiltModules.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/LibraryViewModel_HiltModules_KeyModule_Provide_LazyMapKey.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/ReaderViewModel_HiltModules_KeyModule_Provide_LazyMapKey.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/LibraryViewModel_Factory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/ExploreViewModel_HiltModules_KeyModule_Provide_LazyMapKey.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/SummaryViewModel_HiltModules_BindsModule_Binds_LazyMapKey.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/ReaderViewModel_HiltModules_BindsModule_Binds_LazyMapKey.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/ReaderViewModel_HiltModules_KeyModule_ProvideFactory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/SummaryViewModel_HiltModules.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/ExploreViewModel_HiltModules.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/ExploreViewModel_HiltModules_BindsModule_Binds_LazyMapKey.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/SummaryViewModel_HiltModules_KeyModule_ProvideFactory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/ExploreViewModel_Factory.java, /app/app/build/generated/ksp/debug/java/io/aatricks/novelscraper/ui/viewmodel/SummaryViewModel_HiltModules_KeyModule_Provide_LazyMapKey.java, /app/app/build/generated/ksp/debug/java/hilt_aggregated_deps/_io_aatricks_novelscraper_ui_viewmodel_LibraryViewModel_HiltModules_BindsModule.java, /app/app/build/generated/ksp/debug/java/hilt_aggregated_deps/_io_aatricks_novelscraper_ui_viewmodel_LibraryViewModel_HiltModules_KeyModule.java, /app/app/build/generated/ksp/debug/java/hilt_aggregated_deps/_io_aatricks_novelscraper_ui_viewmodel_SummaryViewModel_HiltModules_KeyModule.java, /app/app/build/generated/ksp/debug/java/hilt_aggregated_deps/_io_aatricks_novelscraper_di_SourceModule.java, /app/app/build/generated/ksp/debug/java/hilt_aggregated_deps/_io_aatricks_novelscraper_ui_viewmodel_SummaryViewModel_HiltModules_BindsModule.java, /app/app/build/generated/ksp/debug/java/hilt_aggregated_deps/_io_aatricks_novelscraper_di_NetworkModule.java, /app/app/build/generated/ksp/debug/java/hilt_aggregated_deps/_io_aatricks_novelscraper_ui_viewmodel_ReaderViewModel_HiltModules_KeyModule.java, /app/app/build/generated/ksp/debug/java/hilt_aggregated_deps/_io_aatricks_novelscraper_ui_viewmodel_ReaderViewModel_HiltModules_BindsModule.java, /app/app/build/generated/ksp/debug/java/hilt_aggregated_deps/_io_aatricks_novelscraper_ui_viewmodel_ExploreViewModel_HiltModules_BindsModule.java, /app/app/build/generated/ksp/debug/java/hilt_aggregated_deps/_io_aatricks_novelscraper_di_ContentModule.java, /app/app/build/generated/ksp/debug/java/hilt_aggregated_deps/_io_aatricks_novelscraper_ui_viewmodel_ExploreViewModel_HiltModules_KeyModule.java, /app/app/build/generated/ksp/debug/java/hilt_aggregated_deps/_io_aatricks_novelscraper_EasyReaderApplication_GeneratedInjector.java, /app/app/build/generated/ksp/debug/java/hilt_aggregated_deps/_io_aatricks_novelscraper_di_DatabaseModule.java, /app/app/build/generated/ksp/debug/java/hilt_aggregated_deps/_io_aatricks_novelscraper_di_RepositoryModule.java, /app/app/build/generated/ksp/debug/java/hilt_aggregated_deps/_io_aatricks_novelscraper_MainActivity_GeneratedInjector.java, /app/app/build/generated/ksp/debug/java/dagger/hilt/internal/aggregatedroot/codegen/_io_aatricks_novelscraper_EasyReaderApplication.java
+Script source files:
+Script file extensions:
+Using Kotlin/JVM incremental compilation
+[KOTLIN] Kotlin compilation 'jdkHome' argument: null
+Options for KOTLIN DAEMON: IncrementalCompilationOptions(super=CompilationOptions(compilerMode=INCREMENTAL_COMPILER, targetPlatform=JVM, reportCategories=[0, 3], reportSeverity=2, requestedCompilationResults=[0], kotlinScriptExtensions=[]), areFileChangesKnown=true, modifiedFiles=[/app/app/src/main/java/io/aatricks/novelscraper/util/TextUtils.kt], deletedFiles=[], classpathChanges=NoChanges, workingDir=/app/app/build/kotlin/compileDebugKotlin/cacheable, multiModuleICSettings=MultiModuleICSettings(buildHistoryFile=/app/app/build/kotlin/compileDebugKotlin/local-state/build-history.bin, useModuleDetection=true), usePreciseJavaTracking=true, icFeatures=IncrementalCompilationFeatures(withAbiSnapshot=false, preciseCompilationResultsBackup=true, keepIncrementalCompilationCachesInMemory=true, enableUnsafeIncrementalCompilationForMultiplatform=false), outputFiles=[/app/app/build/tmp/kotlin-classes/debug, /app/app/build/kotlin/compileDebugKotlin/cacheable, /app/app/build/kotlin/compileDebugKotlin/local-state])
+Finished executing kotlin compiler using DAEMON strategy
+Resolve mutations for :app:compileDebugJavaWithJavac (Thread[#59,Execution worker Thread 2,5,main]) started.
+:app:compileDebugJavaWithJavac (Thread[#59,Execution worker Thread 2,5,main]) started.
+
+> Task :app:compileDebugJavaWithJavac UP-TO-DATE
+file or directory '/app/app/build/generated/ksp/debug/classes', not found
+file or directory '/app/app/build/generated/ksp/debug/classes', not found
+Custom actions are attached to task ':app:compileDebugJavaWithJavac'.
+Caching disabled for task ':app:compileDebugJavaWithJavac' because:
+  Build cache is disabled
+Task ':app:compileDebugJavaWithJavac' is not up-to-date because:
+  Input property 'classpath' file /app/app/build/tmp/kotlin-classes/debug/io/aatricks/novelscraper/util/TextUtils.class has changed.
+Compilation mode: in-process compilation
+file or directory '/app/app/build/generated/ksp/debug/classes', not found
+Created classpath snapshot for incremental compilation in 0.492 secs.
+None of the classes needs to be compiled! Analysis took 0.556 secs.
+Resolve mutations for :app:hiltAggregateDepsDebug (Thread[#59,Execution worker Thread 2,5,main]) started.
+:app:hiltAggregateDepsDebug (Thread[#59,Execution worker Thread 2,5,main]) started.
+
+> Task :app:hiltAggregateDepsDebug UP-TO-DATE
+file or directory '/app/app/build/generated/ksp/debug/classes', not found
+Caching disabled for CopyTransform: /app/app/build/tmp/kotlin-classes/debug because:
+  Build cache is disabled
+  Caching not enabled.
+Caching disabled for AggregatedPackagesTransform: /app/app/build/tmp/kotlin-classes/debug because:
+  Build cache is disabled
+Caching disabled for task ':app:hiltAggregateDepsDebug' because:
+  Build cache is disabled
+Skipping task ':app:hiltAggregateDepsDebug' as it is up-to-date.
+Resolve mutations for :app:hiltJavaCompileDebug (Thread[#59,Execution worker Thread 2,5,main]) started.
+:app:hiltJavaCompileDebug (Thread[#59,Execution worker Thread 2,5,main]) started.
+
+> Task :app:hiltJavaCompileDebug UP-TO-DATE
+file or directory '/app/app/build/generated/ksp/debug/classes', not found
+file or directory '/app/app/build/generated/ksp/debug/classes', not found
+Caching disabled for task ':app:hiltJavaCompileDebug' because:
+  Build cache is disabled
+Task ':app:hiltJavaCompileDebug' is not up-to-date because:
+  Input property 'classpath' file /app/app/build/tmp/kotlin-classes/debug/io/aatricks/novelscraper/util/TextUtils.class has changed.
+Compilation mode: in-process compilation
+file or directory '/app/app/build/generated/ksp/debug/classes', not found
+Created classpath snapshot for incremental compilation in 0.203 secs.
+None of the classes needs to be compiled! Analysis took 0.242 secs.
+Resolve mutations for :app:transformDebugClassesWithAsm (Thread[#58,Execution worker,5,main]) started.
+:app:transformDebugClassesWithAsm (Thread[#59,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :app:processDebugJavaRes (Thread[#58,Execution worker,5,main]) started.
+:app:processDebugJavaRes (Thread[#60,Execution worker Thread 3,5,main]) started.
+
+> Task :app:processDebugJavaRes UP-TO-DATE
+file or directory '/app/app/src/main/resources', not found
+file or directory '/app/app/src/debug/resources', not found
+file or directory '/app/app/build/generated/ksp/debug/classes', not found
+file or directory '/app/app/build/generated/ksp/debug/classes', not found
+file or directory '/app/app/src/main/resources', not found
+file or directory '/app/app/src/debug/resources', not found
+file or directory '/app/app/build/generated/ksp/debug/classes', not found
+file or directory '/app/app/build/generated/ksp/debug/classes', not found
+Caching disabled for task ':app:processDebugJavaRes' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:processDebugJavaRes' as it is up-to-date.
+work action resolve out (project :app) (Thread[#60,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :app:bundleDebugClassesToCompileJar (Thread[#60,Execution worker Thread 3,5,main]) started.
+:app:bundleDebugClassesToCompileJar (Thread[#60,Execution worker Thread 3,5,main]) started.
+
+> Task :app:transformDebugClassesWithAsm
+file or directory '/app/app/build/generated/ksp/debug/classes', not found
+file or directory '/app/app/build/generated/ksp/debug/classes', not found
+Caching disabled for task ':app:transformDebugClassesWithAsm' because:
+  Build cache is disabled
+Task ':app:transformDebugClassesWithAsm' is not up-to-date because:
+  Input property 'inputClassesDir' file /app/app/build/tmp/kotlin-classes/debug/io/aatricks/novelscraper/util/TextUtils.class has changed.
+Resolve mutations for :app:bundleDebugClassesToRuntimeJar (Thread[#59,Execution worker Thread 2,5,main]) started.
+:app:bundleDebugClassesToRuntimeJar (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:bundleDebugClassesToRuntimeJar
+Caching disabled for task ':app:bundleDebugClassesToRuntimeJar' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Task ':app:bundleDebugClassesToRuntimeJar' is not up-to-date because:
+  Input property 'inputDirs' file /app/app/build/intermediates/classes/debug/transformDebugClassesWithAsm/dirs/io/aatricks/novelscraper/util/TextUtils.class has changed.
+work action resolve classes.jar (project :app) (Thread[#58,Execution worker,5,main]) started.
+IdentityTransform (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:bundleDebugClassesToCompileJar
+Caching disabled for task ':app:bundleDebugClassesToCompileJar' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Task ':app:bundleDebugClassesToCompileJar' is not up-to-date because:
+  Input property 'inputDirs' file /app/app/build/tmp/kotlin-classes/debug/io/aatricks/novelscraper/util/TextUtils.class has changed.
+file or directory '/app/app/build/generated/ksp/debug/classes', not found
+work action resolve classes.jar (project :app) (Thread[#60,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :app:kspDebugUnitTestKotlin (Thread[#60,Execution worker Thread 3,5,main]) started.
+:app:kspDebugUnitTestKotlin (Thread[#60,Execution worker Thread 3,5,main]) started.
+
+> Transform classes.jar (project :app) with IdentityTransform
+Caching disabled for IdentityTransform: /app/app/build/intermediates/runtime_app_classes_jar/debug/bundleDebugClassesToRuntimeJar/classes.jar because:
+  Build cache is disabled
+  Caching not enabled.
+CopyTransform (Thread[#58,Execution worker,5,main]) started.
+
+> Transform classes.jar (project :app) with CopyTransform
+Caching disabled for CopyTransform: /app/app/build/intermediates/runtime_app_classes_jar/debug/bundleDebugClassesToRuntimeJar/classes.jar because:
+  Build cache is disabled
+  Caching not enabled.
+AggregatedPackagesTransform (Thread[#57,included builds,5,main]) started.
+
+> Transform classes.jar (project :app) with AggregatedPackagesTransform
+Caching disabled for AggregatedPackagesTransform: /app/app/build/intermediates/runtime_app_classes_jar/debug/bundleDebugClassesToRuntimeJar/classes.jar because:
+  Build cache is disabled
+
+> Task :app:kspDebugUnitTestKotlin
+file or directory '/app/app/src/debugUnitTest/kotlin', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/java', not found
+Caching disabled for BuildToolsApiClasspathEntrySnapshotTransform: /app/app/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar because:
+  Build cache is disabled
+file or directory '/app/app/src/debugUnitTest/kotlin', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/java', not found
+Caching disabled for task ':app:kspDebugUnitTestKotlin' because:
+  Build cache is disabled
+Task ':app:kspDebugUnitTestKotlin' is not up-to-date because:
+  Input property 'classpathSnapshotProperties.classpath' file /app/app/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar has changed.
+  Input property 'classpathSnapshotProperties.classpathSnapshot' file /home/jules/.gradle/caches/8.13/transforms/6ed68d242fdb86acea381b9a82ff4dbe/transformed/classes_jar-snapshot.bin has been removed.
+  Input property 'classpathSnapshotProperties.classpathSnapshot' file /home/jules/.gradle/caches/8.13/transforms/e52e36c9d5fb3c727100c40d615f55f0/transformed/classes_jar-snapshot.bin has been added.
+file or directory '/app/app/src/debugUnitTest/kotlin', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/debugUnitTest/kotlin', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/debugUnitTest/kotlin', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/debugUnitTest/kotlin', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/java', not found
+Kotlin source files: /app/app/src/test/java/io/aatricks/novelscraper/data/repository/ContentRepositoryConcurrencyTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/ContentRepositoryBenchmarkTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/ExploreRepositoryTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/ContentRepositoryUrlTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/LibraryRepositoryBenchmarkTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/LibraryRepositoryTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/source/NovelFireSourceTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/source/NovelFireSourceConcurrencyTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/source/BaseJsoupSourceSecurityTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/source/MangaBatSourceTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/LibraryRepositoryUpdateTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/ContentRepositoryTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/ContentRepositoryEpubTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/util/TextUtilsTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/util/TextUtilsBenchmarkTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/util/UrlSecurityTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/util/SafeRedirectInterceptorTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/util/WebViewUtilsTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/ExampleUnitTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/ui/screens/ReaderScreenPrefetchTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/ui/viewmodel/ReaderViewModelTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/ui/viewmodel/ReaderViewModelNavigationTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/ui/viewmodel/ReaderViewModelSecurityTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/ui/viewmodel/LibraryViewModelTest.kt
+Java source files:
+Script source files:
+Script file extensions:
+Caching disabled for StructureTransformAction: /app/app/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar because:
+  Build cache is disabled
+[KOTLIN] Kotlin compilation 'jdkHome' argument: null
+i: [ksp] loaded provider(s): [dagger.hilt.processor.internal.uninstallmodules.KspUninstallModulesProcessor$Provider, dagger.hilt.processor.internal.definecomponent.KspDefineComponentProcessor$Provider, dagger.hilt.android.processor.internal.androidentrypoint.KspAndroidEntryPointProcessor$Provider, dagger.hilt.processor.internal.root.KspRootProcessor$Provider, dagger.hilt.android.processor.internal.viewmodel.KspViewModelProcessor$Provider, dagger.hilt.android.processor.internal.bindvalue.KspBindValueProcessor$Provider, dagger.hilt.processor.internal.root.KspComponentTreeDepsProcessor$Provider, dagger.hilt.processor.internal.aliasof.KspAliasOfProcessor$Provider, dagger.hilt.processor.internal.generatesrootinput.KspGeneratesRootInputProcessor$Provider, dagger.hilt.processor.internal.originatingelement.KspOriginatingElementProcessor$Provider, dagger.hilt.processor.internal.earlyentrypoint.KspEarlyEntryPointProcessor$Provider, dagger.hilt.android.processor.internal.customtestapplication.KspCustomTestApplicationProcessor$Provider, dagger.hilt.processor.internal.aggregateddeps.KspAggregatedDepsProcessor$Provider, androidx.room.RoomKspProcessor$Provider, dagger.internal.codegen.KspComponentProcessor$Provider]
+Finished executing kotlin compiler using DAEMON strategy
+Resolve mutations for :app:compileDebugUnitTestKotlin (Thread[#58,Execution worker,5,main]) started.
+:app:compileDebugUnitTestKotlin (Thread[#60,Execution worker Thread 3,5,main]) started.
+
+> Task :app:compileDebugUnitTestKotlin
+Caching disabled for task ':app:compileDebugUnitTestKotlin' because:
+  Build cache is disabled
+Task ':app:compileDebugUnitTestKotlin' is not up-to-date because:
+  Input property 'classpathSnapshotProperties.classpathSnapshot' file /home/jules/.gradle/caches/8.13/transforms/6ed68d242fdb86acea381b9a82ff4dbe/transformed/classes_jar-snapshot.bin has been removed.
+  Input property 'classpathSnapshotProperties.classpathSnapshot' file /home/jules/.gradle/caches/8.13/transforms/e52e36c9d5fb3c727100c40d615f55f0/transformed/classes_jar-snapshot.bin has been added.
+file or directory '/app/app/src/debugUnitTest/kotlin', not found
+file or directory '/app/app/build/generated/ksp/debugUnitTest/java', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/build/generated/ksp/debugUnitTest/java', not found
+file or directory '/app/app/src/debugUnitTest/kotlin', not found
+file or directory '/app/app/build/generated/ksp/debugUnitTest/java', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/build/generated/ksp/debugUnitTest/java', not found
+file or directory '/app/app/src/debugUnitTest/kotlin', not found
+file or directory '/app/app/build/generated/ksp/debugUnitTest/java', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/build/generated/ksp/debugUnitTest/java', not found
+file or directory '/app/app/src/debugUnitTest/kotlin', not found
+file or directory '/app/app/build/generated/ksp/debugUnitTest/java', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/test/kotlin', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/kotlin', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/src/testDebug/java', not found
+file or directory '/app/app/build/generated/ksp/debugUnitTest/java', not found
+Kotlin source files: /app/app/src/test/java/io/aatricks/novelscraper/data/repository/ContentRepositoryConcurrencyTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/ContentRepositoryBenchmarkTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/ExploreRepositoryTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/ContentRepositoryUrlTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/LibraryRepositoryBenchmarkTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/LibraryRepositoryTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/source/NovelFireSourceTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/source/NovelFireSourceConcurrencyTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/source/BaseJsoupSourceSecurityTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/source/MangaBatSourceTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/LibraryRepositoryUpdateTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/ContentRepositoryTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/data/repository/ContentRepositoryEpubTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/util/TextUtilsTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/util/TextUtilsBenchmarkTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/util/UrlSecurityTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/util/SafeRedirectInterceptorTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/util/WebViewUtilsTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/ExampleUnitTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/ui/screens/ReaderScreenPrefetchTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/ui/viewmodel/ReaderViewModelTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/ui/viewmodel/ReaderViewModelNavigationTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/ui/viewmodel/ReaderViewModelSecurityTest.kt, /app/app/src/test/java/io/aatricks/novelscraper/ui/viewmodel/LibraryViewModelTest.kt
+Java source files:
+Script source files:
+Script file extensions:
+Using Kotlin/JVM incremental compilation
+[KOTLIN] Kotlin compilation 'jdkHome' argument: null
+Options for KOTLIN DAEMON: IncrementalCompilationOptions(super=CompilationOptions(compilerMode=INCREMENTAL_COMPILER, targetPlatform=JVM, reportCategories=[0, 3], reportSeverity=2, requestedCompilationResults=[0], kotlinScriptExtensions=[]), areFileChangesKnown=true, modifiedFiles=[/home/jules/.gradle/caches/8.13/transforms/e52e36c9d5fb3c727100c40d615f55f0/transformed/classes_jar-snapshot.bin], deletedFiles=[/home/jules/.gradle/caches/8.13/transforms/6ed68d242fdb86acea381b9a82ff4dbe/transformed/classes_jar-snapshot.bin], classpathChanges=ToBeComputedByIncrementalCompiler, workingDir=/app/app/build/kotlin/compileDebugUnitTestKotlin/cacheable, multiModuleICSettings=MultiModuleICSettings(buildHistoryFile=/app/app/build/kotlin/compileDebugUnitTestKotlin/local-state/build-history.bin, useModuleDetection=true), usePreciseJavaTracking=true, icFeatures=IncrementalCompilationFeatures(withAbiSnapshot=false, preciseCompilationResultsBackup=true, keepIncrementalCompilationCachesInMemory=true, enableUnsafeIncrementalCompilationForMultiplatform=false), outputFiles=[/app/app/build/tmp/kotlin-classes/debugUnitTest, /app/app/build/kotlin/compileDebugUnitTestKotlin/cacheable, /app/app/build/kotlin/compileDebugUnitTestKotlin/local-state])
+Finished executing kotlin compiler using DAEMON strategy
+Resolve mutations for :app:compileDebugUnitTestJavaWithJavac (Thread[#60,Execution worker Thread 3,5,main]) started.
+:app:compileDebugUnitTestJavaWithJavac (Thread[#60,Execution worker Thread 3,5,main]) started.
+
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+Skipping task ':app:compileDebugUnitTestJavaWithJavac' as it has no source files and no previous output files.
+Resolve mutations for :app:hiltAggregateDepsDebugUnitTest (Thread[#60,Execution worker Thread 3,5,main]) started.
+:app:hiltAggregateDepsDebugUnitTest (Thread[#60,Execution worker Thread 3,5,main]) started.
+
+> Task :app:hiltAggregateDepsDebugUnitTest UP-TO-DATE
+file or directory '/app/app/build/generated/ksp/debugUnitTest/classes', not found
+Caching disabled for IdentityTransform: /app/app/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar because:
+  Build cache is disabled
+  Caching not enabled.
+Caching disabled for CopyTransform: /app/app/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar because:
+  Build cache is disabled
+  Caching not enabled.
+Caching disabled for AggregatedPackagesTransform: /app/app/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar because:
+  Build cache is disabled
+Caching disabled for task ':app:hiltAggregateDepsDebugUnitTest' because:
+  Build cache is disabled
+Skipping task ':app:hiltAggregateDepsDebugUnitTest' as it is up-to-date.
+Resolve mutations for :app:hiltJavaCompileDebugUnitTest (Thread[#60,Execution worker Thread 3,5,main]) started.
+:app:hiltJavaCompileDebugUnitTest (Thread[#60,Execution worker Thread 3,5,main]) started.
+
+> Task :app:hiltJavaCompileDebugUnitTest NO-SOURCE
+Skipping task ':app:hiltJavaCompileDebugUnitTest' as it has no source files and no previous output files.
+Resolve mutations for :app:processDebugUnitTestJavaRes (Thread[#60,Execution worker Thread 3,5,main]) started.
+:app:processDebugUnitTestJavaRes (Thread[#60,Execution worker Thread 3,5,main]) started.
+
+> Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+file or directory '/app/app/src/test/resources', not found
+file or directory '/app/app/src/testDebug/resources', not found
+file or directory '/app/app/build/generated/ksp/debugUnitTest/classes', not found
+file or directory '/app/app/build/generated/ksp/debugUnitTest/classes', not found
+file or directory '/app/app/src/test/resources', not found
+file or directory '/app/app/src/testDebug/resources', not found
+file or directory '/app/app/build/generated/ksp/debugUnitTest/classes', not found
+file or directory '/app/app/build/generated/ksp/debugUnitTest/classes', not found
+Caching disabled for task ':app:processDebugUnitTestJavaRes' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:processDebugUnitTestJavaRes' as it is up-to-date.
+Resolve mutations for :app:transformDebugUnitTestClassesWithAsm (Thread[#58,Execution worker,5,main]) started.
+:app:transformDebugUnitTestClassesWithAsm (Thread[#58,Execution worker,5,main]) started.
+
+> Task :app:transformDebugUnitTestClassesWithAsm
+file or directory '/app/app/build/generated/ksp/debugUnitTest/classes', not found
+file or directory '/app/app/build/generated/ksp/debugUnitTest/classes', not found
+Caching disabled for task ':app:transformDebugUnitTestClassesWithAsm' because:
+  Build cache is disabled
+Task ':app:transformDebugUnitTestClassesWithAsm' is not up-to-date because:
+  Input property 'runtimeClasspath' file /app/app/build/intermediates/runtime_app_classes_jar/debug/bundleDebugClassesToRuntimeJar/classes.jar has changed.
+The input changes require a full rebuild for incremental task ':app:transformDebugUnitTestClassesWithAsm'.
+Resolve mutations for :app:testDebugUnitTest (Thread[#58,Execution worker,5,main]) started.
+:app:testDebugUnitTest (Thread[#58,Execution worker,5,main]) started.
+Gradle Test Executor 1 started executing tests.
+Gradle Test Executor 1 finished executing tests.
+
+> Task :app:testDebugUnitTest
+Caching disabled for task ':app:testDebugUnitTest' because:
+  Build cache is disabled
+Task ':app:testDebugUnitTest' is not up-to-date because:
+  Input property 'stableClasspath' file /app/app/build/intermediates/runtime_app_classes_jar/debug/bundleDebugClassesToRuntimeJar/classes.jar has changed.
+Starting process 'Gradle Test Executor 1'. Working directory: /app/app Command: /usr/lib/jvm/java-21-openjdk-amd64/bin/java -Djava.awt.headless=true -Djava.library.path=/usr/java/packages/lib:/usr/lib/x86_64-linux-gnu/jni:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/usr/lib/jni:/lib:/usr/lib:/app/app/src/testDebug/jniLibs:/app/app/src/test/jniLibs -Dorg.gradle.internal.worker.tmpdir=/app/app/build/tmp/testDebugUnitTest/work --add-opens=java.base/java.io=ALL-UNNAMED @/home/jules/.gradle/.tmp/gradle-worker-classpath13153175109632287409txt -Xmx512m -Dfile.encoding=UTF-8 -Duser.country -Duser.language=en -Duser.variant -ea worker.org.gradle.process.internal.worker.GradleWorkerMain 'Gradle Test Executor 1'
+Successfully started process 'Gradle Test Executor 1'
+
+TextUtilsBenchmarkTest > benchmarkExtractChapterLabel STANDARD_OUT
+    Baseline: extractChapterLabel took 752ms for 700000 invocations.
+Finished generating test XML results (0.006 secs) into: /app/app/build/test-results/testDebugUnitTest
+Generating HTML test report...
+Finished generating test html results (0.03 secs) into: /app/app/build/reports/tests/testDebugUnitTest
+
+BUILD SUCCESSFUL in 44s
+32 actionable tasks: 9 executed, 23 up-to-date
+Some of the file system contents retained in the virtual file system are on file systems that Gradle doesn't support watching. The relevant state was discarded to ensure changes to these locations are properly detected. You can override this by explicitly enabling file system watching.
