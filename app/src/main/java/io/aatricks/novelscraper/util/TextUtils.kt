@@ -209,11 +209,131 @@ object TextUtils {
      */
     fun formatText(text: String): String {
         if (text.isEmpty()) return text
-        return text.replace(MULTIPLE_SPACES_REGEX, " ")
-            .replace(LINE_BREAK_REGEX, "\n")
-            .replace(SPACE_PLUS_NEWLINE_REGEX, "\n")
-            .replace(FOUR_PLUS_NEWLINES_REGEX, "\n\n\n")
-            .trim()
+
+        var current = text
+        current = replaceSpacesPlusNewline(current, ' ')
+        current = replaceWindowsLineEndings(current)
+        current = replaceSpacesPlusNewline(current, '\n')
+        current = replaceFourPlusNewlines(current)
+        return current.trim()
+    }
+
+    private fun replaceSpacesPlusNewline(text: String, replacementChar: Char): String {
+        var i = 0
+        val len = text.length
+        var hasMatch = false
+        while (i < len) {
+            if (text[i] == ' ') {
+                var j = i + 1
+                while (j < len && text[j] == ' ') j++
+                if (j < len && text[j] == '\n') {
+                    hasMatch = true
+                    break
+                }
+                i = j
+            } else {
+                i++
+            }
+        }
+        if (!hasMatch) return text
+
+        val sb = StringBuilder(len)
+        i = 0
+        while (i < len) {
+            if (text[i] == ' ') {
+                var j = i + 1
+                while (j < len && text[j] == ' ') j++
+                if (j < len && text[j] == '\n') {
+                    sb.append(replacementChar)
+                    i = j + 1
+                } else {
+                    for (k in i until j) sb.append(' ')
+                    i = j
+                }
+            } else {
+                sb.append(text[i])
+                i++
+            }
+        }
+        return sb.toString()
+    }
+
+    private fun replaceWindowsLineEndings(text: String): String {
+        var i = 0
+        val len = text.length
+        var hasMatch = false
+        while (i < len) {
+            if (text[i] == '\r') {
+                hasMatch = true
+                break
+            }
+            i++
+        }
+        if (!hasMatch) return text
+
+        val sb = StringBuilder(len)
+        i = 0
+        while (i < len) {
+            if (text[i] == '\r') {
+                sb.append('\n')
+                if (i + 1 < len && text[i + 1] == '\n') {
+                    i += 2
+                } else {
+                    i += 1
+                }
+            } else {
+                sb.append(text[i])
+                i++
+            }
+        }
+        return sb.toString()
+    }
+
+    private fun replaceFourPlusNewlines(text: String): String {
+        var i = 0
+        val len = text.length
+        var hasMatch = false
+        while (i < len) {
+            if (text[i] == '\n') {
+                var count = 1
+                var j = i + 1
+                while (j < len && text[j] == '\n') {
+                    count++
+                    j++
+                }
+                if (count >= 4) {
+                    hasMatch = true
+                    break
+                }
+                i = j
+            } else {
+                i++
+            }
+        }
+        if (!hasMatch) return text
+
+        val sb = StringBuilder(len)
+        i = 0
+        while (i < len) {
+            if (text[i] == '\n') {
+                var count = 1
+                var j = i + 1
+                while (j < len && text[j] == '\n') {
+                    count++
+                    j++
+                }
+                if (count >= 4) {
+                    sb.append("\n\n\n")
+                } else {
+                    for (k in 0 until count) sb.append('\n')
+                }
+                i = j
+            } else {
+                sb.append(text[i])
+                i++
+            }
+        }
+        return sb.toString()
     }
 
     /**
