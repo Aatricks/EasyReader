@@ -43,6 +43,7 @@ class NovelFireSource @Inject constructor(
         val document = getDocument(url)
 
         val items = mutableListOf<ExploreItem>()
+        val seenUrls = mutableSetOf<String>()
         val bookLinks = document.select("a[href^='/book/']")
 
         bookLinks.forEach { link ->
@@ -51,15 +52,15 @@ class NovelFireSource @Inject constructor(
             val href = link.attr("href")
             
             if (title.isNotBlank() && !title.equals("Read Now", ignoreCase = true) && !title.contains("Chapter", ignoreCase = true)) {
-                 val parent = link.closest(".novel-item, .item, .book-item") ?: link.parent()?.parent()
-                 val img = parent?.select("img")?.first()
-                 val coverUrl = img?.findImage()?.let { resolveUrl(it) } ?: ""
-
-                 val chapterText = parent?.select(".novel-stats, .stats, .chapters")?.text() ?: ""
-                 val chapterCount = extractChapterCount(chapterText)
-
                  val absoluteUrl = resolveUrl(href)
-                 if (items.none { it.url == absoluteUrl }) {
+                 if (seenUrls.add(absoluteUrl)) {
+                     val parent = link.closest(".novel-item, .item, .book-item") ?: link.parent()?.parent()
+                     val img = parent?.select("img")?.first()
+                     val coverUrl = img?.findImage()?.let { resolveUrl(it) } ?: ""
+
+                     val chapterText = parent?.select(".novel-stats, .stats, .chapters")?.text() ?: ""
+                     val chapterCount = extractChapterCount(chapterText)
+
                      items.add(ExploreItem(
                          title = title,
                          url = absoluteUrl,
@@ -112,6 +113,7 @@ class NovelFireSource @Inject constructor(
             val document = getDocument(fallbackUrl)
 
             val items = mutableListOf<ExploreItem>()
+            val seenUrls = mutableSetOf<String>()
             val bookLinks = document.select("a[href^='/book/']")
 
             bookLinks.forEach { link ->
@@ -120,15 +122,16 @@ class NovelFireSource @Inject constructor(
                 val href = link.attr("href")
 
                  if (title.isNotBlank() && !title.equals("Read Now", ignoreCase = true) && !title.contains("Chapter", ignoreCase = true)) {
-                     val parent = link.closest(".novel-item, .item, .book-item") ?: link.parent()?.parent()
-                     val img = parent?.select("img")?.first()
-                     val coverUrl = img?.findImage()?.let { resolveUrl(it) } ?: ""
                      val absoluteUrl = resolveUrl(href)
 
-                     val chapterText = parent?.select(".novel-stats, .stats, .chapters")?.text() ?: ""
-                     val chapterCount = extractChapterCount(chapterText)
+                     if (seenUrls.add(absoluteUrl)) {
+                         val parent = link.closest(".novel-item, .item, .book-item") ?: link.parent()?.parent()
+                         val img = parent?.select("img")?.first()
+                         val coverUrl = img?.findImage()?.let { resolveUrl(it) } ?: ""
 
-                     if (items.none { it.url == absoluteUrl }) {
+                         val chapterText = parent?.select(".novel-stats, .stats, .chapters")?.text() ?: ""
+                         val chapterCount = extractChapterCount(chapterText)
+
                          items.add(ExploreItem(
                              title = title,
                              url = absoluteUrl,

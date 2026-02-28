@@ -1,0 +1,17 @@
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Gradle could not start your build.
+> Could not create service of type BuildLifecycleController using ServicesProvider.createBuildLifecycleController().
+   > Could not create service of type BuildModelController using VintageBuildControllerProvider.createBuildModelController().
+      > Could not create service of type FileHasher using BuildSessionServices.createFileHasher().
+         > Cannot lock file hash cache (/app/.gradle/8.13/fileHashes) as it has already been locked by this process.
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 901ms
