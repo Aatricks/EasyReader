@@ -38,7 +38,7 @@ object TextUtils {
         Regex("(?i)^read\\s+"),
         Regex("(?i)\\s+free\\s+online.*"),
         Regex("(?i)\\s+online\\s+free.*"),
-        Regex("(?i)\\s*|\\s*.*$"),
+        Regex("(?i)\\s*\\|\\s*.*$"),
         Regex("(?i)\\s+at\\s+.*"),
         Regex("(?i)[\\s–—\\-:]*(MangaBat|NovelFire|MangaPark|MangaKakalot).*$"),
         Regex("(?i)[\\s–—\\-:]*Scan.*$")
