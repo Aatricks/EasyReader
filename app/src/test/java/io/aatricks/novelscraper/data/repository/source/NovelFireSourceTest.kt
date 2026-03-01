@@ -22,6 +22,7 @@ class NovelFireSourceTest {
 
         val document = Jsoup.parse(html)
         val items = mutableListOf<ExploreItem>()
+        val seenUrls = mutableSetOf<String>()
         val baseUrl = "https://novelfire.net"
         val name = "NovelFire"
 
@@ -30,15 +31,16 @@ class NovelFireSourceTest {
             val title = it.text()
             val href = it.attr("href")
             if (title.isNotBlank() && !title.equals("Read Now", ignoreCase = true) && !title.contains("Chapter", ignoreCase = true)) {
-                 val parent = it.closest(".novel-item, .item, .book-item") ?: it.parent()?.parent()
-                 val img = parent?.select("img")?.first()
-                 var coverUrl = img?.attr("data-src")?.ifEmpty { img.attr("src") } ?: ""
-                 if (coverUrl.startsWith("/")) coverUrl = "$baseUrl$coverUrl"
+                 val absoluteUrl = "$baseUrl$href"
+                 if (seenUrls.add(absoluteUrl)) {
+                     val parent = it.closest(".novel-item, .item, .book-item") ?: it.parent()?.parent()
+                     val img = parent?.select("img")?.first()
+                     var coverUrl = img?.attr("data-src")?.ifEmpty { img.attr("src") } ?: ""
+                     if (coverUrl.startsWith("/")) coverUrl = "$baseUrl$coverUrl"
 
-                 if (items.none { item -> item.url == "$baseUrl$href" }) {
                      items.add(ExploreItem(
                          title = title,
-                         url = "$baseUrl$href",
+                         url = absoluteUrl,
                          coverUrl = if (coverUrl.isBlank()) null else coverUrl,
                          source = name
                      ))

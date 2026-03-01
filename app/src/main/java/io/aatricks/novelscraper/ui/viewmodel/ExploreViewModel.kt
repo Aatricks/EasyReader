@@ -126,8 +126,9 @@ class ExploreViewModel @Inject constructor(
                 val nextPage = _uiState.value.page + 1
                 val newItems = fetchItems(nextPage)
                 
+                val existingUrls = _uiState.value.items.map { it.url }.toSet()
                 val distinctNewItems = newItems.filter { newItem -> 
-                    _uiState.value.items.none { it.url == newItem.url }
+                    !existingUrls.contains(newItem.url)
                 }
                 
                 updateState { it.copy(
