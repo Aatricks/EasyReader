@@ -116,28 +116,42 @@ class PdfContentLoader @Inject constructor(
             // 1. Return cached content if available
             pageCache[index]?.let { return it }
 
-            // 2. If not cached, trigger load and return placeholder
-            if (!loadingJobs.containsKey(index)) {
-                val job = loaderScope.launch {
-                    val elements = loadPageContent(index + 1)
-                    withContext(Dispatchers.Main) {
-                        addToCache(index, ContentElement.PageContent(elements))
-                        loadingJobs.remove(index)
-                    }
-                }
-                loadingJobs[index] = job
+            // 2. Trigger load and return placeholder
+            triggerLoad(index)
 
-                // Prevent queue buildup during rapid scrolling
-                if (loadingJobs.size > 5) {
-                    val furthestKey = loadingJobs.keys.maxByOrNull { abs(it - index) }
-                    if (furthestKey != null && furthestKey != index) {
-                        loadingJobs.remove(furthestKey)?.cancel()
-                    }
+            // 3. Prefetch next 2 pages in background
+            for (i in 1..2) {
+                val nextIndex = index + i
+                if (nextIndex < size && !pageCache.containsKey(nextIndex)) {
+                    triggerLoad(nextIndex)
                 }
             }
 
             // Return a lightweight placeholder to avoid large layout costs during fast scrolling
             return ContentElement.Placeholder("Loading page ${index + 1}...")
+        }
+
+        private fun triggerLoad(index: Int) {
+            if (loadingJobs.containsKey(index)) return
+
+            val job = loaderScope.launch {
+                val elements = loadPageContent(index + 1)
+                withContext(Dispatchers.Main) {
+                    addToCache(index, ContentElement.PageContent(elements))
+                    loadingJobs.remove(index)
+                }
+            }
+            
+            loadingJobs[index] = job
+
+            // Prevent excessive memory use and backlog during rapid scrolling.
+            // Increased limit to 10 to allow some prefetching while still cleaning up furthest jobs.
+            if (loadingJobs.size > 10) {
+                val furthestKey = loadingJobs.keys.maxByOrNull { abs(it - index) }
+                if (furthestKey != null && furthestKey != index) {
+                    loadingJobs.remove(furthestKey)?.cancel()
+                }
+            }
         }
 
         private fun addToCache(index: Int, content: ContentElement) {
@@ -170,9 +184,8 @@ class PdfContentLoader @Inject constructor(
                         val source = com.itextpdf.io.source.FileChannelRandomAccessSource(channel)
                         PdfDocument(PdfReader(source, ReaderProperties()))
                     } else {
-                        val file = File(filePath)
-                        if (!file.exists()) return null
-                        PdfDocument(PdfReader(file))
+                        // Use the file path directly for better internal iText buffering
+                        PdfDocument(PdfReader(filePath))
                     }
                 }.getOrNull()
 
@@ -188,16 +201,15 @@ class PdfContentLoader @Inject constructor(
 
                 val page = doc.getPage(pageNum)
                 
-                // 1. Extract Images
-                val strategy = ImageExtractionStrategy()
+                // 1. Single Pass Extraction (Images + Text)
+                val strategy = CombinedExtractionStrategy()
                 val processor = PdfCanvasProcessor(strategy)
                 processor.processPageContent(page)
+                
+                val rawText = strategy.resultantText ?: ""
                 val images = strategy.getImageElements()
 
-                // 2. Extract Text using proven method
-                val rawText = PdfTextExtractor.getTextFromPage(page)
-                
-                // 3. Process text into paragraphs
+                // 2. Process text into paragraphs
                 val paragraphs = mutableListOf<ContentElement>()
                 val sb = java.lang.StringBuilder()
                 
@@ -224,9 +236,8 @@ class PdfContentLoader @Inject constructor(
                     paragraphs.add(ContentElement.Text(sb.toString()))
                 }
 
-                // 4. Combine
+                // 3. Fallback for non-standard whitespace PDFs
                 if (paragraphs.isEmpty() && images.isEmpty() && rawText.isNotBlank()) {
-                    // Fallback for non-standard whitespace PDFs
                     paragraphs.add(ContentElement.Text(rawText.trim()))
                 }
 
@@ -249,14 +260,17 @@ class PdfContentLoader @Inject constructor(
         }
     }
 
-    private inner class ImageExtractionStrategy : LocationTextExtractionStrategy() {
+    private inner class CombinedExtractionStrategy : LocationTextExtractionStrategy() {
         private val imageChunks = mutableListOf<ContentElement.Image>()
 
-        override fun getSupportedEvents(): Set<EventType> {
-            return setOf(EventType.RENDER_IMAGE)
+        override fun getSupportedEvents(): Set<EventType>? {
+            return setOf(EventType.RENDER_TEXT, EventType.RENDER_IMAGE)
         }
 
         override fun eventOccurred(data: IEventData, type: EventType) {
+            // LocationTextExtractionStrategy handles RENDER_TEXT via super call
+            super.eventOccurred(data, type)
+            
             if (type == EventType.RENDER_IMAGE) {
                 val renderInfo = data as ImageRenderInfo
                 try {
