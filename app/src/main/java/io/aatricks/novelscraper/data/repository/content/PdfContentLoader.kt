@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.util.LruCache
 import androidx.compose.runtime.mutableStateMapOf
 import com.itextpdf.io.source.RandomAccessSourceFactory
 import com.itextpdf.kernel.pdf.PdfDocument
@@ -44,31 +45,44 @@ class PdfContentLoader @Inject constructor(
 ) {
     companion object {
         private val PAGE_NUMBER_REGEX = Regex("^\\d+$")
-        private val PARAGRAPH_SPLIT_REGEX = Regex("\\n\\s*\\n")
-        private const val MAX_CACHE_SIZE = 100
+        private const val MAX_LOCAL_CACHE_SIZE = 100
+        private const val MAX_GLOBAL_PDF_CACHE_SIZE = 5 // Keep last 5 PDFs in memory
+        private const val MAX_GLOBAL_PAGE_CACHE_PER_PDF = 50 // Keep last 50 pages per PDF
     }
 
     private val loaderScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    
+    // Global caches for instantaneous re-entry
+    private val pageCountCache = ConcurrentHashMap<String, Int>()
+    private val globalContentCache = LruCache<String, MutableMap<Int, ContentElement>>(MAX_GLOBAL_PDF_CACHE_SIZE)
 
     suspend fun loadPdfContent(filePath: String): ContentResult = withContext(Dispatchers.IO) {
         try {
-            val pageCount = if (filePath.startsWith("content://")) {
-                val uri = Uri.parse(filePath)
-                context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                    val channel = FileInputStream(pfd.fileDescriptor).channel
-                    val source = com.itextpdf.io.source.FileChannelRandomAccessSource(channel)
-                    val reader = PdfReader(source, ReaderProperties())
-                    val doc = PdfDocument(reader)
-                    val count = doc.numberOfPages
-                    doc.close()
-                    count
-                } ?: throw Exception("PDF not found")
+            // 1. Check page count cache first to skip slow PDF opening
+            val cachedCount = pageCountCache[filePath]
+            val pageCount = if (cachedCount != null) {
+                cachedCount
             } else {
-                val file = File(filePath)
-                if (!file.exists()) throw Exception("PDF not found")
-                val doc = PdfDocument(PdfReader(file))
-                val count = doc.numberOfPages
-                doc.close()
+                val count = if (filePath.startsWith("content://")) {
+                    val uri = Uri.parse(filePath)
+                    context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                        val channel = FileInputStream(pfd.fileDescriptor).channel
+                        val source = com.itextpdf.io.source.FileChannelRandomAccessSource(channel)
+                        val reader = PdfReader(source, ReaderProperties())
+                        val doc = PdfDocument(reader)
+                        val c = doc.numberOfPages
+                        doc.close()
+                        c
+                    } ?: throw Exception("PDF not found")
+                } else {
+                    val file = File(filePath)
+                    if (!file.exists()) throw Exception("PDF not found")
+                    val doc = PdfDocument(PdfReader(filePath))
+                    val c = doc.numberOfPages
+                    doc.close()
+                    c
+                }
+                pageCountCache[filePath] = count
                 count
             }
 
@@ -97,8 +111,11 @@ class PdfContentLoader @Inject constructor(
         private val totalPages: Int
     ) : AbstractList<ContentElement>(), java.io.Closeable {
         
-        // Cache to store loaded page content (PageContent element)
-        private val pageCache = mutableStateMapOf<Int, ContentElement>()
+        // Cache to store loaded page content (PageContent element).
+        // Initialized from global cache if available for instant re-entry.
+        private val pageCache = mutableStateMapOf<Int, ContentElement>().apply {
+            globalContentCache.get(filePath)?.let { putAll(it) }
+        }
         
         // Track currently active page loading jobs to allow cancellation during rapid scrolling
         private val loadingJobs = ConcurrentHashMap<Int, kotlinx.coroutines.Job>()
@@ -113,7 +130,7 @@ class PdfContentLoader @Inject constructor(
         override fun get(index: Int): ContentElement {
             if (index < 0 || index >= size) throw IndexOutOfBoundsException("Index: $index, Size: $size")
             
-            // 1. Return cached content if available
+            // 1. Return cached content if available (local or global)
             pageCache[index]?.let { return it }
 
             // 2. Trigger load and return placeholder
@@ -145,7 +162,6 @@ class PdfContentLoader @Inject constructor(
             loadingJobs[index] = job
 
             // Prevent excessive memory use and backlog during rapid scrolling.
-            // Increased limit to 10 to allow some prefetching while still cleaning up furthest jobs.
             if (loadingJobs.size > 10) {
                 val furthestKey = loadingJobs.keys.maxByOrNull { abs(it - index) }
                 if (furthestKey != null && furthestKey != index) {
@@ -155,9 +171,27 @@ class PdfContentLoader @Inject constructor(
         }
 
         private fun addToCache(index: Int, content: ContentElement) {
+            // 1. Add to local Compose-observed cache
             pageCache[index] = content
-            if (pageCache.size > MAX_CACHE_SIZE) {
-                // Evict the page furthest from the current index to keep memory stable
+            
+            // 2. Add to global cache for re-entry
+            synchronized(globalContentCache) {
+                var docCache = globalContentCache.get(filePath)
+                if (docCache == null) {
+                    docCache = mutableMapOf()
+                    globalContentCache.put(filePath, docCache)
+                }
+                docCache[index] = content
+                
+                // Trim doc-specific cache if it gets too large
+                if (docCache.size > MAX_GLOBAL_PAGE_CACHE_PER_PDF) {
+                    val firstKey = docCache.keys.firstOrNull()
+                    if (firstKey != null) docCache.remove(firstKey)
+                }
+            }
+
+            // 3. Trim local cache
+            if (pageCache.size > MAX_LOCAL_CACHE_SIZE) {
                 val furthestKey = pageCache.keys.maxByOrNull { 
                     if (it is Int) abs(it - index) else 0 
                 }
