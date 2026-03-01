@@ -21,14 +21,25 @@ class NovelFireSource @Inject constructor(
     override val name = "NovelFire"
     override val baseUrl = "https://novelfire.net"
 
+    companion object {
+        private val BRACKET_NUMBER_REGEX = Regex("^\\[\\d+\\]\\s*")
+        private val R_NUMBER_REGEX = Regex("^R\\s*\\d+(\\.\\d+)?\\s*")
+        private val RANK_PREFIX_REGEX = Regex("^Rank\\s*\\d+\\s*", RegexOption.IGNORE_CASE)
+        private val RANK_REGEX = Regex("RANK\\s+(\\d+)", RegexOption.IGNORE_CASE)
+        private val RATING_REGEX = Regex("Average score is\\s+([0-9.]+)", RegexOption.IGNORE_CASE)
+        private val CHAPTERS_COUNT_REGEX = Regex("(\\d+)\\s*Chapters", RegexOption.IGNORE_CASE)
+        private val TIME_AGO_REGEX = Regex("\\d+\\s+(year|month|day|hour|minute|second)s?\\s+ago.*$")
+        private val LEADING_NUM_REGEX = Regex("^(\\d+)\\s+(Chapter\\s+\\1.*)")
+    }
+
     private fun cleanNovelTitle(title: String): String {
         var clean = title
         // Remove [123] at start
-        clean = clean.replace(Regex("^\\[\\d+\\]\\s*"), "")
+        clean = clean.replace(BRACKET_NUMBER_REGEX, "")
         // Remove R 14.8 or R 123 at start
-        clean = clean.replace(Regex("^R\\s*\\d+(\\.\\d+)?\\s*"), "")
+        clean = clean.replace(R_NUMBER_REGEX, "")
         // Remove Rank 123 at start
-        clean = clean.replace(Regex("^Rank\\s*\\d+\\s*", RegexOption.IGNORE_CASE), "")
+        clean = clean.replace(RANK_PREFIX_REGEX, "")
         return clean.trim()
     }
     
@@ -161,8 +172,8 @@ class NovelFireSource @Inject constructor(
 
         val infoText = document.text()
         val chapterCount = extractChapterCount(infoText)
-        val rank = Regex("RANK\\s+(\\d+)", RegexOption.IGNORE_CASE).find(infoText)?.groupValues?.get(1)
-        val rating = Regex("Average score is\\s+([0-9.]+)", RegexOption.IGNORE_CASE).find(infoText)?.groupValues?.get(1)
+        val rank = RANK_REGEX.find(infoText)?.groupValues?.get(1)
+        val rating = RATING_REGEX.find(infoText)?.groupValues?.get(1)
 
         val chaptersUrl = getChaptersUrl(url, document)
         val firstPageDoc = runCatching { getDocument(chaptersUrl) }.getOrDefault(document)
@@ -201,8 +212,7 @@ class NovelFireSource @Inject constructor(
     }
 
     private fun extractChapterCount(infoText: String): Int {
-        return Regex("(\\d+)\\s*Chapters", RegexOption.IGNORE_CASE)
-            .find(infoText)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        return CHAPTERS_COUNT_REGEX.find(infoText)?.groupValues?.get(1)?.toIntOrNull() ?: 0
     }
 
     private fun getChaptersUrl(url: String, document: org.jsoup.nodes.Document): String {
@@ -223,9 +233,8 @@ class NovelFireSource @Inject constructor(
                 element.select(".chapter-title").text().ifBlank { element.text() }
             }
 
-            var cleanTitle = rawTitle.replace(Regex("\\d+\\s+(year|month|day|hour|minute|second)s?\\s+ago.*$"), "").trim()
-            val leadingNumRegex = Regex("^(\\d+)\\s+(Chapter\\s+\\1.*)")
-            leadingNumRegex.find(cleanTitle)?.let { match ->
+            var cleanTitle = rawTitle.replace(TIME_AGO_REGEX, "").trim()
+            LEADING_NUM_REGEX.find(cleanTitle)?.let { match ->
                 cleanTitle = match.groupValues[2]
             }
 

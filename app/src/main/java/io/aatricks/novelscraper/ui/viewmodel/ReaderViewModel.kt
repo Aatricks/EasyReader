@@ -33,6 +33,10 @@ class ReaderViewModel @Inject constructor(
     private val preferencesManager: PreferencesManager
 ) : BaseViewModel<ReaderViewModel.ReaderUiState>(ReaderUiState()) {
 
+    companion object {
+        private val DOUBLE_NEWLINE_REGEX = Regex("""\n\s*\n""")
+    }
+
     // Current library item ID being read
     private var currentLibraryItemId: String? = null
 
@@ -613,7 +617,7 @@ class ReaderViewModel @Inject constructor(
             if (textBuffer.isEmpty()) return
             val joined = textBuffer.joinToString("\n\n")
             val formatted = TextUtils.formatChapterText(joined)
-            val parts = formatted.split(Regex("""\n\s*\n""")).map { it.trim() }.filter { it.isNotBlank() }
+            val parts = formatted.split(DOUBLE_NEWLINE_REGEX).map { it.trim() }.filter { it.isNotBlank() }
             parts.forEach { p -> formattedElements.add(ContentElement.Text(p)) }
             textBuffer.clear()
         }
