@@ -79,7 +79,7 @@ class SummaryService @Inject constructor(
             val selectedContent = selectKeyContent(content, maxWords = 300)
             val prompt = buildPrompt(chapterTitle, selectedContent)
             
-            Log.d(TAG, "Generating summary (${selectedContent.split(Regex("\\s+")).size} words, ~${(selectedContent.length + prompt.length) / 4 + 200} tokens)")
+            Log.d(TAG, "Generating summary (${selectedContent.split(SPACE_REGEX).size} words, ~${(selectedContent.length + prompt.length) / 4 + 200} tokens)")
             
             generateWithRetry(prompt, selectedContent, content, onProgress)
         }.onFailure { e ->
@@ -151,7 +151,7 @@ class SummaryService @Inject constructor(
     private fun selectKeyContent(content: List<String>, maxWords: Int): String {
         if (content.isEmpty()) return ""
         
-        val wordsPerParagraph = content.map { it.split(Regex("\\s+")) }
+        val wordsPerParagraph = content.map { it.split(SPACE_REGEX) }
         val totalWords = wordsPerParagraph.sumOf { it.size }
         if (totalWords <= maxWords) return content.joinToString("\n\n")
         
@@ -214,4 +214,8 @@ class SummaryService @Inject constructor(
      * Check if service is ready
      */
     fun isReady(): Boolean = isInitialized && modelFile != null
+
+    companion object {
+        private val SPACE_REGEX = Regex("\\s+")
+    }
 }
