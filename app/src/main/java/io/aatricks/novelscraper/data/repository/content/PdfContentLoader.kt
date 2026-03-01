@@ -1,6 +1,8 @@
 package io.aatricks.novelscraper.data.repository.content
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import androidx.compose.runtime.mutableStateMapOf
@@ -8,7 +10,13 @@ import com.itextpdf.io.source.RandomAccessSourceFactory
 import com.itextpdf.kernel.pdf.PdfDocument
 import com.itextpdf.kernel.pdf.PdfReader
 import com.itextpdf.kernel.pdf.ReaderProperties
+import com.itextpdf.kernel.pdf.canvas.parser.PdfCanvasProcessor
 import com.itextpdf.kernel.pdf.canvas.parser.PdfTextExtractor
+import com.itextpdf.kernel.pdf.canvas.parser.EventType
+import com.itextpdf.kernel.pdf.canvas.parser.data.IEventData
+import com.itextpdf.kernel.pdf.canvas.parser.data.ImageRenderInfo
+import com.itextpdf.kernel.pdf.canvas.parser.data.TextRenderInfo
+import com.itextpdf.kernel.pdf.canvas.parser.listener.LocationTextExtractionStrategy
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.data.model.ContentResult
 import kotlinx.coroutines.CoroutineScope
@@ -20,12 +28,15 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.util.Collections
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 @Singleton
 class PdfContentLoader @Inject constructor(
@@ -86,12 +97,11 @@ class PdfContentLoader @Inject constructor(
         private val totalPages: Int
     ) : AbstractList<ContentElement>(), java.io.Closeable {
         
-        // Cache to store loaded page text. 
-        // Using mutableStateMapOf allows Compose to observe reads and trigger recomposition when data arrives.
-        private val pageCache = mutableStateMapOf<Int, String>()
+        // Cache to store loaded page content (PageContent element)
+        private val pageCache = mutableStateMapOf<Int, ContentElement>()
         
-        // Track currently loading pages to prevent duplicate requests
-        private val loadingPages = Collections.newSetFromMap(ConcurrentHashMap<Int, Boolean>())
+        // Track currently active page loading jobs to allow cancellation during rapid scrolling
+        private val loadingJobs = ConcurrentHashMap<Int, kotlinx.coroutines.Job>()
         
         private var pdfDocument: PdfDocument? = null
         private var pfd: ParcelFileDescriptor? = null
@@ -104,29 +114,39 @@ class PdfContentLoader @Inject constructor(
             if (index < 0 || index >= size) throw IndexOutOfBoundsException("Index: $index, Size: $size")
             
             // 1. Return cached content if available
-            pageCache[index]?.let { return ContentElement.Text(it) }
+            pageCache[index]?.let { return it }
 
             // 2. If not cached, trigger load and return placeholder
-            if (loadingPages.add(index)) {
-                loaderScope.launch {
-                    val text = loadPageText(index + 1)
+            if (!loadingJobs.containsKey(index)) {
+                val job = loaderScope.launch {
+                    val elements = loadPageContent(index + 1)
                     withContext(Dispatchers.Main) {
-                        addToCache(index, text)
-                        loadingPages.remove(index)
+                        addToCache(index, ContentElement.PageContent(elements))
+                        loadingJobs.remove(index)
+                    }
+                }
+                loadingJobs[index] = job
+
+                // Prevent queue buildup during rapid scrolling
+                if (loadingJobs.size > 5) {
+                    val furthestKey = loadingJobs.keys.maxByOrNull { abs(it - index) }
+                    if (furthestKey != null && furthestKey != index) {
+                        loadingJobs.remove(furthestKey)?.cancel()
                     }
                 }
             }
 
-            // Return a "tall" placeholder to prevent LazyListState from clamping scroll offset during restoration.
-            // Using a large number of newlines ensures the placeholder is likely taller than any typical page.
-            return ContentElement.Text("Loading page ${index + 1}..." + "\n".repeat(100))
+            // Return a lightweight placeholder to avoid large layout costs during fast scrolling
+            return ContentElement.Placeholder("Loading page ${index + 1}...")
         }
 
-        private fun addToCache(index: Int, text: String) {
-            pageCache[index] = text
+        private fun addToCache(index: Int, content: ContentElement) {
+            pageCache[index] = content
             if (pageCache.size > MAX_CACHE_SIZE) {
                 // Evict the page furthest from the current index to keep memory stable
-                val furthestKey = pageCache.keys.maxByOrNull { abs(it - index) }
+                val furthestKey = pageCache.keys.maxByOrNull { 
+                    if (it is Int) abs(it - index) else 0 
+                }
                 furthestKey?.let { pageCache.remove(it) }
             }
         }
@@ -161,21 +181,57 @@ class PdfContentLoader @Inject constructor(
             }
         }
 
-        private suspend fun loadPageText(pageNum: Int): String = mutex.withLock {
+        private suspend fun loadPageContent(pageNum: Int): List<ContentElement> = mutex.withLock {
             runCatching {
-                val doc = getOrOpenDocument() ?: return ""
-                if (pageNum > doc.numberOfPages) return ""
+                val doc = getOrOpenDocument() ?: return emptyList()
+                if (pageNum > doc.numberOfPages) return emptyList()
 
-                val rawText = PdfTextExtractor.getTextFromPage(doc.getPage(pageNum))
+                val page = doc.getPage(pageNum)
+                
+                // 1. Extract Images
+                val strategy = ImageExtractionStrategy()
+                val processor = PdfCanvasProcessor(strategy)
+                processor.processPageContent(page)
+                val images = strategy.getImageElements()
 
-                rawText.lines()
-                    .filterNot { it.trim().matches(PAGE_NUMBER_REGEX) }
-                    .joinToString("\n")
-                    .split(PARAGRAPH_SPLIT_REGEX)
-                    .map { it.trim() }
-                    .filter { it.length > 2 } // Relaxed filter to keep more PDF content
-                    .joinToString("\n\n")
-            }.getOrDefault("")
+                // 2. Extract Text using proven method
+                val rawText = PdfTextExtractor.getTextFromPage(page)
+                
+                // 3. Process text into paragraphs
+                val paragraphs = mutableListOf<ContentElement>()
+                val sb = java.lang.StringBuilder()
+                
+                for (line in rawText.lines()) {
+                    val trimmed = line.trim()
+                    if (trimmed.isEmpty()) {
+                        if (sb.isNotEmpty()) {
+                            paragraphs.add(ContentElement.Text(sb.toString()))
+                            sb.setLength(0)
+                        }
+                    } else {
+                        if (trimmed.matches(PAGE_NUMBER_REGEX)) continue
+                        if (sb.isNotEmpty()) {
+                            if (sb.endsWith("-")) {
+                                sb.setLength(sb.length - 1)
+                            } else {
+                                sb.append(" ")
+                            }
+                        }
+                        sb.append(trimmed)
+                    }
+                }
+                if (sb.isNotEmpty()) {
+                    paragraphs.add(ContentElement.Text(sb.toString()))
+                }
+
+                // 4. Combine
+                if (paragraphs.isEmpty() && images.isEmpty() && rawText.isNotBlank()) {
+                    // Fallback for non-standard whitespace PDFs
+                    paragraphs.add(ContentElement.Text(rawText.trim()))
+                }
+
+                paragraphs + images
+            }.getOrDefault(emptyList())
         }
 
         override fun close() {
@@ -192,4 +248,40 @@ class PdfContentLoader @Inject constructor(
             }
         }
     }
+
+    private inner class ImageExtractionStrategy : LocationTextExtractionStrategy() {
+        private val imageChunks = mutableListOf<ContentElement.Image>()
+
+        override fun getSupportedEvents(): Set<EventType> {
+            return setOf(EventType.RENDER_IMAGE)
+        }
+
+        override fun eventOccurred(data: IEventData, type: EventType) {
+            if (type == EventType.RENDER_IMAGE) {
+                val renderInfo = data as ImageRenderInfo
+                try {
+                    val imageObject = renderInfo.image ?: return
+                    val imageBytes = imageObject.imageBytes ?: return
+                    val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size) ?: return
+                    
+                    val fileName = "pdf_img_${UUID.randomUUID()}.jpg"
+                    val file = File(context.cacheDir, fileName)
+                    FileOutputStream(file).use { out ->
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                    }
+                    
+                    imageChunks.add(ContentElement.Image(
+                        url = "file://${file.absolutePath}",
+                        width = bitmap.width,
+                        height = bitmap.height
+                    ))
+                } catch (e: Exception) {}
+            }
+        }
+
+        fun getImageElements(): List<ContentElement.Image> = imageChunks
+    }
+
+    private data class TextChunk(val text: String, val x: Float, val y: Float, val height: Float)
+    private data class ImageChunk(val element: ContentElement.Image, val y: Float)
 }

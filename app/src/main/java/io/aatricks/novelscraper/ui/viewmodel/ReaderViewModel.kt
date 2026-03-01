@@ -625,6 +625,10 @@ class ReaderViewModel @Inject constructor(
         for (el in rawElements) {
             when (el) {
                 is ContentElement.Text -> textBuffer.add(el.content)
+                is ContentElement.Placeholder, is ContentElement.PageContent -> {
+                    flushTextBuffer()
+                    formattedElements.add(el)
+                }
                 is ContentElement.Image, is ContentElement.ImageGroup -> {
                     flushTextBuffer()
                     formattedElements.add(el)

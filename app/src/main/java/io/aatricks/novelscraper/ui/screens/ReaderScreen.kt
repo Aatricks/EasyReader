@@ -644,6 +644,74 @@ private fun PagedReaderView(
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             element?.let { el ->
                 when (el) {
+                    is ContentElement.Placeholder -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { readerViewModel.toggleControls() }
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = el.text,
+                                color = textColor.copy(alpha = 0.5f),
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontSize = uiState.fontSize.sp,
+                                    fontFamily = fontFamily
+                                )
+                            )
+                        }
+                    }
+                    is ContentElement.PageContent -> {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { readerViewModel.toggleControls() }
+                                )
+                                .padding(uiState.margins.dp),
+                            verticalArrangement = Arrangement.spacedBy((uiState.fontSize * uiState.paragraphSpacing).dp)
+                        ) {
+                            el.elements.forEach { subElement ->
+                                when (subElement) {
+                                    is ContentElement.Text -> {
+                                        Text(
+                                            text = subElement.content,
+                                            color = textColor,
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                fontSize = uiState.fontSize.sp,
+                                                lineHeight = (uiState.fontSize * uiState.lineHeight).sp,
+                                                fontFamily = fontFamily
+                                            ),
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                    is ContentElement.Image -> {
+                                        ReaderImageView(
+                                            imageUrl = subElement.url,
+                                            altText = subElement.altText,
+                                            readerViewModel = readerViewModel,
+                                            pageUrl = content.url,
+                                            contentScale = ContentScale.Fit,
+                                            backgroundColor = bgColor,
+                                            width = subElement.width,
+                                            height = subElement.height,
+                                            side = subElement.side,
+                                            enableZoom = isZoomable,
+                                            onTap = { readerViewModel.toggleControls() }
+                                        )
+                                    }
+                                    else -> {} // Should not be nested
+                                }
+                            }
+                        }
+                    }
                     is ContentElement.Text -> {
                         Box(modifier = Modifier
                             .fillMaxSize()
@@ -747,6 +815,75 @@ private fun ScrollingReaderView(
             key = { index, _ -> "${content.url}_$index" }
         ) { _, element ->
             when (element) {
+                is ContentElement.Placeholder -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(element.heightDp.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { readerViewModel.toggleControls() }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = element.text,
+                            color = textColor.copy(alpha = 0.5f),
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontSize = uiState.fontSize.sp,
+                                fontFamily = fontFamily
+                            )
+                        )
+                    }
+                }
+                is ContentElement.PageContent -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { readerViewModel.toggleControls() }
+                            )
+                            .padding(horizontal = uiState.margins.dp),
+                        verticalArrangement = Arrangement.spacedBy((uiState.fontSize * uiState.paragraphSpacing).dp)
+                    ) {
+                        element.elements.forEach { subElement ->
+                            when (subElement) {
+                                is ContentElement.Text -> {
+                                    Text(
+                                        text = subElement.content,
+                                        color = textColor,
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            fontSize = uiState.fontSize.sp,
+                                            lineHeight = (uiState.fontSize * uiState.lineHeight).sp,
+                                            fontFamily = fontFamily
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                is ContentElement.Image -> {
+                                    ReaderImageView(
+                                        imageUrl = subElement.url,
+                                        altText = subElement.altText,
+                                        readerViewModel = readerViewModel,
+                                        pageUrl = content.url,
+                                        contentScale = ContentScale.FillWidth,
+                                        backgroundColor = bgColor,
+                                        width = subElement.width,
+                                        height = subElement.height,
+                                        side = subElement.side,
+                                        enableZoom = false,
+                                        dynamicHeight = false,
+                                        onTap = { readerViewModel.toggleControls() }
+                                    )
+                                }
+                                else -> {} // Should not be nested
+                            }
+                        }
+                    }
+                }
                 is ContentElement.Text -> {
                     Text(
                         text = element.content,

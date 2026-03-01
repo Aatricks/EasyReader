@@ -44,6 +44,60 @@ fun ContentRenderer(
     ) {
         items(elements) { element ->
             when (element) {
+                is ContentElement.Placeholder -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(element.heightDp.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = element.text,
+                            color = textColor.copy(alpha = 0.5f),
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                }
+                is ContentElement.PageContent -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        element.elements.forEach { subElement ->
+                            when (subElement) {
+                                is ContentElement.Text -> {
+                                    Text(
+                                        text = subElement.content,
+                                        color = textColor,
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                }
+                                is ContentElement.Image -> {
+                                    AsyncImageElement(
+                                        url = subElement.url, 
+                                        altText = subElement.altText,
+                                        side = subElement.side,
+                                        width = subElement.width,
+                                        height = subElement.height,
+                                        pageUrl = pageUrl
+                                    )
+                                }
+                                is ContentElement.ImageGroup -> {
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        subElement.images.forEach { image ->
+                                            AsyncImageElement(
+                                                url = image.url, 
+                                                altText = image.altText,
+                                                side = image.side,
+                                                width = image.width,
+                                                height = image.height,
+                                                pageUrl = pageUrl
+                                            )
+                                        }
+                                    }
+                                }
+                                else -> {} // Should not happen for sub-elements in PDF
+                            }
+                        }
+                    }
+                }
                 is ContentElement.Text -> {
                     Text(
                         text = element.content,
@@ -101,10 +155,14 @@ fun AsyncImageElement(
 
         ImageRequest.Builder(context)
             .data(url)
-            .httpHeaders(NetworkHeaders.Builder()
-                .set("Referer", referer)
-                .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .build())
+            .apply {
+                if (!url.startsWith("file://")) {
+                    httpHeaders(NetworkHeaders.Builder()
+                        .set("Referer", referer)
+                        .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                        .build())
+                }
+            }
             .crossfade(true)
             .build()
     }

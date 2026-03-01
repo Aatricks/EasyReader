@@ -58,22 +58,31 @@ fun ReaderImageView(
         Modifier.fillMaxWidth().then(aspectRatioModifier)
     }.splitImageLayer(side, width, height)
 
-    if (imageUrl.startsWith("http")) {
+    if (imageUrl.startsWith("http") || imageUrl.startsWith("file")) {
         val context = LocalContext.current
 
         val cachedFile = remember(imageUrl) {
-            readerViewModel.contentRepository.getCachedMediaFile(imageUrl)
+            if (imageUrl.startsWith("http")) {
+                readerViewModel.contentRepository.getCachedMediaFile(imageUrl)
+            } else {
+                java.io.File(imageUrl.removePrefix("file://"))
+            }
         }
 
         val imageRequest = remember(imageUrl, pageUrl) {
-            val isCached = cachedFile.exists()
-            val referer = readerViewModel.contentRepository.getReferer(pageUrl)
+            val isCached = imageUrl.startsWith("file") || cachedFile.exists()
+            val referer = if (imageUrl.startsWith("http")) readerViewModel.contentRepository.getReferer(pageUrl) else null
+            
             ImageRequest.Builder(context)
-                .data(if (isCached) cachedFile else imageUrl)
-                .httpHeaders(NetworkHeaders.Builder()
-                    .set("Referer", referer)
-                    .set("User-Agent", "Mozilla/5.0")
-                    .build())
+                .data(if (isCached && imageUrl.startsWith("http")) cachedFile else imageUrl)
+                .apply {
+                    if (referer != null) {
+                        httpHeaders(NetworkHeaders.Builder()
+                            .set("Referer", referer)
+                            .set("User-Agent", "Mozilla/5.0")
+                            .build())
+                    }
+                }
                 .crossfade(!isCached)
                 .build()
         }

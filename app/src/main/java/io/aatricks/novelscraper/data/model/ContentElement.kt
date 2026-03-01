@@ -6,6 +6,19 @@ package io.aatricks.novelscraper.data.model
  */
 sealed class ContentElement {
     /**
+     * Placeholder content element for loading states
+     * @property text The placeholder text
+     * @property heightDp The height in dp to reserve
+     */
+    data class Placeholder(val text: String, val heightDp: Int = 1000) : ContentElement()
+
+    /**
+     * Represents all content for a single page, containing sub-elements
+     * @property elements The list of text and image elements on the page
+     */
+    data class PageContent(val elements: List<ContentElement>) : ContentElement()
+
+    /**
      * Text content element
      * @property content The text content, typically a paragraph
      */
