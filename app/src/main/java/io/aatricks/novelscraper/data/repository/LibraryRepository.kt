@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
@@ -331,48 +332,49 @@ class LibraryRepository @Inject constructor(
                 }
             }
 
+            val channel = Channel<Pair<String, List<LibraryItem>>>(Channel.UNLIMITED)
+            activeGroups.forEach { channel.trySend(it.key to it.value) }
+            channel.close()
+
             val allUpdates = coroutineScope {
-                activeGroups.map { (baseTitle, items) ->
+                val workers = (1..5).map {
                     async {
-                        semaphore.withPermit {
+                        val localUpdates = mutableListOf<LibraryItem>()
+                        for ((baseTitle, items) in channel) {
                             if (items.isNotEmpty()) {
                                 val latestInLibrary = items.last()
                                 if (latestInLibrary.baseNovelUrl.isNotBlank() && latestInLibrary.sourceName.isNotBlank()) {
-                                    runCatching("Failed to refresh updates for $baseTitle", emptyList()) {
-                                        val details =
-                                            exploreRepository.getNovelDetails(
-                                                latestInLibrary.baseNovelUrl,
-                                                latestInLibrary.sourceName
-                                            )
+                                    val newUpdates = runCatching("Failed to refresh updates for $baseTitle", emptyList<LibraryItem>()) {
+                                        val details = exploreRepository.getNovelDetails(
+                                            latestInLibrary.baseNovelUrl,
+                                            latestInLibrary.sourceName
+                                        )
                                         if (details != null && details.chapters.isNotEmpty()) {
                                             val sourceChapterCount = details.chapters.size
                                             if (sourceChapterCount > latestInLibrary.totalChapters) {
-                                                val itemToMark =
-                                                    items.find { it.isCurrentlyReading } ?: latestInLibrary
-                                                val updatedItems = items.map { item ->
+                                                val itemToMark = items.find { it.isCurrentlyReading } ?: latestInLibrary
+                                                items.map { item ->
                                                     var newItem = item.copy(totalChapters = sourceChapterCount)
                                                     if (item.id == itemToMark.id && !item.hasUpdates) {
                                                         newItem = newItem.copy(hasUpdates = true)
                                                     }
                                                     newItem
                                                 }
-                                                updatedItems
                                             } else {
-                                                emptyList()
+                                                emptyList<LibraryItem>()
                                             }
                                         } else {
-                                            emptyList()
+                                            emptyList<LibraryItem>()
                                         }
                                     } ?: emptyList()
-                                } else {
-                                    emptyList()
+                                    localUpdates.addAll(newUpdates)
                                 }
-                            } else {
-                                emptyList()
                             }
                         }
+                        localUpdates
                     }
-                }.awaitAll().flatten()
+                }
+                workers.awaitAll().flatten()
             }
 
             if (allUpdates.isNotEmpty()) {

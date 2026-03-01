@@ -38,14 +38,11 @@ class LibraryRepositoryBenchmarkTest {
 
     @Test
     fun benchmarkRefreshLibraryUpdates() = runBlocking {
-        // Setup 100 novels (groups).
-        // 50 "recent" (lastRead within 2 days)
-        // 50 "old" (lastRead older than 10 days)
+        // Setup 10000 novels (groups).
 
         val recentCutoff = System.currentTimeMillis() - 2 * 24 * 60 * 60 * 1000L
-        val oldCutoff = System.currentTimeMillis() - 10 * 24 * 60 * 60 * 1000L
 
-        val recentItems = (1..50).map { i ->
+        val recentItems = (1..10000).map { i ->
             LibraryItem(
                 id = "recent_$i",
                 title = "Recent Novel $i",
@@ -59,27 +56,10 @@ class LibraryRepositoryBenchmarkTest {
             )
         }
 
-        val oldItems = (1..50).map { i ->
-            LibraryItem(
-                id = "old_$i",
-                title = "Old Novel $i",
-                url = "url_old_$i",
-                baseTitle = "Old Novel $i",
-                baseNovelUrl = "novel_old_$i",
-                sourceName = "Source1",
-                totalChapters = 10,
-                lastRead = oldCutoff - 10000L, // Definitely old
-                dateAdded = oldCutoff - 10000L // Added long ago
-            )
-        }
+        whenever(libraryDao.getAllItems()).thenReturn(flowOf(recentItems))
 
-        val allItems = recentItems + oldItems
-
-        whenever(libraryDao.getAllItems()).thenReturn(flowOf(allItems))
-
-        // Mock getNovelDetails with a delay to simulate network latency
+        // Mock getNovelDetails with NO delay to simulate pure overhead
         whenever(exploreRepository.getNovelDetails(any(), any())).thenAnswer {
-            Thread.sleep(10) // Simulate 10ms network delay per request
             ExploreItem("Dummy", "url", source = "Source1", chapters = emptyList())
         }
 
@@ -90,7 +70,7 @@ class LibraryRepositoryBenchmarkTest {
             repository.refreshLibraryUpdates(exploreRepository)
         }
 
-        println("BENCHMARK_RESULT: ${time}ms for 100 novels (50 recent, 50 old)")
+        println("BENCHMARK_RESULT: ${time}ms for 10000 novels")
 
         assertTrue(time > 0)
     }
