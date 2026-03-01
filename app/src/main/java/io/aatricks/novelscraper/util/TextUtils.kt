@@ -57,9 +57,9 @@ object TextUtils {
     private val CHAPTER_URL_REGEX = Regex("(\\d+)(?!.*\\d)")
 
     private val CHAPTER_NUMBER_REGEXES = listOf(
-        Regex("chapter[\\s-_]*?(\\d+(?:\\.\\d+)?)`, RegexOption.IGNORE_CASE),
-        Regex("ch[\\s-_]*?(\\d+(?:\\.\\d+)?)`, RegexOption.IGNORE_CASE),
-        Regex("c[\\s-_]*?(\\d+(?:\\.\\d+)?)`, RegexOption.IGNORE_CASE),
+        Regex("chapter[\\s-_]*?(\\d+(?:\\.\\d+)?)", RegexOption.IGNORE_CASE),
+        Regex("ch[\\s-_]*?(\\d+(?:\\.\\d+)?)", RegexOption.IGNORE_CASE),
+        Regex("c[\\s-_]*?(\\d+(?:\\.\\d+)?)", RegexOption.IGNORE_CASE),
         Regex("(\\d+(?:\\.\\d+)?)(?!.*\\d)", RegexOption.IGNORE_CASE)
     )
 
