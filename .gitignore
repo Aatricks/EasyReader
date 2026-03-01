@@ -14,3 +14,6 @@ keystore.properties
 .kotlin
 .log
 keystore_base64.txt
+*.txt
+*.log
+memory.instructions
