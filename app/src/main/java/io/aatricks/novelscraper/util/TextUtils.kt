@@ -12,7 +12,7 @@ object TextUtils {
     private val DIGIT_REGEX = Regex("\\d+")
     private val PAGE_WORD_REGEX = Regex("Page \\|\\s*|Page\\s+")
     private val WHITESPACE_REGEX = Regex("\\s+")
-    private val MULTIPLE_SPACES_REGEX = Regex(" +\n")
+    private val MULTIPLE_SPACES_REGEX = Regex(" +\\n")
     private val LINE_BREAK_REGEX = Regex("\\r\\n|\\r")
     private val SPACE_PLUS_NEWLINE_REGEX = Regex(" +\\n")
     private val FOUR_PLUS_NEWLINES_REGEX = Regex("\\n{4,}")
@@ -22,6 +22,46 @@ object TextUtils {
     private val NEWLINE_BEFORE_LOWER_DIGIT_REGEX = Regex("\\n(?=[a-z0-9])")
     private val SINGLE_NEWLINE_REGEX = Regex("(?<!\\n)\\n(?!\\n)")
     private val TWO_PLUS_SPACES_REGEX = Regex("[ ]{2,}")
+
+    private val EXTRACT_CHAPTER_LABEL_REGEX_1 = Regex("(?i)(?:chapter|ch|ch\\.|c)\\s*(\\d+)")
+    private val EXTRACT_CHAPTER_LABEL_REGEX_2 = Regex("[\\s:\\-—–|](\\d+)\\s*$")
+    private val EXTRACT_CHAPTER_LABEL_REGEX_3 = Regex("\\b(\\d+)\\b")
+
+    private val EXTRACT_CHAPTER_LABEL_URL_PATTERNS = listOf(
+        Regex("chapter\\s*(\\d+)", RegexOption.IGNORE_CASE),
+        Regex("ch(?:apter)?\\D*(\\d+)", RegexOption.IGNORE_CASE),
+        Regex("/(\\d+)(?:/|$)"),
+        Regex("-" + "(\\d+)(?:\\D|$)")
+    )
+
+    private val JUNK_PATTERNS = listOf(
+        Regex("(?i)^read\\s+"),
+        Regex("(?i)\\s+free\\s+online.*"),
+        Regex("(?i)\\s+online\\s+free.*"),
+        Regex("(?i)\\s*|\\s*.*$"),
+        Regex("(?i)\\s+at\\s+.*"),
+        Regex("(?i)[\\s–—\\-:]*(MangaBat|NovelFire|MangaPark|MangaKakalot).*$"),
+        Regex("(?i)[\\s–—\\-:]*Scan.*$")
+    )
+
+    private val CHAPTER_MARKER_PATTERNS = listOf(
+        Regex("[–—\\-:]?\\s*(?:chapter|ch|ch\\.)\\s*\\d+.*$", RegexOption.IGNORE_CASE),
+        Regex("\\s*[–—\\-]\\s*\\d+.*$"),
+        Regex("\\s*:\\s*\\d+.*$")
+    )
+
+    private val CLEAN_SEPARATORS_START_REGEX = Regex("^[\\s–—\\-:\\|]+")
+    private val CLEAN_SEPARATORS_END_REGEX = Regex("[\\s–—\\-:\\|]+$")
+    private val CLEAN_CHAPTER_TITLE_SUBTITLE_REGEX = Regex("(?i)(?:chapter|ch|ch\\.)\\s*\\d+[\\s:\\-—–|]+(.+)")
+
+    private val CHAPTER_URL_REGEX = Regex("(\\d+)(?!.*\\d)")
+
+    private val CHAPTER_NUMBER_REGEXES = listOf(
+        Regex("chapter[\\s-_]*?(\\d+(?:\\.\\d+)?)`, RegexOption.IGNORE_CASE),
+        Regex("ch[\\s-_]*?(\\d+(?:\\.\\d+)?)`, RegexOption.IGNORE_CASE),
+        Regex("c[\\s-_]*?(\\d+(?:\\.\\d+)?)`, RegexOption.IGNORE_CASE),
+        Regex("(\\d+(?:\\.\\d+)?)(?!.*\\d)", RegexOption.IGNORE_CASE)
+    )
 
     private val SENTENCE_ENDERS = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
     private val CONTINUATION_WORDS = setOf(
@@ -49,47 +89,6 @@ object TextUtils {
     private fun lastWord(s: String): String {
         return s.trim().split(WHITESPACE_REGEX).lastOrNull() ?: ""
     }
-
-    private val CHAPTER_URL_REGEX = Regex("(\\d+)(?!.*\\d)")
-
-    private val CHAPTER_NUMBER_REGEXES = listOf(
-        Regex("chapter[\\s-_]*?(\\d+(?:\\.\\d+)?)", RegexOption.IGNORE_CASE),
-        Regex("ch[\\s-_]*?(\\d+(?:\\.\\d+)?)", RegexOption.IGNORE_CASE),
-        Regex("c[\\s-_]*?(\\d+(?:\\.\\d+)?)", RegexOption.IGNORE_CASE),
-        Regex("(\\d+(?:\\.\\d+)?)(?!.*\\d)", RegexOption.IGNORE_CASE)
-    )
-
-    private val COMMON_JUNK_REGEXES = listOf(
-        Regex("(?i)^read\\s+"),
-        Regex("(?i)\\s+free\\s+online.*\$"),
-        Regex("(?i)\\s+online\\s+free.*\$"),
-        Regex("(?i)\\s*\\|\\s*.*\$"),
-        Regex("(?i)\\s+at\\s+.*\$"),
-        Regex("(?i)[\\s–—\\-:]*(MangaBat|NovelFire|MangaPark|MangaKakalot).*\$"),
-        Regex("(?i)[\\s–—\\-:]*Scan.*\$")
-    )
-
-    private val CHAPTER_MARKERS_REGEXES = listOf(
-        Regex("[–—\\-:]?\\s*(?:chapter|ch|ch\\.)\\s*\\d+.*$", RegexOption.IGNORE_CASE),
-        Regex("\\s*[–—\\-]\\s*\\d+.*$"),
-        Regex("\\s*:\\s*\\d+.*$")
-    )
-
-    private val CLEAN_SEPARATORS_START_REGEX = Regex("^[\\s–—\\-:\\|]+")
-    private val CLEAN_SEPARATORS_END_REGEX = Regex("[\\s–—\\-:\\|]+$")
-
-    private val EXTRACT_CHAPTER_LABEL_REGEX_1 = Regex("(?i)(?:chapter|ch|ch\\.|c)\\s*(\\d+)")
-    private val EXTRACT_CHAPTER_LABEL_REGEX_2 = Regex("[\\s:\\-—–|](\\d+)\\s*$")
-    private val EXTRACT_CHAPTER_LABEL_REGEX_3 = Regex("\\b(\\d+)\\b")
-
-    private val EXTRACT_CHAPTER_LABEL_URL_REGEXES = listOf(
-        Regex("chapter\\s*(\\d+)", RegexOption.IGNORE_CASE),
-        Regex("ch(?:apter)?\\D*(\\d+)", RegexOption.IGNORE_CASE),
-        Regex("/(\\d+)(?:/|$)"),
-        Regex("-" + "(\\d+)(?:\\D|$)")
-    )
-
-    private val CLEAN_CHAPTER_TITLE_SUBTITLE_REGEX = Regex("(?i)(?:chapter|ch|ch\\.)\\s*\\d+[\\s:\\-—–|]+(.+)")
 
     /**
      * Remove page numbers from text content.
@@ -165,11 +164,11 @@ object TextUtils {
     }
 
     private fun removeCommonJunk(text: String): String {
-        return COMMON_JUNK_REGEXES.fold(text) { acc, pattern -> acc.replace(pattern, "") }
+        return JUNK_PATTERNS.fold(text) { acc, pattern -> acc.replace(pattern, "") }
     }
 
     private fun removeChapterMarkers(text: String): String {
-        return CHAPTER_MARKERS_REGEXES.fold(text) { acc, pattern -> acc.replace(pattern, "").trim() }
+        return CHAPTER_MARKER_PATTERNS.fold(text) { acc, pattern -> acc.replace(pattern, "").trim() }
     }
 
     private fun cleanSeparators(text: String): String {
@@ -201,7 +200,7 @@ object TextUtils {
      * Extract chapter label from URL
      */
     fun extractChapterLabelFromUrl(url: String): String? {
-        return EXTRACT_CHAPTER_LABEL_URL_REGEXES.firstNotNullOfOrNull { r ->
+        return EXTRACT_CHAPTER_LABEL_URL_PATTERNS.firstNotNullOfOrNull { r ->
             r.find(url)?.groupValues?.get(1)?.let { "Chapter " + it }
         }
     }
@@ -211,8 +210,8 @@ object TextUtils {
      */
     fun extractChapterNumber(text: String): Double? {
         if (text.isEmpty()) return null
-        return CHAPTER_NUMBER_REGEXES.firstNotNullOfOrNull { r ->
-            r.find(text)?.groupValues?.get(1)?.toDoubleOrNull()
+        return CHAPTER_NUMBER_REGEXES.firstNotNullOfOrNull {
+            r -> r.find(text)?.groupValues?.get(1)?.toDoubleOrNull()
         }
     }
 
@@ -335,7 +334,7 @@ object TextUtils {
                     j++
                 }
                 if (count >= 4) {
-                    sb.append("\n\n\n")
+                    sb.append("\\n\\n\\n")
                 } else {
                     for (k in 0 until count) sb.append('\n')
                 }
@@ -489,11 +488,11 @@ object TextUtils {
     }
 
     private fun processIndividualParagraphs(paragraphs: List<String>): List<String> {
-        return paragraphs.map { p ->
-            if (p.trim().isEmpty()) return@map ""
+        return paragraphs.map {
+            if (it.trim().isEmpty()) return@map ""
 
-            val lines = p.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
-            if (lines.size <= 1) return@map p.trim()
+            val lines = it.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+            if (lines.size <= 1) return@map it.trim()
 
             val sb = StringBuilder(lines[0])
             for (i in 1 until lines.size) {
@@ -579,8 +578,8 @@ object TextUtils {
         return if (cleaned.isBlank() || (novelName.isNotBlank() && fullTitle.equals(
                 novelName,
                 ignoreCase = true
-            ))
-        ) "" else cleaned
+            )))
+            "" else cleaned
     }
 
     /**
