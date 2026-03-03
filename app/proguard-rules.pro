@@ -19,6 +19,11 @@
 -keep class okhttp3.** { *; }
 -keep interface okhttp3.** { *; }
 
+# iText7 — must not be obfuscated; uses instanceof checks on internal class hierarchy
+-keep class com.itextpdf.** { *; }
+-keep interface com.itextpdf.** { *; }
+-dontwarn com.itextpdf.**
+
 # llmedge rules
 -keep class io.aatricks.llmedge.** { *; }
 -keep interface io.aatricks.llmedge.** { *; }
