@@ -280,16 +280,12 @@ class PdfContentLoader @Inject constructor(
     private inner class CombinedExtractionStrategy : LocationTextExtractionStrategy() {
         private val imageChunks = mutableListOf<ContentElement.Image>()
 
-        override fun getSupportedEvents(): Set<EventType>? {
-            return setOf(EventType.RENDER_TEXT, EventType.RENDER_IMAGE)
-        }
-
         override fun eventOccurred(data: IEventData, type: EventType) {
             if (type == EventType.RENDER_TEXT) {
                 super.eventOccurred(data, type)
                 return
             }
-            
+
             if (type == EventType.RENDER_IMAGE) {
                 val renderInfo = data as ImageRenderInfo
                 try {
