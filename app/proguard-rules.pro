@@ -22,3 +22,16 @@
 # llmedge rules
 -keep class io.aatricks.llmedge.** { *; }
 -keep interface io.aatricks.llmedge.** { *; }
+
+# Suppress warnings for optional dependencies referenced by llmedge / Ktor
+-dontwarn com.google.android.gms.tasks.Task
+-dontwarn com.google.gson.Gson
+-dontwarn com.google.gson.reflect.TypeToken
+-dontwarn com.ml.shubham0204.sentence_embeddings.SentenceEmbedding
+-dontwarn com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+-dontwarn com.tom_roush.pdfbox.pdmodel.PDDocument
+-dontwarn com.tom_roush.pdfbox.text.PDFTextStripper
+-dontwarn java.lang.management.ManagementFactory
+-dontwarn java.lang.management.RuntimeMXBean
+-dontwarn kotlinx.coroutines.tasks.TasksKt
+-dontwarn org.slf4j.impl.StaticLoggerBinder
