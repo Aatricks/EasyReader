@@ -2,6 +2,7 @@ package io.aatricks.novelscraper.data.repository.content
 
 import android.content.Context
 import android.net.Uri
+import android.util.LruCache
 import io.aatricks.novelscraper.data.model.*
 import io.aatricks.novelscraper.util.ZipUtils
 import kotlinx.coroutines.Dispatchers
@@ -20,7 +21,7 @@ class EpubContentLoader @Inject constructor(
     @ApplicationContext private val context: Context,
     @EpubCacheDir private val epubCacheDir: File
 ) {
-    private val epubBookCache = mutableMapOf<String, EpubBook>()
+    private val epubBookCache = object : LruCache<String, EpubBook>(5) {}
 
     suspend fun loadEpubContent(filePath: String, chapterHref: String? = null): ContentResult = withContext(Dispatchers.IO) {
         runCatching {
@@ -35,7 +36,7 @@ class EpubContentLoader @Inject constructor(
 
     suspend fun getEpubBook(path: String): EpubBook? = withContext(Dispatchers.IO) {
         runCatching {
-            epubBookCache[path] ?: parseEpubFile(path).also { epubBookCache[path] = it }
+            epubBookCache.get(path) ?: parseEpubFile(path).also { epubBookCache.put(path, it) }
         }.getOrNull()
     }
 
@@ -103,7 +104,7 @@ class EpubContentLoader @Inject constructor(
 
     fun clearAllCache() {
         epubCacheDir.deleteRecursively()
-        epubBookCache.clear()
+        epubBookCache.evictAll()
         epubCacheDir.mkdirs()
     }
 

@@ -16,7 +16,6 @@ data class LibraryItem(
     val title: String,
     val url: String,
     val timestamp: Long = System.currentTimeMillis(),
-    val type: ContentType = ContentType.WEB,
     val progress: Int = 0,
     val isCurrentlyReading: Boolean = false,
     val isSelected: Boolean = false,
@@ -31,11 +30,11 @@ data class LibraryItem(
     val lastReadIndex: Int = 0,
     val lastReadOffset: Int = 0,
     val hasUpdates: Boolean = false,
-    val chapterSummaries: Map<String, String> = emptyMap(), // chapter URL -> AI-generated summary
-    val baseTitle: String = "", // Base title without chapter markers - used for grouping
+    val chapterSummaries: Map<String, String> = emptyMap(),
+    val baseTitle: String = "",
     val readingMode: ReadingMode = ReadingMode.VERTICAL,
-    val baseNovelUrl: String = "", // URL of the novel main page
-    val sourceName: String = "" // Name of the source (e.g., MangaBat)
+    val baseNovelUrl: String = "",
+    val sourceName: String = ""
 ) {
     init {
         require(title.isNotBlank()) { "Title cannot be blank" }

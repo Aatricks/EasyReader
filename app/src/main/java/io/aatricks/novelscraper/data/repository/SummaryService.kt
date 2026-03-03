@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import io.aatricks.llmedge.SmolLM
 import io.aatricks.llmedge.LLMEdgeManager
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -27,8 +28,10 @@ class SummaryService @Inject constructor(
     }
 
     private var modelFile: File? = null
+    @Volatile
     private var isInitialized = false
-    private var isInitializing = false
+    private var initDeferred: CompletableDeferred<Result<Unit>>? = null
+    private val initLock = Any()
     
     /**
      * Initialize the SmolLM model (lazy loading)
@@ -36,14 +39,19 @@ class SummaryService @Inject constructor(
     suspend fun initialize(): Result<Unit> = withContext(Dispatchers.IO) {
         if (isInitialized) return@withContext Result.success(Unit)
         
-        if (isInitializing) {
-            while (isInitializing) kotlinx.coroutines.delay(100)
-            return@withContext if (isInitialized) Result.success(Unit) else Result.failure(Exception("Initialization failed"))
+        val deferred = synchronized(initLock) {
+            if (isInitialized) return@synchronized null
+            initDeferred?.let { return@synchronized it }
+            CompletableDeferred<Result<Unit>>().also { initDeferred = it }
         }
         
-        isInitializing = true
+        // Another coroutine is already initializing — just await
+        if (deferred != null && deferred.isCompleted.not() && initDeferred !== deferred) {
+            return@withContext deferred.await()
+        }
+        if (deferred == null) return@withContext Result.success(Unit)
         
-        runCatching {
+        val result = runCatching {
             Log.d(TAG, "Downloading and ensuring model via LLMEdgeManager for chapter summarization")
 
             val modelId = "unsloth/Qwen3-0.6B-GGUF"
@@ -61,12 +69,14 @@ class SummaryService @Inject constructor(
             modelFile = downloadedFile
             LLMEdgeManager.preferPerformanceMode = false
             isInitialized = true
-            isInitializing = false
             Unit
         }.onFailure { e ->
             Log.e(TAG, "Failed to initialize SmolLM", e)
-            isInitializing = false
         }
+        
+        deferred.complete(result)
+        synchronized(initLock) { initDeferred = null }
+        result
     }
     
     /**

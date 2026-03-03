@@ -49,6 +49,9 @@ interface LibraryDao {
     @Query("UPDATE library_items SET readingMode = :readingMode WHERE baseTitle = :baseTitle")
     suspend fun updateReadingModeByBaseTitle(baseTitle: String, readingMode: ReadingMode)
 
+    @Query("DELETE FROM library_items")
+    suspend fun deleteAllItems()
+
     @Transaction
     suspend fun setCurrentReading(id: String, timestamp: Long = System.currentTimeMillis()) {
         clearCurrentlyReading()

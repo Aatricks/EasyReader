@@ -312,8 +312,7 @@ class LibraryRepository @Inject constructor(
     suspend fun clearLibrary(): Unit = io {
         runCatching("Failed to clear library") {
             _selectedItems.value = emptySet()
-            val all = libraryDao.getAllItems().firstOrNull() ?: emptyList()
-            all.forEach { libraryDao.deleteItem(it) }
+            libraryDao.deleteAllItems()
         }
     }
 

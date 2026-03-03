@@ -3,6 +3,11 @@ package io.aatricks.novelscraper.data.repository.source
 import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.model.ExploreItem
 import io.aatricks.novelscraper.data.model.ChapterInfo
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.json.JSONObject
 import java.net.URLEncoder
 import javax.inject.Inject
@@ -120,52 +125,77 @@ class MangaBatSource @Inject constructor(
     private suspend fun fetchAllChaptersFromApi(slug: String): List<ChapterInfo> = io {
         if (slug.isBlank()) return@io emptyList<ChapterInfo>()
         
-        val allChapters = mutableListOf<ChapterInfo>()
-        var offset = 0
         val limit = 50
-        var hasMore = true
         
-        while (hasMore) {
-            val apiUrl = "$baseUrl/api/manga/$slug/chapters?offset=$offset&limit=$limit"
-            runCatching {
-                val response = okHttpClient.newCall(
-                    okhttp3.Request.Builder()
-                        .url(apiUrl)
-                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                        .header("Referer", "$baseUrl/manga/$slug")
-                        .header("X-Requested-With", "XMLHttpRequest")
-                        .build()
-                ).execute().use { it.body?.string() ?: "" }
-                
-                val json = JSONObject(response)
-                if (!json.getBoolean("success")) {
-                    hasMore = false
-                    return@runCatching
-                }
-                
-                val dataObj = json.getJSONObject("data")
-                val chaptersArray = dataObj.getJSONArray("chapters")
-                
-                for (i in 0 until chaptersArray.length()) {
-                    val obj = chaptersArray.getJSONObject(i)
-                    val chapterSlug = obj.getString("chapter_slug")
-                    allChapters.add(ChapterInfo(
-                        title = obj.getString("chapter_name"),
-                        url = "$baseUrl/manga/$slug/$chapterSlug"
-                    ))
-                }
-                
-                val pagination = dataObj.optJSONObject("pagination")
-                hasMore = pagination?.optBoolean("has_more") ?: false
-                offset += limit
-            }.onFailure { 
-                it.printStackTrace()
-                hasMore = false
+        // Fetch first page to get initial data and check if there are more
+        val (firstChapters, firstHasMore) = fetchChapterPage(slug, 0, limit)
+        if (firstChapters.isEmpty() || !firstHasMore) {
+            return@io firstChapters.reversed()
+        }
+        
+        // Fetch remaining pages in parallel with semaphore
+        val allChapters = firstChapters.toMutableList()
+        val semaphore = Semaphore(3)
+        var offset = limit
+        
+        while (true) {
+            // Batch next 3 pages in parallel
+            val offsets = (offset until offset + limit * 3 step limit).toList()
+            val results = coroutineScope {
+                offsets.map { pageOffset ->
+                    async {
+                        semaphore.withPermit {
+                            fetchChapterPage(slug, pageOffset, limit)
+                        }
+                    }
+                }.awaitAll()
             }
+            
+            var shouldStop = false
+            for ((chapters, hasMore) in results) {
+                if (chapters.isEmpty()) { shouldStop = true; break }
+                allChapters.addAll(chapters)
+                if (!hasMore) { shouldStop = true; break }
+            }
+            if (shouldStop) break
+            offset += limit * 3
         }
         
         // API returns newest first, so we reverse to get oldest first (normal order)
         allChapters.reversed()
+    }
+
+    private fun fetchChapterPage(slug: String, offset: Int, limit: Int): Pair<List<ChapterInfo>, Boolean> {
+        return runCatching {
+            val apiUrl = "$baseUrl/api/manga/$slug/chapters?offset=$offset&limit=$limit"
+            val response = okHttpClient.newCall(
+                okhttp3.Request.Builder()
+                    .url(apiUrl)
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    .header("Referer", "$baseUrl/manga/$slug")
+                    .header("X-Requested-With", "XMLHttpRequest")
+                    .build()
+            ).execute().use { it.body?.string() ?: "" }
+            
+            val json = JSONObject(response)
+            if (!json.getBoolean("success")) return@runCatching Pair(emptyList<ChapterInfo>(), false)
+            
+            val dataObj = json.getJSONObject("data")
+            val chaptersArray = dataObj.getJSONArray("chapters")
+            val chapters = mutableListOf<ChapterInfo>()
+            
+            for (i in 0 until chaptersArray.length()) {
+                val obj = chaptersArray.getJSONObject(i)
+                val chapterSlug = obj.getString("chapter_slug")
+                chapters.add(ChapterInfo(
+                    title = obj.getString("chapter_name"),
+                    url = "$baseUrl/manga/$slug/$chapterSlug"
+                ))
+            }
+            
+            val hasMore = dataObj.optJSONObject("pagination")?.optBoolean("has_more") ?: false
+            Pair(chapters, hasMore)
+        }.getOrDefault(Pair(emptyList(), false))
     }
 
     private suspend fun fetchChaptersFromApi(slug: String): List<ChapterInfo> {

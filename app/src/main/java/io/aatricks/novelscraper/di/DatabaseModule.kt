@@ -22,6 +22,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "easy_reader_v2.db"
         )
+        .addMigrations(AppDatabase.MIGRATION_1_2)
         .fallbackToDestructiveMigration(false)
         .build()
     }

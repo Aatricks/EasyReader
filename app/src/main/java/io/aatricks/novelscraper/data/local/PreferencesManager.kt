@@ -135,6 +135,27 @@ class PreferencesManager @Inject constructor(
             .remove(KEY_SCROLL_POSITION)
             .apply()
     }
+
+    /**
+     * Batch update multiple reader settings in a single SharedPreferences transaction.
+     */
+    fun batchUpdateReaderSettings(
+        fontSize: Float? = null,
+        lineHeight: Float? = null,
+        fontFamily: String? = null,
+        margins: Int? = null,
+        paragraphSpacing: Float? = null,
+        readerTheme: String? = null
+    ) {
+        val editor = prefs.edit()
+        fontSize?.let { editor.putFloat(KEY_FONT_SIZE, it) }
+        lineHeight?.let { editor.putFloat(KEY_LINE_HEIGHT, it) }
+        fontFamily?.let { editor.putString(KEY_FONT_FAMILY, it) }
+        margins?.let { editor.putInt(KEY_MARGINS, it) }
+        paragraphSpacing?.let { editor.putFloat(KEY_PARAGRAPH_SPACING, it) }
+        readerTheme?.let { editor.putString(KEY_READER_THEME, it) }
+        editor.apply()
+    }
     
     companion object {
         private const val PREFS_NAME = "novel_scraper_prefs"
