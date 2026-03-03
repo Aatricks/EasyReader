@@ -268,7 +268,9 @@ class PdfContentLoader @Inject constructor(
                 }
 
                 paragraphs + images
-            }.getOrDefault(emptyList())
+            }.getOrElse { e ->
+                listOf(ContentElement.Text("Error loading page $pageNum: ${e.message}"))
+            }
         }
 
         override fun close() {
@@ -281,10 +283,9 @@ class PdfContentLoader @Inject constructor(
         private val imageChunks = mutableListOf<ContentElement.Image>()
 
         override fun eventOccurred(data: IEventData, type: EventType) {
-            if (type == EventType.RENDER_TEXT) {
-                super.eventOccurred(data, type)
-                return
-            }
+            // LocationTextExtractionStrategy (via AbstractRenderListener) needs BEGIN_TEXT_SEQ,
+            // END_TEXT_SEQ, and RENDER_TEXT events. Always forward all events to super.
+            super.eventOccurred(data, type)
 
             if (type == EventType.RENDER_IMAGE) {
                 val renderInfo = data as ImageRenderInfo
