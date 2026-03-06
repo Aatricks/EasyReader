@@ -20,6 +20,7 @@ import io.aatricks.novelscraper.data.model.ContentResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -57,16 +58,24 @@ class PdfContentLoader @Inject constructor(
 
     suspend fun loadPdfContent(filePath: String): ContentResult = withContext(Dispatchers.IO) {
         try {
-            val cachedCount = pageCountCache[filePath]
-            val pageCount = if (cachedCount != null) {
-                cachedCount
-            } else {
-                val count = openPdfDocument(filePath)?.use { doc ->
-                    doc.numberOfPages
-                } ?: throw Exception("PDF not found")
-                pageCountCache[filePath] = count
+            var estimatedHeight = ESTIMATED_PAGE_HEIGHT_DP
+            
+            val pageCount = openPdfDocument(filePath)?.use { docHandle ->
+                val doc = docHandle.document
+                val count = doc.numberOfPages
+                if (count > 0) {
+                    try {
+                        val firstPage = doc.getPage(1)
+                        val pageSize = firstPage.pageSize
+                        // 1 point = 1/72 inch, 1 DP = 1/160 inch. 
+                        // DP = points * 160 / 72 = points * 2.222
+                        estimatedHeight = (pageSize.height * 2.222f).toInt().coerceIn(400, 3000)
+                    } catch (_: Exception) {}
+                }
                 count
-            }
+            } ?: throw Exception("PDF not found")
+            
+            pageCountCache[filePath] = pageCount
 
             if (pageCount == 0) throw Exception("No text in PDF")
 
@@ -77,7 +86,7 @@ class PdfContentLoader @Inject constructor(
             }
 
             ContentResult.Success(
-                elements = PdfLazyList(filePath, pageCount),
+                elements = PdfLazyList(filePath, pageCount, estimatedHeight),
                 title = title,
                 url = filePath,
                 textCount = pageCount,
@@ -123,9 +132,21 @@ class PdfContentLoader @Inject constructor(
         }
     }
 
+    private fun calculateInSampleSize(width: Int, height: Int, maxDim: Int): Int {
+        var sampleSize = 1
+        val larger = maxOf(width, height)
+        if (larger > maxDim) {
+            while (larger / sampleSize > maxDim) {
+                sampleSize *= 2
+            }
+        }
+        return sampleSize
+    }
+
     private inner class PdfLazyList(
         private val filePath: String,
-        private val totalPages: Int
+        private val totalPages: Int,
+        private val estimatedHeight: Int
     ) : AbstractList<ContentElement>(), java.io.Closeable {
         
         private val pageCache = mutableStateMapOf<Int, ContentElement>().apply {
@@ -134,8 +155,10 @@ class PdfContentLoader @Inject constructor(
         
         private val loadingJobs = ConcurrentHashMap<Int, kotlinx.coroutines.Job>()
         
-        private var pdfHandle: PdfDocumentHandle? = null
-        private val mutex = Mutex()
+        // Handle pool for parallel loading
+        private val poolSize = 3
+        private val handlePool = ConcurrentHashMap.newKeySet<PdfDocumentHandle>()
+        private val poolMutex = Mutex()
 
         override val size: Int get() = totalPages
 
@@ -162,25 +185,31 @@ class PdfContentLoader @Inject constructor(
                 }
             }
 
-            return ContentElement.Placeholder("Loading page ${index + 1}...", ESTIMATED_PAGE_HEIGHT_DP)
+            return ContentElement.Placeholder("Loading page ${index + 1}...", estimatedHeight)
         }
 
         private fun triggerLoad(index: Int) {
             if (loadingJobs.containsKey(index)) return
 
             val job = loaderScope.launch {
-                val elements = loadPageContent(index + 1)
+                val result = loadPageContent(index + 1)
+                
+                // Process images outside the mutex (result contains raw image data)
+                val processedElements = withContext(Dispatchers.Default) {
+                    processExtractedElements(result)
+                }
+
                 withContext(Dispatchers.Main) {
-                    addToCache(index, ContentElement.PageContent(elements))
+                    addToCache(index, ContentElement.PageContent(processedElements))
                     loadingJobs.remove(index)
                 }
             }
             
             loadingJobs[index] = job
 
-            if (loadingJobs.size > 10) {
+            if (loadingJobs.size > 15) {
                 val furthestKey = loadingJobs.keys.maxByOrNull { abs(it - index) }
-                if (furthestKey != null && furthestKey != index) {
+                if (furthestKey != null && abs(furthestKey - index) > 10) {
                     loadingJobs.remove(furthestKey)?.cancel()
                 }
             }
@@ -210,100 +239,104 @@ class PdfContentLoader @Inject constructor(
             }
         }
 
-        private fun getOrOpenDocument(): PdfDocument? {
-            if (pdfHandle != null && !pdfHandle!!.document.isClosed) {
-                return pdfHandle!!.document
+        private suspend fun acquireHandle(): PdfDocumentHandle? {
+            poolMutex.withLock {
+                val handle = handlePool.find { !it.document.isClosed }
+                if (handle != null) {
+                    handlePool.remove(handle)
+                    return handle
+                }
+                if (handlePool.size < poolSize) {
+                    return openPdfDocument(filePath)
+                }
+                // If pool is full, wait and retry or just return null (should not happen with mutex)
             }
-
-            // Clean up previous handle
-            try { pdfHandle?.close() } catch (_: Exception) {}
-            pdfHandle = null
-
-            pdfHandle = openPdfDocument(filePath)
-            return pdfHandle?.document
-        }
-
-        private suspend fun loadPageContent(pageNum: Int): List<ContentElement> = mutex.withLock {
-            runCatching {
-                val doc = getOrOpenDocument() ?: return emptyList()
-                if (pageNum > doc.numberOfPages) return emptyList()
-
-                val page = doc.getPage(pageNum)
-                
-                val strategy = CombinedExtractionStrategy()
-                val processor = PdfCanvasProcessor(strategy)
-                processor.processPageContent(page)
-                
-                val rawText = strategy.resultantText ?: ""
-                val images = strategy.getImageElements()
-
-                val paragraphs = mutableListOf<ContentElement>()
-                val sb = java.lang.StringBuilder()
-                
-                for (line in rawText.lines()) {
-                    val trimmed = line.trim()
-                    if (trimmed.isEmpty()) {
-                        if (sb.isNotEmpty()) {
-                            paragraphs.add(ContentElement.Text(sb.toString()))
-                            sb.setLength(0)
-                        }
-                    } else {
-                        if (trimmed.matches(PAGE_NUMBER_REGEX)) continue
-                        if (sb.isNotEmpty()) {
-                            if (sb.endsWith("-")) {
-                                sb.setLength(sb.length - 1)
-                            } else {
-                                sb.append(" ")
-                            }
-                        }
-                        sb.append(trimmed)
+            // Fallback for full pool: wait a bit
+            for (i in 1..5) {
+                delay(50 * i.toLong())
+                poolMutex.withLock {
+                    val handle = handlePool.find { !it.document.isClosed }
+                    if (handle != null) {
+                        handlePool.remove(handle)
+                        return handle
                     }
                 }
-                if (sb.isNotEmpty()) {
-                    paragraphs.add(ContentElement.Text(sb.toString()))
-                }
+            }
+            return openPdfDocument(filePath) // Last resort
+        }
 
-                if (paragraphs.isEmpty() && images.isEmpty() && rawText.isNotBlank()) {
-                    paragraphs.add(ContentElement.Text(rawText.trim()))
-                }
-
-                paragraphs + images
-            }.getOrElse { e ->
-                listOf(ContentElement.Text("Error loading page $pageNum: ${e.message}"))
+        private fun releaseHandle(handle: PdfDocumentHandle?) {
+            if (handle == null) return
+            if (handle.document.isClosed) return
+            
+            val added = handlePool.add(handle)
+            if (!added || handlePool.size > poolSize) {
+                handlePool.remove(handle)
+                handle.close()
             }
         }
 
-        override fun close() {
-            try { pdfHandle?.close() } catch (_: Exception) {}
-            pdfHandle = null
+        private suspend fun loadPageContent(pageNum: Int): ExtractedResult {
+            val handle = acquireHandle() ?: return ExtractedResult(emptyList(), "")
+            
+            return try {
+                val doc = handle.document
+                if (pageNum > doc.numberOfPages) return ExtractedResult(emptyList(), "")
+
+                val page = doc.getPage(pageNum)
+                val strategy = CombinedExtractionStrategy()
+                val processor = PdfCanvasProcessor(strategy)
+                
+                // Parsing content is the part that needs the document handle
+                processor.processPageContent(page)
+                
+                ExtractedResult(
+                    rawImages = strategy.getRawImages(),
+                    rawText = strategy.resultantText ?: ""
+                )
+            } catch (e: Exception) {
+                ExtractedResult(emptyList(), "Error loading page $pageNum: ${e.message}")
+            } finally {
+                releaseHandle(handle)
+            }
         }
-    }
 
-    private inner class CombinedExtractionStrategy : LocationTextExtractionStrategy() {
-        private val imageChunks = mutableListOf<ContentElement.Image>()
+        private suspend fun processExtractedElements(extracted: ExtractedResult): List<ContentElement> {
+            val paragraphs = mutableListOf<ContentElement>()
+            val rawText = extracted.rawText
 
-        override fun eventOccurred(data: IEventData?, type: EventType) {
-            if (data == null) return
-            // LocationTextExtractionStrategy (via AbstractRenderListener) needs BEGIN_TEXT_SEQ,
-            // END_TEXT_SEQ, and RENDER_TEXT events. Always forward all events to super.
-            super.eventOccurred(data, type)
+            if (rawText.startsWith("Error loading page")) {
+                return listOf(ContentElement.Text(rawText))
+            }
 
-            if (type == EventType.RENDER_IMAGE) {
-                val renderInfo = data as? ImageRenderInfo ?: return
+            val sb = java.lang.StringBuilder()
+            for (line in rawText.lines()) {
+                val trimmed = line.trim()
+                if (trimmed.isEmpty()) {
+                    if (sb.isNotEmpty()) {
+                        paragraphs.add(ContentElement.Text(sb.toString()))
+                        sb.setLength(0)
+                    }
+                } else {
+                    if (trimmed.matches(PAGE_NUMBER_REGEX)) continue
+                    if (sb.isNotEmpty()) {
+                        if (sb.endsWith("-")) {
+                            sb.setLength(sb.length - 1)
+                        } else {
+                            sb.append(" ")
+                        }
+                    }
+                    sb.append(trimmed)
+                }
+            }
+            if (sb.isNotEmpty()) {
+                paragraphs.add(ContentElement.Text(sb.toString()))
+            }
+
+            val processedImages = extracted.rawImages.mapNotNull { raw ->
                 try {
-                    val imageObject = renderInfo.image ?: return
-                    val imageBytes = imageObject.imageBytes ?: return
-
-                    val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, options)
-                    val origWidth = options.outWidth
-                    val origHeight = options.outHeight
-                    if (origWidth <= 0 || origHeight <= 0) return
-
-                    // Downsample large images to save memory
-                    val sampleSize = calculateInSampleSize(origWidth, origHeight, IMAGE_DOWNSAMPLE_THRESHOLD)
-                    val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-                    val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, decodeOptions) ?: return
+                    val options = BitmapFactory.Options().apply { inSampleSize = calculateInSampleSize(raw.width, raw.height, IMAGE_DOWNSAMPLE_THRESHOLD) }
+                    val bitmap = BitmapFactory.decodeByteArray(raw.bytes, 0, raw.bytes.size, options) ?: return@mapNotNull null
                     
                     val fileName = "pdf_img_${UUID.randomUUID()}.webp"
                     val file = File(context.cacheDir, fileName)
@@ -312,26 +345,62 @@ class PdfContentLoader @Inject constructor(
                     }
                     bitmap.recycle()
                     
-                    imageChunks.add(ContentElement.Image(
+                    ContentElement.Image(
                         url = "file://${file.absolutePath}",
-                        width = origWidth,
-                        height = origHeight
-                    ))
+                        width = raw.width,
+                        height = raw.height
+                    )
+                } catch (_: Exception) { null }
+            }
+
+            if (paragraphs.isEmpty() && processedImages.isEmpty() && rawText.isNotBlank()) {
+                paragraphs.add(ContentElement.Text(rawText.trim()))
+            }
+
+            return paragraphs + processedImages
+        }
+
+        override fun close() {
+            handlePool.forEach { it.close() }
+            handlePool.clear()
+        }
+    }
+
+    private data class ExtractedResult(
+        val rawImages: List<RawImage>,
+        val rawText: String
+    )
+
+    private data class RawImage(
+        val bytes: ByteArray,
+        val width: Int,
+        val height: Int
+    )
+
+    private inner class CombinedExtractionStrategy : LocationTextExtractionStrategy() {
+        private val rawImages = mutableListOf<RawImage>()
+
+        override fun eventOccurred(data: IEventData?, type: EventType) {
+            if (data == null) return
+            super.eventOccurred(data, type)
+
+            if (type == EventType.RENDER_IMAGE) {
+                val renderInfo = data as? ImageRenderInfo ?: return
+                try {
+                    val imageObject = renderInfo.image ?: return
+                    val imageBytes = imageObject.imageBytes ?: return
+                    
+                    // Directly extract dimensions from PDF image object dictionary
+                    val width = imageObject.width.toInt()
+                    val height = imageObject.height.toInt()
+                    
+                    if (width > 0 && height > 0) {
+                        rawImages.add(RawImage(imageBytes, width, height))
+                    }
                 } catch (_: Exception) {}
             }
         }
 
-        private fun calculateInSampleSize(width: Int, height: Int, maxDim: Int): Int {
-            var sampleSize = 1
-            val larger = maxOf(width, height)
-            if (larger > maxDim) {
-                while (larger / sampleSize > maxDim) {
-                    sampleSize *= 2
-                }
-            }
-            return sampleSize
-        }
-
-        fun getImageElements(): List<ContentElement.Image> = imageChunks
+        fun getRawImages(): List<RawImage> = rawImages
     }
 }
