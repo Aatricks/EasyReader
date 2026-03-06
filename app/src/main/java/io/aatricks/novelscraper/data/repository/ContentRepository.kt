@@ -28,12 +28,14 @@ class ContentRepository @Inject constructor(
         )
     }
 
-    suspend fun loadContent(url: String): ContentResult = withContext(Dispatchers.IO) {
+    suspend fun loadContent(url: String): ContentResult = loadContent(url, pdfResumeIndex = null)
+
+    suspend fun loadContent(url: String, pdfResumeIndex: Int?): ContentResult = withContext(Dispatchers.IO) {
         runCatching {
             when {
                 url.startsWith("http://") || url.startsWith("https://") -> webLoader.loadWebContent(url)
-                isLocalFile(url) -> localLoader.handleLocalFile(url, pdfLoader, epubLoader)
-                url.lowercase().endsWith(".pdf") -> pdfLoader.loadPdfContent(url)
+                isLocalFile(url) -> localLoader.handleLocalFile(url, pdfLoader, epubLoader, pdfResumeIndex)
+                url.lowercase().endsWith(".pdf") -> pdfLoader.loadPdfContent(url, pdfResumeIndex)
                 url.lowercase().endsWith(".epub") -> epubLoader.loadEpubContent(url)
                 url.lowercase().run { endsWith(".html") || endsWith(".htm") } -> localLoader.loadHtmlFile(url)
                 else -> ContentResult.Error("Unsupported file type")

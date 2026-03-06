@@ -220,7 +220,14 @@ class ReaderViewModel @Inject constructor(
                 )
             }
 
-            when (val result = contentRepository.loadContent(url)) {
+            val pdfResumeIndex = resolvePdfResumeIndex(url, libraryItemId, isExplicitNavigation)
+            val result = if (pdfResumeIndex != null) {
+                contentRepository.loadContent(url, pdfResumeIndex)
+            } else {
+                contentRepository.loadContent(url)
+            }
+
+            when (result) {
                 is ContentResult.Success -> {
                     updateState { it.copy(lastAttemptedUrl = null) }
                     handleLoadSuccess(result, libraryItemId, fromBottom)
@@ -249,6 +256,20 @@ class ReaderViewModel @Inject constructor(
             loadEpubChapter(basePath, href, libraryItemId, fromBottom, isSilent)
             true
         } else false
+    }
+
+    private suspend fun resolvePdfResumeIndex(
+        url: String,
+        libraryItemId: String?,
+        isExplicitNavigation: Boolean
+    ): Int? {
+        if (isExplicitNavigation) return null
+
+        val libraryItem = libraryItemId?.let { libraryRepository.getItemById(it) }
+            ?: libraryRepository.getItemByUrl(url)
+            ?: return null
+
+        return libraryItem.takeIf { it.contentType == ContentType.PDF }?.lastReadIndex
     }
 
     private fun isPlaceholderAtCurrentPosition(index: Int? = null): Boolean {

@@ -17,21 +17,36 @@ class LocalContentLoader @Inject constructor(
     @ApplicationContext private val context: Context,
     private val htmlParser: HtmlParser
 ) {
-    suspend fun handleLocalFile(url: String, pdfLoader: PdfContentLoader, epubLoader: EpubContentLoader): ContentResult {
+    suspend fun handleLocalFile(
+        url: String,
+        pdfLoader: PdfContentLoader,
+        epubLoader: EpubContentLoader,
+        pdfResumeIndex: Int? = null
+    ): ContentResult {
         val uri = Uri.parse(url)
-        val mime = context.contentResolver.getType(uri) ?: return loadFileByExtension(url, pdfLoader, epubLoader)
+        val mime = context.contentResolver.getType(uri) ?: return loadFileByExtension(
+            url,
+            pdfLoader,
+            epubLoader,
+            pdfResumeIndex
+        )
         
         return when {
-            mime.contains("pdf", ignoreCase = true) -> pdfLoader.loadPdfContent(url)
+            mime.contains("pdf", ignoreCase = true) -> pdfLoader.loadPdfContent(url, pdfResumeIndex)
             mime.contains("epub", ignoreCase = true) || mime.contains("application/epub+zip", ignoreCase = true) -> epubLoader.loadEpubContent(url)
             mime.contains("html", ignoreCase = true) || mime.contains("text", ignoreCase = true) -> loadHtmlFile(url)
             else -> ContentResult.Error("Unsupported MIME type: $mime")
         }
     }
 
-    suspend fun loadFileByExtension(url: String, pdfLoader: PdfContentLoader, epubLoader: EpubContentLoader): ContentResult =
+    suspend fun loadFileByExtension(
+        url: String,
+        pdfLoader: PdfContentLoader,
+        epubLoader: EpubContentLoader,
+        pdfResumeIndex: Int? = null
+    ): ContentResult =
         when {
-            url.endsWith(".pdf", ignoreCase = true) -> pdfLoader.loadPdfContent(url)
+            url.endsWith(".pdf", ignoreCase = true) -> pdfLoader.loadPdfContent(url, pdfResumeIndex)
             url.endsWith(".epub", ignoreCase = true) -> epubLoader.loadEpubContent(url)
             url.endsWith(".html", ignoreCase = true) || url.endsWith(".htm", ignoreCase = true) -> loadHtmlFile(url)
             else -> ContentResult.Error("Unsupported local file type")

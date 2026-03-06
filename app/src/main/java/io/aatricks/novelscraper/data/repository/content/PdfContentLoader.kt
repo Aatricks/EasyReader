@@ -56,7 +56,7 @@ class PdfContentLoader @Inject constructor(
     private val pageCountCache = ConcurrentHashMap<String, Int>()
     private val globalContentCache = LruCache<String, MutableMap<Int, ContentElement>>(MAX_GLOBAL_PDF_CACHE_SIZE)
 
-    suspend fun loadPdfContent(filePath: String): ContentResult = withContext(Dispatchers.IO) {
+    suspend fun loadPdfContent(filePath: String, preloadPageIndex: Int? = null): ContentResult = withContext(Dispatchers.IO) {
         try {
             var estimatedHeight = ESTIMATED_PAGE_HEIGHT_DP
             
@@ -79,6 +79,8 @@ class PdfContentLoader @Inject constructor(
 
             if (pageCount == 0) throw Exception("No text in PDF")
 
+            val preloadedPages = preloadPageContent(filePath, pageCount, preloadPageIndex)
+
             val title = if (filePath.startsWith("content://")) {
                 Uri.parse(filePath).lastPathSegment ?: "PDF"
             } else {
@@ -86,7 +88,7 @@ class PdfContentLoader @Inject constructor(
             }
 
             ContentResult.Success(
-                elements = PdfLazyList(filePath, pageCount, estimatedHeight),
+                elements = PdfLazyList(filePath, pageCount, estimatedHeight, preloadedPages),
                 title = title,
                 url = filePath,
                 textCount = pageCount,
@@ -109,6 +111,51 @@ class PdfContentLoader @Inject constructor(
             val file = File(filePath)
             if (!file.exists()) return null
             PdfDocumentHandle(PdfDocument(PdfReader(filePath)), null)
+        }
+    }
+
+    private fun getGlobalCacheSnapshot(filePath: String): Map<Int, ContentElement> = synchronized(globalContentCache) {
+        globalContentCache.get(filePath)?.toMap().orEmpty()
+    }
+
+    private fun addToGlobalCache(filePath: String, index: Int, content: ContentElement) {
+        synchronized(globalContentCache) {
+            var docCache = globalContentCache.get(filePath)
+            if (docCache == null) {
+                docCache = mutableMapOf()
+                globalContentCache.put(filePath, docCache)
+            }
+            docCache[index] = content
+
+            if (docCache.size > MAX_GLOBAL_PAGE_CACHE_PER_PDF) {
+                val firstKey = docCache.keys.firstOrNull()
+                if (firstKey != null) docCache.remove(firstKey)
+            }
+        }
+    }
+
+    private suspend fun preloadPageContent(
+        filePath: String,
+        pageCount: Int,
+        preloadPageIndex: Int?
+    ): Map<Int, ContentElement> {
+        if (preloadPageIndex == null || pageCount <= 0) return emptyMap()
+
+        val targetIndex = preloadPageIndex.coerceIn(0, pageCount - 1)
+        val cachedPage = getGlobalCacheSnapshot(filePath)[targetIndex]
+        if (cachedPage != null) {
+            return mapOf(targetIndex to cachedPage)
+        }
+
+        val handle = openPdfDocument(filePath) ?: return emptyMap()
+        return try {
+            val pageContent = loadPageElement(handle, targetIndex + 1)
+            addToGlobalCache(filePath, targetIndex, pageContent)
+            mapOf(targetIndex to pageContent)
+        } catch (_: Exception) {
+            emptyMap()
+        } finally {
+            handle.close()
         }
     }
 
@@ -143,14 +190,108 @@ class PdfContentLoader @Inject constructor(
         return sampleSize
     }
 
+    private suspend fun extractPageContent(handle: PdfDocumentHandle, pageNum: Int): ExtractedResult {
+        return try {
+            val doc = handle.document
+            if (pageNum !in 1..doc.numberOfPages) {
+                return ExtractedResult(emptyList(), "")
+            }
+
+            val page = doc.getPage(pageNum)
+            val strategy = CombinedExtractionStrategy()
+            val processor = PdfCanvasProcessor(strategy)
+            processor.processPageContent(page)
+
+            ExtractedResult(
+                rawImages = strategy.getRawImages(),
+                rawText = strategy.resultantText ?: ""
+            )
+        } catch (e: Exception) {
+            ExtractedResult(emptyList(), "Error loading page $pageNum: ${e.message}")
+        }
+    }
+
+    private suspend fun loadPageElement(handle: PdfDocumentHandle, pageNum: Int): ContentElement {
+        val extracted = extractPageContent(handle, pageNum)
+        val processedElements = withContext(Dispatchers.Default) {
+            processExtractedElements(extracted)
+        }
+        return ContentElement.PageContent(processedElements)
+    }
+
+    private fun processExtractedElements(extracted: ExtractedResult): List<ContentElement> {
+        val paragraphs = mutableListOf<ContentElement>()
+        val rawText = extracted.rawText
+
+        if (rawText.startsWith("Error loading page")) {
+            return listOf(ContentElement.Text(rawText))
+        }
+
+        val sb = java.lang.StringBuilder()
+        for (line in rawText.lines()) {
+            val trimmed = line.trim()
+            if (trimmed.isEmpty()) {
+                if (sb.isNotEmpty()) {
+                    paragraphs.add(ContentElement.Text(sb.toString()))
+                    sb.setLength(0)
+                }
+            } else {
+                if (trimmed.matches(PAGE_NUMBER_REGEX)) continue
+                if (sb.isNotEmpty()) {
+                    if (sb.endsWith("-")) {
+                        sb.setLength(sb.length - 1)
+                    } else {
+                        sb.append(" ")
+                    }
+                }
+                sb.append(trimmed)
+            }
+        }
+        if (sb.isNotEmpty()) {
+            paragraphs.add(ContentElement.Text(sb.toString()))
+        }
+
+        val processedImages = extracted.rawImages.mapNotNull { raw ->
+            try {
+                val options = BitmapFactory.Options().apply {
+                    inSampleSize = calculateInSampleSize(raw.width, raw.height, IMAGE_DOWNSAMPLE_THRESHOLD)
+                }
+                val bitmap = BitmapFactory.decodeByteArray(raw.bytes, 0, raw.bytes.size, options) ?: return@mapNotNull null
+
+                val fileName = "pdf_img_${UUID.randomUUID()}.webp"
+                val file = File(context.cacheDir, fileName)
+                FileOutputStream(file).use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 80, out)
+                }
+                bitmap.recycle()
+
+                ContentElement.Image(
+                    url = "file://${file.absolutePath}",
+                    width = raw.width,
+                    height = raw.height
+                )
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        if (paragraphs.isEmpty() && processedImages.isEmpty() && rawText.isNotBlank()) {
+            paragraphs.add(ContentElement.Text(rawText.trim()))
+        }
+
+        return paragraphs + processedImages
+    }
+
     private inner class PdfLazyList(
         private val filePath: String,
         private val totalPages: Int,
-        private val estimatedHeight: Int
+        private val estimatedHeight: Int,
+        preloadedPages: Map<Int, ContentElement> = emptyMap()
     ) : AbstractList<ContentElement>(), java.io.Closeable {
         
         private val pageCache = mutableStateMapOf<Int, ContentElement>().apply {
-            globalContentCache.get(filePath)?.let { putAll(it) }
+            putAll(getGlobalCacheSnapshot(filePath))
+            putAll(preloadedPages)
         }
         
         private val loadingJobs = ConcurrentHashMap<Int, kotlinx.coroutines.Job>()
@@ -164,7 +305,7 @@ class PdfContentLoader @Inject constructor(
 
         override fun get(index: Int): ContentElement {
             if (index < 0 || index >= size) throw IndexOutOfBoundsException("Index: $index, Size: $size")
-            
+
             pageCache[index]?.let { return it }
 
             triggerLoad(index)
@@ -189,18 +330,13 @@ class PdfContentLoader @Inject constructor(
         }
 
         private fun triggerLoad(index: Int) {
-            if (loadingJobs.containsKey(index)) return
+            if (pageCache.containsKey(index) || loadingJobs.containsKey(index)) return
 
             val job = loaderScope.launch {
                 val result = loadPageContent(index + 1)
-                
-                // Process images outside the mutex (result contains raw image data)
-                val processedElements = withContext(Dispatchers.Default) {
-                    processExtractedElements(result)
-                }
 
                 withContext(Dispatchers.Main) {
-                    addToCache(index, ContentElement.PageContent(processedElements))
+                    addToCache(index, result)
                     loadingJobs.remove(index)
                 }
             }
@@ -217,20 +353,7 @@ class PdfContentLoader @Inject constructor(
 
         private fun addToCache(index: Int, content: ContentElement) {
             pageCache[index] = content
-            
-            synchronized(globalContentCache) {
-                var docCache = globalContentCache.get(filePath)
-                if (docCache == null) {
-                    docCache = mutableMapOf()
-                    globalContentCache.put(filePath, docCache)
-                }
-                docCache[index] = content
-                
-                if (docCache.size > MAX_GLOBAL_PAGE_CACHE_PER_PDF) {
-                    val firstKey = docCache.keys.firstOrNull()
-                    if (firstKey != null) docCache.remove(firstKey)
-                }
-            }
+            addToGlobalCache(filePath, index, content)
 
             // Distance-based eviction: remove pages far from current position
             if (pageCache.size > MAX_LOCAL_CACHE_SIZE) {
@@ -276,88 +399,16 @@ class PdfContentLoader @Inject constructor(
             }
         }
 
-        private suspend fun loadPageContent(pageNum: Int): ExtractedResult {
-            val handle = acquireHandle() ?: return ExtractedResult(emptyList(), "")
+        private suspend fun loadPageContent(pageNum: Int): ContentElement {
+            val handle = acquireHandle() ?: return ContentElement.PageContent(
+                listOf(ContentElement.Text("Error loading page $pageNum: PDF not available"))
+            )
             
             return try {
-                val doc = handle.document
-                if (pageNum > doc.numberOfPages) return ExtractedResult(emptyList(), "")
-
-                val page = doc.getPage(pageNum)
-                val strategy = CombinedExtractionStrategy()
-                val processor = PdfCanvasProcessor(strategy)
-                
-                // Parsing content is the part that needs the document handle
-                processor.processPageContent(page)
-                
-                ExtractedResult(
-                    rawImages = strategy.getRawImages(),
-                    rawText = strategy.resultantText ?: ""
-                )
-            } catch (e: Exception) {
-                ExtractedResult(emptyList(), "Error loading page $pageNum: ${e.message}")
+                loadPageElement(handle, pageNum)
             } finally {
                 releaseHandle(handle)
             }
-        }
-
-        private suspend fun processExtractedElements(extracted: ExtractedResult): List<ContentElement> {
-            val paragraphs = mutableListOf<ContentElement>()
-            val rawText = extracted.rawText
-
-            if (rawText.startsWith("Error loading page")) {
-                return listOf(ContentElement.Text(rawText))
-            }
-
-            val sb = java.lang.StringBuilder()
-            for (line in rawText.lines()) {
-                val trimmed = line.trim()
-                if (trimmed.isEmpty()) {
-                    if (sb.isNotEmpty()) {
-                        paragraphs.add(ContentElement.Text(sb.toString()))
-                        sb.setLength(0)
-                    }
-                } else {
-                    if (trimmed.matches(PAGE_NUMBER_REGEX)) continue
-                    if (sb.isNotEmpty()) {
-                        if (sb.endsWith("-")) {
-                            sb.setLength(sb.length - 1)
-                        } else {
-                            sb.append(" ")
-                        }
-                    }
-                    sb.append(trimmed)
-                }
-            }
-            if (sb.isNotEmpty()) {
-                paragraphs.add(ContentElement.Text(sb.toString()))
-            }
-
-            val processedImages = extracted.rawImages.mapNotNull { raw ->
-                try {
-                    val options = BitmapFactory.Options().apply { inSampleSize = calculateInSampleSize(raw.width, raw.height, IMAGE_DOWNSAMPLE_THRESHOLD) }
-                    val bitmap = BitmapFactory.decodeByteArray(raw.bytes, 0, raw.bytes.size, options) ?: return@mapNotNull null
-                    
-                    val fileName = "pdf_img_${UUID.randomUUID()}.webp"
-                    val file = File(context.cacheDir, fileName)
-                    FileOutputStream(file).use { out ->
-                        bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 80, out)
-                    }
-                    bitmap.recycle()
-                    
-                    ContentElement.Image(
-                        url = "file://${file.absolutePath}",
-                        width = raw.width,
-                        height = raw.height
-                    )
-                } catch (_: Exception) { null }
-            }
-
-            if (paragraphs.isEmpty() && processedImages.isEmpty() && rawText.isNotBlank()) {
-                paragraphs.add(ContentElement.Text(rawText.trim()))
-            }
-
-            return paragraphs + processedImages
         }
 
         override fun close() {

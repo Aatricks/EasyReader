@@ -125,6 +125,38 @@ class ReaderViewModelTest {
     }
 
     @Test
+    fun `loadContent uses saved pdf page as preload hint`() = runTest {
+        val itemId = "pdf-item"
+        val pdfUrl = "/tmp/sample.pdf"
+        val savedPageIndex = 4
+        val pdfItem = LibraryItem(
+            id = itemId,
+            title = "Sample PDF",
+            url = pdfUrl,
+            contentType = ContentType.PDF,
+            progress = 55,
+            lastReadIndex = savedPageIndex,
+            lastReadOffset = 18,
+            lastScrollPosition = 55f
+        )
+        val preloadedPages = List(savedPageIndex) { index ->
+            ContentElement.Placeholder("Loading page ${index + 1}...")
+        } + ContentElement.PageContent(listOf(ContentElement.Text("Saved PDF page")))
+
+        whenever(contentRepository.loadContent(pdfUrl, savedPageIndex)).thenReturn(
+            ContentResult.Success(preloadedPages, "Sample PDF", pdfUrl)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(pdfItem)
+
+        viewModel.loadContent(pdfUrl, itemId)
+        advanceUntilIdle()
+
+        verify(contentRepository).loadContent(pdfUrl, savedPageIndex)
+        assertEquals(savedPageIndex, viewModel.uiState.value.scrollIndex)
+        assertTrue(viewModel.uiState.value.content?.paragraphs?.get(savedPageIndex) is ContentElement.PageContent)
+    }
+
+    @Test
     fun `updateScrollPosition saves progress after delay`() = runTest {
         val itemId = "item-1"
         val url = "https://example.com/1"
