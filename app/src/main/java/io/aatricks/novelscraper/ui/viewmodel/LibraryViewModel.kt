@@ -489,4 +489,31 @@ class LibraryViewModel @Inject constructor(
         repository.toggleSourceExpansion(sourceName)
     }
 
+    fun resetProgress(itemId: String): Unit {
+        viewModelScope.launch {
+            runCatching {
+                repository.getItemById(itemId)?.let { item ->
+                    contentRepository.clearCache(item.url)
+                }
+                repository.resetProgress(itemId)
+            }.onFailure { e ->
+                updateState { it.copy(error = "Failed to reset progress: ${e.message}") }
+            }
+        }
+    }
+
+    fun resetNovelProgress(baseTitle: String): Unit {
+        viewModelScope.launch {
+            runCatching {
+                val chapters = repository.getChaptersByBaseTitle(baseTitle)
+                chapters.forEach { item ->
+                    contentRepository.clearCache(item.url)
+                }
+                repository.resetProgressByBaseTitle(baseTitle)
+            }.onFailure { e ->
+                updateState { it.copy(error = "Failed to reset novel progress: ${e.message}") }
+            }
+        }
+    }
+
 }

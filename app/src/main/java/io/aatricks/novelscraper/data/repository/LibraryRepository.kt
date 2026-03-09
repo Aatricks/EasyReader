@@ -316,6 +316,18 @@ class LibraryRepository @Inject constructor(
         }
     }
 
+    suspend fun resetProgress(itemId: String): Boolean = runCatching("Failed to reset progress", false) {
+        libraryDao.getItemById(itemId)?.let {
+            libraryDao.resetProgress(itemId)
+            true
+        } ?: false
+    } ?: false
+
+    suspend fun resetProgressByBaseTitle(baseTitle: String): Boolean = runCatching("Failed to reset novel progress", false) {
+        libraryDao.resetProgressByBaseTitle(baseTitle)
+        true
+    } ?: false
+
     suspend fun refreshLibraryUpdates(exploreRepository: ExploreRepository): Unit = io {
         runCatching("Refresh updates failed") {
             val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()

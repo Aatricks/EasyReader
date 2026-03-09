@@ -425,13 +425,13 @@ class ReaderViewModel @Inject constructor(
             }
 
             if (toDelete.isNotEmpty()) {
-                val ids = toDelete.map { it.id }.toSet()
-                libraryRepository.removeItems(ids)
                 supervisorScope {
                     toDelete.map { item ->
                         async { contentRepository.clearCache(item.url) }
                     }.awaitAll()
                 }
+                val ids = toDelete.map { it.id }.toSet()
+                libraryRepository.removeItems(ids)
             }
         }
     }

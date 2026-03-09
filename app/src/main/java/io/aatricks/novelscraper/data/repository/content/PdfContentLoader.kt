@@ -454,4 +454,18 @@ class PdfContentLoader @Inject constructor(
 
         fun getRawImages(): List<RawImage> = rawImages
     }
+
+    fun clearCache(url: String) {
+        synchronized(globalContentCache) {
+            globalContentCache.remove(url)
+        }
+        pageCountCache.remove(url)
+    }
+
+    fun clearAllCache() {
+        synchronized(globalContentCache) {
+            globalContentCache.evictAll()
+        }
+        pageCountCache.clear()
+    }
 }

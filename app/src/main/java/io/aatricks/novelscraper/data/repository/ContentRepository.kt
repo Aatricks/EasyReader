@@ -120,10 +120,13 @@ class ContentRepository @Inject constructor(
     suspend fun getEpubImage(url: String): ByteArray? = epubLoader.getEpubImage(url)
 
     suspend fun clearCache(url: String): Unit = withContext(Dispatchers.IO) {
-        if (url.contains("epub")) {
-            epubLoader.clearCache(url)
-        } else {
-            webLoader.clearCache(url)
+        when {
+            url.contains("epub") -> epubLoader.clearCache(url)
+            url.endsWith(".pdf", ignoreCase = true) || url.contains("pdf") || url.startsWith("content://") -> {
+                pdfLoader.clearCache(url)
+                webLoader.clearCache(url)
+            }
+            else -> webLoader.clearCache(url)
         }
     }
 
@@ -131,6 +134,7 @@ class ContentRepository @Inject constructor(
         runCatching {
             webLoader.clearAllCache()
             epubLoader.clearAllCache()
+            pdfLoader.clearAllCache()
             true
         }.getOrDefault(false)
     }
