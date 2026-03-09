@@ -1091,6 +1091,8 @@ private fun rememberReaderNestedScrollConnection(
                     val isAtStart = pagerState.currentPage == 0
                     val isAtEnd = pagerState.currentPage == content.paragraphs.size - 1
 
+                    val isAtAnyEdge = isAtStart || isAtEnd
+
                     if (uiState.isRtl) {
                         if (available.x < 0 && isAtStart && uiState.canNavigatePrevious) {
                             pullAmount += available.x * 0.5f
@@ -1112,9 +1114,25 @@ private fun rememberReaderNestedScrollConnection(
                             return Offset(available.x, 0f)
                         }
                     }
+
+                    // Reset stale pull when no longer at an edge
+                    if (pullAmount != 0f && !isAtAnyEdge) {
+                        pullAmount = 0f
+                        onPullAmountChange(0f)
+                    }
                 } else {
+                    val layoutInfo = listState.layoutInfo
+                    val viewportHeight = layoutInfo.viewportSize.height
+                    val totalVisibleHeight = layoutInfo.visibleItemsInfo.sumOf { it.size }
+
                     val isAtTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
-                    val isAtBottom = !listState.canScrollForward
+                    // Only consider "at bottom" if content actually fills the viewport,
+                    // preventing false triggers when images haven't loaded yet (small placeholders).
+                    // Short chapters (≤5 items) are always valid.
+                    val isAtBottom = !listState.canScrollForward && (
+                        layoutInfo.totalItemsCount <= 5 ||
+                        totalVisibleHeight > viewportHeight
+                    )
 
                     if (available.y > 0 && isAtTop && uiState.canNavigatePrevious) {
                         pullAmount += available.y * 0.5f
@@ -1124,6 +1142,12 @@ private fun rememberReaderNestedScrollConnection(
                         pullAmount += available.y * 0.5f
                         onPullAmountChange(pullAmount)
                         return Offset(0f, available.y)
+                    }
+
+                    // Reset stale pull when no longer at an edge
+                    if (pullAmount != 0f && !isAtTop && !isAtBottom) {
+                        pullAmount = 0f
+                        onPullAmountChange(0f)
                     }
                 }
                 return Offset.Zero

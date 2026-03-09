@@ -48,7 +48,17 @@ fun ReaderImageView(
     val containerModifier = when {
         dynamicHeight -> Modifier.fillMaxWidth().wrapContentHeight()
         enableZoom -> Modifier.fillMaxSize()
-        else -> Modifier.fillMaxWidth().then(aspectRatioModifier).wrapContentHeight()
+        else -> {
+            val base = Modifier.fillMaxWidth().then(aspectRatioModifier)
+            if (width <= 0 || height <= 0) {
+                // When dimensions are unknown, enforce a minimum height to prevent
+                // LazyColumn from displaying all items at once (which falsely triggers
+                // end-of-list detection and spurious chapter navigation).
+                base.defaultMinSize(minHeight = 200.dp)
+            } else {
+                base.wrapContentHeight()
+            }
+        }
     }
 
     // For the image itself, if we are in fillMaxSize mode, we don't want the aspect ratio modifier to clip it
