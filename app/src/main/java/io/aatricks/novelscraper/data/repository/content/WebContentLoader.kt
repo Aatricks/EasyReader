@@ -217,17 +217,17 @@ class WebContentLoader @Inject constructor(
 
         if (imageElements.isEmpty()) return elements
 
-        // Performance Optimization:
+        // For manhwa/webtoon long-strips: skip network dimension fetching — strips are always
+        // portrait and don't need spread-splitting or grouping. Disk-only is fine for revisits.
         val isManhwa = url.contains("manhwa", ignoreCase = true) || url.contains("webtoon", ignoreCase = true)
-        if (isManhwa || imageElements.size > SKIP_DIMENSION_CHECK_THRESHOLD) {
-            return elements
-        }
 
+        // For manga/other, always try to get dimensions (disk first, then a cheap Range request).
+        // This ensures grouping and spread-splitting work on first visit regardless of chapter size.
         val imagesWithDims = withContext(Dispatchers.IO) {
             imageElements.map { img ->
                 async {
                     DIMENSION_SEMAPHORE.withPermit {
-                        fetchImageDimensions(img.url, url)?.let { (w, h) ->
+                        fetchImageDimensions(img.url, url, diskOnly = isManhwa)?.let { (w, h) ->
                             img.copy(width = w, height = h)
                         } ?: img
                     }
@@ -266,7 +266,11 @@ class WebContentLoader @Inject constructor(
         return groupSimilarElements(expandedElements)
     }
 
-    private suspend fun fetchImageDimensions(imageUrl: String, pageUrl: String): Pair<Int, Int>? = withContext(Dispatchers.IO) {
+    private suspend fun fetchImageDimensions(
+        imageUrl: String,
+        pageUrl: String,
+        diskOnly: Boolean = false
+    ): Pair<Int, Int>? = withContext(Dispatchers.IO) {
         if (!imageUrl.startsWith("http")) return@withContext null
         
         runCatching {
@@ -276,6 +280,9 @@ class WebContentLoader @Inject constructor(
                 BitmapFactory.decodeFile(cached.absolutePath, opt)
                 if (opt.outWidth > 0) return@runCatching Pair(opt.outWidth, opt.outHeight)
             }
+
+            // If disk-only mode (manhwa, large chapters), don't perform any network request.
+            if (diskOnly) return@withContext null
 
             val req = Request.Builder()
                 .url(imageUrl)
@@ -324,29 +331,28 @@ class WebContentLoader @Inject constructor(
     }
 
     private fun shouldGroupWithLastImage(last: ContentElement, current: ContentElement.Image): Boolean {
-        if (last !is ContentElement.Image || last.width <= 0 || current.width <= 0 || last.width != current.width) {
-            return false
-        }
+        if (last !is ContentElement.Image || last.width <= 0 || current.width <= 0) return false
+        // Allow widths within 5% to handle scanning / source inconsistencies
+        if (kotlin.math.abs(last.width - current.width).toFloat() / last.width > 0.05f) return false
         if (last.side != ContentElement.Image.Side.FULL || current.side != ContentElement.Image.Side.FULL) {
             return false
         }
         val lastRatio = last.height.toFloat() / last.width
         val currentRatio = current.height.toFloat() / current.width
-        return (currentRatio < 0.8f || lastRatio < 0.8f) && lastRatio + currentRatio < 2.1f
+        // Group if at least one image is shorter than a normal manga page (h/w < 1.2) and
+        // combined they form a page-sized result (total h/w < 2.5).
+        return (currentRatio < 1.2f || lastRatio < 1.2f) && lastRatio + currentRatio < 2.5f
     }
 
     private fun shouldGroupWithLastGroup(last: ContentElement, current: ContentElement.Image): Boolean {
         if (last !is ContentElement.ImageGroup) return false
-        if (current.side != ContentElement.Image.Side.FULL) {
-            return false
-        }
+        if (current.side != ContentElement.Image.Side.FULL) return false
         val lastInGroup = last.images.last()
-        if (lastInGroup.width <= 0 || current.width <= 0 || lastInGroup.width != current.width) {
-            return false
-        }
+        if (lastInGroup.width <= 0 || current.width <= 0) return false
+        if (kotlin.math.abs(lastInGroup.width - current.width).toFloat() / lastInGroup.width > 0.05f) return false
         val groupRatio = last.images.sumOf { it.height }.toFloat() / lastInGroup.width
         val currentRatio = current.height.toFloat() / current.width
-        return currentRatio < 0.8f && groupRatio + currentRatio < 2.1f
+        return currentRatio < 1.2f && groupRatio + currentRatio < 2.5f
     }
 
     private fun calculateDirectorySize(dir: File): Long {
