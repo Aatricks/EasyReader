@@ -4,13 +4,12 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.aatricks.novelscraper.data.model.ExploreItem
 import io.aatricks.novelscraper.data.repository.ExploreRepository
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@OptIn(kotlinx.coroutines.FlowPreview::class)
 @HiltViewModel
 class ExploreViewModel @Inject constructor(
     val exploreRepository: ExploreRepository
@@ -31,13 +30,33 @@ class ExploreViewModel @Inject constructor(
         val sources: List<String> = emptyList()
     )
 
+    private val _searchQueryFlow = MutableStateFlow("")
+
     init {
         updateState { it.copy(sources = exploreRepository.getSourceNames()) }
         loadInitialData()
+
+        viewModelScope.launch {
+            _searchQueryFlow
+                .debounce(500L)
+                .distinctUntilChanged()
+                .collect { query ->
+                    if (_uiState.value.isSearching) {
+                        if (query.isNotBlank()) {
+                            performSearch()
+                        } else if (_uiState.value.items.isEmpty()) {
+                            loadInitialData()
+                        }
+                    }
+                }
+        }
     }
 
+    private var currentJob: Job? = null
+
     private fun loadInitialData(): Unit {
-        viewModelScope.launch {
+        currentJob?.cancel()
+        currentJob = viewModelScope.launch {
             runCatching {
                 val tags = exploreRepository.getTags(_uiState.value.selectedSource)
                 updateState { it.copy(isLoading = true, availableTags = tags) }
@@ -51,12 +70,14 @@ class ExploreViewModel @Inject constructor(
 
     fun updateSearchQuery(query: String): Unit {
         updateState { it.copy(searchQuery = query) }
+        _searchQueryFlow.value = query
     }
 
     fun toggleSearch(): Unit {
         val currentlySearching = _uiState.value.isSearching
         if (currentlySearching) {
             updateState { it.copy(isSearching = false, searchQuery = "") }
+            _searchQueryFlow.value = ""
             loadInitialData()
         } else {
             updateState { it.copy(isSearching = true) }
@@ -64,7 +85,8 @@ class ExploreViewModel @Inject constructor(
     }
 
     fun selectSource(sourceName: String?): Unit {
-        viewModelScope.launch {
+        currentJob?.cancel()
+        currentJob = viewModelScope.launch {
             runCatching {
                 updateState { it.copy(selectedSource = sourceName, isLoading = true, page = 1, selectedTags = emptySet()) }
                 val tags = exploreRepository.getTags(sourceName)
@@ -77,7 +99,8 @@ class ExploreViewModel @Inject constructor(
     }
 
     fun toggleTag(tag: String): Unit {
-        viewModelScope.launch {
+        currentJob?.cancel()
+        currentJob = viewModelScope.launch {
             runCatching {
                 val newTags = if (_uiState.value.selectedTags.contains(tag)) {
                     _uiState.value.selectedTags - tag
@@ -94,7 +117,8 @@ class ExploreViewModel @Inject constructor(
     }
 
     fun clearTags(): Unit {
-        viewModelScope.launch {
+        currentJob?.cancel()
+        currentJob = viewModelScope.launch {
             runCatching {
                 updateState { it.copy(selectedTags = emptySet(), isLoading = true, page = 1) }
                 val novels = exploreRepository.getPopularNovels(1, _uiState.value.selectedSource, emptyList())
@@ -107,7 +131,8 @@ class ExploreViewModel @Inject constructor(
 
     fun performSearch(): Unit {
         if (_uiState.value.searchQuery.isBlank()) return
-        viewModelScope.launch {
+        currentJob?.cancel()
+        currentJob = viewModelScope.launch {
             runCatching {
                 updateState { it.copy(isLoading = true, page = 1) }
                 val novels = exploreRepository.searchNovels(_uiState.value.searchQuery, 1, _uiState.value.selectedSource)
@@ -120,7 +145,8 @@ class ExploreViewModel @Inject constructor(
 
     fun loadMore(): Unit {
         if (_uiState.value.isLoading) return
-        viewModelScope.launch {
+        currentJob?.cancel()
+        currentJob = viewModelScope.launch {
             runCatching {
                 updateState { it.copy(isLoading = true) }
                 val nextPage = _uiState.value.page + 1

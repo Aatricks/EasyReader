@@ -112,11 +112,11 @@ class ReaderViewModelNavigationTest {
         assertEquals(ch2Url, state.fullChapterList[1].url)
         assertEquals(ch3Url, state.fullChapterList[2].url)
 
-        // 2. Verify navigation URLs are set correctly from the list (overriding guessed ones)
-        // Previous of Ch 2 should be Ch 1
-        assertEquals(ch1Url, state.content?.previousChapterUrl)
-        // Next of Ch 2 should be Ch 3
-        assertEquals(ch3Url, state.content?.nextChapterUrl)
+        // 2. Verify navigation URLs are NOT overridden by the incomplete library list (to avoid skipping chapters)
+        // Previous of Ch 2 should be the guessed prev
+        assertEquals("http://example.com/guessed-prev", state.content?.previousChapterUrl)
+        // Next of Ch 2 should be the guessed next
+        assertEquals("http://example.com/guessed-next", state.content?.nextChapterUrl)
 
         // Verify canNavigate flags
         assertEquals(true, state.canNavigatePrevious)

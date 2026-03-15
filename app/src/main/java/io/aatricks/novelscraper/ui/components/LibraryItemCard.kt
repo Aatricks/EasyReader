@@ -168,8 +168,20 @@ fun LibraryItemCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val chapterNumber = io.aatricks.novelscraper.util.TextUtils.extractChapterNumber(item.currentChapter)
+                val isLastChapter = chapterNumber != null && item.totalChapters > 0 && chapterNumber.toInt() >= item.totalChapters
+                
+                val chapterText = if (isLastChapter) {
+                    val numberStr = chapterNumber?.let { 
+                        if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() 
+                    } ?: item.currentChapter
+                    "Last Chapter - $numberStr"
+                } else {
+                    "Chapter ${item.currentChapter} / ${item.totalChapters}"
+                }
+
                 Text(
-                    text = "Chapter ${item.currentChapter} / ${item.totalChapters}",
+                    text = chapterText,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -110,6 +110,7 @@ class ReaderViewModel @Inject constructor(
         val isRtl: Boolean = true,
         val fullChapterList: List<ChapterInfo> = emptyList(),
         val isChaptersLoading: Boolean = false,
+        val isFullChapterListLoaded: Boolean = false,
         val seekTrigger: Long = 0L,
         val targetScrollPosition: Float? = null,
         val fontSize: Float = 18f,
@@ -346,6 +347,7 @@ class ReaderViewModel @Inject constructor(
         // If we switched novels, discard the old list
         if (_uiState.value.baseTitle != baseTitle) {
             currentFullList = emptyList()
+            updateState { it.copy(isFullChapterListLoaded = false) }
         }
 
         if (currentFullList.isEmpty() && baseTitle.isNotBlank()) {
@@ -885,7 +887,7 @@ class ReaderViewModel @Inject constructor(
                 updateState { it.copy(isChaptersLoading = true) }
                 val details = exploreRepository.getNovelDetails(baseUrl, sourceName)
                 if (details != null && details.chapters.isNotEmpty()) {
-                    updateState { it.copy(fullChapterList = details.chapters, isChaptersLoading = false) }
+                    updateState { it.copy(fullChapterList = details.chapters, isChaptersLoading = false, isFullChapterListLoaded = true) }
                     updateNavigationUrls()
                     currentLibraryItemId?.let { id ->
                         libraryRepository.getItemById(id)?.let { item ->
@@ -901,6 +903,7 @@ class ReaderViewModel @Inject constructor(
 
     private fun updateNavigationUrls(): Unit {
         val state = _uiState.value
+        if (!state.isFullChapterListLoaded) return
         val currentUrl = state.content?.url ?: return
         val list = state.fullChapterList
         if (list.isEmpty()) return
