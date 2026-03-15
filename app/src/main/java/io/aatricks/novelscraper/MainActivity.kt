@@ -125,7 +125,12 @@ class MainActivity : ComponentActivity() {
                         ExploreScreen(
                             exploreViewModel = exploreViewModel,
                             libraryViewModel = libraryViewModel,
-                            onNavigateBack = { navController.popBackStack() }
+                            onNavigateBack = { navController.popBackStack() },
+                            onReadItem = { item ->
+                                val chapterUrl = item.readingUrl ?: item.chapters.firstOrNull()?.url ?: item.url
+                                readerViewModel.loadContent(chapterUrl)
+                                navController.popBackStack(ReaderRoute, inclusive = false)
+                            }
                         )
                     }
                 }

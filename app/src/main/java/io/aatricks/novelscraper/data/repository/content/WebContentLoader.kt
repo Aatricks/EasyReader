@@ -287,7 +287,10 @@ class WebContentLoader @Inject constructor(
     }
 
     private fun isWideImage(img: ContentElement.Image, url: String): Boolean {
-        return img.width > img.height * 1.5 && img.width > 1600 && img.height > 0
+        // Double-page spreads are typically twice as wide as their height (ratio ~1.4-1.7 depending on scan)
+        // We use 1.6 to be safe, as single high-res pages can sometimes have slightly different ratios.
+        // Also check absolute width to ensure we only split large high-res images that are likely spreads.
+        return img.width > img.height * 1.6 && img.width > 1600 && img.height > 0
     }
 
     private suspend fun fetchImageDimensions(

@@ -44,8 +44,10 @@ fun ZoomableBox(
 
     fun clampOffset(value: Float, contentSize: Float, currentScale: Float, isDynamic: Boolean = false): Float {
         val scaledContentSize = contentSize * currentScale
-        // If height is dynamic, we don't allow vertical panning within the box because the list handles it
-        val effectiveContainerSize = if (isDynamic) scaledContentSize else contentSize
+        // In dynamic mode, the container grows with the content, but the viewable area is still constrained by the screen/parent
+        // However, the logic here is used for both X and Y. For Y in dynamic mode, we want to allow panning
+        // if the scaled height is larger than the original unscaled height (container).
+        val effectiveContainerSize = contentSize
 
         if (scaledContentSize <= effectiveContainerSize) return 0f
         val maxOffset = (scaledContentSize - effectiveContainerSize) / 2f
@@ -91,12 +93,7 @@ fun ZoomableBox(
 
                                 scale = newScale
                                 offsetX = clampOffset(offsetX + panChange.x, width, scale)
-
-                                if (!dynamicHeight) {
-                                    offsetY = clampOffset(offsetY + panChange.y, height, scale)
-                                } else {
-                                    offsetY = 0f
-                                }
+                                offsetY = clampOffset(offsetY + panChange.y, height, scale, isDynamic = dynamicHeight)
 
                                 event.changes.fastForEach { if (it.positionChanged()) it.consume() }
                             }
@@ -115,11 +112,12 @@ fun ZoomableBox(
                                     val targetScale = 2.5f
                                     val width = size.width.toFloat()
                                     val height = size.height.toFloat()
-                                    if (width > 0) {
+                                    if (width > 0 && height > 0) {
                                         val deltaX = lastUpPosition.x - width / 2f
+                                        val deltaY = lastUpPosition.y - height / 2f
                                         scale = targetScale
                                         offsetX = clampOffset(-deltaX * (targetScale - 1f), width, targetScale)
-                                        offsetY = 0f
+                                        offsetY = clampOffset(-deltaY * (targetScale - 1f), height, targetScale, isDynamic = dynamicHeight)
                                     } else {
                                         scale = targetScale
                                     }

@@ -50,7 +50,8 @@ import kotlinx.coroutines.launch
 fun ExploreScreen(
     exploreViewModel: ExploreViewModel,
     libraryViewModel: LibraryViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onReadItem: (ExploreItem) -> Unit
 ): Unit {
     val uiState by exploreViewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
@@ -110,6 +111,12 @@ fun ExploreScreen(
                     val itemToAdd = uiState.selectedItemDetails ?: uiState.selectedItem!!
                     libraryViewModel.addExploreItem(itemToAdd, exploreViewModel.exploreRepository)
                     scope.launch { snackbarHostState.showSnackbar("Adding to library...") }
+                    exploreViewModel.dismissItem()
+                },
+                onRead = {
+                    val itemToRead = uiState.selectedItemDetails ?: uiState.selectedItem!!
+                    libraryViewModel.addExploreItem(itemToRead, exploreViewModel.exploreRepository)
+                    onReadItem(itemToRead)
                     exploreViewModel.dismissItem()
                 }
             )
@@ -491,7 +498,8 @@ fun SkeletonExploreCard(): Unit {
 fun ExploreItemDetailSheet(
     item: ExploreItem,
     isLoading: Boolean = false,
-    onAddToLibrary: () -> Unit
+    onAddToLibrary: () -> Unit,
+    onRead: () -> Unit
 ): Unit {
     val context = LocalContext.current
     val imageRequest = remember(item.coverUrl, item.url) {
@@ -553,15 +561,50 @@ fun ExploreItemDetailSheet(
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = onAddToLibrary,
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large
+        
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Max),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Icon(Icons.Default.Add, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Add to Library")
+            Button(
+                onClick = onRead,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                shape = MaterialTheme.shapes.large,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Read Now",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+            
+            OutlinedButton(
+                onClick = onAddToLibrary,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                shape = MaterialTheme.shapes.large,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Add to Library",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
         }
+        
         Spacer(modifier = Modifier.height(16.dp))
         HorizontalDivider()
         Spacer(modifier = Modifier.height(16.dp))

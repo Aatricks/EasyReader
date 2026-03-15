@@ -767,7 +767,7 @@ private fun PagedReaderView(
                                     altText = img.altText,
                                     readerViewModel = readerViewModel,
                                     pageUrl = content.url,
-                                    contentScale = ContentScale.FillWidth,
+                                    contentScale = ContentScale.Fit,
                                     backgroundColor = bgColor,
                                     width = img.width,
                                     height = img.height,
@@ -775,8 +775,7 @@ private fun PagedReaderView(
                                     enableZoom = isZoomable,
                                     dynamicHeight = true, // Use dynamic height for images in a group to stack correctly
                                     onTap = { readerViewModel.toggleControls() }
-                                )
-                            }
+                                )                            }
                         }
                     }
                 }
@@ -872,7 +871,7 @@ private fun ScrollingReaderView(
                                         altText = subElement.altText,
                                         readerViewModel = readerViewModel,
                                         pageUrl = content.url,
-                                        contentScale = ContentScale.FillWidth,
+                                        contentScale = ContentScale.Fit,
                                         backgroundColor = bgColor,
                                         width = subElement.width,
                                         height = subElement.height,
@@ -912,7 +911,7 @@ private fun ScrollingReaderView(
                         altText = element.altText,
                         readerViewModel = readerViewModel,
                         pageUrl = content.url,
-                        contentScale = ContentScale.FillWidth,
+                        contentScale = ContentScale.Fit,
                         backgroundColor = bgColor,
                         width = element.width,
                         height = element.height,
@@ -933,7 +932,7 @@ private fun ScrollingReaderView(
                                 altText = img.altText,
                                 readerViewModel = readerViewModel,
                                 pageUrl = content.url,
-                                contentScale = ContentScale.FillWidth,
+                                contentScale = ContentScale.Fit,
                                 backgroundColor = bgColor,
                                 width = img.width,
                                 height = img.height,

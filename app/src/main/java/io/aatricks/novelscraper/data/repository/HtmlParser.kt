@@ -99,8 +99,14 @@ class HtmlParser @Inject constructor() {
             if (src.isBlank() || isThumbnailOrLogo(src, adDomains)) return@forEach
 
             val absoluteUrl = resolveImageUrl(src, url)
-            val width = element.attr("width").toIntOrNull() ?: element.attr("data-width").toIntOrNull() ?: 0
-            val height = element.attr("height").toIntOrNull() ?: element.attr("data-height").toIntOrNull() ?: 0
+            
+            // Only trust dimensions from HTML for PDF/ePub local files, not from manga sites
+            // which often have incorrect or placeholder values (like width=3000 height=1000)
+            val isMangaSite = url.contains("mangabat") || url.contains("manganato") || 
+                              url.contains("novelfire") || url.contains("manhwa")
+            
+            val width = if (isMangaSite) 0 else element.attr("width").toIntOrNull() ?: element.attr("data-width").toIntOrNull() ?: 0
+            val height = if (isMangaSite) 0 else element.attr("height").toIntOrNull() ?: element.attr("data-height").toIntOrNull() ?: 0
 
             images.add(ContentElement.Image(url = absoluteUrl, width = width, height = height))
         }

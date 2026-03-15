@@ -26,13 +26,15 @@ import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+import androidx.compose.ui.platform.LocalConfiguration
+
 @Composable
 fun ReaderImageView(
     imageUrl: String,
     altText: String?,
     readerViewModel: ReaderViewModel,
     pageUrl: String,
-    contentScale: ContentScale = ContentScale.FillWidth,
+    contentScale: ContentScale = ContentScale.Fit,
     backgroundColor: Color = Color.Black,
     width: Int = 0,
     height: Int = 0,
@@ -41,6 +43,8 @@ fun ReaderImageView(
     dynamicHeight: Boolean = false,
     onTap: (() -> Unit)? = null
 ) {
+    val configuration = LocalConfiguration.current
+    val screenHeight = configuration.screenHeightDp.dp
     val aspectRatioModifier = Modifier.imageAspectRatio(side, width, height)
 
     // Hoist loading state so containerModifier can react to it, shrinking the container
@@ -53,17 +57,15 @@ fun ReaderImageView(
         dynamicHeight -> Modifier.fillMaxWidth().wrapContentHeight()
         enableZoom -> Modifier.fillMaxSize()
         else -> {
-            val base = Modifier.fillMaxWidth().then(aspectRatioModifier)
+            // For standard scrolling mode, we limit height to screen height to avoid "zoomed in" feel for very tall high-res images
+            val base = Modifier.fillMaxWidth()
+                .then(aspectRatioModifier)
+                .sizeIn(maxHeight = screenHeight)
+            
             if (width <= 0 || height <= 0) {
                 if (isLoadingHoisted) {
-                    // While loading with unknown dimensions, enforce a minimum height to prevent
-                    // LazyColumn from displaying all items at once (which falsely triggers
-                    // end-of-list detection and spurious chapter navigation).
-                    // Reduced to 48dp to avoid huge black gaps between short manhwa strips.
                     base.defaultMinSize(minHeight = 48.dp)
                 } else {
-                    // After loading, collapse to actual image height — eliminates black gaps
-                    // between short manhwa panels whose dimensions were not prefetched.
                     base.wrapContentHeight()
                 }
             } else {
@@ -79,11 +81,10 @@ fun ReaderImageView(
     // Use FillHeight + alignment for split images to avoid stretching.
     // The container (ZoomableBox) has the half-image aspect ratio, and FillHeight + alignment
     // handles the cropping perfectly without needing graphicsLayer scaling.
-    val isSplit = side != ContentElement.Image.Side.FULL
+    val isSplit = side != ContentElement.Image.Side.FULL && width > 0 && height > 0
 
     val imageModifier = when {
-        isSplit -> Modifier.fillMaxWidth().then(aspectRatioModifier)
-        enableZoom && !dynamicHeight -> Modifier.fillMaxSize()
+        enableZoom && !dynamicHeight && !isSplit -> Modifier.fillMaxSize()
         else -> Modifier.fillMaxWidth().then(aspectRatioModifier)
     }
 
@@ -95,8 +96,7 @@ fun ReaderImageView(
 
     val pagedContentScale = when {
         isSplit -> ContentScale.FillHeight // image fills composable height, alignment crops to correct half
-        !enableZoom || dynamicHeight -> contentScale
-        else -> ContentScale.Fit
+        else -> contentScale // Use the passed contentScale (defaulting to Fit)
     }
 
     if (imageUrl.startsWith("http") || imageUrl.startsWith("file")) {
