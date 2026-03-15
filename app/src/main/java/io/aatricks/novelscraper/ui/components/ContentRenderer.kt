@@ -116,7 +116,7 @@ fun ContentRenderer(
                     )
                 }
                 is ContentElement.ImageGroup -> {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                         element.images.forEach { image ->
                             AsyncImageElement(
                                 url = image.url, 

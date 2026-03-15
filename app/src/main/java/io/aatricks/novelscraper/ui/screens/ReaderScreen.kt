@@ -432,7 +432,9 @@ private fun ContentArea(
     }
 
     val isManhwa = remember(content) {
-        content.getImageCount() > content.getTextCount() && content.getImageCount() > 2
+        val isManhwaByUrl = content.url.contains("manhwa", ignoreCase = true) || 
+                           content.url.contains("webtoon", ignoreCase = true)
+        isManhwaByUrl || (content.getImageCount() > content.getTextCount() && content.getImageCount() > 2)
     }
 
     val listState = key(content.url) {
@@ -757,7 +759,7 @@ private fun PagedReaderView(
                                 .fillMaxSize()
                                 .verticalScroll(rememberScrollState()),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
+                            verticalArrangement = Arrangement.spacedBy(0.dp, Alignment.CenterVertically)
                         ) {
                             el.images.forEach { img ->
                                 ReaderImageView(
@@ -771,6 +773,7 @@ private fun PagedReaderView(
                                     height = img.height,
                                     side = img.side,
                                     enableZoom = isZoomable,
+                                    dynamicHeight = true, // Use dynamic height for images in a group to stack correctly
                                     onTap = { readerViewModel.toggleControls() }
                                 )
                             }

@@ -217,17 +217,13 @@ class WebContentLoader @Inject constructor(
 
         if (imageElements.isEmpty()) return elements
 
-        // For manhwa/webtoon long-strips: skip network dimension fetching — strips are always
-        // portrait and don't need spread-splitting or grouping. Disk-only is fine for revisits.
-        val isManhwa = url.contains("manhwa", ignoreCase = true) || url.contains("webtoon", ignoreCase = true)
-
-        // For manga/other, always try to get dimensions (disk first, then a cheap Range request).
+        // Always try to get dimensions (disk first, then a cheap Range request).
         // This ensures grouping and spread-splitting work on first visit regardless of chapter size.
         val imagesWithDims = withContext(Dispatchers.IO) {
             imageElements.map { img ->
                 async {
                     DIMENSION_SEMAPHORE.withPermit {
-                        fetchImageDimensions(img.url, url, diskOnly = isManhwa)?.let { (w, h) ->
+                        fetchImageDimensions(img.url, url, diskOnly = false)?.let { (w, h) ->
                             img.copy(width = w, height = h)
                         } ?: img
                     }
@@ -237,33 +233,61 @@ class WebContentLoader @Inject constructor(
 
         val dimMap = imageElements.zip(imagesWithDims).toMap()
 
-        val expandedElements = mutableListOf<ContentElement>()
-        for (element in elements) {
+        // 1. Update elements with their fetched dimensions
+        val dimensionedElements = elements.map { element ->
             when (element) {
-                is ContentElement.Image -> {
-                    val img = dimMap[element] ?: element
-                    if (img.width > img.height * 1.5 && img.width > 1600 && img.height > 0) {
-                        val isManga = url.contains("manga", ignoreCase = true) && !url.contains("manhwa", ignoreCase = true)
-                        if (isManga) {
-                            expandedElements.add(img.copy(side = ContentElement.Image.Side.RIGHT))
-                            expandedElements.add(img.copy(side = ContentElement.Image.Side.LEFT))
-                        } else {
-                            expandedElements.add(img.copy(side = ContentElement.Image.Side.LEFT))
-                            expandedElements.add(img.copy(side = ContentElement.Image.Side.RIGHT))
-                        }
-                    } else {
-                        expandedElements.add(img)
-                    }
-                }
-                is ContentElement.ImageGroup -> {
-                    val updatedImages = element.images.map { dimMap[it] ?: it }
-                    expandedElements.add(element.copy(images = updatedImages))
-                }
-                else -> expandedElements.add(element)
+                is ContentElement.Image -> dimMap[element] ?: element
+                is ContentElement.ImageGroup -> element.copy(images = element.images.map { dimMap[it] ?: it })
+                else -> element
             }
         }
 
-        return groupSimilarElements(expandedElements)
+        // 2. Group adjacent images/groups before splitting wide ones
+        val groupedElements = groupSimilarElements(dimensionedElements)
+
+        // 3. Expand wide images and wide groups
+        val finalElements = mutableListOf<ContentElement>()
+        for (element in groupedElements) {
+            when (element) {
+                is ContentElement.Image -> {
+                    if (isWideImage(element, url)) {
+                        val isManga = url.contains("manga", ignoreCase = true) && !url.contains("manhwa", ignoreCase = true)
+                        if (isManga) {
+                            finalElements.add(element.copy(side = ContentElement.Image.Side.RIGHT))
+                            finalElements.add(element.copy(side = ContentElement.Image.Side.LEFT))
+                        } else {
+                            finalElements.add(element.copy(side = ContentElement.Image.Side.LEFT))
+                            finalElements.add(element.copy(side = ContentElement.Image.Side.RIGHT))
+                        }
+                    } else {
+                        finalElements.add(element)
+                    }
+                }
+                is ContentElement.ImageGroup -> {
+                    // Check if the group as a whole should be split (e.g. all images are wide)
+                    val firstImg = element.images.firstOrNull()
+                    if (firstImg != null && isWideImage(firstImg, url)) {
+                        val isManga = url.contains("manga", ignoreCase = true) && !url.contains("manhwa", ignoreCase = true)
+                        if (isManga) {
+                            finalElements.add(ContentElement.ImageGroup(element.images.map { it.copy(side = ContentElement.Image.Side.RIGHT) }))
+                            finalElements.add(ContentElement.ImageGroup(element.images.map { it.copy(side = ContentElement.Image.Side.LEFT) }))
+                        } else {
+                            finalElements.add(ContentElement.ImageGroup(element.images.map { it.copy(side = ContentElement.Image.Side.LEFT) }))
+                            finalElements.add(ContentElement.ImageGroup(element.images.map { it.copy(side = ContentElement.Image.Side.RIGHT) }))
+                        }
+                    } else {
+                        finalElements.add(element)
+                    }
+                }
+                else -> finalElements.add(element)
+            }
+        }
+
+        return finalElements
+    }
+
+    private fun isWideImage(img: ContentElement.Image, url: String): Boolean {
+        return img.width > img.height * 1.5 && img.width > 1600 && img.height > 0
     }
 
     private suspend fun fetchImageDimensions(
@@ -312,19 +336,29 @@ class WebContentLoader @Inject constructor(
             }
             
             val last = processed.last()
-            if (element is ContentElement.Image) {
-                when {
-                    shouldGroupWithLastImage(last, element) -> {
-                        processed[processed.size - 1] = ContentElement.ImageGroup(listOf(last as ContentElement.Image, element))
+            when (element) {
+                is ContentElement.Image -> {
+                    when {
+                        shouldGroupWithLastImage(last, element) -> {
+                            processed[processed.size - 1] = ContentElement.ImageGroup(listOf(last as ContentElement.Image, element))
+                        }
+                        shouldGroupWithLastGroup(last, element) -> {
+                            val group = last as ContentElement.ImageGroup
+                            processed[processed.size - 1] = ContentElement.ImageGroup(group.images + element)
+                        }
+                        else -> processed.add(element)
                     }
-                    shouldGroupWithLastGroup(last, element) -> {
-                        val group = last as ContentElement.ImageGroup
-                        processed[processed.size - 1] = ContentElement.ImageGroup(group.images + element)
-                    }
-                    else -> processed.add(element)
                 }
-            } else {
-                processed.add(element)
+                is ContentElement.ImageGroup -> {
+                    when {
+                        shouldGroupWithLastImage(last, element.images.first()) -> {
+                            val lastImages = if (last is ContentElement.ImageGroup) last.images else listOf(last as ContentElement.Image)
+                            processed[processed.size - 1] = ContentElement.ImageGroup(lastImages + element.images)
+                        }
+                        else -> processed.add(element)
+                    }
+                }
+                else -> processed.add(element)
             }
         }
         return processed
@@ -340,8 +374,9 @@ class WebContentLoader @Inject constructor(
         val lastRatio = last.height.toFloat() / last.width
         val currentRatio = current.height.toFloat() / current.width
         // Group if at least one image is shorter than a normal manga page (h/w < 1.2) and
-        // combined they form a page-sized result (total h/w < 2.5).
-        return (currentRatio < 1.2f || lastRatio < 1.2f) && lastRatio + currentRatio < 2.5f
+        // combined they form a continuous result (total h/w < 8.0).
+        // Larger limit (8.0) handles long-strip manhwa composed of many small strips.
+        return (currentRatio < 1.2f || lastRatio < 1.2f) && lastRatio + currentRatio < 8.0f
     }
 
     private fun shouldGroupWithLastGroup(last: ContentElement, current: ContentElement.Image): Boolean {
@@ -352,7 +387,9 @@ class WebContentLoader @Inject constructor(
         if (kotlin.math.abs(lastInGroup.width - current.width).toFloat() / lastInGroup.width > 0.05f) return false
         val groupRatio = last.images.sumOf { it.height }.toFloat() / lastInGroup.width
         val currentRatio = current.height.toFloat() / current.width
-        return currentRatio < 1.2f && groupRatio + currentRatio < 2.5f
+        // Allow grouping up to 8.0 ratio (about 4 screen heights) to maintain continuity
+        // while still allowing some LazyColumn recycling for extremely long chapters.
+        return currentRatio < 1.2f && groupRatio + currentRatio < 8.0f
     }
 
     private fun calculateDirectorySize(dir: File): Long {

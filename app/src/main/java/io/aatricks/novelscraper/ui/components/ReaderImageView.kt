@@ -59,7 +59,8 @@ fun ReaderImageView(
                     // While loading with unknown dimensions, enforce a minimum height to prevent
                     // LazyColumn from displaying all items at once (which falsely triggers
                     // end-of-list detection and spurious chapter navigation).
-                    base.defaultMinSize(minHeight = 200.dp)
+                    // Reduced to 48dp to avoid huge black gaps between short manhwa strips.
+                    base.defaultMinSize(minHeight = 48.dp)
                 } else {
                     // After loading, collapse to actual image height — eliminates black gaps
                     // between short manhwa panels whose dimensions were not prefetched.
@@ -75,32 +76,26 @@ fun ReaderImageView(
     // coloured bars. In paged manga mode, the dark background fills the letterbox area intentionally.
     val effectiveBackground = if (enableZoom) backgroundColor.copy(alpha = 0.5f) else Color.Transparent
 
-    // Split images in paged mode need a different approach to avoid 2× horizontal stretch.
-    // Using scaleX=2/scaleY=1 with ContentScale.Fit stretches the image because the full image
-    // fits by width leaving vertical bars, then scaleX doubles only horizontally.
-    // Instead: give the composable the HALF-image aspect ratio, use FillHeight so the full
-    // image fills the composable height, and crop to left/right via alignment.
-    val isSplitInPagedMode = enableZoom && !dynamicHeight && side != ContentElement.Image.Side.FULL
+    // Use FillHeight + alignment for split images to avoid stretching.
+    // The container (ZoomableBox) has the half-image aspect ratio, and FillHeight + alignment
+    // handles the cropping perfectly without needing graphicsLayer scaling.
+    val isSplit = side != ContentElement.Image.Side.FULL
 
     val imageModifier = when {
-        isSplitInPagedMode ->
-            // Half-image AR composable; FillHeight + alignment does the cropping (no graphicsLayer).
-            Modifier.fillMaxWidth().then(aspectRatioModifier)
-        enableZoom && !dynamicHeight ->
-            Modifier.fillMaxSize().splitImageLayer(side, width, height)
-        else ->
-            Modifier.fillMaxWidth().then(aspectRatioModifier).splitImageLayer(side, width, height)
+        isSplit -> Modifier.fillMaxWidth().then(aspectRatioModifier)
+        enableZoom && !dynamicHeight -> Modifier.fillMaxSize()
+        else -> Modifier.fillMaxWidth().then(aspectRatioModifier)
     }
 
     val imageAlignment = when {
-        !isSplitInPagedMode -> Alignment.Center
+        !isSplit -> Alignment.Center
         side == ContentElement.Image.Side.LEFT -> Alignment.CenterStart
         else -> Alignment.CenterEnd
     }
 
     val pagedContentScale = when {
+        isSplit -> ContentScale.FillHeight // image fills composable height, alignment crops to correct half
         !enableZoom || dynamicHeight -> contentScale
-        isSplitInPagedMode -> ContentScale.FillHeight  // image fills composable height, alignment crops to correct half
         else -> ContentScale.Fit
     }
 
