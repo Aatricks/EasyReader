@@ -5,96 +5,86 @@ import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-// Color palette matching the Java app
-private val Black = Color(0xFF000000)
-private val DarkGrey = Color(0xFF222222)
-private val White = Color(0xFFFFFFFF)
-private val ColorPrimary = Color(0xFF4CAF50)
-private val ColorPrimaryDark = Color(0xFF388E3C)
-private val ColorAccent = Color(0xFF8BC34A)
-private val SelectedItem = Color(0xFF234078)
+private val PineNight = Color(0xFF0E1210)
+private val ForestSurface = Color(0xFF171C19)
+private val ForestSurfaceVariant = Color(0xFF212823)
+private val Mist = Color(0xFFF4F5EF)
+private val Redwood = Color(0xFFE69587)
+private val OutlineTint = Color(0xFF414B44)
+private val OutlineVariantTint = Color(0xFF2F3832)
 
-/**
- * Dark color scheme for Novel Scraper
- * Matches the Java app's dark theme with black background
- */
-private val DarkColorScheme = darkColorScheme(
-    primary = ColorPrimary,
-    primaryContainer = ColorPrimaryDark,
-    secondary = ColorAccent,
-    secondaryContainer = ColorAccent,
-    tertiary = SelectedItem,
-    background = Black,
-    surface = DarkGrey,
-    surfaceVariant = Color(0xFF2C2C2C),
-    onPrimary = White,
-    onSecondary = White,
-    onTertiary = White,
-    onBackground = White,
-    onSurface = White,
-    onSurfaceVariant = Color(0xFFCCCCCC),
-    error = Color(0xFFFF5252),
-    onError = White,
-    outline = Color(0xFF444444),
-    surfaceTint = ColorPrimary
+private fun buildDarkColorScheme(accentTheme: AccentTheme) = darkColorScheme(
+    primary = accentTheme.darkPalette.primary,
+    primaryContainer = accentTheme.darkPalette.primaryContainer,
+    secondary = accentTheme.darkPalette.secondary,
+    secondaryContainer = accentTheme.darkPalette.secondaryContainer,
+    tertiary = accentTheme.darkPalette.tertiary,
+    background = PineNight,
+    surface = ForestSurface,
+    surfaceVariant = ForestSurfaceVariant,
+    onPrimary = accentTheme.darkPalette.onPrimary,
+    onPrimaryContainer = accentTheme.darkPalette.onPrimaryContainer,
+    onSecondary = accentTheme.darkPalette.onSecondary,
+    onSecondaryContainer = accentTheme.darkPalette.onSecondaryContainer,
+    onTertiary = accentTheme.darkPalette.onTertiary,
+    onBackground = Mist,
+    onSurface = Mist,
+    onSurfaceVariant = Color(0xFFC8CEC7),
+    error = Redwood,
+    onError = Color(0xFF30110B),
+    outline = OutlineTint,
+    outlineVariant = OutlineVariantTint,
+    surfaceTint = accentTheme.darkPalette.primary
 )
 
-/**
- * Light color scheme (fallback, though app is designed for dark theme)
- */
-private val LightColorScheme = lightColorScheme(
-    primary = ColorPrimaryDark,
-    primaryContainer = ColorPrimary,
-    secondary = ColorAccent,
-    tertiary = Pink40,
-    background = White,
-    surface = Color(0xFFF5F5F5),
-    onPrimary = White,
-    onSecondary = White,
-    onTertiary = White,
-    onBackground = Black,
-    onSurface = Black
+private fun buildLightColorScheme(accentTheme: AccentTheme) = lightColorScheme(
+    primary = accentTheme.lightPalette.primary,
+    primaryContainer = accentTheme.lightPalette.primaryContainer,
+    secondary = accentTheme.lightPalette.secondary,
+    secondaryContainer = accentTheme.lightPalette.secondaryContainer,
+    tertiary = accentTheme.lightPalette.tertiary,
+    background = Color(0xFFF6F4EE),
+    surface = Color(0xFFFCFAF5),
+    surfaceVariant = Color(0xFFE6E7DE),
+    onPrimary = accentTheme.lightPalette.onPrimary,
+    onPrimaryContainer = accentTheme.lightPalette.onPrimaryContainer,
+    onSecondary = accentTheme.lightPalette.onSecondary,
+    onSecondaryContainer = accentTheme.lightPalette.onSecondaryContainer,
+    onTertiary = accentTheme.lightPalette.onTertiary,
+    onBackground = Color(0xFF171C19),
+    onSurface = Color(0xFF171C19),
+    onSurfaceVariant = Color(0xFF525A54),
+    error = Color(0xFFB34E3E),
+    onError = Color.White,
+    outline = Color(0xFF747C75),
+    outlineVariant = Color(0xFFCDD3CA)
 )
 
-/**
- * Novel Scraper theme with proper dark mode setup
- * 
- * @param darkTheme Whether to use dark theme (default: true, forced for reading)
- * @param dynamicColor Whether to use dynamic colors (default: false for consistent look)
- * @param content The composable content
- */
 @Composable
 fun NovelScraperTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true, // Enable dynamic colors for M3 look
+    dynamicColor: Boolean = false,
+    accentTheme: AccentTheme = AccentTheme.MOSS,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !darkTheme -> buildLightColorScheme(accentTheme)
+        darkTheme -> buildDarkColorScheme(accentTheme)
+        else -> buildLightColorScheme(accentTheme)
     }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            
-            // Set light/dark icons based on theme
+
             val windowInsetsController = WindowCompat.getInsetsController(window, view)
             windowInsetsController.isAppearanceLightStatusBars = !darkTheme
             windowInsetsController.isAppearanceLightNavigationBars = !darkTheme
@@ -104,6 +94,7 @@ fun NovelScraperTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
+        shapes = EasyReaderShapes,
         content = content
     )
 }

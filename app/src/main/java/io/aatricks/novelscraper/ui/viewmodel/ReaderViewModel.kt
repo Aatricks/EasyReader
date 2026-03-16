@@ -8,6 +8,7 @@ import io.aatricks.novelscraper.data.model.*
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
+import io.aatricks.novelscraper.ui.theme.AccentTheme
 import io.aatricks.novelscraper.util.TextUtils
 import io.aatricks.novelscraper.util.UrlSecurity
 import kotlinx.coroutines.Dispatchers
@@ -67,6 +68,9 @@ class ReaderViewModel @Inject constructor(
                 paragraphSpacing = preferencesManager.paragraphSpacing,
                 readerTheme = runCatching { ReaderTheme.valueOf(preferencesManager.readerTheme) }.getOrDefault(
                     ReaderTheme.DARK
+                ),
+                accentTheme = runCatching { AccentTheme.valueOf(preferencesManager.accentTheme) }.getOrDefault(
+                    AccentTheme.MOSS
                 )
             )
         }
@@ -119,6 +123,7 @@ class ReaderViewModel @Inject constructor(
         val margins: Int = 16,
         val paragraphSpacing: Float = 1.0f,
         val readerTheme: ReaderTheme = ReaderTheme.DARK,
+        val accentTheme: AccentTheme = AccentTheme.MOSS,
         val pendingExternalUrl: String? = null,
         val showExternalUrlConfirmation: Boolean = false,
         val pendingFileConfirmationUri: String? = null,
@@ -185,6 +190,11 @@ class ReaderViewModel @Inject constructor(
     fun updateReaderTheme(newTheme: ReaderTheme): Unit {
         preferencesManager.readerTheme = newTheme.name
         updateState { it.copy(readerTheme = newTheme) }
+    }
+
+    fun updateAccentTheme(newAccentTheme: AccentTheme): Unit {
+        preferencesManager.accentTheme = newAccentTheme.name
+        updateState { it.copy(accentTheme = newAccentTheme) }
     }
 
     fun clearToast(): Unit {
@@ -845,6 +855,11 @@ class ReaderViewModel @Inject constructor(
 
     fun toggleReadingMode(): Unit {
         val newMode = !uiState.value.isPagedMode
+        setPagedMode(newMode)
+    }
+
+    fun setPagedMode(isPagedMode: Boolean): Unit {
+        val newMode = isPagedMode
         updateState { it.copy(isPagedMode = newMode) }
         currentLibraryItemId?.let { id ->
             viewModelScope.launch {
@@ -853,7 +868,9 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun toggleRtl(): Unit = updateState { it.copy(isRtl = !it.isRtl) }
+    fun toggleRtl(): Unit = setRtl(!uiState.value.isRtl)
+
+    fun setRtl(isRtl: Boolean): Unit = updateState { it.copy(isRtl = isRtl) }
 
     fun navigateToChapter(url: String, title: String): Unit {
         loadJob?.cancel()

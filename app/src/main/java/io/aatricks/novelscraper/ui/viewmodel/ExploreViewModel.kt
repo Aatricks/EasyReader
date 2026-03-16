@@ -38,15 +38,14 @@ class ExploreViewModel @Inject constructor(
 
         viewModelScope.launch {
             _searchQueryFlow
+                .drop(1)
                 .debounce(500L)
                 .distinctUntilChanged()
                 .collect { query ->
-                    if (_uiState.value.isSearching) {
-                        if (query.isNotBlank()) {
-                            performSearch()
-                        } else if (_uiState.value.items.isEmpty()) {
-                            loadInitialData()
-                        }
+                    if (query.isNotBlank()) {
+                        performSearch()
+                    } else {
+                        loadInitialData()
                     }
                 }
         }
@@ -69,7 +68,7 @@ class ExploreViewModel @Inject constructor(
     }
 
     fun updateSearchQuery(query: String): Unit {
-        updateState { it.copy(searchQuery = query) }
+        updateState { it.copy(searchQuery = query, isSearching = query.isNotBlank()) }
         _searchQueryFlow.value = query
     }
 
@@ -88,10 +87,29 @@ class ExploreViewModel @Inject constructor(
         currentJob?.cancel()
         currentJob = viewModelScope.launch {
             runCatching {
-                updateState { it.copy(selectedSource = sourceName, isLoading = true, page = 1, selectedTags = emptySet()) }
+                val searchQuery = _uiState.value.searchQuery.trim()
+                updateState {
+                    it.copy(
+                        selectedSource = sourceName,
+                        isLoading = true,
+                        page = 1,
+                        selectedTags = emptySet()
+                    )
+                }
                 val tags = exploreRepository.getTags(sourceName)
-                val novels = exploreRepository.getPopularNovels(1, sourceName, emptyList())
-                updateState { it.copy(items = novels, isLoading = false, availableTags = tags) }
+                val novels = if (searchQuery.isNotBlank()) {
+                    exploreRepository.searchNovels(searchQuery, 1, sourceName)
+                } else {
+                    exploreRepository.getPopularNovels(1, sourceName, emptyList())
+                }
+                updateState {
+                    it.copy(
+                        items = novels,
+                        isLoading = false,
+                        availableTags = tags,
+                        isSearching = searchQuery.isNotBlank()
+                    )
+                }
             }.onFailure {
                 updateState { it.copy(isLoading = false) }
             }
@@ -190,6 +208,20 @@ class ExploreViewModel @Inject constructor(
 
     fun dismissItem(): Unit {
         updateState { it.copy(selectedItem = null, selectedItemDetails = null) }
+    }
+
+    fun clearFilters(): Unit {
+        currentJob?.cancel()
+        updateState {
+            it.copy(
+                searchQuery = "",
+                isSearching = false,
+                selectedSource = null,
+                selectedTags = emptySet(),
+                page = 1
+            )
+        }
+        loadInitialData()
     }
 
 }

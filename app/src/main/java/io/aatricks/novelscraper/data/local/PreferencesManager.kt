@@ -122,6 +122,11 @@ class PreferencesManager @Inject constructor(
         get() = prefs.getString(KEY_READER_THEME, io.aatricks.novelscraper.data.model.ReaderTheme.DARK.name) 
             ?: io.aatricks.novelscraper.data.model.ReaderTheme.DARK.name
         set(value) = prefs.edit().putString(KEY_READER_THEME, value).apply()
+
+    var accentTheme: String
+        get() = prefs.getString(KEY_ACCENT_THEME, io.aatricks.novelscraper.ui.theme.AccentTheme.MOSS.name)
+            ?: io.aatricks.novelscraper.ui.theme.AccentTheme.MOSS.name
+        set(value) = prefs.edit().putString(KEY_ACCENT_THEME, value).apply()
     
     // Clear all preferences
     fun clearAll() {
@@ -145,7 +150,8 @@ class PreferencesManager @Inject constructor(
         fontFamily: String? = null,
         margins: Int? = null,
         paragraphSpacing: Float? = null,
-        readerTheme: String? = null
+        readerTheme: String? = null,
+        accentTheme: String? = null
     ) {
         val editor = prefs.edit()
         fontSize?.let { editor.putFloat(KEY_FONT_SIZE, it) }
@@ -154,6 +160,7 @@ class PreferencesManager @Inject constructor(
         margins?.let { editor.putInt(KEY_MARGINS, it) }
         paragraphSpacing?.let { editor.putFloat(KEY_PARAGRAPH_SPACING, it) }
         readerTheme?.let { editor.putString(KEY_READER_THEME, it) }
+        accentTheme?.let { editor.putString(KEY_ACCENT_THEME, it) }
         editor.apply()
     }
     
@@ -175,5 +182,6 @@ class PreferencesManager @Inject constructor(
         private const val KEY_MARGINS = "reader_margins"
         private const val KEY_PARAGRAPH_SPACING = "reader_paragraph_spacing"
         private const val KEY_READER_THEME = "reader_theme"
+        private const val KEY_ACCENT_THEME = "accent_theme"
     }
 }

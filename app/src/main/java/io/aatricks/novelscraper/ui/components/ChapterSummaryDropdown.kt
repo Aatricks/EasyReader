@@ -1,6 +1,7 @@
 package io.aatricks.novelscraper.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -22,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
+import io.aatricks.novelscraper.ui.theme.EasyReaderMotion
 
 /**
  * Expandable card component for displaying AI-generated chapter summaries
@@ -47,9 +49,9 @@ fun ChapterSummaryDropdown(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp)),
+            .clip(MaterialTheme.shapes.medium),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF1A1A1A)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -62,7 +64,7 @@ fun ChapterSummaryDropdown(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(MaterialTheme.shapes.small)
                     .clickable { 
                         if (summary == null && !isGenerating) {
                             onGenerateSummary()
@@ -80,21 +82,21 @@ fun ChapterSummaryDropdown(
                     Icon(
                         imageVector = Icons.Filled.Psychology,
                         contentDescription = "AI Summary",
-                        tint = Color(0xFF4CAF50),
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "AI Summary",
                         style = MaterialTheme.typography.titleSmall,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
                 
                 Icon(
                     imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
                     contentDescription = if (isExpanded) "Collapse" else "Expand",
-                    tint = Color.Gray,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -102,15 +104,15 @@ fun ChapterSummaryDropdown(
             // Expanded content
             AnimatedVisibility(
                 visible = isExpanded,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
+                enter = expandVertically(animationSpec = tween(EasyReaderMotion.medium)) + fadeIn(animationSpec = tween(EasyReaderMotion.short)),
+                exit = shrinkVertically(animationSpec = tween(EasyReaderMotion.short)) + fadeOut(animationSpec = tween(EasyReaderMotion.short))
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)
                 ) {
-                    HorizontalDivider(color = Color.DarkGray, thickness = 1.dp)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
@@ -126,14 +128,14 @@ fun ChapterSummaryDropdown(
                                 ) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(20.dp),
-                                    color = Color(0xFF4CAF50),
+                                    color = MaterialTheme.colorScheme.primary,
                                     strokeWidth = 2.dp
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(
                                     text = "Generating summary...",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.Gray,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontStyle = FontStyle.Italic
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -142,7 +144,7 @@ fun ChapterSummaryDropdown(
                                         Icon(
                                             imageVector = Icons.Filled.Close,
                                             contentDescription = "Cancel generation",
-                                            tint = Color(0xFFBDBDBD)
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
@@ -154,15 +156,15 @@ fun ChapterSummaryDropdown(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(
-                                        color = Color(0xFF0D0D0D),
-                                        shape = RoundedCornerShape(6.dp)
+                                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                                        shape = MaterialTheme.shapes.small
                                     )
                                     .padding(12.dp)
                             ) {
                                 Text(
                                     text = summary,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Color(0xFFE0E0E0),
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     lineHeight = MaterialTheme.typography.bodyMedium.lineHeight
                                 )
                             }
@@ -175,9 +177,9 @@ fun ChapterSummaryDropdown(
                                     .fillMaxWidth()
                                     .padding(vertical = 8.dp),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF4CAF50)
+                                    containerColor = MaterialTheme.colorScheme.primary
                                 ),
-                                shape = RoundedCornerShape(6.dp)
+                                shape = MaterialTheme.shapes.medium
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Psychology,
@@ -187,7 +189,7 @@ fun ChapterSummaryDropdown(
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = "Generate AI Summary",
-                                    color = Color.White
+                                    color = MaterialTheme.colorScheme.onPrimary
                                 )
                             }
                         }

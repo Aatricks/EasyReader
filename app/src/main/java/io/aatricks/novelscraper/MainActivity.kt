@@ -26,7 +26,9 @@ import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
 import io.aatricks.novelscraper.ui.ExploreRoute
+import io.aatricks.novelscraper.ui.LibraryRoute
 import io.aatricks.novelscraper.ui.ReaderRoute
+import io.aatricks.novelscraper.ui.screens.LibraryScreen
 import io.aatricks.novelscraper.ui.screens.ReaderScreen
 import io.aatricks.novelscraper.ui.screens.explore.ExploreScreen
 import io.aatricks.novelscraper.ui.theme.NovelScraperTheme
@@ -74,12 +76,14 @@ class MainActivity : ComponentActivity() {
         checkForLibraryUpdates()
 
         setContent {
+            val readerUiState by readerViewModel.uiState.collectAsState()
+
             NovelScraperTheme(
                 darkTheme = androidx.compose.foundation.isSystemInDarkTheme(),
-                dynamicColor = true
+                dynamicColor = false,
+                accentTheme = readerUiState.accentTheme
             ) {
                 val navController = rememberNavController()
-                val readerUiState by readerViewModel.uiState.collectAsState()
 
                 if (readerUiState.showExternalUrlConfirmation && readerUiState.pendingExternalUrl != null) {
                     io.aatricks.novelscraper.ui.components.ExternalUrlConfirmationDialog(
@@ -118,6 +122,15 @@ class MainActivity : ComponentActivity() {
                             navController = navController,
                             onOpenFilePicker = { checkPermissionsAndOpenFilePicker() },
                             modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    composable<LibraryRoute> {
+                        LibraryScreen(
+                            libraryViewModel = libraryViewModel,
+                            readerViewModel = readerViewModel,
+                            navController = navController,
+                            onOpenFilePicker = { checkPermissionsAndOpenFilePicker() },
+                            onNavigateBack = { navController.popBackStack() }
                         )
                     }
                     composable<ExploreRoute> {

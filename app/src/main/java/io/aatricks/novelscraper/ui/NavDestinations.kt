@@ -9,6 +9,9 @@ object ReaderRoute
 object ExploreRoute
 
 @Serializable
+object LibraryRoute
+
+@Serializable
 data class NovelDetailsRoute(
     val url: String,
     val source: String

@@ -56,6 +56,7 @@ import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import io.aatricks.novelscraper.data.model.*
 import io.aatricks.novelscraper.ui.components.*
+import io.aatricks.novelscraper.ui.LibraryRoute
 import io.aatricks.novelscraper.util.WebViewUtils
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
@@ -186,6 +187,11 @@ fun ReaderScreen(
                     uiState = uiState,
                     readerViewModel = readerViewModel,
                     onOpenLibrary = { scope.launch { drawerState.open() } },
+                    onOpenLibraryScreen = {
+                        navController.navigate(LibraryRoute) {
+                            launchSingleTop = true
+                        }
+                    },
                     onShowChapterList = { showChapterList = true },
                     onShowSettings = { showSettings = true }
                 )
@@ -201,12 +207,15 @@ fun ReaderScreen(
         ReaderSettingsSheet(
             uiState = uiState,
             onDismiss = { showSettings = false },
+            onUpdatePagedMode = { readerViewModel.setPagedMode(it) },
+            onUpdateRtl = { readerViewModel.setRtl(it) },
             onUpdateFontSize = { readerViewModel.updateFontSize(it) },
             onUpdateLineHeight = { readerViewModel.updateLineHeight(it) },
             onUpdateFontFamily = { readerViewModel.updateFontFamily(it) },
             onUpdateMargins = { readerViewModel.updateMargins(it) },
             onUpdateParagraphSpacing = { readerViewModel.updateParagraphSpacing(it) },
             onUpdateReaderTheme = { readerViewModel.updateReaderTheme(it) },
+            onUpdateAccentTheme = { readerViewModel.updateAccentTheme(it) },
             sheetState = settingsSheetState
         )
     }
@@ -379,6 +388,7 @@ private fun ReaderContent(
     uiState: ReaderViewModel.ReaderUiState,
     readerViewModel: ReaderViewModel,
     onOpenLibrary: () -> Unit,
+    onOpenLibraryScreen: () -> Unit,
     onShowChapterList: () -> Unit,
     onShowSettings: () -> Unit
 ): Unit {
@@ -388,7 +398,7 @@ private fun ReaderContent(
             error = uiState.error,
             onRetry = { readerViewModel.retryLoad() }
         )
-        uiState.content == null -> EmptyState(onOpenLibrary = onOpenLibrary)
+        uiState.content == null -> EmptyState(onOpenLibrary = onOpenLibraryScreen)
         else -> ContentArea(
             content = uiState.content,
             readerViewModel = readerViewModel,
@@ -588,11 +598,7 @@ private fun ContentArea(
             TopInfoBar(
                 novelName = uiState.novelName,
                 chapterTitle = uiState.chapterTitle,
-                isPagedMode = uiState.isPagedMode,
-                isRtl = uiState.isRtl,
                 onLibraryClick = onLibraryClick,
-                onToggleMode = { readerViewModel.toggleReadingMode() },
-                onToggleRtl = { readerViewModel.toggleRtl() },
                 onShowChapterList = onShowChapterList,
                 onShowSettings = onShowSettings
             )

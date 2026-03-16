@@ -1,68 +1,102 @@
 package io.aatricks.novelscraper.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.aatricks.novelscraper.ui.theme.EasyReaderSpacing
 
 @Composable
 fun TopInfoBar(
     novelName: String,
     chapterTitle: String,
-    isPagedMode: Boolean,
-    isRtl: Boolean,
     onLibraryClick: () -> Unit,
-    onToggleMode: () -> Unit,
-    onToggleRtl: () -> Unit,
     onShowChapterList: () -> Unit,
     onShowSettings: () -> Unit
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.xs),
+        shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 8.dp,
         shadowElevation = 8.dp
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = EasyReaderSpacing.xs, vertical = EasyReaderSpacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
         ) {
-            IconButton(onClick = onLibraryClick, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.Menu, contentDescription = "Open Library", tint = MaterialTheme.colorScheme.onSurface)
+            FilledTonalIconButton(
+                onClick = onLibraryClick,
+                modifier = Modifier.size(42.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Menu,
+                    contentDescription = "Open menu"
+                )
             }
-            Spacer(modifier = Modifier.width(8.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                if (novelName.isNotBlank()) {
-                    Text(text = novelName, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)
+            ) {
+                Text(
+                    text = novelName.ifBlank { "Reader" },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 if (chapterTitle.isNotBlank()) {
-                    Text(text = chapterTitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        text = chapterTitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
-            IconButton(onClick = onShowSettings, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.FormatSize, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurface)
+
+            FilledTonalIconButton(
+                onClick = onShowChapterList,
+                modifier = Modifier.size(42.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.List,
+                    contentDescription = "Chapter list"
+                )
             }
-            IconButton(onClick = onShowChapterList, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Chapter List", tint = MaterialTheme.colorScheme.onSurface)
-            }
-            IconButton(onClick = onToggleMode, modifier = Modifier.size(40.dp)) {
-                Icon(imageVector = if (isPagedMode) Icons.Filled.ViewCarousel else Icons.Filled.ViewStream, contentDescription = "Toggle Mode", tint = MaterialTheme.colorScheme.onSurface)
-            }
-            if (isPagedMode) {
-                IconButton(onClick = onToggleRtl, modifier = Modifier.size(40.dp)) {
-                    Text(text = if (isRtl) "RTL" else "LTR", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelSmall)
-                }
+
+            OutlinedButton(
+                onClick = onShowSettings,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.height(42.dp)
+            ) {
+                Text(
+                    text = "Aa",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }
@@ -78,60 +112,98 @@ fun BottomNavigationBar(
     onProgressChange: (Float) -> Unit
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.xs),
+        shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 8.dp,
         shadowElevation = 8.dp
     ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Column(
+            modifier = Modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.sm),
+            verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
+        ) {
             var sliderValue by remember(progress) { mutableFloatStateOf(progress) }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(text = "Progress", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall)
-                Text(text = "${sliderValue.toInt()}%", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall)
-            }
-            Spacer(modifier = Modifier.height(4.dp))
+
             Slider(
                 value = sliderValue,
                 onValueChange = { sliderValue = it },
                 onValueChangeFinished = { onProgressChange(sliderValue) },
                 valueRange = 0f..100f,
+                modifier = Modifier.fillMaxWidth(),
                 colors = SliderDefaults.colors(
                     thumbColor = MaterialTheme.colorScheme.primary,
                     activeTrackColor = MaterialTheme.colorScheme.primary,
                     inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                ),
-                modifier = Modifier.fillMaxWidth().height(24.dp)
+                )
             )
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                Button(
-                    onClick = onPreviousClick, 
-                    enabled = canNavigatePrevious, 
-                    modifier = Modifier.weight(1f), 
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant, 
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Previous")
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-                Button(
-                    onClick = onNextClick, 
-                    enabled = canNavigateNext, 
-                    modifier = Modifier.weight(1f), 
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant, 
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                ) {
-                    Text("Next")
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
-                }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ChapterNavButton(
+                    text = "Previous",
+                    enabled = canNavigatePrevious,
+                    onClick = onPreviousClick,
+                    leading = true
+                )
+
+                Text(
+                    text = "${sliderValue.toInt()}%",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                ChapterNavButton(
+                    text = "Next",
+                    enabled = canNavigateNext,
+                    onClick = onNextClick,
+                    leading = false
+                )
             }
+        }
+    }
+}
+
+@Composable
+private fun ChapterNavButton(
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    leading: Boolean
+) {
+    FilledTonalButton(
+        onClick = onClick,
+        enabled = enabled,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+        modifier = Modifier.height(40.dp)
+    ) {
+        if (leading) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
+        }
+
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge
+        )
+
+        if (!leading) {
+            Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
