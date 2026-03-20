@@ -17,8 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.DpSize
 import io.aatricks.novelscraper.ui.theme.EasyReaderSpacing
 
 @Composable
@@ -177,13 +177,13 @@ fun BottomNavigationBar(
                 modifier = Modifier.fillMaxWidth(),
                 colors = sliderColors,
                 interactionSource = sliderInteractionSource,
-                thumb = { sliderState ->
+                thumb = {
                     SliderDefaults.Thumb(
                         interactionSource = sliderInteractionSource,
-                        modifier = Modifier,
+                        modifier = Modifier.offset(y = 2.dp),
+                        thumbSize = DpSize(10.dp, 10.dp),
                         colors = sliderColors,
-                        enabled = true,
-                        thumbSize = DpSize(12.dp, 12.dp)
+                        enabled = true
                     )
                 },
                 track = { sliderState ->
