@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardActions
@@ -21,10 +22,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import io.aatricks.novelscraper.data.model.*
@@ -464,6 +468,53 @@ private fun NovelGroupCard(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
+private fun SwipeSelectionBox(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    onSwipeSelect: () -> Unit,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val density = LocalDensity.current
+    val swipeThresholdPx = remember(density) { with(density) { 72.dp.toPx() } }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                translationX = (dragOffset * 0.18f).coerceAtLeast(0f)
+            }
+            .pointerInput(swipeThresholdPx, onSwipeSelect) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        if (dragOffset >= swipeThresholdPx) {
+                            onSwipeSelect()
+                        }
+                        dragOffset = 0f
+                    },
+                    onDragCancel = {
+                        dragOffset = 0f
+                    },
+                    onHorizontalDrag = { change, dragAmount ->
+                        if (dragAmount > 0f) {
+                            dragOffset = (dragOffset + dragAmount).coerceAtMost(swipeThresholdPx * 1.5f)
+                        }
+                    }
+                )
+            }
+            .then(
+                if (onClick != null) {
+                    Modifier.combinedClickable(onClick = onClick)
+                } else {
+                    Modifier
+                }
+            )
+    ) {
+        content()
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 private fun NovelGroupHeader(
     title: String,
     items: List<LibraryItem>,
@@ -480,18 +531,18 @@ private fun NovelGroupHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(
+        SwipeSelectionBox(
             modifier = Modifier
                 .weight(1f)
-                .combinedClickable(
-                    onClick = {
-                        if (isSelectionMode) onToggleSelection()
-                        else onOpenItem(items.find { it.isCurrentlyReading } ?: items.maxByOrNull { it.lastRead } ?: items.first())
-                    },
-                    onLongClick = onToggleSelection
-                )
+                .padding(end = EasyReaderSpacing.xs),
+            onClick = {
+                if (isSelectionMode) onToggleSelection()
+                else onOpenItem(items.find { it.isCurrentlyReading } ?: items.maxByOrNull { it.lastRead } ?: items.first())
+            },
+            onSwipeSelect = onToggleSelection
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                 val hasUpdates = items.any { it.hasUpdates }
                 val lastItem = items.lastOrNull()
                 val isCaughtUp = lastItem?.let { it.isCurrentlyReading || it.progress > 0 } ?: false
@@ -509,21 +560,22 @@ private fun NovelGroupHeader(
                         Text("NEW", style = MaterialTheme.typography.labelSmall)
                     }
                 }
-            }
-            if (!isExpanded) {
-                val current = items.find { it.isCurrentlyReading } ?: items.maxByOrNull { it.lastRead } ?: items.first()
-                Text(
-                    text = current.currentChapter.ifBlank { "Chapter 1" },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (current.isCurrentlyReading) {
-                    Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
-                    LinearProgressIndicator(
-                        progress = { readerUiState.scrollProgress / 100f },
-                        modifier = Modifier.fillMaxWidth(),
-                        color = MaterialTheme.colorScheme.primary
+                }
+                if (!isExpanded) {
+                    val current = items.find { it.isCurrentlyReading } ?: items.maxByOrNull { it.lastRead } ?: items.first()
+                    Text(
+                        text = current.currentChapter.ifBlank { "Chapter 1" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (current.isCurrentlyReading) {
+                        Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
+                        LinearProgressIndicator(
+                            progress = { readerUiState.scrollProgress / 100f },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
         }
@@ -585,24 +637,30 @@ private fun NovelChapterList(
             )
 
             Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
+                SwipeSelectionBox(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(rowColor, shape = MaterialTheme.shapes.small)
-                        .combinedClickable(
-                            onClick = { onChapterClick(chapterItem) },
-                            onLongClick = { onChapterLongClick(chapterItem) }
-                        )
-                        .padding(vertical = EasyReaderSpacing.xs, horizontal = EasyReaderSpacing.xs),
-                    verticalAlignment = Alignment.CenterVertically
+                        .background(
+                            rowColor,
+                            shape = MaterialTheme.shapes.small
+                        ),
+                    onClick = { onChapterClick(chapterItem) },
+                    onSwipeSelect = { onChapterLongClick(chapterItem) }
                 ) {
-                    Text(
-                        text = chapterItem.currentChapter.ifBlank { "Chapter 1" },
-                        color = if (isSelected) MaterialTheme.colorScheme.primary
-                        else if (isCurrent) MaterialTheme.colorScheme.secondary
-                        else MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = EasyReaderSpacing.xs, horizontal = EasyReaderSpacing.xs),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = chapterItem.currentChapter.ifBlank { "Chapter 1" },
+                            color = if (isSelected) MaterialTheme.colorScheme.primary
+                            else if (isCurrent) MaterialTheme.colorScheme.secondary
+                            else MaterialTheme.colorScheme.onSurface,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                 }
 
                 val cachedSummary = chapterItem.chapterSummaries[chapterUrl]

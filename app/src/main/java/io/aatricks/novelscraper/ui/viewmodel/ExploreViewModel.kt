@@ -27,7 +27,8 @@ class ExploreViewModel @Inject constructor(
         val selectedItem: ExploreItem? = null,
         val selectedItemDetails: ExploreItem? = null,
         val isFetchingDetails: Boolean = false,
-        val sources: List<String> = emptyList()
+        val sources: List<String> = emptyList(),
+        val canLoadMore: Boolean = true
     )
 
     private val _searchQueryFlow = MutableStateFlow("")
@@ -58,11 +59,24 @@ class ExploreViewModel @Inject constructor(
         currentJob = viewModelScope.launch {
             runCatching {
                 val tags = exploreRepository.getTags(_uiState.value.selectedSource)
-                updateState { it.copy(isLoading = true, availableTags = tags) }
+                updateState {
+                    it.copy(
+                        isLoading = true,
+                        availableTags = tags,
+                        canLoadMore = true
+                    )
+                }
                 val novels = exploreRepository.getPopularNovels(1, _uiState.value.selectedSource, _uiState.value.selectedTags.toList())
-                updateState { it.copy(items = novels, isLoading = false, page = 1) }
+                updateState {
+                    it.copy(
+                        items = novels,
+                        isLoading = false,
+                        page = 1,
+                        canLoadMore = novels.isNotEmpty()
+                    )
+                }
             }.onFailure {
-                updateState { it.copy(isLoading = false) }
+                updateState { it.copy(isLoading = false, canLoadMore = false) }
             }
         }
     }
@@ -93,7 +107,11 @@ class ExploreViewModel @Inject constructor(
                         selectedSource = sourceName,
                         isLoading = true,
                         page = 1,
-                        selectedTags = emptySet()
+                        selectedTags = emptySet(),
+                        selectedItem = null,
+                        selectedItemDetails = null,
+                        isFetchingDetails = false,
+                        canLoadMore = true
                     )
                 }
                 val tags = exploreRepository.getTags(sourceName)
@@ -107,11 +125,12 @@ class ExploreViewModel @Inject constructor(
                         items = novels,
                         isLoading = false,
                         availableTags = tags,
-                        isSearching = searchQuery.isNotBlank()
+                        isSearching = searchQuery.isNotBlank(),
+                        canLoadMore = novels.isNotEmpty()
                     )
                 }
             }.onFailure {
-                updateState { it.copy(isLoading = false) }
+                updateState { it.copy(isLoading = false, canLoadMore = false) }
             }
         }
     }
@@ -125,11 +144,11 @@ class ExploreViewModel @Inject constructor(
                 } else {
                     _uiState.value.selectedTags + tag
                 }
-                updateState { it.copy(selectedTags = newTags, isLoading = true, page = 1) }
+                updateState { it.copy(selectedTags = newTags, isLoading = true, page = 1, canLoadMore = true) }
                 val novels = exploreRepository.getPopularNovels(1, _uiState.value.selectedSource, newTags.toList())
-                updateState { it.copy(items = novels, isLoading = false) }
+                updateState { it.copy(items = novels, isLoading = false, canLoadMore = novels.isNotEmpty()) }
             }.onFailure {
-                updateState { it.copy(isLoading = false) }
+                updateState { it.copy(isLoading = false, canLoadMore = false) }
             }
         }
     }
@@ -138,11 +157,11 @@ class ExploreViewModel @Inject constructor(
         currentJob?.cancel()
         currentJob = viewModelScope.launch {
             runCatching {
-                updateState { it.copy(selectedTags = emptySet(), isLoading = true, page = 1) }
+                updateState { it.copy(selectedTags = emptySet(), isLoading = true, page = 1, canLoadMore = true) }
                 val novels = exploreRepository.getPopularNovels(1, _uiState.value.selectedSource, emptyList())
-                updateState { it.copy(items = novels, isLoading = false) }
+                updateState { it.copy(items = novels, isLoading = false, canLoadMore = novels.isNotEmpty()) }
             }.onFailure {
-                updateState { it.copy(isLoading = false) }
+                updateState { it.copy(isLoading = false, canLoadMore = false) }
             }
         }
     }
@@ -152,17 +171,17 @@ class ExploreViewModel @Inject constructor(
         currentJob?.cancel()
         currentJob = viewModelScope.launch {
             runCatching {
-                updateState { it.copy(isLoading = true, page = 1) }
+                updateState { it.copy(isLoading = true, page = 1, canLoadMore = true) }
                 val novels = exploreRepository.searchNovels(_uiState.value.searchQuery, 1, _uiState.value.selectedSource)
-                updateState { it.copy(items = novels, isLoading = false) }
+                updateState { it.copy(items = novels, isLoading = false, canLoadMore = novels.isNotEmpty()) }
             }.onFailure {
-                updateState { it.copy(isLoading = false) }
+                updateState { it.copy(isLoading = false, canLoadMore = false) }
             }
         }
     }
 
     fun loadMore(): Unit {
-        if (_uiState.value.isLoading) return
+        if (_uiState.value.isLoading || !_uiState.value.canLoadMore) return
         currentJob?.cancel()
         currentJob = viewModelScope.launch {
             runCatching {
@@ -178,10 +197,11 @@ class ExploreViewModel @Inject constructor(
                 updateState { it.copy(
                     items = it.items + distinctNewItems,
                     isLoading = false,
-                    page = if (distinctNewItems.isNotEmpty()) nextPage else it.page
+                    page = if (distinctNewItems.isNotEmpty()) nextPage else it.page,
+                    canLoadMore = distinctNewItems.isNotEmpty()
                 ) }
             }.onFailure {
-                updateState { it.copy(isLoading = false) }
+                updateState { it.copy(isLoading = false, canLoadMore = false) }
             }
         }
     }
@@ -218,9 +238,14 @@ class ExploreViewModel @Inject constructor(
                 isSearching = false,
                 selectedSource = null,
                 selectedTags = emptySet(),
-                page = 1
+                selectedItem = null,
+                selectedItemDetails = null,
+                isFetchingDetails = false,
+                page = 1,
+                canLoadMore = true
             )
         }
+        _searchQueryFlow.value = ""
         loadInitialData()
     }
 

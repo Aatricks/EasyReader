@@ -15,6 +15,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -53,6 +54,9 @@ import io.aatricks.novelscraper.data.model.ExploreItem
 import io.aatricks.novelscraper.ui.theme.EasyReaderSpacing
 import io.aatricks.novelscraper.ui.viewmodel.ExploreViewModel
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -173,9 +177,18 @@ private fun ExploreContent(
     onLoadMore: () -> Unit
 ): Unit {
     val gridState = rememberLazyGridState()
-    val isCompactHeader by remember {
-        derivedStateOf {
-            gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 8
+    val compactSummaryState = rememberLazyListState()
+    val sourceRowState = rememberLazyListState()
+    val tagRowState = rememberLazyListState()
+    var isCompactHeader by remember { mutableStateOf(false) }
+
+    LaunchedEffect(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset) {
+        val shouldCompact = gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 140
+        val shouldExpand = gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset < 48
+
+        when {
+            shouldCompact && !isCompactHeader -> isCompactHeader = true
+            shouldExpand && isCompactHeader -> isCompactHeader = false
         }
     }
 
@@ -184,6 +197,9 @@ private fun ExploreContent(
             uiState = uiState,
             hasActiveFilters = hasActiveFilters,
             isCompactHeader = isCompactHeader,
+            compactSummaryState = compactSummaryState,
+            sourceRowState = sourceRowState,
+            tagRowState = tagRowState,
             onSearchQueryChange = onSearchQueryChange,
             onPerformSearch = onPerformSearch,
             onSourceSelect = onSourceSelect,
@@ -211,6 +227,9 @@ private fun ExploreFilterPanel(
     uiState: ExploreViewModel.ExploreUiState,
     hasActiveFilters: Boolean,
     isCompactHeader: Boolean,
+    compactSummaryState: androidx.compose.foundation.lazy.LazyListState,
+    sourceRowState: androidx.compose.foundation.lazy.LazyListState,
+    tagRowState: androidx.compose.foundation.lazy.LazyListState,
     onSearchQueryChange: (String) -> Unit,
     onPerformSearch: () -> Unit,
     onSourceSelect: (String?) -> Unit,
@@ -268,61 +287,83 @@ private fun ExploreFilterPanel(
                 CompactFilterSummary(
                     selectedSource = uiState.selectedSource,
                     selectedTags = uiState.selectedTags,
+                    listState = compactSummaryState,
                     onClearTags = onClearTags,
                     onSourceSelect = onSourceSelect
                 )
             } else {
-                FilterSectionLabel("Sources")
-                SourceRow(
-                    selectedSource = uiState.selectedSource,
-                    sources = uiState.sources,
-                    onSourceSelect = onSourceSelect
+                ExpandedFilterControls(
+                    uiState = uiState,
+                    sourceRowState = sourceRowState,
+                    tagRowState = tagRowState,
+                    onSourceSelect = onSourceSelect,
+                    onTagToggle = onTagToggle,
+                    onClearTags = onClearTags
                 )
+            }
+        }
+    }
+}
 
-                if (uiState.availableTags.isNotEmpty()) {
-                    if (uiState.searchQuery.isBlank()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            FilterSectionLabel("Genres")
-                            if (uiState.selectedTags.isNotEmpty()) {
-                                TextButton(
-                                    onClick = onClearTags,
-                                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
-                                ) {
-                                    Text("Clear genres")
-                                }
-                            }
-                        }
-                        TagRow(
-                            availableTags = uiState.availableTags,
-                            selectedTags = uiState.selectedTags,
-                            onTagToggle = onTagToggle,
-                            onClearTags = onClearTags
-                        )
-                    } else if (uiState.selectedTags.isNotEmpty()) {
-                        Surface(
-                            shape = MaterialTheme.shapes.large,
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.xs),
-                                verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)
-                            ) {
-                                Text(
-                                    text = "Saved genre filters",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = uiState.selectedTags.joinToString("  •  "),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
+@Composable
+private fun ExpandedFilterControls(
+    uiState: ExploreViewModel.ExploreUiState,
+    sourceRowState: androidx.compose.foundation.lazy.LazyListState,
+    tagRowState: androidx.compose.foundation.lazy.LazyListState,
+    onSourceSelect: (String?) -> Unit,
+    onTagToggle: (String) -> Unit,
+    onClearTags: () -> Unit
+) {
+    FilterSectionLabel("Sources")
+    SourceRow(
+        selectedSource = uiState.selectedSource,
+        sources = uiState.sources,
+        listState = sourceRowState,
+        onSourceSelect = onSourceSelect
+    )
+
+    if (uiState.availableTags.isNotEmpty()) {
+        if (uiState.searchQuery.isBlank()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilterSectionLabel("Genres")
+                if (uiState.selectedTags.isNotEmpty()) {
+                    TextButton(
+                        onClick = onClearTags,
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+                    ) {
+                        Text("Clear genres")
                     }
+                }
+            }
+            TagRow(
+                availableTags = uiState.availableTags,
+                selectedTags = uiState.selectedTags,
+                listState = tagRowState,
+                onTagToggle = onTagToggle,
+                onClearTags = onClearTags
+            )
+        } else if (uiState.selectedTags.isNotEmpty()) {
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.xs),
+                    verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)
+                ) {
+                    Text(
+                        text = "Saved genre filters",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = uiState.selectedTags.joinToString("  •  "),
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         }
@@ -333,10 +374,12 @@ private fun ExploreFilterPanel(
 private fun CompactFilterSummary(
     selectedSource: String?,
     selectedTags: Set<String>,
+    listState: androidx.compose.foundation.lazy.LazyListState,
     onClearTags: () -> Unit,
     onSourceSelect: (String?) -> Unit
 ) {
     LazyRow(
+        state = listState,
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
     ) {
@@ -416,9 +459,11 @@ private fun FilterSectionLabel(text: String): Unit {
 private fun SourceRow(
     selectedSource: String?,
     sources: List<String>,
+    listState: androidx.compose.foundation.lazy.LazyListState,
     onSourceSelect: (String?) -> Unit
 ): Unit {
     LazyRow(
+        state = listState,
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
     ) {
@@ -445,10 +490,12 @@ private fun SourceRow(
 private fun TagRow(
     availableTags: List<String>,
     selectedTags: Set<String>,
+    listState: androidx.compose.foundation.lazy.LazyListState,
     onTagToggle: (String) -> Unit,
     onClearTags: () -> Unit
 ): Unit {
     LazyRow(
+        state = listState,
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
     ) {
@@ -525,14 +572,27 @@ private fun ExploreGrid(
                     if (uiState.isLoading) {
                         items(4) { SkeletonExploreCard() }
                     } else {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            LaunchedEffect(uiState.page, uiState.searchQuery, uiState.selectedSource, uiState.selectedTags) {
-                                onLoadMore()
-                            }
-                        }
+                        item(span = { GridItemSpan(maxLineSpan) }) { Spacer(modifier = Modifier.height(1.dp)) }
                     }
                 }
             }
+        }
+
+        LaunchedEffect(gridState, uiState.items.size, uiState.isLoading, uiState.canLoadMore) {
+            snapshotFlow {
+                val layoutInfo = gridState.layoutInfo
+                val totalItems = layoutInfo.totalItemsCount
+                if (totalItems == 0) {
+                    false
+                } else {
+                    val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                    val shouldLoadMore = uiState.canLoadMore && !uiState.isLoading && uiState.items.isNotEmpty() && lastVisible >= totalItems - 4
+                    shouldLoadMore
+                }
+            }
+                .distinctUntilChanged()
+                .filter { it }
+                .collectLatest { onLoadMore() }
         }
     }
 }

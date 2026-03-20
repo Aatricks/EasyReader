@@ -37,7 +37,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -109,24 +108,11 @@ fun ChapterListSheet(
                 .padding(horizontal = EasyReaderSpacing.md, vertical = EasyReaderSpacing.sm),
             verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.md)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)) {
+            if (isSelectionMode) {
                 Text(
-                    text = if (isSelectionMode) {
-                        if (isDeleteMode) "Delete Chapters"
-                        else "Download Chapters"
-                    } else {
-                        "Chapters"
-                    },
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = when {
-                        isSelectionMode -> "${selectedChapterUrls.size} selected"
-                        uiState.content?.title?.isNotBlank() == true -> uiState.content?.title ?: ""
-                        else -> "Jump to a chapter or long-press to select."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "${selectedChapterUrls.size} selected",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -269,17 +255,15 @@ fun ChapterListSheet(
                                     overflow = TextOverflow.Ellipsis
                                 )
                             },
-                            supportingContent = {
-                                Text(
-                                    text = when {
-                                        isCurrent -> "Currently reading"
-                                        isDownloaded -> "Saved locally"
-                                        else -> "Long-press to select"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
+                            supportingContent = if (isCurrent || isDownloaded) {
+                                {
+                                    Text(
+                                        text = if (isCurrent) "Currently reading" else "Saved locally",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            } else null,
                             leadingContent = {
                                 if (isSelectionMode) {
                                     Checkbox(

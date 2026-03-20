@@ -44,8 +44,9 @@ class NovelFireSource @Inject constructor(
     }
     
     override suspend fun getPopularNovels(page: Int, tags: List<String>): List<ExploreItem> = io {
-        val url = if (tags.isNotEmpty()) {
-            val tag = tags.first()
+        val normalizedTags = tags.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        val url = if (normalizedTags.isNotEmpty()) {
+            val tag = normalizedTags.first()
             val tagSlug = tag.lowercase().replace(" ", "-")
             "$baseUrl/genre-$tagSlug/sort-popular/status-all/all-novel?page=$page"
         } else {

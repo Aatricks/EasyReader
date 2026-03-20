@@ -24,8 +24,9 @@ class MangaBatSource @Inject constructor(
     }
 
     override suspend fun getPopularNovels(page: Int, tags: List<String>): List<ExploreItem> = io {
-        val url = if (tags.isNotEmpty()) {
-            val tagSlug = tags.first().lowercase().replace(" ", "-")
+        val normalizedTags = tags.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        val url = if (normalizedTags.isNotEmpty()) {
+            val tagSlug = normalizedTags.first().lowercase().replace(" ", "-")
             "$baseUrl/genre/$tagSlug?page=$page"
         } else {
             "$baseUrl/manga-list/hot-manga?page=$page"

@@ -1,9 +1,6 @@
 package io.aatricks.novelscraper.data.repository
 
-import android.content.Context
 import io.aatricks.novelscraper.data.model.ExploreItem
-import io.aatricks.novelscraper.data.repository.source.MangaBatSource
-import io.aatricks.novelscraper.data.repository.source.NovelFireSource
 import io.aatricks.novelscraper.data.repository.source.NovelSource
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -30,10 +27,17 @@ class ExploreRepository @Inject constructor(
         tags: List<String> = emptyList()
     ): List<ExploreItem> = coroutineScope {
         val activeSources = filterSources(sourceName)
-        
-        val results = activeSources.map { source ->
-            async { runCatching { source.getPopularNovels(page, tags) }.getOrDefault(emptyList()) }
-        }.awaitAll().flatten()
+
+        val normalizedTags = tags.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        val results = if (normalizedTags.size <= 1) {
+            activeSources.map { source ->
+                async { runCatching { source.getPopularNovels(page, normalizedTags) }.getOrDefault(emptyList()) }
+            }.awaitAll().flatten()
+        } else {
+            activeSources.map { source ->
+                async { loadPopularNovelsWithTagIntersection(source, page, normalizedTags) }
+            }.awaitAll().flatten()
+        }
 
         if (sourceName == null) results.shuffled() else results
     }
@@ -71,7 +75,27 @@ class ExploreRepository @Inject constructor(
         return if (sourceName == null) sources.toList() else sources.filter { it.name == sourceName }
     }
 
+    private suspend fun loadPopularNovelsWithTagIntersection(
+        source: NovelSource,
+        page: Int,
+        tags: List<String>
+    ): List<ExploreItem> = coroutineScope {
+        val perTagResults = tags.map { tag ->
+            async { runCatching { source.getPopularNovels(page, listOf(tag)) }.getOrDefault(emptyList()) }
+        }.awaitAll()
+
+        intersectByUrl(perTagResults)
+    }
+
+    private fun intersectByUrl(resultSets: List<List<ExploreItem>>): List<ExploreItem> {
+        if (resultSets.isEmpty() || resultSets.any { it.isEmpty() }) return emptyList()
+
+        val commonUrls = resultSets
+            .map { it.map(ExploreItem::url).toSet() }
+            .reduce { acc, urls -> acc.intersect(urls) }
+
+        return resultSets.first().filter { it.url in commonUrls }
+    }
+
     fun getSourceNames(): List<String> = sources.map { it.name }
 }
-
-

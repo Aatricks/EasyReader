@@ -1,6 +1,7 @@
 package io.aatricks.novelscraper.ui.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -16,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import io.aatricks.novelscraper.ui.theme.EasyReaderSpacing
 
@@ -110,6 +112,7 @@ fun TopInfoBar(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BottomNavigationBar(
     progress: Float,
@@ -134,6 +137,12 @@ fun BottomNavigationBar(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             var sliderValue by remember(progress) { mutableFloatStateOf(progress) }
+            val sliderInteractionSource = remember { MutableInteractionSource() }
+            val sliderColors = SliderDefaults.colors(
+                thumbColor = MaterialTheme.colorScheme.primary,
+                activeTrackColor = MaterialTheme.colorScheme.primary,
+                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -166,11 +175,25 @@ fun BottomNavigationBar(
                 onValueChangeFinished = { onProgressChange(sliderValue) },
                 valueRange = 0f..100f,
                 modifier = Modifier.fillMaxWidth(),
-                colors = SliderDefaults.colors(
-                    thumbColor = MaterialTheme.colorScheme.primary,
-                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                )
+                colors = sliderColors,
+                interactionSource = sliderInteractionSource,
+                thumb = { sliderState ->
+                    SliderDefaults.Thumb(
+                        interactionSource = sliderInteractionSource,
+                        modifier = Modifier,
+                        colors = sliderColors,
+                        enabled = true,
+                        thumbSize = DpSize(12.dp, 12.dp)
+                    )
+                },
+                track = { sliderState ->
+                    SliderDefaults.Track(
+                        sliderState = sliderState,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = sliderColors,
+                        enabled = true
+                    )
+                }
             )
 
             Row(
