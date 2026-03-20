@@ -1,11 +1,17 @@
 package io.aatricks.novelscraper.ui.screens.explore
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -14,6 +20,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -165,10 +172,18 @@ private fun ExploreContent(
     onItemSelect: (ExploreItem) -> Unit,
     onLoadMore: () -> Unit
 ): Unit {
+    val gridState = rememberLazyGridState()
+    val isCompactHeader by remember {
+        derivedStateOf {
+            gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 8
+        }
+    }
+
     Column(modifier = modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.xs)) {
         ExploreFilterPanel(
             uiState = uiState,
             hasActiveFilters = hasActiveFilters,
+            isCompactHeader = isCompactHeader,
             onSearchQueryChange = onSearchQueryChange,
             onPerformSearch = onPerformSearch,
             onSourceSelect = onSourceSelect,
@@ -180,6 +195,7 @@ private fun ExploreContent(
         Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
 
         ExploreGrid(
+            gridState = gridState,
             modifier = Modifier.weight(1f),
             uiState = uiState,
             hasActiveFilters = hasActiveFilters,
@@ -194,6 +210,7 @@ private fun ExploreContent(
 private fun ExploreFilterPanel(
     uiState: ExploreViewModel.ExploreUiState,
     hasActiveFilters: Boolean,
+    isCompactHeader: Boolean,
     onSearchQueryChange: (String) -> Unit,
     onPerformSearch: () -> Unit,
     onSourceSelect: (String?) -> Unit,
@@ -203,7 +220,8 @@ private fun ExploreFilterPanel(
 ): Unit {
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isCompactHeader) 0.18f else 0.25f),
+        modifier = Modifier.animateContentSize()
     ) {
         Column(
             modifier = Modifier
@@ -246,57 +264,105 @@ private fun ExploreFilterPanel(
                 }
             }
 
-            FilterSectionLabel("Sources")
-            SourceRow(
-                selectedSource = uiState.selectedSource,
-                sources = uiState.sources,
-                onSourceSelect = onSourceSelect
-            )
+            if (isCompactHeader) {
+                CompactFilterSummary(
+                    selectedSource = uiState.selectedSource,
+                    selectedTags = uiState.selectedTags,
+                    onClearTags = onClearTags,
+                    onSourceSelect = onSourceSelect
+                )
+            } else {
+                FilterSectionLabel("Sources")
+                SourceRow(
+                    selectedSource = uiState.selectedSource,
+                    sources = uiState.sources,
+                    onSourceSelect = onSourceSelect
+                )
 
-            if (uiState.availableTags.isNotEmpty()) {
-                if (uiState.searchQuery.isBlank()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        FilterSectionLabel("Genres")
-                        if (uiState.selectedTags.isNotEmpty()) {
-                            TextButton(
-                                onClick = onClearTags,
-                                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+                if (uiState.availableTags.isNotEmpty()) {
+                    if (uiState.searchQuery.isBlank()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            FilterSectionLabel("Genres")
+                            if (uiState.selectedTags.isNotEmpty()) {
+                                TextButton(
+                                    onClick = onClearTags,
+                                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+                                ) {
+                                    Text("Clear genres")
+                                }
+                            }
+                        }
+                        TagRow(
+                            availableTags = uiState.availableTags,
+                            selectedTags = uiState.selectedTags,
+                            onTagToggle = onTagToggle,
+                            onClearTags = onClearTags
+                        )
+                    } else if (uiState.selectedTags.isNotEmpty()) {
+                        Surface(
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.xs),
+                                verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)
                             ) {
-                                Text("Clear genres")
+                                Text(
+                                    text = "Saved genre filters",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = uiState.selectedTags.joinToString("  •  "),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             }
                         }
                     }
-                    TagRow(
-                        availableTags = uiState.availableTags,
-                        selectedTags = uiState.selectedTags,
-                        onTagToggle = onTagToggle,
-                        onClearTags = onClearTags
-                    )
-                } else if (uiState.selectedTags.isNotEmpty()) {
-                    Surface(
-                        shape = MaterialTheme.shapes.large,
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.xs),
-                            verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)
-                        ) {
-                            Text(
-                                text = "Saved genre filters",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = uiState.selectedTags.joinToString("  •  "),
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactFilterSummary(
+    selectedSource: String?,
+    selectedTags: Set<String>,
+    onClearTags: () -> Unit,
+    onSourceSelect: (String?) -> Unit
+) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
+    ) {
+        item {
+            FilterChip(
+                selected = selectedSource == null,
+                onClick = { onSourceSelect(null) },
+                label = { Text("All sources") }
+            )
+        }
+        selectedSource?.let { source ->
+            item {
+                FilterChip(
+                    selected = true,
+                    onClick = { onSourceSelect(null) },
+                    label = { Text(source) }
+                )
+            }
+        }
+        if (selectedTags.isNotEmpty()) {
+            item {
+                FilterChip(
+                    selected = true,
+                    onClick = onClearTags,
+                    label = { Text("${selectedTags.size} genres") }
+                )
             }
         }
     }
@@ -405,6 +471,7 @@ private fun TagRow(
 
 @Composable
 private fun ExploreGrid(
+    gridState: androidx.compose.foundation.lazy.grid.LazyGridState,
     modifier: Modifier = Modifier,
     uiState: ExploreViewModel.ExploreUiState,
     hasActiveFilters: Boolean,
@@ -414,6 +481,7 @@ private fun ExploreGrid(
 ): Unit {
     Box(modifier = modifier.fillMaxWidth()) {
         LazyVerticalGrid(
+            state = gridState,
             modifier = Modifier.fillMaxSize(),
             columns = GridCells.Adaptive(minSize = 156.dp),
             contentPadding = PaddingValues(bottom = EasyReaderSpacing.sm),

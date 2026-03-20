@@ -1,27 +1,60 @@
 package io.aatricks.novelscraper.ui.components
 
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAddCheck
-import androidx.compose.material.icons.filled.LibraryAddCheck
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.LibraryAddCheck
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SheetState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.aatricks.novelscraper.data.model.ChapterInfo
+import io.aatricks.novelscraper.ui.theme.EasyReaderSpacing
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -33,10 +66,9 @@ fun ChapterListSheet(
     sheetState: SheetState
 ) {
     var isSelectionMode by remember { mutableStateOf(false) }
-    val selectedChapterUrls = remember { mutableStateListOf<String>() }
     var isDeleteMode by remember { mutableStateOf(false) }
+    val selectedChapterUrls = remember { mutableStateListOf<String>() }
     val chaptersListState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -46,6 +78,7 @@ fun ChapterListSheet(
     ) {
         val libraryItemsInGroup = libraryViewModel.uiState.value.groupedItems[uiState.baseTitle] ?: emptyList()
         val downloadedUrls = libraryItemsInGroup.map { it.url }.toSet()
+        val readUrls = libraryItemsInGroup.filter { it.progress == 100 }.map { it.url }.toSet()
 
         val allChapters = uiState.fullChapterList.ifEmpty {
             libraryItemsInGroup.map {
@@ -63,61 +96,91 @@ fun ChapterListSheet(
             allChapters
         }
 
-        LaunchedEffect(Unit) {
+        LaunchedEffect(filteredChapters, uiState.content?.url) {
             val currentIndex = filteredChapters.indexOfFirst { it.url == uiState.content?.url }
             if (currentIndex >= 0) {
                 chaptersListState.scrollToItem(currentIndex)
             }
         }
 
-        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = EasyReaderSpacing.md, vertical = EasyReaderSpacing.sm),
+            verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.md)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)) {
                 Text(
                     text = if (isSelectionMode) {
-                        if (isDeleteMode) "Delete Chapters (${selectedChapterUrls.size})"
-                        else "Download Chapters (${selectedChapterUrls.size})"
-                    } else "Chapters",
+                        if (isDeleteMode) "Delete Chapters"
+                        else "Download Chapters"
+                    } else {
+                        "Chapters"
+                    },
                     style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f)
+                    fontWeight = FontWeight.SemiBold
                 )
+                Text(
+                    text = when {
+                        isSelectionMode -> "${selectedChapterUrls.size} selected"
+                        uiState.content?.title?.isNotBlank() == true -> uiState.content?.title ?: ""
+                        else -> "Jump to a chapter or long-press to select."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val readUrls = libraryItemsInGroup.filter { it.progress == 100 }.map { it.url }.toSet()
+            if (!isSelectionMode) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AssistChip(
+                        onClick = {
+                            isSelectionMode = true
+                            isDeleteMode = false
+                            selectedChapterUrls.clear()
+                            val unread = allChapters.filter { it.url !in readUrls && it.url !in downloadedUrls }
+                            selectedChapterUrls.addAll(unread.map { it.url })
+                        },
+                        label = { Text("Unread") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.PlaylistAddCheck,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    )
 
-                    IconButton(onClick = {
-                        isSelectionMode = true
-                        isDeleteMode = false
-                        selectedChapterUrls.clear()
-                        val unread = allChapters.filter { it.url !in readUrls && it.url !in downloadedUrls }
-                        selectedChapterUrls.addAll(unread.map { it.url })
-                    }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.PlaylistAddCheck,
-                            contentDescription = "Select All Unread",
-                            tint = if (isSelectionMode && !isDeleteMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    AssistChip(
+                        onClick = {
+                            isSelectionMode = true
+                            isDeleteMode = true
+                            selectedChapterUrls.clear()
+                            selectedChapterUrls.addAll(downloadedUrls)
+                        },
+                        label = { Text("Downloaded") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.LibraryAddCheck,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    )
 
-                    IconButton(onClick = {
-                        isSelectionMode = true
-                        isDeleteMode = true
-                        selectedChapterUrls.clear()
-                        selectedChapterUrls.addAll(downloadedUrls)
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.LibraryAddCheck,
-                            contentDescription = "Select All Downloaded",
-                            tint = if (isSelectionMode && isDeleteMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    if (isSelectionMode) {
-                        IconButton(onClick = {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
+                ) {
+                    FilledTonalButton(
+                        onClick = {
                             if (isDeleteMode) {
                                 val idsToRemove = selectedChapterUrls.mapNotNull { url ->
                                     libraryItemsInGroup.find { it.url == url }?.id
@@ -140,39 +203,58 @@ fun ChapterListSheet(
                             }
                             isSelectionMode = false
                             selectedChapterUrls.clear()
-                        }) {
-                            Icon(
-                                imageVector = if (isDeleteMode) Icons.Default.Delete else Icons.Default.Download,
-                                contentDescription = if (isDeleteMode) "Delete" else "Download",
-                                tint = if (isDeleteMode) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        IconButton(onClick = {
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = if (isDeleteMode) Icons.Default.Delete else Icons.Default.Download,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
+                        Text(
+                            text = if (isDeleteMode) "Delete" else "Download",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = {
                             isSelectionMode = false
                             selectedChapterUrls.clear()
-                        }) {
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = "Cancel",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                         }
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
+                        Text("Cancel")
                     }
                 }
             }
 
             if (uiState.isChaptersLoading && uiState.fullChapterList.isEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
             } else {
                 LazyColumn(
                     state = chaptersListState,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 450.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 450.dp),
+                    verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)
                 ) {
-                    items(filteredChapters) { chapter ->
+                    itemsIndexed(filteredChapters, key = { _, chapter -> chapter.url }) { index, chapter ->
                         val isDownloaded = chapter.url in downloadedUrls
                         val isSelected = chapter.url in selectedChapterUrls
+                        val isCurrent = chapter.url == uiState.content?.url
 
                         ListItem(
                             headlineContent = {
@@ -180,27 +262,50 @@ fun ChapterListSheet(
                                     text = chapter.title,
                                     color = when {
                                         isSelected -> MaterialTheme.colorScheme.primary
-                                        chapter.url == uiState.content?.url -> MaterialTheme.colorScheme.secondary
+                                        isCurrent -> MaterialTheme.colorScheme.secondary
                                         else -> MaterialTheme.colorScheme.onSurface
-                                    }
+                                    },
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             },
-                            trailingContent = {
-                                if (!isSelectionMode && isDownloaded) {
-                                    Icon(
-                                        Icons.Default.Check,
-                                        contentDescription = "Downloaded",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                } else if (isSelectionMode) {
+                            supportingContent = {
+                                Text(
+                                    text = when {
+                                        isCurrent -> "Currently reading"
+                                        isDownloaded -> "Saved locally"
+                                        else -> "Long-press to select"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            leadingContent = {
+                                if (isSelectionMode) {
                                     Checkbox(
                                         checked = isSelected,
                                         onCheckedChange = { checked ->
-                                            if (checked) selectedChapterUrls.add(chapter.url)
-                                            else selectedChapterUrls.remove(chapter.url)
+                                            if (checked) {
+                                                selectedChapterUrls.add(chapter.url)
+                                            } else {
+                                                selectedChapterUrls.remove(chapter.url)
+                                            }
                                         },
                                         colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
+                                    )
+                                } else if (isCurrent) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                } else if (isDownloaded) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                             },
@@ -208,8 +313,11 @@ fun ChapterListSheet(
                                 .combinedClickable(
                                     onClick = {
                                         if (isSelectionMode) {
-                                            if (chapter.url in selectedChapterUrls) selectedChapterUrls.remove(chapter.url)
-                                            else selectedChapterUrls.add(chapter.url)
+                                            if (chapter.url in selectedChapterUrls) {
+                                                selectedChapterUrls.remove(chapter.url)
+                                            } else {
+                                                selectedChapterUrls.add(chapter.url)
+                                            }
                                         } else {
                                             onNavigateToChapter(chapter.url, chapter.title)
                                         }
@@ -218,20 +326,28 @@ fun ChapterListSheet(
                                         if (!isSelectionMode) {
                                             isSelectionMode = true
                                             isDeleteMode = isDownloaded
+                                            selectedChapterUrls.clear()
                                             selectedChapterUrls.add(chapter.url)
                                         }
                                     }
                                 ),
                             colors = ListItemDefaults.colors(
-                                containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent
+                                containerColor = when {
+                                    isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.26f)
+                                    isCurrent -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.16f)
+                                    else -> Color.Transparent
+                                }
                             )
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                        if (index < filteredChapters.lastIndex) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
         }
     }
 }

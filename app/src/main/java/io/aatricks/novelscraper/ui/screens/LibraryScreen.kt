@@ -1,6 +1,7 @@
 package io.aatricks.novelscraper.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -406,8 +407,8 @@ private fun NovelGroupCard(
             .padding(start = EasyReaderSpacing.xs)
             .clip(MaterialTheme.shapes.medium),
         colors = CardDefaults.cardColors(
-            containerColor = if (isGroupSelected) MaterialTheme.colorScheme.secondaryContainer
-            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = if (isGroupSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
         )
     ) {
         Column(modifier = Modifier.padding(EasyReaderSpacing.sm)) {
@@ -572,20 +573,27 @@ private fun NovelChapterList(
             val isSelected = uiState.selectedIds.contains(chapterItem.id)
             val isCurrent = chapterItem.id == lastRead?.id
             val chapterUrl = if (chapterItem.currentChapterUrl.isNotBlank()) chapterItem.currentChapterUrl else chapterItem.url
+            val targetRowColor = when {
+                isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.26f)
+                isCurrent -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.16f)
+                else -> Color.Transparent
+            }
+            val rowColor by animateColorAsState(
+                targetValue = targetRowColor,
+                animationSpec = tween(EasyReaderMotion.short),
+                label = "chapterRowColor"
+            )
 
             Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(
-                            if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else Color.Transparent,
-                            shape = MaterialTheme.shapes.small
-                        )
+                        .background(rowColor, shape = MaterialTheme.shapes.small)
                         .combinedClickable(
                             onClick = { onChapterClick(chapterItem) },
                             onLongClick = { onChapterLongClick(chapterItem) }
                         )
-                        .padding(vertical = EasyReaderSpacing.xs, horizontal = EasyReaderSpacing.xxs),
+                        .padding(vertical = EasyReaderSpacing.xs, horizontal = EasyReaderSpacing.xs),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(

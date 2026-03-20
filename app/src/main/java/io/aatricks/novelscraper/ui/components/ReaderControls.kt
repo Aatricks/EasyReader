@@ -32,21 +32,21 @@ fun TopInfoBar(
             .fillMaxWidth()
             .padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.xs),
         shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
         contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 8.dp,
-        shadowElevation = 8.dp
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = EasyReaderSpacing.xs, vertical = EasyReaderSpacing.xs),
+                .padding(horizontal = EasyReaderSpacing.xs, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
         ) {
             FilledTonalIconButton(
                 onClick = onLibraryClick,
-                modifier = Modifier.size(42.dp)
+                modifier = Modifier.size(40.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Menu,
@@ -56,7 +56,7 @@ fun TopInfoBar(
 
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
                     text = novelName.ifBlank { "Reader" },
@@ -77,24 +77,32 @@ fun TopInfoBar(
                 }
             }
 
-            FilledTonalIconButton(
+            FilledTonalButton(
                 onClick = onShowChapterList,
-                modifier = Modifier.size(42.dp)
+                modifier = Modifier.height(40.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.List,
-                    contentDescription = "Chapter list"
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
+                Text(
+                    text = "Chapters",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
 
             OutlinedButton(
                 onClick = onShowSettings,
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                modifier = Modifier.height(42.dp)
+                modifier = Modifier.height(40.dp)
             ) {
                 Text(
                     text = "Aa",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -116,16 +124,41 @@ fun BottomNavigationBar(
             .fillMaxWidth()
             .padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.xs),
         shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
         contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 8.dp,
-        shadowElevation = 8.dp
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.sm),
-            verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
+            modifier = Modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             var sliderValue by remember(progress) { mutableFloatStateOf(progress) }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Progress",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Surface(
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ) {
+                    Text(
+                        text = "${sliderValue.toInt()}%",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
 
             Slider(
                 value = sliderValue,
@@ -142,23 +175,17 @@ fun BottomNavigationBar(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 ChapterNavButton(
-                    text = "Previous",
+                    text = "Prev",
                     enabled = canNavigatePrevious,
                     onClick = onPreviousClick,
                     leading = true
                 )
 
-                Text(
-                    text = "${sliderValue.toInt()}%",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
+                Spacer(modifier = Modifier.weight(1f))
                 ChapterNavButton(
                     text = "Next",
                     enabled = canNavigateNext,
@@ -180,21 +207,22 @@ private fun ChapterNavButton(
     FilledTonalButton(
         onClick = onClick,
         enabled = enabled,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-        modifier = Modifier.height(40.dp)
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+        modifier = Modifier.height(36.dp)
     ) {
         if (leading) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = null,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(16.dp)
             )
             Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
         }
 
         Text(
             text = text,
-            style = MaterialTheme.typography.labelLarge
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold
         )
 
         if (!leading) {
@@ -202,7 +230,7 @@ private fun ChapterNavButton(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = null,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(16.dp)
             )
         }
     }

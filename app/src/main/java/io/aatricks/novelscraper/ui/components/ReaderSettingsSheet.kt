@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -53,6 +54,7 @@ private fun SettingsSectionLabel(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelLarge,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 }
@@ -150,94 +152,106 @@ fun ReaderSettingsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(EasyReaderSpacing.md),
-            verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.md)
+                .padding(horizontal = EasyReaderSpacing.md, vertical = EasyReaderSpacing.sm),
+            verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.lg)
         ) {
-            Text("Reading Settings", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Reading Settings",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+            )
 
-            SettingsSectionLabel("Layout")
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
-            ) {
-                FilterChip(
-                    selected = !uiState.isPagedMode,
-                    onClick = { onUpdatePagedMode(false) },
-                    label = { Text("Scroll") },
-                    modifier = Modifier.weight(1f),
-                    colors = settingsChipColors()
-                )
-                FilterChip(
-                    selected = uiState.isPagedMode,
-                    onClick = { onUpdatePagedMode(true) },
-                    label = { Text("Paged") },
-                    modifier = Modifier.weight(1f),
-                    colors = settingsChipColors()
-                )
-            }
-
-            SettingsSectionLabel("Direction")
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
-            ) {
-                FilterChip(
-                    selected = !uiState.isRtl,
-                    onClick = { onUpdateRtl(false) },
-                    enabled = uiState.isPagedMode,
-                    label = { Text("LTR") },
-                    modifier = Modifier.weight(1f),
-                    colors = settingsChipColors()
-                )
-                FilterChip(
-                    selected = uiState.isRtl,
-                    onClick = { onUpdateRtl(true) },
-                    enabled = uiState.isPagedMode,
-                    label = { Text("RTL") },
-                    modifier = Modifier.weight(1f),
-                    colors = settingsChipColors()
-                )
-            }
-            if (!uiState.isPagedMode) {
-                Text(
-                    text = "Direction applies to paged reading only.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            SettingsSectionLabel("Theme")
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                ReaderTheme.entries.forEach { theme ->
-                    ReaderThemeOption(
-                        theme = theme,
-                        isSelected = uiState.readerTheme == theme,
-                        onClick = { onUpdateReaderTheme(theme) }
+            Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
+                SettingsSectionLabel("Layout")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
+                ) {
+                    FilterChip(
+                        selected = !uiState.isPagedMode,
+                        onClick = { onUpdatePagedMode(false) },
+                        label = { Text("Scroll") },
+                        modifier = Modifier.weight(1f),
+                        colors = settingsChipColors()
+                    )
+                    FilterChip(
+                        selected = uiState.isPagedMode,
+                        onClick = { onUpdatePagedMode(true) },
+                        label = { Text("Paged") },
+                        modifier = Modifier.weight(1f),
+                        colors = settingsChipColors()
                     )
                 }
             }
 
-            SettingsSectionLabel("Accent")
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
-            ) {
-                AccentTheme.entries.forEach { accentTheme ->
-                    AccentThemeChip(
-                        accentTheme = accentTheme,
-                        isSelected = uiState.accentTheme == accentTheme,
-                        onClick = { onUpdateAccentTheme(accentTheme) }
+            Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
+                SettingsSectionLabel("Direction")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
+                ) {
+                    FilterChip(
+                        selected = !uiState.isRtl,
+                        onClick = { onUpdateRtl(false) },
+                        enabled = uiState.isPagedMode,
+                        label = { Text("LTR") },
+                        modifier = Modifier.weight(1f),
+                        colors = settingsChipColors()
                     )
+                    FilterChip(
+                        selected = uiState.isRtl,
+                        onClick = { onUpdateRtl(true) },
+                        enabled = uiState.isPagedMode,
+                        label = { Text("RTL") },
+                        modifier = Modifier.weight(1f),
+                        colors = settingsChipColors()
+                    )
+                }
+                if (!uiState.isPagedMode) {
+                    Text(
+                        text = "Direction applies to paged reading only.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
+                SettingsSectionLabel("Theme")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    ReaderTheme.entries.forEach { theme ->
+                        ReaderThemeOption(
+                            theme = theme,
+                            isSelected = uiState.readerTheme == theme,
+                            onClick = { onUpdateReaderTheme(theme) }
+                        )
+                    }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
+                SettingsSectionLabel("Accent")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
+                ) {
+                    AccentTheme.entries.forEach { accentTheme ->
+                        AccentThemeChip(
+                            accentTheme = accentTheme,
+                            isSelected = uiState.accentTheme == accentTheme,
+                            onClick = { onUpdateAccentTheme(accentTheme) }
+                        )
+                    }
                 }
             }
 
             SettingSlider(
-                label = "Font Size",
+                label = "Font size",
                 value = uiState.fontSize,
                 onValueChange = onUpdateFontSize,
                 valueRange = 12f..32f,
@@ -246,7 +260,7 @@ fun ReaderSettingsSheet(
             )
 
             SettingSlider(
-                label = "Line Height",
+                label = "Line height",
                 value = uiState.lineHeight,
                 onValueChange = onUpdateLineHeight,
                 valueRange = 1.0f..2.5f,
@@ -264,7 +278,7 @@ fun ReaderSettingsSheet(
             )
 
             SettingSlider(
-                label = "Spacing",
+                label = "Paragraph spacing",
                 value = uiState.paragraphSpacing,
                 onValueChange = onUpdateParagraphSpacing,
                 valueRange = 0.0f..3.0f,
@@ -272,20 +286,25 @@ fun ReaderSettingsSheet(
                 displayValue = String.format("%.1f", uiState.paragraphSpacing)
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                listOf("Default", "Serif", "Monospace").forEach { font ->
-                    FontFamilyChip(
-                        font = font,
-                        isSelected = uiState.fontFamily == font,
-                        onClick = { onUpdateFontFamily(font) }
-                    )
+            Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
+                SettingsSectionLabel("Font")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
+                ) {
+                    listOf("Default", "Serif", "Monospace").forEach { font ->
+                        FontFamilyChip(
+                            font = font,
+                            isSelected = uiState.fontFamily == font,
+                            onClick = { onUpdateFontFamily(font) }
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(EasyReaderSpacing.xxl))
+            Spacer(modifier = Modifier.height(EasyReaderSpacing.lg))
         }
     }
 }
@@ -299,24 +318,44 @@ fun SettingSlider(
     steps: Int,
     displayValue: String
 ) {
-    Row(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f)
     ) {
-        Text("$label: $displayValue", modifier = Modifier.width(100.dp))
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = valueRange,
-            steps = steps,
-            modifier = Modifier
-                .weight(1f)
-                .scale(scaleY = 0.8f, scaleX = 1f),
-            colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary
+        Column(
+            modifier = Modifier.padding(horizontal = EasyReaderSpacing.md, vertical = EasyReaderSpacing.sm),
+            verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = displayValue,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Slider(
+                value = value,
+                onValueChange = onValueChange,
+                valueRange = valueRange,
+                steps = steps,
+                modifier = Modifier.fillMaxWidth(),
+                colors = SliderDefaults.colors(
+                    thumbColor = MaterialTheme.colorScheme.primary,
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
             )
-        )
+        }
     }
 }

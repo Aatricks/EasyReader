@@ -75,21 +75,6 @@ fun LibraryDrawerContent(
         verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.lg)
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)) {
-                Text(
-                    text = "Quick Access",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "Jump back into reading or open the full library.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)

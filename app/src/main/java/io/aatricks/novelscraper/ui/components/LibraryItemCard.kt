@@ -1,6 +1,7 @@
 package io.aatricks.novelscraper.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -17,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,16 +54,18 @@ fun LibraryItemCard(
     onNewTagClick: (() -> Unit)? = null
 ) {
     val targetBackgroundColor = when {
-        isSelected -> MaterialTheme.colorScheme.surfaceVariant
-        isCurrent -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
+        isCurrent -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.16f)
         else -> MaterialTheme.colorScheme.surface
     }
     
     val targetBorderColor = when {
-        isSelected -> MaterialTheme.colorScheme.primary
-        isCurrent -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+        isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)
+        isCurrent -> MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
         else -> Color.Transparent
     }
+
+    val targetScale = if (isSelected) 0.992f else 1f
 
     val backgroundColor by animateColorAsState(
         targetValue = targetBackgroundColor,
@@ -74,15 +78,25 @@ fun LibraryItemCard(
         animationSpec = tween(durationMillis = 300),
         label = "borderColor"
     )
+
+    val scale by animateFloatAsState(
+        targetValue = targetScale,
+        animationSpec = tween(durationMillis = 220),
+        label = "scale"
+    )
     
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(RoundedCornerShape(14.dp))
             .border(
-                width = if (isSelected || isCurrent) 2.dp else 0.dp,
+                width = if (isSelected || isCurrent) 1.dp else 0.dp,
                 color = borderColor,
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(14.dp)
             )
             .combinedClickable(
                 onClick = onClick,
@@ -92,13 +106,13 @@ fun LibraryItemCard(
             containerColor = backgroundColor
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isSelected) 8.dp else 2.dp
+            defaultElevation = if (isSelected) 4.dp else 1.dp
         )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(14.dp)
         ) {
             // Title Row
             Row(
@@ -109,7 +123,7 @@ fun LibraryItemCard(
                 Text(
                     text = item.title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                    fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
                     color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -123,7 +137,7 @@ fun LibraryItemCard(
                         modifier = Modifier.padding(start = 8.dp)
                     ) {
                         Text(
-                            text = "READING",
+                            text = "Reading",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimary
                         )
@@ -140,7 +154,7 @@ fun LibraryItemCard(
                             )
                     ) {
                         Text(
-                            text = "NEW",
+                            text = "New",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onTertiary
                         )
@@ -155,12 +169,12 @@ fun LibraryItemCard(
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
                             .padding(start = 8.dp)
-                            .size(24.dp)
+                            .size(22.dp)
                     )
                 }
             }
             
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             
             // Chapter Progress
             Row(
@@ -194,15 +208,15 @@ fun LibraryItemCard(
                 )
             }
             
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             
             // Progress Bar
             LinearProgressIndicator(
                 progress = { item.progress / 100f },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp)),
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(999.dp)),
                 color = when {
                     item.progress == 100 -> MaterialTheme.colorScheme.primary
                     item.progress > 50 -> MaterialTheme.colorScheme.secondary
@@ -216,7 +230,7 @@ fun LibraryItemCard(
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(16.dp),
