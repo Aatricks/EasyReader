@@ -97,7 +97,7 @@ class ContentRepositoryConcurrencyTest {
         val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, cacheDir, mediaCacheDir)
         val pdfLoader = PdfContentLoader(mockContext)
         val epubLoader = EpubContentLoader(mockContext, epubCacheDir)
-        val localLoader = LocalContentLoader(mockContext, mockHtmlParser)
+        val localLoader = LocalContentLoader(mockContext, mockHtmlParser, pdfLoader, epubLoader)
         
         val repository = ContentRepository(webLoader, pdfLoader, epubLoader, localLoader)
 

@@ -63,32 +63,7 @@ object TextUtils {
         Regex("(\\d+(?:\\.\\d+)?)(?!.*\\d)", RegexOption.IGNORE_CASE)
     )
 
-    private val SENTENCE_ENDERS = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
-    private val CONTINUATION_WORDS = setOf(
-        "of",
-        "to",
-        "for",
-        "and",
-        "but",
-        "or",
-        "the",
-        "a",
-        "an",
-        "my",
-        "his",
-        "her",
-        "their",
-        "its",
-        "in",
-        "on",
-        "at",
-        "from",
-        "with"
-    )
-
-    private fun lastWord(s: String): String {
-        return s.trim().split(WHITESPACE_REGEX).lastOrNull() ?: ""
-    }
+    private fun lastWord(s: String): String = TextHeuristics.lastWord(s)
 
     /**
      * Remove page numbers from text content.
@@ -431,13 +406,13 @@ object TextUtils {
     }
 
     private fun shouldMerge(cur: String, next: String): Boolean {
-        val lastChar = cur.lastOrNull() ?: return false
-        val lastW = lastWord(cur).lowercase()
-        val wordCount = cur.split(WHITESPACE_REGEX).size
-
-        return !SENTENCE_ENDERS.contains(lastChar) &&
-                (wordCount <= 8 || lastW in CONTINUATION_WORDS || lastW.length <= 4) &&
-                !isHeading(next) && !(cur.contains(':') && next.contains(':'))
+        return TextHeuristics.shouldMergeSentenceFragments(
+            current = cur,
+            next = next,
+            maxWordCount = 8,
+            isHeading = ::isHeading,
+            preventDualColonMerge = true
+        )
     }
 
     private fun isHeading(text: String): Boolean {
@@ -448,9 +423,7 @@ object TextUtils {
     }
 
     private fun shouldStopGreedyMerge(cur: String, peek: String): Boolean {
-        val peekFirst = peek.firstOrNull() ?: return true
-        val lastChar = cur.trim().lastOrNull() ?: ' '
-        return peekFirst.isUpperCase() && SENTENCE_ENDERS.contains(lastChar)
+        return TextHeuristics.shouldStopGreedyMerge(cur, peek)
     }
 
     private fun compactParagraphs(paragraphs: List<String>, original: String): List<String> {
@@ -477,14 +450,13 @@ object TextUtils {
     }
 
     private fun shouldMergeAggressive(cur: String, next: String): Boolean {
-        val lastChar = cur.lastOrNull() ?: return false
-        val lastW = lastWord(cur).lowercase()
-        val wordCount = cur.split(WHITESPACE_REGEX).size
-        val isSentenceEnd = SENTENCE_ENDERS.contains(lastChar)
-
-        return !isSentenceEnd &&
-                (wordCount <= 10 || lastW in CONTINUATION_WORDS || lastW.length <= 4) &&
-                !isHeading(next) && !(cur.contains(':') && next.contains(':'))
+        return TextHeuristics.shouldMergeSentenceFragments(
+            current = cur,
+            next = next,
+            maxWordCount = 10,
+            isHeading = ::isHeading,
+            preventDualColonMerge = true
+        )
     }
 
     private fun processIndividualParagraphs(paragraphs: List<String>): List<String> {
@@ -500,7 +472,7 @@ object TextUtils {
                 val curLine = lines[i]
                 val lastChar = prevLine.lastOrNull() ?: ' '
 
-                if (SENTENCE_ENDERS.contains(lastChar) || isHeading(curLine) || LIST_MARKER_REGEX.containsMatchIn(
+                if (TextHeuristics.SENTENCE_ENDERS.contains(lastChar) || isHeading(curLine) || LIST_MARKER_REGEX.containsMatchIn(
                         curLine
                     )
                 ) {
@@ -539,7 +511,7 @@ object TextUtils {
             val leftLast = left.lastOrNull() ?: ' '
             val rightFirst = right.firstOrNull() ?: ' '
 
-            val shouldCollapse = !SENTENCE_ENDERS.contains(leftLast) &&
+                val shouldCollapse = !TextHeuristics.SENTENCE_ENDERS.contains(leftLast) &&
                     (rightFirst.isLowerCase() || rightFirst.isDigit())
 
             if (shouldCollapse) {

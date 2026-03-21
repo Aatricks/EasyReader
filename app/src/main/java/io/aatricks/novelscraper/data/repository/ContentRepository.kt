@@ -2,6 +2,9 @@ package io.aatricks.novelscraper.data.repository
 
 import io.aatricks.novelscraper.data.model.*
 import io.aatricks.novelscraper.data.repository.content.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -33,11 +36,8 @@ class ContentRepository @Inject constructor(
     suspend fun loadContent(url: String, pdfResumeIndex: Int?): ContentResult = withContext(Dispatchers.IO) {
         runCatching {
             when {
-                url.startsWith("http://") || url.startsWith("https://") -> webLoader.loadWebContent(url)
-                isLocalFile(url) -> localLoader.handleLocalFile(url, pdfLoader, epubLoader, pdfResumeIndex)
-                url.lowercase().endsWith(".pdf") -> pdfLoader.loadPdfContent(url, pdfResumeIndex)
-                url.lowercase().endsWith(".epub") -> epubLoader.loadEpubContent(url)
-                url.lowercase().run { endsWith(".html") || endsWith(".htm") } -> localLoader.loadHtmlFile(url)
+                isRemoteWebUrl(url) -> webLoader.loadWebContent(url)
+                isLikelyLocalResource(url) -> localLoader.loadLocalContent(url, pdfResumeIndex)
                 else -> ContentResult.Error("Unsupported file type")
             }
         }.getOrElse { e ->
@@ -45,8 +45,20 @@ class ContentRepository @Inject constructor(
         }
     }
 
-    private fun isLocalFile(url: String): Boolean = 
-        url.startsWith("content://") || url.startsWith("file://") || url.contains("/storage/")
+    private fun isRemoteWebUrl(url: String): Boolean =
+        url.startsWith("http://") || url.startsWith("https://")
+
+    private fun isLikelyLocalResource(url: String): Boolean {
+        val lower = url.lowercase()
+        return url.startsWith("content://") ||
+                url.startsWith("file://") ||
+                url.contains("/storage/") ||
+                url.startsWith("/") ||
+                lower.endsWith(".pdf") ||
+                lower.endsWith(".epub") ||
+                lower.endsWith(".html") ||
+                lower.endsWith(".htm")
+    }
 
     suspend fun downloadAndCacheImage(imageUrl: String, pageUrl: String): File? = 
         webLoader.downloadAndCacheImage(imageUrl, pageUrl)
@@ -127,6 +139,26 @@ class ContentRepository @Inject constructor(
                 webLoader.clearCache(url)
             }
             else -> webLoader.clearCache(url)
+        }
+    }
+
+    suspend fun clearCachesForUrls(urls: Collection<String>): Int = withContext(Dispatchers.IO) {
+        coroutineScope {
+            urls.asSequence()
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .map { url ->
+                    async {
+                        runCatching {
+                            clearCache(url)
+                            true
+                        }.getOrDefault(false)
+                    }
+                }
+                .toList()
+                .awaitAll()
+                .count { it }
         }
     }
 

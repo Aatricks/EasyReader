@@ -87,6 +87,46 @@ class ReaderViewModel @Inject constructor(
     /**
      * Data class representing the reader UI state
      */
+    data class ReaderSettingsState(
+        val fontSize: Float,
+        val lineHeight: Float,
+        val fontFamily: String,
+        val margins: Int,
+        val paragraphSpacing: Float,
+        val readerTheme: ReaderTheme,
+        val accentTheme: AccentTheme,
+        val isPagedMode: Boolean,
+        val isRtl: Boolean
+    )
+
+    data class ReaderNavigationState(
+        val canNavigateNext: Boolean,
+        val canNavigatePrevious: Boolean,
+        val isNavigating: Boolean,
+        val fullChapterList: List<ChapterInfo>,
+        val isChaptersLoading: Boolean,
+        val isFullChapterListLoaded: Boolean,
+        val baseNovelUrl: String,
+        val sourceName: String
+    )
+
+    data class ReaderDialogState(
+        val pendingExternalUrl: String?,
+        val showExternalUrlConfirmation: Boolean,
+        val pendingFileConfirmationUri: String?,
+        val showFileConfirmationDialog: Boolean,
+        val toastMessage: String?
+    )
+
+    data class ReaderProgressState(
+        val scrollPosition: Float,
+        val scrollProgress: Int,
+        val scrollIndex: Int,
+        val scrollOffset: Int,
+        val seekTrigger: Long,
+        val targetScrollPosition: Float?
+    )
+
     data class ReaderUiState(
         val content: ChapterContent? = null,
         val isLoading: Boolean = true,
@@ -128,7 +168,51 @@ class ReaderViewModel @Inject constructor(
         val showExternalUrlConfirmation: Boolean = false,
         val pendingFileConfirmationUri: String? = null,
         val showFileConfirmationDialog: Boolean = false
-    )
+    ) {
+        val settings: ReaderSettingsState
+            get() = ReaderSettingsState(
+                fontSize = fontSize,
+                lineHeight = lineHeight,
+                fontFamily = fontFamily,
+                margins = margins,
+                paragraphSpacing = paragraphSpacing,
+                readerTheme = readerTheme,
+                accentTheme = accentTheme,
+                isPagedMode = isPagedMode,
+                isRtl = isRtl
+            )
+
+        val navigation: ReaderNavigationState
+            get() = ReaderNavigationState(
+                canNavigateNext = canNavigateNext,
+                canNavigatePrevious = canNavigatePrevious,
+                isNavigating = isNavigating,
+                fullChapterList = fullChapterList,
+                isChaptersLoading = isChaptersLoading,
+                isFullChapterListLoaded = isFullChapterListLoaded,
+                baseNovelUrl = baseNovelUrl,
+                sourceName = sourceName
+            )
+
+        val dialogs: ReaderDialogState
+            get() = ReaderDialogState(
+                pendingExternalUrl = pendingExternalUrl,
+                showExternalUrlConfirmation = showExternalUrlConfirmation,
+                pendingFileConfirmationUri = pendingFileConfirmationUri,
+                showFileConfirmationDialog = showFileConfirmationDialog,
+                toastMessage = toastMessage
+            )
+
+        val progressState: ReaderProgressState
+            get() = ReaderProgressState(
+                scrollPosition = scrollPosition,
+                scrollProgress = scrollProgress,
+                scrollIndex = scrollIndex,
+                scrollOffset = scrollOffset,
+                seekTrigger = seekTrigger,
+                targetScrollPosition = targetScrollPosition
+            )
+    }
 
     fun requestOpenFile(uri: String): Unit {
         updateState { it.copy(pendingFileConfirmationUri = uri, showFileConfirmationDialog = true) }
@@ -437,11 +521,7 @@ class ReaderViewModel @Inject constructor(
             }
 
             if (toDelete.isNotEmpty()) {
-                supervisorScope {
-                    toDelete.map { item ->
-                        async { contentRepository.clearCache(item.url) }
-                    }.awaitAll()
-                }
+                contentRepository.clearCachesForUrls(toDelete.map { it.url })
                 val ids = toDelete.map { it.id }.toSet()
                 libraryRepository.removeItems(ids)
             }

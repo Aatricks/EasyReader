@@ -15,21 +15,18 @@ import javax.inject.Singleton
 @Singleton
 class LocalContentLoader @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val htmlParser: HtmlParser
+    private val htmlParser: HtmlParser,
+    private val pdfLoader: PdfContentLoader,
+    private val epubLoader: EpubContentLoader
 ) {
-    suspend fun handleLocalFile(
-        url: String,
-        pdfLoader: PdfContentLoader,
-        epubLoader: EpubContentLoader,
-        pdfResumeIndex: Int? = null
-    ): ContentResult {
+    suspend fun loadLocalContent(url: String, pdfResumeIndex: Int? = null): ContentResult {
+        if (!url.startsWith("content://") && !url.startsWith("file://")) {
+            return loadFileByExtension(url, pdfResumeIndex)
+        }
+
         val uri = Uri.parse(url)
-        val mime = context.contentResolver.getType(uri) ?: return loadFileByExtension(
-            url,
-            pdfLoader,
-            epubLoader,
-            pdfResumeIndex
-        )
+        val mime = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+            ?: return loadFileByExtension(url, pdfResumeIndex)
         
         return when {
             mime.contains("pdf", ignoreCase = true) -> pdfLoader.loadPdfContent(url, pdfResumeIndex)
@@ -39,10 +36,8 @@ class LocalContentLoader @Inject constructor(
         }
     }
 
-    suspend fun loadFileByExtension(
+    private suspend fun loadFileByExtension(
         url: String,
-        pdfLoader: PdfContentLoader,
-        epubLoader: EpubContentLoader,
         pdfResumeIndex: Int? = null
     ): ContentResult =
         when {

@@ -76,7 +76,7 @@ class ContentRepositoryEpubTest {
         val webLoader = WebContentLoader(mockHtmlParser, mockOkHttpClient, htmlCache, mediaCache)
         val pdfLoader = PdfContentLoader(mockContext)
         val epubLoader = EpubContentLoader(mockContext, epubCache)
-        val localLoader = LocalContentLoader(mockContext, mockHtmlParser)
+        val localLoader = LocalContentLoader(mockContext, mockHtmlParser, pdfLoader, epubLoader)
 
         repository = ContentRepository(webLoader, pdfLoader, epubLoader, localLoader)
     }

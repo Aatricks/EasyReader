@@ -10,6 +10,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import org.mockito.Mockito.mock
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
 
 @ExperimentalCoroutinesApi
 class ContentRepositoryUrlTest {
@@ -19,11 +21,16 @@ class ContentRepositoryUrlTest {
     // However, the logic is now inside ContentRepository's private helper or moved out?
     // Let's check ContentRepository logic. It delegates adjustChapterUrl.
     
+    private val webLoader = mock(WebContentLoader::class.java)
+    private val pdfLoader = mock(PdfContentLoader::class.java)
+    private val epubLoader = mock(EpubContentLoader::class.java)
+    private val localLoader = mock(LocalContentLoader::class.java)
+
     private val repository = ContentRepository(
-        mock(WebContentLoader::class.java),
-        mock(PdfContentLoader::class.java),
-        mock(EpubContentLoader::class.java),
-        mock(LocalContentLoader::class.java)
+        webLoader,
+        pdfLoader,
+        epubLoader,
+        localLoader
     )
 
     @Test
@@ -36,4 +43,24 @@ class ContentRepositoryUrlTest {
         
         assertNull(repository.decrementChapterUrl("http://example.com/chapter-1"))
     }
+
+            @Test
+            fun clearCachesForUrls_deduplicates_and_routes_by_type() = runTest {
+                val cleared = repository.clearCachesForUrls(
+                    listOf(
+                        "https://example.com/chapter-1",
+                        "https://example.com/chapter-1",
+                        "file:///tmp/book.epub",
+                        "file:///tmp/chapter.pdf",
+                        "content://com.example.provider/item",
+                        "  "
+                    )
+                )
+
+                assertEquals(4, cleared)
+                verify(epubLoader, times(1)).clearCache("file:///tmp/book.epub")
+                verify(pdfLoader, times(1)).clearCache("file:///tmp/chapter.pdf")
+                verify(pdfLoader, times(1)).clearCache("content://com.example.provider/item")
+                verify(webLoader, times(3)).clearCache(org.mockito.kotlin.any())
+            }
 }

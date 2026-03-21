@@ -33,25 +33,20 @@ import android.util.Log
 class LibraryRepository @Inject constructor(
     private val libraryDao: LibraryDao,
     private val preferencesManager: PreferencesManager
-) : BaseRepository("LibraryRepository") {
+) {
 
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val progressMutex = Mutex()
 
     val libraryItems: StateFlow<List<LibraryItem>> = libraryDao.getAllItems()
         .catch { e ->
-            Log.e(tag, "Error collecting library items", e)
+            Log.e(TAG, "Error collecting library items", e)
             emit(emptyList())
         }
         .stateIn(repositoryScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _selectedItems = MutableStateFlow<Set<String>>(emptySet())
-    val selectedItems: StateFlow<Set<String>> = _selectedItems.asStateFlow()
-
-    private val _collapsedSources = MutableStateFlow<Set<String>>(emptySet())
-    val collapsedSources: StateFlow<Set<String>> = _collapsedSources.asStateFlow()
-
     companion object {
+        private const val TAG = "LibraryRepository"
         private const val UPDATE_CHECK_THRESHOLD_DAYS = 7L
     }
 
@@ -59,21 +54,34 @@ class LibraryRepository @Inject constructor(
         repositoryScope.launch {
             try {
                 migrateIfNecessary()
-                _collapsedSources.value = preferencesManager.loadCollapsedSources()
             } catch (e: Exception) {
-                Log.e(tag, "Error in init", e)
+                Log.e(TAG, "Error in init", e)
             }
         }
     }
 
+    private suspend fun <T> io(block: suspend () -> T): T = withContext(Dispatchers.IO) {
+        block()
+    }
+
+    private suspend fun <T> runRepoCatching(
+        errorMessage: String,
+        fallback: T? = null,
+        block: suspend () -> T
+    ): T? = withContext(Dispatchers.IO) {
+        kotlin.runCatching { block() }
+            .onFailure { e -> Log.e(TAG, errorMessage, e) }
+            .getOrDefault(fallback)
+    }
+
     private suspend fun migrateIfNecessary(): Unit = io {
-        runCatching("Migration failed") {
+        runRepoCatching("Migration failed") {
             val legacyItems = preferencesManager.loadLibraryItems()
             if (legacyItems.isNotEmpty()) {
                 val currentRoomItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
                 if (currentRoomItems.isEmpty()) {
                     libraryDao.insertItems(legacyItems)
-                    Log.d(tag, "Migrated ${legacyItems.size} items from SharedPreferences")
+                    Log.d(TAG, "Migrated ${legacyItems.size} items from SharedPreferences")
                 }
             }
         }
@@ -108,25 +116,25 @@ class LibraryRepository @Inject constructor(
         newItem
     }
 
-    suspend fun removeItem(itemId: String): Boolean = runCatching("Failed to remove item", false) {
+    suspend fun removeItem(itemId: String): Boolean = runRepoCatching("Failed to remove item", false) {
         libraryDao.getItemById(itemId)?.let { item ->
             libraryDao.deleteItem(item)
             true
         } ?: false
     } ?: false
 
-    suspend fun removeItems(itemIds: Set<String>): Int = runCatching("Failed to remove items", 0) {
+    suspend fun removeItems(itemIds: Set<String>): Int = runRepoCatching("Failed to remove items", 0) {
         libraryDao.deleteItemsByIds(itemIds)
         itemIds.size
     } ?: 0
 
-    suspend fun updateItem(updatedItem: LibraryItem): Boolean = runCatching("Failed to update item", false) {
+    suspend fun updateItem(updatedItem: LibraryItem): Boolean = runRepoCatching("Failed to update item", false) {
         libraryDao.insertItem(updatedItem)
         true
     } ?: false
 
     suspend fun updateReadingMode(itemId: String, readingMode: ReadingMode): Boolean =
-        runCatching("Failed to update reading mode", false) {
+        runRepoCatching("Failed to update reading mode", false) {
             libraryDao.getItemById(itemId)?.let { item ->
                 libraryDao.updateReadingModeByBaseTitle(item.baseTitle, readingMode)
                 true
@@ -134,7 +142,7 @@ class LibraryRepository @Inject constructor(
         } ?: false
 
     suspend fun updateNovelInfo(itemId: String, baseNovelUrl: String, sourceName: String): Boolean =
-        runCatching("Failed to update novel info", false) {
+        runRepoCatching("Failed to update novel info", false) {
             val updatedCount = libraryDao.updateNovelInfo(itemId, baseNovelUrl, sourceName)
             updatedCount > 0
         } ?: false
@@ -170,7 +178,7 @@ class LibraryRepository @Inject constructor(
         lastReadIndex: Int? = null,
         lastReadOffset: Int? = null
     ): Boolean = progressMutex.withLock {
-        runCatching("Failed to update progress", false) {
+        runRepoCatching("Failed to update progress", false) {
             libraryDao.getItemById(itemId)?.let { item ->
                 val updated = item.copy(
                     currentChapter = currentChapter.ifBlank { item.currentChapter },
@@ -187,7 +195,7 @@ class LibraryRepository @Inject constructor(
         } ?: false
     }
 
-    suspend fun markAsCurrentlyReading(itemId: String): Boolean = runCatching("Failed to mark as reading", false) {
+    suspend fun markAsCurrentlyReading(itemId: String): Boolean = runRepoCatching("Failed to mark as reading", false) {
         libraryDao.getItemById(itemId)?.let { item ->
             if (item.baseTitle.isNotBlank()) {
                 libraryDao.clearUpdatesForBaseTitle(item.baseTitle)
@@ -199,7 +207,7 @@ class LibraryRepository @Inject constructor(
         true
     } ?: false
 
-    suspend fun getCurrentlyReading(): LibraryItem? = runCatching("Failed to get currently reading") {
+    suspend fun getCurrentlyReading(): LibraryItem? = runRepoCatching("Failed to get currently reading") {
         libraryDao.getCurrentlyReading() ?: libraryDao.getAllItems().firstOrNull()?.firstOrNull()
     }
 
@@ -270,66 +278,32 @@ class LibraryRepository @Inject constructor(
         }
     }
 
-    fun toggleSelection(itemId: String): Unit {
-        val currentSelection = _selectedItems.value.toMutableSet()
-        if (itemId in currentSelection) {
-            currentSelection.remove(itemId)
-        } else {
-            currentSelection.add(itemId)
-        }
-        _selectedItems.value = currentSelection
-    }
+    fun loadCollapsedSources(): Set<String> = preferencesManager.loadCollapsedSources()
 
-    fun selectItem(itemId: String): Unit {
-        _selectedItems.update { it + itemId }
-    }
-
-    fun deselectItem(itemId: String): Unit {
-        _selectedItems.update { it - itemId }
-    }
-
-    fun selectItems(itemIds: List<String>): Unit {
-        _selectedItems.update { it + itemIds }
-    }
-
-    fun deselectItems(itemIds: List<String>): Unit {
-        _selectedItems.update { it - itemIds }
-    }
-
-    fun selectAll(): Unit {
-        _selectedItems.value = libraryItems.value.map { it.id }.toSet()
-    }
-
-    fun clearSelection(): Unit {
-        _selectedItems.value = emptySet()
-    }
-
-    fun getSelectedItems(): List<LibraryItem> {
-        val selectedIds = _selectedItems.value
-        return libraryItems.value.filter { it.id in selectedIds }
+    fun saveCollapsedSources(sources: Set<String>): Unit {
+        preferencesManager.saveCollapsedSources(sources)
     }
 
     suspend fun clearLibrary(): Unit = io {
-        runCatching("Failed to clear library") {
-            _selectedItems.value = emptySet()
+        runRepoCatching("Failed to clear library") {
             libraryDao.deleteAllItems()
         }
     }
 
-    suspend fun resetProgress(itemId: String): Boolean = runCatching("Failed to reset progress", false) {
+    suspend fun resetProgress(itemId: String): Boolean = runRepoCatching("Failed to reset progress", false) {
         libraryDao.getItemById(itemId)?.let {
             libraryDao.resetProgress(itemId)
             true
         } ?: false
     } ?: false
 
-    suspend fun resetProgressByBaseTitle(baseTitle: String): Boolean = runCatching("Failed to reset novel progress", false) {
+    suspend fun resetProgressByBaseTitle(baseTitle: String): Boolean = runRepoCatching("Failed to reset novel progress", false) {
         libraryDao.resetProgressByBaseTitle(baseTitle)
         true
     } ?: false
 
     suspend fun refreshLibraryUpdates(exploreRepository: ExploreRepository): Unit = io {
-        runCatching("Refresh updates failed") {
+        runRepoCatching("Refresh updates failed") {
             val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
             val groupedItems = getGroupedByTitle(allItems)
             val semaphore = Semaphore(5)
@@ -355,7 +329,7 @@ class LibraryRepository @Inject constructor(
                             if (items.isNotEmpty()) {
                                 val latestInLibrary = items.last()
                                 if (latestInLibrary.baseNovelUrl.isNotBlank() && latestInLibrary.sourceName.isNotBlank()) {
-                                    val newUpdates = runCatching("Failed to refresh updates for $baseTitle", emptyList<LibraryItem>()) {
+                                    val newUpdates = runRepoCatching("Failed to refresh updates for $baseTitle", emptyList<LibraryItem>()) {
                                         val details = exploreRepository.getNovelDetails(
                                             latestInLibrary.baseNovelUrl,
                                             latestInLibrary.sourceName
@@ -394,7 +368,7 @@ class LibraryRepository @Inject constructor(
         }
     }
 
-    suspend fun clearUpdateIndicator(itemId: String): Boolean = runCatching("Failed to clear update indicator", false) {
+    suspend fun clearUpdateIndicator(itemId: String): Boolean = runRepoCatching("Failed to clear update indicator", false) {
         libraryDao.getItemById(itemId)?.let { item ->
             if (item.hasUpdates) {
                 libraryDao.insertItem(item.copy(hasUpdates = false))
@@ -403,14 +377,4 @@ class LibraryRepository @Inject constructor(
         } ?: false
     } ?: false
 
-    fun toggleSourceExpansion(sourceName: String): Unit {
-        val current = _collapsedSources.value.toMutableSet()
-        if (current.contains(sourceName)) {
-            current.remove(sourceName)
-        } else {
-            current.add(sourceName)
-        }
-        _collapsedSources.value = current
-        preferencesManager.saveCollapsedSources(current)
-    }
 }

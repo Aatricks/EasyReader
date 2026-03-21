@@ -2,13 +2,11 @@ package io.aatricks.novelscraper.ui.viewmodel
 
 import io.aatricks.novelscraper.data.local.LibraryDao
 import io.aatricks.novelscraper.data.local.PreferencesManager
-import io.aatricks.novelscraper.data.model.LibraryItem
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import org.junit.After
@@ -22,7 +20,7 @@ import org.mockito.kotlin.*
 @OptIn(ExperimentalCoroutinesApi::class)
 class LibraryViewModelTest {
 
-    private val testDispatcher = StandardTestDispatcher()
+    private lateinit var testDispatcher: TestDispatcher
 
     private val libraryDao: LibraryDao = mock {
         on { getAllItems() } doReturn flowOf(emptyList())
@@ -40,6 +38,7 @@ class LibraryViewModelTest {
 
     @Before
     fun setup() {
+        testDispatcher = UnconfinedTestDispatcher()
         Dispatchers.setMain(testDispatcher)
 
         viewModel = LibraryViewModel(
@@ -60,5 +59,37 @@ class LibraryViewModelTest {
         // It should verify that state loads correctly and doesn't crash on ignoreSslErrors access (as it was removed)
         assertNotNull(state)
         assertTrue(state.isEmpty)
+    }
+
+    @Test
+    fun `toggle selection updates selection mode`() = runTest {
+        val itemId = "id-1"
+        advanceUntilIdle()
+
+        viewModel.toggleSelection(itemId)
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.isSelectionMode)
+        assertEquals(setOf(itemId), viewModel.uiState.value.selectedIds)
+
+        viewModel.clearSelection()
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.value.isSelectionMode)
+        assertTrue(viewModel.uiState.value.selectedIds.isEmpty())
+    }
+
+    @Test
+    fun `toggle source expansion updates collapsed sources and persists`() = runTest {
+        val vm = LibraryViewModel(libraryRepository, contentRepository, exploreRepository)
+        advanceUntilIdle()
+
+        vm.toggleSourceExpansion("NovelFire")
+        advanceUntilIdle()
+        assertTrue("NovelFire" in vm.uiState.value.collapsedSources)
+
+        vm.toggleSourceExpansion("NovelFire")
+        advanceUntilIdle()
+        assertFalse("NovelFire" in vm.uiState.value.collapsedSources)
+
+        verify(preferencesManager, atLeastOnce()).saveCollapsedSources(any())
     }
 }

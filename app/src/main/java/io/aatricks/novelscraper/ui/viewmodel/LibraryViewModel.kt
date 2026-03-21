@@ -32,7 +32,11 @@ class LibraryViewModel @Inject constructor(
     private val _sortMode = MutableStateFlow(SortMode.LAST_READ)
     val sortMode: StateFlow<SortMode> = _sortMode.asStateFlow()
 
+    private val _selectedItems = MutableStateFlow<Set<String>>(emptySet())
+    private val _collapsedSources = MutableStateFlow<Set<String>>(emptySet())
+
     init {
+        _collapsedSources.value = repository.loadCollapsedSources()
         observeLibraryChanges()
     }
 
@@ -55,8 +59,8 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             val repoFlow = combine(
                 repository.libraryItems,
-                repository.selectedItems,
-                repository.collapsedSources
+                _selectedItems,
+                _collapsedSources
             ) { items, selected, collapsed ->
                 Triple(items, selected, collapsed)
             }
@@ -321,7 +325,7 @@ class LibraryViewModel @Inject constructor(
                     repository.updateItem(item.copy(totalChapters = details.chapters.size))
                 }
                 
-                repository.clearUpdateIndicator(item!!.id)
+                repository.clearUpdateIndicator(item.id)
                 onChapterLoaded(item.url, item.id)
                 updateState { it.copy(isLoading = false) }
             }.onFailure { e ->
@@ -335,7 +339,12 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching {
                 updateState { it.copy(isLoading = true) }
-                val items = if (selectedOnly) repository.getSelectedItems() else repository.libraryItems.value
+                val items = if (selectedOnly) {
+                    val selectedIds = _selectedItems.value
+                    repository.libraryItems.value.filter { it.id in selectedIds }
+                } else {
+                    repository.libraryItems.value
+                }
                 items.forEach { item ->
                     runCatching { contentRepository.prefetch(item.url) }
                 }
@@ -350,7 +359,7 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching {
                 repository.getItemById(itemId)?.let { item ->
-                    contentRepository.clearCache(item.url)
+                    contentRepository.clearCachesForUrls(listOf(item.url))
                 }
                 repository.removeItem(itemId)
             }.onFailure { e ->
@@ -362,11 +371,8 @@ class LibraryViewModel @Inject constructor(
     fun removeItems(itemIds: Set<String>): Unit {
         viewModelScope.launch {
             runCatching {
-                itemIds.forEach { id ->
-                    repository.getItemById(id)?.let { item ->
-                        contentRepository.clearCache(item.url)
-                    }
-                }
+                val urls = itemIds.mapNotNull { id -> repository.getItemById(id)?.url }
+                contentRepository.clearCachesForUrls(urls)
                 repository.removeItems(itemIds)
             }.onFailure { e ->
                 updateState { it.copy(error = "Failed to remove items: ${e.message}") }
@@ -379,9 +385,7 @@ class LibraryViewModel @Inject constructor(
             runCatching {
                 val groupItems = uiState.value.groupedItems[baseTitle] ?: emptyList()
                 if (groupItems.isNotEmpty()) {
-                    groupItems.forEach { item ->
-                        contentRepository.clearCache(item.url)
-                    }
+                    contentRepository.clearCachesForUrls(groupItems.map { it.url })
                     val ids = groupItems.map { it.id }.toSet()
                     repository.removeItems(ids)
                 }
@@ -412,15 +416,19 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun toggleSelection(itemId: String): Unit {
-        repository.toggleSelection(itemId)
+        _selectedItems.update {
+            val current = it.toMutableSet()
+            if (!current.add(itemId)) current.remove(itemId)
+            current
+        }
     }
 
     fun selectItem(itemId: String): Unit {
-        repository.selectItem(itemId)
+        _selectedItems.update { it + itemId }
     }
 
     fun deselectItem(itemId: String): Unit {
-        repository.deselectItem(itemId)
+        _selectedItems.update { it - itemId }
     }
 
     fun toggleGroupSelection(baseTitle: String): Unit {
@@ -431,19 +439,19 @@ class LibraryViewModel @Inject constructor(
             val itemIds = groupItems.map { it.id }
             
             if (allSelected) {
-                repository.deselectItems(itemIds)
+                _selectedItems.update { it - itemIds.toSet() }
             } else {
-                repository.selectItems(itemIds)
+                _selectedItems.update { it + itemIds.toSet() }
             }
         }
     }
 
     fun selectAll(): Unit {
-        repository.selectAll()
+        _selectedItems.value = repository.libraryItems.value.map { it.id }.toSet()
     }
 
     fun clearSelection(): Unit {
-        repository.clearSelection()
+        _selectedItems.value = emptySet()
     }
 
     fun updateSearchQuery(query: String): Unit {
@@ -461,12 +469,12 @@ class LibraryViewModel @Inject constructor(
     fun removeSelectedItems(): Unit {
         viewModelScope.launch {
             runCatching {
-                val selectedIds = repository.selectedItems.value
+                val selectedIds = _selectedItems.value
                 val selectedItems = repository.libraryItems.value.filter { it.id in selectedIds }
                 if (selectedItems.isNotEmpty()) {
-                    selectedItems.forEach { item -> contentRepository.clearCache(item.url) }
+                    contentRepository.clearCachesForUrls(selectedItems.map { it.url })
                     repository.removeItems(selectedIds)
-                    repository.clearSelection()
+                    _selectedItems.value = emptySet()
                 }
             }.onFailure { e ->
                 updateState { it.copy(error = "Failed to remove selected items: ${e.message}") }
@@ -479,6 +487,7 @@ class LibraryViewModel @Inject constructor(
             runCatching {
                 repository.clearLibrary()
                 contentRepository.clearAllCache()
+                _selectedItems.value = emptySet()
             }.onFailure { e ->
                 updateState { it.copy(error = "Failed to clear library: ${e.message}") }
             }
@@ -486,14 +495,19 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun toggleSourceExpansion(sourceName: String): Unit {
-        repository.toggleSourceExpansion(sourceName)
+        val current = _collapsedSources.value.toMutableSet()
+        if (!current.add(sourceName)) {
+            current.remove(sourceName)
+        }
+        _collapsedSources.value = current
+        repository.saveCollapsedSources(current)
     }
 
     fun resetProgress(itemId: String): Unit {
         viewModelScope.launch {
             runCatching {
                 repository.getItemById(itemId)?.let { item ->
-                    contentRepository.clearCache(item.url)
+                    contentRepository.clearCachesForUrls(listOf(item.url))
                 }
                 repository.resetProgress(itemId)
             }.onFailure { e ->
@@ -506,9 +520,7 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching {
                 val chapters = repository.getChaptersByBaseTitle(baseTitle)
-                chapters.forEach { item ->
-                    contentRepository.clearCache(item.url)
-                }
+                contentRepository.clearCachesForUrls(chapters.map { it.url })
                 repository.resetProgressByBaseTitle(baseTitle)
             }.onFailure { e ->
                 updateState { it.copy(error = "Failed to reset novel progress: ${e.message}") }

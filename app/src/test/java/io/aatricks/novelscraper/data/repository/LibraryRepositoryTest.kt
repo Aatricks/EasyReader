@@ -27,6 +27,7 @@ class LibraryRepositoryTest {
     fun setup() {
         MockitoAnnotations.openMocks(this)
         whenever(preferencesManager.loadLibraryItems()).thenReturn(emptyList())
+        whenever(preferencesManager.loadCollapsedSources()).thenReturn(emptySet())
         whenever(libraryDao.getAllItems()).thenReturn(flowOf(emptyList()))
         repository = LibraryRepository(libraryDao, preferencesManager)
     }
@@ -67,17 +68,14 @@ class LibraryRepositoryTest {
     }
 
     @Test
-    fun testSelection() = runBlocking {
-        val item1Id = "id1"
-        val item2Id = "id2"
-        
-        repository.toggleSelection(item1Id)
-        assertTrue(item1Id in repository.selectedItems.value)
-        assertFalse(item2Id in repository.selectedItems.value)
-        assertEquals(1, repository.selectedItems.value.size)
-        
-        repository.clearSelection()
-        assertEquals(0, repository.selectedItems.value.size)
+    fun testCollapsedSourcesDelegation() = runBlocking {
+        doReturn(setOf("NovelFire")).whenever(preferencesManager).loadCollapsedSources()
+
+        val loaded = repository.loadCollapsedSources()
+
+        assertEquals(setOf("NovelFire"), loaded)
+        repository.saveCollapsedSources(setOf("MangaBat"))
+        verify(preferencesManager).saveCollapsedSources(setOf("MangaBat"))
     }
 
     @Test

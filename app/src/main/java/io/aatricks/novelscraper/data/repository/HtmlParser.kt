@@ -1,6 +1,7 @@
 package io.aatricks.novelscraper.data.repository
 
 import io.aatricks.novelscraper.data.model.ContentElement
+import io.aatricks.novelscraper.util.TextHeuristics
 import io.aatricks.novelscraper.util.TextUtils
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -15,10 +16,6 @@ import javax.inject.Singleton
 class HtmlParser @Inject constructor() {
 
     companion object {
-        private val SENTENCE_ENDERS = setOf('.', '!', '?', '…', '"', '\'', '‘', '’', '“', '”', '»', ':', ';')
-        private val CONTINUATION_WORDS = setOf(
-            "of", "to", "for", "and", "but", "or", "the", "a", "an", "my", "his", "her", "their", "its", "in", "on", "at", "from", "with"
-        )
         private val WHITESPACE_REGEX = Regex("\\s+")
         private val MULTIPLE_SPACES_REGEX = Regex(" +")
         private val DOUBLE_NEWLINE_REGEX = Regex("\\n\\s*\\n")
@@ -217,19 +214,16 @@ class HtmlParser @Inject constructor() {
     }
 
     private fun shouldMerge(cur: String, next: String): Boolean {
-        val lastChar = cur.lastOrNull() ?: return false
-        val lastWord = cur.trim().split(WHITESPACE_REGEX).lastOrNull()?.lowercase() ?: ""
-        val wordCount = cur.split(WHITESPACE_REGEX).size
-
-        return !SENTENCE_ENDERS.contains(lastChar) &&
-                (wordCount <= 8 || lastWord in CONTINUATION_WORDS || lastWord.length <= 4) &&
-                !(cur.contains(':') && next.contains(':'))
+        return TextHeuristics.shouldMergeSentenceFragments(
+            current = cur,
+            next = next,
+            maxWordCount = 8,
+            preventDualColonMerge = true
+        )
     }
 
     private fun shouldStopMerging(cur: CharSequence, peek: String): Boolean {
-        val peekFirst = peek.firstOrNull() ?: return true
-        val curLast = cur.trim().lastOrNull() ?: return true
-        return peekFirst.isUpperCase() && SENTENCE_ENDERS.contains(curLast)
+        return TextHeuristics.shouldStopGreedyMerge(cur, peek)
     }
 
     private fun extractTextPreservingLineBreaks(element: Element): String {

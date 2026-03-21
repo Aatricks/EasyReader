@@ -17,6 +17,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -44,14 +45,7 @@ class WebContentLoader @Inject constructor(
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     suspend fun loadWebContent(url: String): ContentResult = withContext(Dispatchers.IO) {
-        val cachedFile = getCachedFile(url)
-        val document = if (cachedFile.exists()) {
-            Jsoup.parse(cachedFile, "UTF-8", url)
-        } else {
-            val html = downloadHtml(url)
-            cachedFile.writeText(html)
-            Jsoup.parse(html, url)
-        }
+        val document = getDocumentFromCacheOrNetwork(url)
 
         val elements = htmlParser.parse(document, url)
         val finalElements = processChapterElements(elements, url)
@@ -70,14 +64,12 @@ class WebContentLoader @Inject constructor(
             val html = downloadHtml(url)
             getCachedFile(url).writeText(html)
             val doc = Jsoup.parse(html, url)
-            
-            htmlParser.parse(doc, url)
-                .filterIsInstance<ContentElement.Image>()
-                .forEach { img ->
+
+            extractImageUrls(htmlParser.parse(doc, url)).forEach { imageUrl ->
                     repositoryScope.launch {
-                        runCatching { downloadAndCacheImage(img.url, url) }
+                        runCatching { downloadAndCacheImage(imageUrl, url) }
                     }
-                }
+            }
             true
         }.getOrDefault(false)
     }
@@ -157,6 +149,27 @@ class WebContentLoader @Inject constructor(
         return calculateDirectorySize(cacheDir) + calculateDirectorySize(mediaCacheDir)
     }
 
+    private fun getDocumentFromCacheOrNetwork(url: String): Document {
+        val cachedFile = getCachedFile(url)
+        return if (cachedFile.exists()) {
+            Jsoup.parse(cachedFile, "UTF-8", url)
+        } else {
+            val html = downloadHtml(url)
+            cachedFile.writeText(html)
+            Jsoup.parse(html, url)
+        }
+    }
+
+    private fun extractImageUrls(elements: List<ContentElement>): List<String> {
+        return elements.flatMap { element ->
+            when (element) {
+                is ContentElement.Image -> listOf(element.url)
+                is ContentElement.ImageGroup -> element.images.map { it.url }
+                else -> emptyList()
+            }
+        }
+    }
+
     private fun backgroundCacheImages(elements: List<ContentElement>, pageUrl: String): Unit {
         repositoryScope.launch {
             val imageChannel = Channel<String>(Channel.UNLIMITED)
@@ -217,19 +230,7 @@ class WebContentLoader @Inject constructor(
 
         if (imageElements.isEmpty()) return elements
 
-        // Always try to get dimensions (disk first, then a cheap Range request).
-        // This ensures grouping and spread-splitting work on first visit regardless of chapter size.
-        val imagesWithDims = withContext(Dispatchers.IO) {
-            imageElements.map { img ->
-                async {
-                    DIMENSION_SEMAPHORE.withPermit {
-                        fetchImageDimensions(img.url, url, diskOnly = false)?.let { (w, h) ->
-                            img.copy(width = w, height = h)
-                        } ?: img
-                    }
-                }
-            }.awaitAll()
-        }
+        val imagesWithDims = enrichImageDimensions(imageElements, url)
 
         val dimMap = imageElements.zip(imagesWithDims).toMap()
 
@@ -245,7 +246,28 @@ class WebContentLoader @Inject constructor(
         // 2. Group adjacent images/groups before splitting wide ones
         val groupedElements = groupSimilarElements(dimensionedElements)
 
-        // 3. Expand wide images and wide groups
+        return expandWideElements(groupedElements, url)
+    }
+
+    private suspend fun enrichImageDimensions(
+        imageElements: List<ContentElement.Image>,
+        pageUrl: String
+    ): List<ContentElement.Image> = withContext(Dispatchers.IO) {
+        imageElements.map { img ->
+            async {
+                DIMENSION_SEMAPHORE.withPermit {
+                    fetchImageDimensions(img.url, pageUrl, diskOnly = false)?.let { (w, h) ->
+                        img.copy(width = w, height = h)
+                    } ?: img
+                }
+            }
+        }.awaitAll()
+    }
+
+    private fun expandWideElements(
+        groupedElements: List<ContentElement>,
+        url: String
+    ): List<ContentElement> {
         val finalElements = mutableListOf<ContentElement>()
         for (element in groupedElements) {
             when (element) {
