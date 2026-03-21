@@ -502,23 +502,16 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             delay(1000) // Ensure progress is saved if navigating from a finished chapter
 
-            val allItems = libraryRepository.libraryItems.value
             val currentChapterNumber = TextUtils.extractChapterNumber(chapterTitle)
                 ?: TextUtils.extractChapterNumber(currentUrl)
                 ?: return@launch
 
-            val toDelete = allItems.filter { item ->
-                item.baseTitle == baseTitle &&
-                        item.contentType == ContentType.WEB &&
-                        item.url != currentUrl &&
-                        item.progress == 100
-            }.filter { item ->
-                val otherNumber = TextUtils.extractChapterNumber(item.currentChapter)
-                    ?: TextUtils.extractChapterNumber(item.url)
-                    ?: return@filter false
-
-                (currentChapterNumber - otherNumber) > 1
-            }
+            val toDelete = computeAutoDeleteCandidates(
+                allItems = libraryRepository.libraryItems.value,
+                baseTitle = baseTitle,
+                currentUrl = currentUrl,
+                currentChapterNumber = currentChapterNumber
+            )
 
             if (toDelete.isNotEmpty()) {
                 contentRepository.clearCachesForUrls(toDelete.map { it.url })
@@ -1022,4 +1015,29 @@ class ReaderViewModel @Inject constructor(
             }
         }
     }
+}
+
+internal fun computeAutoDeleteCandidates(
+    allItems: List<LibraryItem>,
+    baseTitle: String,
+    currentUrl: String,
+    currentChapterNumber: Double
+): List<LibraryItem> {
+    return allItems
+        .asSequence()
+        .filter { item ->
+            item.baseTitle == baseTitle &&
+                item.contentType == ContentType.WEB &&
+                item.url != currentUrl &&
+                item.progress == 100
+        }
+        .filter { item ->
+            val otherNumber = TextUtils.extractChapterNumber(item.currentChapter)
+                ?: TextUtils.extractChapterNumber(item.url)
+                ?: return@filter false
+
+            // Keep the immediately previous chapter; only prune chapters 2+ behind the current one.
+            (currentChapterNumber - otherNumber) > 1
+        }
+        .toList()
 }

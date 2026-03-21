@@ -269,4 +269,104 @@ class ReaderViewModelTest {
         // Should HAVE called libraryRepository.saveProgress
         verify(libraryRepository).saveProgress(eq(itemId), any(), eq(60), any(), eq(60f), eq(0), eq(0))
     }
+
+    @Test
+    fun `computeAutoDeleteCandidates removes only completed chapters two or more behind`() {
+        val chapters = listOf(
+            LibraryItem(id = "1", title = "Chapter 3", url = "url-3", currentChapter = "Chapter 3", baseTitle = "Novel", progress = 100),
+            LibraryItem(id = "2", title = "Chapter 4", url = "url-4", currentChapter = "Chapter 4", baseTitle = "Novel", progress = 100),
+            LibraryItem(id = "3", title = "Chapter 5", url = "url-5", currentChapter = "Chapter 5", baseTitle = "Novel", progress = 100),
+            LibraryItem(id = "4", title = "Chapter 2", url = "url-2", currentChapter = "Chapter 2", baseTitle = "Novel", progress = 80),
+            LibraryItem(id = "5", title = "Chapter 1", url = "url-1", currentChapter = "Chapter 1", baseTitle = "Other", progress = 100)
+        )
+
+        val toDelete = computeAutoDeleteCandidates(
+            allItems = chapters,
+            baseTitle = "Novel",
+            currentUrl = "url-5",
+            currentChapterNumber = 5.0
+        )
+
+        assertEquals(listOf("1"), toDelete.map { it.id })
+    }
+
+    @Test
+    fun `computeAutoDeleteCandidates keeps immediate previous and current chapters`() {
+        val chapters = listOf(
+            LibraryItem(id = "1", title = "Chapter 5", url = "url-5", currentChapter = "Chapter 5", baseTitle = "Novel", progress = 100),
+            LibraryItem(id = "2", title = "Chapter 6", url = "url-6", currentChapter = "Chapter 6", baseTitle = "Novel", progress = 100)
+        )
+
+        val toDelete = computeAutoDeleteCandidates(
+            allItems = chapters,
+            baseTitle = "Novel",
+            currentUrl = "url-6",
+            currentChapterNumber = 6.0
+        )
+
+        assertEquals(emptyList<LibraryItem>(), toDelete)
+    }
+
+    @Test
+    fun `computeAutoDeleteCandidates skips chapters without parseable number`() {
+        val chapters = listOf(
+            LibraryItem(id = "1", title = "Side story", url = "bonus", currentChapter = "Bonus", baseTitle = "Novel", progress = 100),
+            LibraryItem(id = "2", title = "Chapter 3", url = "url-3", currentChapter = "Chapter 3", baseTitle = "Novel", progress = 100)
+        )
+
+        val toDelete = computeAutoDeleteCandidates(
+            allItems = chapters,
+            baseTitle = "Novel",
+            currentUrl = "url-5",
+            currentChapterNumber = 5.0
+        )
+
+        assertEquals(listOf("2"), toDelete.map { it.id })
+    }
+
+    @Test
+    fun `loadContent does not auto delete when current chapter number is not parseable`() = runTest {
+        val itemId = "item-1"
+        val url = "https://example.com/sidestory"
+        val item = LibraryItem(
+            id = itemId,
+            title = "Novel - Bonus",
+            url = url,
+            currentChapter = "Bonus",
+            baseTitle = "Novel",
+            progress = 100
+        )
+        val existingItems = listOf(
+            item,
+            LibraryItem(
+                id = "item-2",
+                title = "Chapter 1",
+                url = "https://example.com/ch1",
+                currentChapter = "Chapter 1",
+                baseTitle = "Novel",
+                progress = 100
+            )
+        )
+
+        whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(existingItems))
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(listOf(ContentElement.Text("Bonus content")), "Bonus", url)
+        )
+        whenever(libraryRepository.getItemByUrl(url)).thenReturn(item)
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(item)
+
+        viewModel = ReaderViewModel(
+            contentRepository,
+            libraryRepository,
+            exploreRepository,
+            preferencesManager
+        )
+
+        viewModel.loadContent(url)
+        advanceTimeBy(1_000)
+        advanceUntilIdle()
+
+        verify(libraryRepository, never()).removeItems(any())
+        verify(contentRepository, never()).clearCachesForUrls(any())
+    }
 }

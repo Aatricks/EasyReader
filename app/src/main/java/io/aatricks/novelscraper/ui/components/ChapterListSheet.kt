@@ -128,8 +128,14 @@ fun ChapterListSheet(
                             isSelectionMode = true
                             isDeleteMode = false
                             selectedChapterUrls.clear()
-                            val unread = allChapters.filter { it.url !in readUrls && it.url !in downloadedUrls }
-                            selectedChapterUrls.addAll(unread.map { it.url })
+                            selectedChapterUrls.addAll(
+                                computeUnreadChapterSelection(
+                                    allChapters = allChapters,
+                                    currentChapterUrl = uiState.content?.url,
+                                    readUrls = readUrls,
+                                    downloadedUrls = downloadedUrls
+                                )
+                            )
                         },
                         label = { Text("Unread") },
                         leadingIcon = {
@@ -334,4 +340,24 @@ fun ChapterListSheet(
             Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
         }
     }
+}
+
+internal fun computeUnreadChapterSelection(
+    allChapters: List<ChapterInfo>,
+    currentChapterUrl: String?,
+    readUrls: Set<String>,
+    downloadedUrls: Set<String>
+): List<String> {
+    val currentIndex = currentChapterUrl?.let { url ->
+        allChapters.indexOfFirst { it.url == url }
+    } ?: -1
+
+    if (currentIndex < 0) return emptyList()
+
+    return allChapters
+        .asSequence()
+        .filterIndexed { index, _ -> index > currentIndex }
+        .map { it.url }
+        .filter { it !in readUrls && it !in downloadedUrls }
+        .toList()
 }
