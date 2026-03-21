@@ -1,0 +1,274 @@
+package io.aatricks.novelscraper.ui.screens
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
+import io.aatricks.novelscraper.data.model.ChapterContent
+import io.aatricks.novelscraper.data.model.ContentElement
+import io.aatricks.novelscraper.ui.components.BottomNavigationBar
+import io.aatricks.novelscraper.ui.components.ReaderImageView
+import io.aatricks.novelscraper.ui.components.TopInfoBar
+import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
+import kotlin.math.abs
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+internal fun ContentArea(
+    content: ChapterContent,
+    readerViewModel: ReaderViewModel,
+    onLibraryClick: () -> Unit,
+    onShowChapterList: () -> Unit,
+    onShowSettings: () -> Unit
+): Unit {
+    val uiState by readerViewModel.uiState.collectAsState()
+    val context = LocalContext.current
+
+    val fontFamily = when (uiState.fontFamily) {
+        "Serif" -> FontFamily.Serif
+        "Monospace" -> FontFamily.Monospace
+        "Cursive" -> FontFamily.Cursive
+        else -> FontFamily.SansSerif
+    }
+
+    val isManhwa = remember(content) {
+        val isManhwaByUrl = content.url.contains("manhwa", ignoreCase = true) ||
+            content.url.contains("webtoon", ignoreCase = true)
+        isManhwaByUrl || (content.getImageCount() > content.getTextCount() && content.getImageCount() > 2)
+    }
+
+    val listState = key(content.url) {
+        rememberLazyListState(
+            initialFirstVisibleItemIndex = uiState.scrollIndex,
+            initialFirstVisibleItemScrollOffset = uiState.scrollOffset
+        )
+    }
+
+    val pagerState = key(content.url) {
+        rememberPagerState(
+            initialPage = uiState.scrollIndex.coerceIn(0, (content.paragraphs.size - 1).coerceAtLeast(0)),
+            initialPageOffsetFraction = 0f
+        ) {
+            content.paragraphs.size
+        }
+    }
+
+    val requestedIndices = remember(content.url) { mutableSetOf<Int>() }
+
+    LaunchedEffect(listState.firstVisibleItemIndex, pagerState.currentPage, content.url) {
+        val currentIndex = if (uiState.isPagedMode) pagerState.currentPage else listState.firstVisibleItemIndex
+        prefetchImages(currentIndex, content, requestedIndices) { url ->
+            val request = ImageRequest.Builder(context).data(url).build()
+            SingletonImageLoader.get(context).enqueue(request)
+        }
+    }
+
+    LaunchedEffect(uiState.seekTrigger) {
+        if (content.paragraphs.isNotEmpty() && uiState.seekTrigger > 0L) {
+            val targetIndex = uiState.scrollIndex
+            val targetOffset = uiState.scrollOffset
+
+            if (uiState.isPagedMode) {
+                val page = targetIndex.coerceIn(0, content.paragraphs.size - 1)
+                pagerState.scrollToPage(page)
+            } else if (targetIndex >= 0) {
+                runCatching {
+                    listState.scrollToItem(targetIndex, targetOffset)
+                }.onFailure {
+                    val totalItems = content.paragraphs.size
+                    val percent = uiState.scrollPosition.coerceIn(0f, 100f) / 100f
+                    val index = (percent * totalItems).toInt().coerceIn(0, totalItems - 1)
+                    listState.scrollToItem(index, 0)
+                }
+            }
+        }
+    }
+
+    if (uiState.isPagedMode) {
+        LaunchedEffect(pagerState.currentPage) {
+            val totalItems = content.paragraphs.size
+            val currentItem = pagerState.currentPage
+
+            readerViewModel.updateScrollPosition(
+                scrollOffset = currentItem.toFloat(),
+                maxScrollOffset = (totalItems - 1).coerceAtLeast(0).toFloat(),
+                viewportHeight = 0f,
+                index = currentItem,
+                offset = 0
+            )
+        }
+    } else {
+        LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, listState.canScrollForward) {
+            if (content.paragraphs.isNotEmpty()) {
+                val layoutInfo = listState.layoutInfo
+                val visibleItems = layoutInfo.visibleItemsInfo
+
+                if (visibleItems.isNotEmpty()) {
+                    val totalItems = layoutInfo.totalItemsCount
+                    val firstItem = visibleItems.first()
+
+                    val currentScrollOffset = firstItem.index.toFloat() +
+                        (listState.firstVisibleItemScrollOffset.toFloat() / firstItem.size.coerceAtLeast(1).toFloat())
+
+                    val viewportHeightInItems = layoutInfo.viewportSize.height.toFloat() / firstItem.size.coerceAtLeast(1).toFloat()
+                    val maxScrollOffset = (totalItems - 1).coerceAtLeast(0).toFloat()
+
+                    readerViewModel.updateScrollPosition(
+                        scrollOffset = currentScrollOffset,
+                        maxScrollOffset = maxScrollOffset + viewportHeightInItems,
+                        viewportHeight = viewportHeightInItems,
+                        index = listState.firstVisibleItemIndex,
+                        offset = listState.firstVisibleItemScrollOffset,
+                        canScrollForward = listState.canScrollForward
+                    )
+                }
+            }
+        }
+    }
+
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val threshold = remember { with(density) { 80.dp.toPx() } }
+    var pullAmount by remember { mutableFloatStateOf(0f) }
+    val isThresholdReached = abs(pullAmount) >= threshold
+
+    val nestedScrollConnection = rememberReaderNestedScrollConnection(
+        uiState = uiState,
+        pagerState = pagerState,
+        listState = listState,
+        content = content,
+        threshold = threshold,
+        onHideControls = { readerViewModel.hideControls() },
+        onUserInteraction = { readerViewModel.onUserInteraction() },
+        onPullAmountChange = { pullAmount = it },
+        onNavigatePrevious = { readerViewModel.navigateToPreviousChapter(fromBottom = true) },
+        onNavigateNext = { readerViewModel.navigateToNextChapter() }
+    )
+
+    val readerThemeState = uiState.readerTheme
+    val bgColor = readerThemeState.backgroundColor
+    val textColor = readerThemeState.textColor
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(nestedScrollConnection)
+            .background(bgColor)
+    ) {
+        if (uiState.isPagedMode) {
+            PagedReaderView(
+                content = content,
+                pagerState = pagerState,
+                uiState = uiState,
+                fontFamily = fontFamily,
+                bgColor = bgColor,
+                textColor = textColor,
+                readerViewModel = readerViewModel,
+                isZoomable = isManhwa
+            )
+        } else {
+            ScrollingReaderView(
+                content = content,
+                listState = listState,
+                uiState = uiState,
+                isManhwa = isManhwa,
+                fontFamily = fontFamily,
+                bgColor = bgColor,
+                textColor = textColor,
+                readerViewModel = readerViewModel
+            )
+        }
+
+        AnimatedVisibility(
+            visible = uiState.showControls,
+            enter = slideInVertically(initialOffsetY = { -it }),
+            exit = slideOutVertically(targetOffsetY = { -it }),
+            modifier = Modifier.align(Alignment.TopCenter)
+        ) {
+            TopInfoBar(
+                novelName = uiState.novelName,
+                chapterTitle = uiState.chapterTitle,
+                onLibraryClick = onLibraryClick,
+                onShowChapterList = onShowChapterList,
+                onShowSettings = onShowSettings
+            )
+        }
+
+        AnimatedVisibility(
+            visible = uiState.showControls,
+            enter = slideInVertically(initialOffsetY = { it }),
+            exit = slideOutVertically(targetOffsetY = { it }),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            BottomNavigationBar(
+                progress = uiState.scrollPosition,
+                canNavigatePrevious = uiState.canNavigatePrevious,
+                canNavigateNext = uiState.canNavigateNext,
+                onPreviousClick = { readerViewModel.navigateToPreviousChapter(fromBottom = true) },
+                onNextClick = { readerViewModel.navigateToNextChapter() },
+                onProgressChange = { readerViewModel.seekToProgress(it) }
+            )
+        }
+
+        PullToNavigateOverlay(
+            pullAmount = pullAmount,
+            threshold = threshold,
+            isThresholdReached = isThresholdReached,
+            isPagedMode = uiState.isPagedMode,
+            isRtl = uiState.isRtl
+        )
+    }
+}
+
