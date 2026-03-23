@@ -40,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -63,9 +64,11 @@ import io.aatricks.novelscraper.ui.components.BottomNavigationBar
 import io.aatricks.novelscraper.ui.components.ReaderImageView
 import io.aatricks.novelscraper.ui.components.TopInfoBar
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
 import kotlin.math.abs
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class, FlowPreview::class)
 @Composable
 internal fun ContentArea(
     content: ChapterContent,
@@ -151,19 +154,30 @@ internal fun ContentArea(
             )
         }
     } else {
-        LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, listState.canScrollForward) {
-            if (content.paragraphs.isNotEmpty()) {
-                val layoutInfo = listState.layoutInfo
-                val visibleItems = layoutInfo.visibleItemsInfo
+        LaunchedEffect(listState, content.url) {
+            snapshotFlow {
+                Triple(
+                    listState.firstVisibleItemIndex,
+                    listState.firstVisibleItemScrollOffset,
+                    listState.canScrollForward
+                )
+            }
+                .debounce(50)
+                .collect {
+                    if (content.paragraphs.isEmpty()) return@collect
 
-                if (visibleItems.isNotEmpty()) {
-                    val totalItems = layoutInfo.totalItemsCount
+                    val layoutInfo = listState.layoutInfo
+                    val visibleItems = layoutInfo.visibleItemsInfo
+                    if (visibleItems.isEmpty()) return@collect
+
                     val firstItem = visibleItems.first()
+                    val totalItems = layoutInfo.totalItemsCount
 
                     val currentScrollOffset = firstItem.index.toFloat() +
                         (listState.firstVisibleItemScrollOffset.toFloat() / firstItem.size.coerceAtLeast(1).toFloat())
 
-                    val viewportHeightInItems = layoutInfo.viewportSize.height.toFloat() / firstItem.size.coerceAtLeast(1).toFloat()
+                    val viewportHeightInItems =
+                        layoutInfo.viewportSize.height.toFloat() / firstItem.size.coerceAtLeast(1).toFloat()
                     val maxScrollOffset = (totalItems - 1).coerceAtLeast(0).toFloat()
 
                     readerViewModel.updateScrollPosition(
@@ -175,7 +189,6 @@ internal fun ContentArea(
                         canScrollForward = listState.canScrollForward
                     )
                 }
-            }
         }
     }
 
@@ -271,4 +284,3 @@ internal fun ContentArea(
         )
     }
 }
-

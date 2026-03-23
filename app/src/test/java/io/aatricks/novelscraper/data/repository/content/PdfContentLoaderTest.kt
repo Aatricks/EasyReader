@@ -16,6 +16,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -73,6 +74,16 @@ class PdfContentLoaderTest {
         assertTrue(loadedPage is ContentElement.PageContent)
 
         pdfFile.delete()
+    }
+
+    @Test
+    fun `loading profile is tuned for smooth scrolling`() {
+        val loader = PdfContentLoader(context)
+        val profile = loader.loadingProfileForTests()
+
+        assertEquals(1, profile.prefetchForward)
+        assertEquals(0, profile.prefetchBackward)
+        assertEquals(6, profile.maxInFlightJobs)
     }
 
     private fun createPdf(vararg pages: String): File {

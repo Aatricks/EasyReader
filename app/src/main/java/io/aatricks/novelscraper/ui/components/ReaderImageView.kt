@@ -41,6 +41,9 @@ fun ReaderImageView(
     side: ContentElement.Image.Side = ContentElement.Image.Side.FULL,
     enableZoom: Boolean = false,
     dynamicHeight: Boolean = false,
+    zoomStateKey: Any? = null,
+    onZoomChanged: ((Boolean) -> Unit)? = null,
+    lockTapWhileZoomed: Boolean = false,
     onTap: (() -> Unit)? = null
 ) {
     val configuration = LocalConfiguration.current
@@ -138,6 +141,9 @@ fun ReaderImageView(
                 modifier = imageModifier,
                 enableZoom = enableZoom,
                 dynamicHeight = dynamicHeight,
+                zoomStateKey = zoomStateKey,
+                onZoomChanged = onZoomChanged,
+                lockTapWhileZoomed = lockTapWhileZoomed,
                 onTap = onTap
             ) {
                 AsyncImage(
@@ -204,6 +210,9 @@ fun ReaderImageView(
                 modifier = imageModifier,
                 enableZoom = enableZoom,
                 dynamicHeight = dynamicHeight,
+                zoomStateKey = zoomStateKey,
+                onZoomChanged = onZoomChanged,
+                lockTapWhileZoomed = lockTapWhileZoomed,
                 onTap = onTap
             ) {
                 if (imageData != null) {

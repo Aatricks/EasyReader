@@ -39,13 +39,21 @@ import kotlin.math.abs
 class PdfContentLoader @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+    data class LoadingProfile(
+        val prefetchForward: Int,
+        val prefetchBackward: Int,
+        val maxInFlightJobs: Int
+    )
+
     companion object {
         private val PAGE_NUMBER_REGEX = Regex("^\\d+$")
         private const val MAX_LOCAL_CACHE_SIZE = 100
         private const val MAX_GLOBAL_PDF_CACHE_SIZE = 5
         private const val MAX_GLOBAL_PAGE_CACHE_PER_PDF = 50
-        private const val PREFETCH_FORWARD = 3
-        private const val PREFETCH_BACKWARD = 1
+        private const val PREFETCH_FORWARD = 1
+        private const val PREFETCH_BACKWARD = 0
+        private const val MAX_IN_FLIGHT_JOBS = 6
+        private const val MAX_JOB_DISTANCE = 6
         private const val EVICTION_DISTANCE = 30
         private const val ESTIMATED_PAGE_HEIGHT_DP = 1200
         private const val IMAGE_DOWNSAMPLE_THRESHOLD = 2048
@@ -55,6 +63,12 @@ class PdfContentLoader @Inject constructor(
     
     private val pageCountCache = ConcurrentHashMap<String, Int>()
     private val globalContentCache = LruCache<String, MutableMap<Int, ContentElement>>(MAX_GLOBAL_PDF_CACHE_SIZE)
+
+    internal fun loadingProfileForTests(): LoadingProfile = LoadingProfile(
+        prefetchForward = PREFETCH_FORWARD,
+        prefetchBackward = PREFETCH_BACKWARD,
+        maxInFlightJobs = MAX_IN_FLIGHT_JOBS
+    )
 
     suspend fun loadPdfContent(filePath: String, preloadPageIndex: Int? = null): ContentResult = withContext(Dispatchers.IO) {
         try {
@@ -343,10 +357,25 @@ class PdfContentLoader @Inject constructor(
             
             loadingJobs[index] = job
 
-            if (loadingJobs.size > 15) {
-                val furthestKey = loadingJobs.keys.maxByOrNull { abs(it - index) }
-                if (furthestKey != null && abs(furthestKey - index) > 10) {
-                    loadingJobs.remove(furthestKey)?.cancel()
+            if (loadingJobs.size > MAX_IN_FLIGHT_JOBS) {
+                val furthestCandidates = loadingJobs.keys
+                    .sortedByDescending { abs(it - index) }
+
+                furthestCandidates.forEach { candidate ->
+                    if (loadingJobs.size <= MAX_IN_FLIGHT_JOBS) return@forEach
+                    if (candidate == index) return@forEach
+
+                    if (abs(candidate - index) > MAX_JOB_DISTANCE) {
+                        loadingJobs.remove(candidate)?.cancel()
+                    }
+                }
+
+                if (loadingJobs.size > MAX_IN_FLIGHT_JOBS) {
+                    furthestCandidates.forEach { candidate ->
+                        if (loadingJobs.size <= MAX_IN_FLIGHT_JOBS) return@forEach
+                        if (candidate == index) return@forEach
+                        loadingJobs.remove(candidate)?.cancel()
+                    }
                 }
             }
         }

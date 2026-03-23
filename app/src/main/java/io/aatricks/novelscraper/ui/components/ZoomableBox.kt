@@ -24,6 +24,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
+internal const val ZOOM_STATE_EPSILON = 0.05f
+
+internal fun isZoomed(scale: Float, minScale: Float, epsilon: Float = ZOOM_STATE_EPSILON): Boolean {
+    return scale > (minScale + epsilon)
+}
+
+internal fun shouldHandleTap(scale: Float, minScale: Float, lockTapWhileZoomed: Boolean): Boolean {
+    return !lockTapWhileZoomed || !isZoomed(scale = scale, minScale = minScale)
+}
+
 @Composable
 fun ZoomableBox(
     modifier: Modifier = Modifier,
@@ -31,16 +41,33 @@ fun ZoomableBox(
     maxScale: Float = 3f,
     enableZoom: Boolean = false,
     dynamicHeight: Boolean = false,
+    zoomStateKey: Any? = null,
+    onZoomChanged: ((Boolean) -> Unit)? = null,
+    lockTapWhileZoomed: Boolean = false,
     onTap: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
-    var scale by remember { mutableFloatStateOf(minScale) }
-    var offsetX by remember { mutableFloatStateOf(0f) }
-    var offsetY by remember { mutableFloatStateOf(0f) }
+    var scale by remember(zoomStateKey, minScale) { mutableFloatStateOf(minScale) }
+    var offsetX by remember(zoomStateKey) { mutableFloatStateOf(0f) }
+    var offsetY by remember(zoomStateKey) { mutableFloatStateOf(0f) }
     var size by remember { mutableStateOf(IntSize.Zero) }
+    var zoomed by remember(zoomStateKey) { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     var lastTapTime by remember { mutableLongStateOf(0L) }
+    val currentOnZoomChanged by rememberUpdatedState(onZoomChanged)
+
+    fun emitZoomState(currentScale: Float) {
+        val nowZoomed = isZoomed(scale = currentScale, minScale = minScale)
+        if (nowZoomed != zoomed) {
+            zoomed = nowZoomed
+            currentOnZoomChanged?.invoke(nowZoomed)
+        }
+    }
+
+    LaunchedEffect(zoomStateKey, minScale) {
+        emitZoomState(minScale)
+    }
 
     fun clampOffset(value: Float, contentSize: Float, currentScale: Float, isDynamic: Boolean = false): Float {
         val scaledContentSize = contentSize * currentScale
@@ -55,7 +82,7 @@ fun ZoomableBox(
     }
 
     val gestureModifier = if (enableZoom) {
-        Modifier.pointerInput(Unit) {
+        Modifier.pointerInput(enableZoom, zoomStateKey, minScale, maxScale, lockTapWhileZoomed) {
             coroutineScope {
                 awaitPointerEventScope {
                     while (true) {
@@ -92,10 +119,11 @@ fun ZoomableBox(
                                 val height = size.height.toFloat()
 
                                 scale = newScale
+                                emitZoomState(scale)
                                 offsetX = clampOffset(offsetX + panChange.x, width, scale)
                                 offsetY = clampOffset(offsetY + panChange.y, height, scale, isDynamic = dynamicHeight)
 
-                                event.changes.fastForEach { if (it.positionChanged()) it.consume() }
+                                event.changes.fastForEach { it.consume() }
                             }
 
                             val upChange = event.changes.firstOrNull { !it.pressed }
@@ -108,6 +136,7 @@ fun ZoomableBox(
                             if (isDoubleTapCandidate) {
                                 if (scale > 1.05f) {
                                     scale = 1f; offsetX = 0f; offsetY = 0f
+                                    emitZoomState(scale)
                                 } else {
                                     val targetScale = 2.5f
                                     val width = size.width.toFloat()
@@ -121,6 +150,7 @@ fun ZoomableBox(
                                     } else {
                                         scale = targetScale
                                     }
+                                    emitZoomState(scale)
                                 }
                                 lastTapTime = 0L
                             } else {
@@ -128,7 +158,9 @@ fun ZoomableBox(
                                 scope.launch {
                                     delay(200)
                                     if (lastTapTime == downTime) {
-                                        onTap?.invoke()
+                                        if (shouldHandleTap(scale = scale, minScale = minScale, lockTapWhileZoomed = lockTapWhileZoomed)) {
+                                            onTap?.invoke()
+                                        }
                                     }
                                 }
                             }

@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import io.aatricks.novelscraper.data.model.ChapterContent
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.ui.components.ReaderImageView
+import io.aatricks.novelscraper.ui.components.ZoomableBox
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -46,13 +48,31 @@ internal fun PagedReaderView(
     readerViewModel: ReaderViewModel,
     isZoomable: Boolean
 ): Unit {
+    val zoomedPages = remember(content.url) { mutableStateMapOf<Int, Boolean>() }
+    val isCurrentPageZoomed = zoomedPages[pagerState.currentPage] == true
+
+    LaunchedEffect(isCurrentPageZoomed) {
+        if (isCurrentPageZoomed) {
+            readerViewModel.hideControls()
+        }
+    }
+
     HorizontalPager(
         state = pagerState,
         reverseLayout = uiState.isRtl,
-        userScrollEnabled = !uiState.showControls,
+        userScrollEnabled = !uiState.showControls && !isCurrentPageZoomed,
         modifier = Modifier.fillMaxSize()
     ) { page ->
         val element = content.paragraphs.getOrNull(page)
+        val onPageZoomChanged: (Boolean) -> Unit = { zoomed ->
+            if (zoomed) {
+                zoomedPages[page] = true
+                readerViewModel.hideControls()
+            } else {
+                zoomedPages.remove(page)
+            }
+        }
+
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             element?.let { el ->
                 when (el) {
@@ -118,6 +138,9 @@ internal fun PagedReaderView(
                                             height = subElement.height,
                                             side = subElement.side,
                                             enableZoom = isZoomable,
+                                            zoomStateKey = "${content.url}_${page}_${subElement.url}_${subElement.side}",
+                                            onZoomChanged = if (isZoomable) onPageZoomChanged else null,
+                                            lockTapWhileZoomed = isZoomable,
                                             onTap = { readerViewModel.toggleControls() }
                                         )
                                     }
@@ -166,39 +189,95 @@ internal fun PagedReaderView(
                             height = el.height,
                             side = el.side,
                             enableZoom = isZoomable,
+                            zoomStateKey = "${content.url}_${page}_${el.url}_${el.side}",
+                            onZoomChanged = if (isZoomable) onPageZoomChanged else null,
+                            lockTapWhileZoomed = isZoomable,
                             onTap = { readerViewModel.toggleControls() }
                         )
                     }
 
                     is ContentElement.ImageGroup -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState()),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(0.dp, Alignment.CenterVertically)
-                        ) {
-                            el.images.forEach { img ->
-                                ReaderImageView(
-                                    imageUrl = img.url,
-                                    altText = img.altText,
-                                    readerViewModel = readerViewModel,
-                                    pageUrl = content.url,
-                                    contentScale = ContentScale.Fit,
-                                    backgroundColor = bgColor,
-                                    width = img.width,
-                                    height = img.height,
-                                    side = img.side,
-                                    enableZoom = isZoomable,
-                                    dynamicHeight = true,
-                                    onTap = { readerViewModel.toggleControls() }
-                                )
-                            }
-                        }
+                        PagedImageGroupView(
+                            images = el.images,
+                            pageUrl = content.url,
+                            pageIndex = page,
+                            backgroundColor = bgColor,
+                            readerViewModel = readerViewModel,
+                            enableZoom = isZoomable,
+                            onPageZoomChanged = onPageZoomChanged
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PagedImageGroupView(
+    images: List<ContentElement.Image>,
+    pageUrl: String,
+    pageIndex: Int,
+    backgroundColor: Color,
+    readerViewModel: ReaderViewModel,
+    enableZoom: Boolean,
+    onPageZoomChanged: (Boolean) -> Unit
+): Unit {
+    val scrollModifier = Modifier
+        .fillMaxSize()
+        .verticalScroll(rememberScrollState())
+
+    val contentColumn: @Composable () -> Unit = {
+        Column(
+            modifier = scrollModifier,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(0.dp, Alignment.CenterVertically)
+        ) {
+            images.forEachIndexed { index, img ->
+                ReaderImageView(
+                    imageUrl = img.url,
+                    altText = img.altText,
+                    readerViewModel = readerViewModel,
+                    pageUrl = pageUrl,
+                    contentScale = ContentScale.Fit,
+                    backgroundColor = backgroundColor,
+                    width = img.width,
+                    height = img.height,
+                    side = img.side,
+                    enableZoom = false,
+                    dynamicHeight = true,
+                    zoomStateKey = "${pageUrl}_${pageIndex}_group_$index",
+                    onTap = null
+                )
+            }
+        }
+    }
+
+    if (!enableZoom) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { readerViewModel.toggleControls() }
+                )
+        ) {
+            contentColumn()
+        }
+        return
+    }
+
+    ZoomableBox(
+        modifier = Modifier.fillMaxSize(),
+        enableZoom = true,
+        dynamicHeight = false,
+        zoomStateKey = "${pageUrl}_${pageIndex}_group",
+        onZoomChanged = onPageZoomChanged,
+        lockTapWhileZoomed = true,
+        onTap = { readerViewModel.toggleControls() }
+    ) {
+        contentColumn()
     }
 }
 

@@ -36,6 +36,8 @@ class ReaderViewModel @Inject constructor(
 
     companion object {
         private val DOUBLE_NEWLINE_REGEX = Regex("""\n\s*\n""")
+        private const val MIN_SCROLL_OFFSET_DELTA_PX = 8
+        private const val MIN_SCROLL_PROGRESS_DELTA_PERCENT = 0.35f
     }
 
     // Current library item ID being read
@@ -50,6 +52,9 @@ class ReaderViewModel @Inject constructor(
 
     // Track last raw scroll offset (pixels) to detect actual user gesture direction
     private var lastRawScrollOffset: Float = -1f
+    private var lastReportedIndex: Int = -1
+    private var lastReportedOffsetPx: Int = -1
+    private var lastReportedProgress: Float = -1f
 
     // Debounce progress updates to reduce jitter
     private var progressUpdateJob: Job? = null
@@ -784,6 +789,18 @@ class ReaderViewModel @Inject constructor(
 
         val hasReached = progress >= 25f
         val progressInt = progress.toInt()
+        val isMicroDelta = index == lastReportedIndex &&
+            kotlin.math.abs(offset - lastReportedOffsetPx) < MIN_SCROLL_OFFSET_DELTA_PX &&
+            kotlin.math.abs(progress - lastReportedProgress) < MIN_SCROLL_PROGRESS_DELTA_PERCENT
+
+        if (isMicroDelta) {
+            lastRawScrollOffset = scrollOffset
+            return
+        }
+
+        lastReportedIndex = index
+        lastReportedOffsetPx = offset
+        lastReportedProgress = progress
 
         updateState {
             it.copy(
@@ -862,6 +879,10 @@ class ReaderViewModel @Inject constructor(
         closeContent(_uiState.value.content)
         _uiState.value = ReaderUiState()
         currentLibraryItemId = null
+        lastRawScrollOffset = -1f
+        lastReportedIndex = -1
+        lastReportedOffsetPx = -1
+        lastReportedProgress = -1f
     }
 
     private fun closeContent(content: ChapterContent?) {

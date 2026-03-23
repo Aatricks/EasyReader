@@ -201,6 +201,61 @@ class ReaderViewModelTest {
     }
 
     @Test
+    fun `updateScrollPosition ignores micro variations on same item`() = runTest {
+        val itemId = "item-1"
+        val url = "https://example.com/1"
+
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(listOf(ContentElement.Text("Test")), "Test", url)
+        )
+        whenever(libraryRepository.getItemByUrl(url)).thenReturn(
+            LibraryItem(id = itemId, title = "Test", url = url)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(
+            LibraryItem(id = itemId, title = "Test", url = url)
+        )
+
+        viewModel.loadContent(url)
+        advanceUntilIdle()
+        viewModel.onUserInteraction()
+
+        viewModel.updateScrollPosition(
+            scrollOffset = 30f,
+            maxScrollOffset = 100f,
+            viewportHeight = 10f,
+            index = 2,
+            offset = 100
+        )
+        val stateAfterFirstUpdate = viewModel.uiState.value
+
+        viewModel.updateScrollPosition(
+            scrollOffset = 30.1f,
+            maxScrollOffset = 100f,
+            viewportHeight = 10f,
+            index = 2,
+            offset = 103
+        )
+
+        val stateAfterSecondUpdate = viewModel.uiState.value
+        assertEquals(stateAfterFirstUpdate.scrollOffset, stateAfterSecondUpdate.scrollOffset)
+        assertEquals(stateAfterFirstUpdate.scrollPosition, stateAfterSecondUpdate.scrollPosition, 0.001f)
+
+        advanceTimeBy(200)
+        runCurrent()
+        advanceUntilIdle()
+
+        verify(libraryRepository, times(1)).saveProgress(
+            itemId = eq(itemId),
+            currentChapter = any(),
+            progress = any(),
+            currentChapterUrl = eq(url),
+            lastScrollProgress = any(),
+            lastReadIndex = eq(2),
+            lastReadOffset = eq(100)
+        )
+    }
+
+    @Test
     fun `toggleReadingMode updates repository`() = runTest {
         val itemId = "item-1"
         val url = "https://example.com/1"
