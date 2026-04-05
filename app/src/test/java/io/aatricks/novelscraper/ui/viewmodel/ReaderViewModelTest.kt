@@ -157,6 +157,62 @@ class ReaderViewModelTest {
     }
 
     @Test
+    fun `openChapterFromStart ignores saved web progress`() = runTest {
+        val itemId = "web-item"
+        val url = "https://example.com/chapter-10"
+        val savedItem = LibraryItem(
+            id = itemId,
+            title = "Chapter 10",
+            url = url,
+            progress = 55,
+            lastReadIndex = 4,
+            lastReadOffset = 18,
+            lastScrollPosition = 55f
+        )
+
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(listOf(ContentElement.Text("Chapter content")), "Chapter 10", url)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(savedItem)
+
+        viewModel.openChapterFromStart(url, itemId)
+        advanceUntilIdle()
+
+        assertEquals(0, viewModel.uiState.value.scrollIndex)
+        assertEquals(0, viewModel.uiState.value.scrollOffset)
+        assertEquals(0, viewModel.uiState.value.scrollProgress)
+        assertEquals(0f, viewModel.uiState.value.scrollPosition, 0.001f)
+    }
+
+    @Test
+    fun `loadContent restores saved web progress when navigation is not explicit`() = runTest {
+        val itemId = "web-item"
+        val url = "https://example.com/chapter-10"
+        val savedItem = LibraryItem(
+            id = itemId,
+            title = "Chapter 10",
+            url = url,
+            progress = 55,
+            lastReadIndex = 4,
+            lastReadOffset = 18,
+            lastScrollPosition = 55f
+        )
+
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(listOf(ContentElement.Text("Chapter content")), "Chapter 10", url)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(savedItem)
+
+        viewModel.loadContent(url, itemId)
+        advanceUntilIdle()
+
+        assertEquals(4, viewModel.uiState.value.scrollIndex)
+        assertEquals(18, viewModel.uiState.value.scrollOffset)
+        assertEquals(55, viewModel.uiState.value.scrollProgress)
+        assertEquals(55f, viewModel.uiState.value.scrollPosition, 0.001f)
+    }
+
+    @Test
     fun `updateScrollPosition saves progress after delay`() = runTest {
         val itemId = "item-1"
         val url = "https://example.com/1"

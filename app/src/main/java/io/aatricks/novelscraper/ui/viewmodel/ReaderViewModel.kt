@@ -290,6 +290,19 @@ class ReaderViewModel @Inject constructor(
         updateState { it.copy(toastMessage = null) }
     }
 
+    fun openChapterFromStart(
+        url: String,
+        libraryItemId: String? = null,
+        fromBottom: Boolean = false,
+        isSilent: Boolean = false
+    ): Unit = loadContent(
+        url = url,
+        libraryItemId = libraryItemId,
+        fromBottom = fromBottom,
+        isSilent = isSilent,
+        isExplicitNavigation = true
+    )
+
     fun loadContent(
         url: String,
         libraryItemId: String? = null,

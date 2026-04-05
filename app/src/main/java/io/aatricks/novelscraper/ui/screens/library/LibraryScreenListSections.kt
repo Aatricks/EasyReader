@@ -212,7 +212,7 @@ private fun NovelGroupCard(
                 },
                 onOpenNewChapter = { item ->
                     libraryViewModel.openNewChapter(title, item.baseNovelUrl, item.sourceName) { url, id ->
-                        readerViewModel.loadContent(url, id)
+                        readerViewModel.openChapterFromStart(url, id)
                         libraryViewModel.markAsCurrentlyReading(id)
                         onCloseLibrary()
                     }
@@ -485,4 +485,3 @@ private fun NovelChapterList(
         }
     }
 }
-

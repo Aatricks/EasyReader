@@ -149,10 +149,10 @@ fun LibraryDrawerContent(
             items(recentUpdates, key = { "update_${it.id}" }) { item ->
                 QuickLibraryItem(
                     item = item,
-                    supportingText = item.currentChapter.ifBlank { "New chapter available" },
+                    supportingText = "New chapter available",
                     trailingLabel = "NEW",
                     onClick = {
-                        openLibraryItem(
+                        openLatestUpdateItem(
                             item = item,
                             libraryViewModel = libraryViewModel,
                             readerViewModel = readerViewModel,
@@ -199,6 +199,28 @@ private fun openLibraryItem(
     readerViewModel.loadContent(loadUrl, item.id)
     libraryViewModel.markAsCurrentlyReading(item.id)
     onCloseDrawer()
+}
+
+private fun openLatestUpdateItem(
+    item: LibraryItem,
+    libraryViewModel: LibraryViewModel,
+    readerViewModel: ReaderViewModel,
+    onCloseDrawer: () -> Unit
+): Unit {
+    val baseTitle = item.baseTitle.ifBlank { item.title }
+    if (item.baseNovelUrl.isBlank() || item.sourceName.isBlank()) {
+        val loadUrl = if (item.currentChapterUrl.isNotBlank()) item.currentChapterUrl else item.url
+        readerViewModel.openChapterFromStart(loadUrl, item.id)
+        libraryViewModel.markAsCurrentlyReading(item.id)
+        onCloseDrawer()
+        return
+    }
+
+    libraryViewModel.openNewChapter(baseTitle, item.baseNovelUrl, item.sourceName) { url, id ->
+        readerViewModel.openChapterFromStart(url, id)
+        libraryViewModel.markAsCurrentlyReading(id)
+        onCloseDrawer()
+    }
 }
 
 @Composable

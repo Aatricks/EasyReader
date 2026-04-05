@@ -2,6 +2,10 @@ package io.aatricks.novelscraper.ui.viewmodel
 
 import io.aatricks.novelscraper.data.local.LibraryDao
 import io.aatricks.novelscraper.data.local.PreferencesManager
+import io.aatricks.novelscraper.data.model.ChapterInfo
+import io.aatricks.novelscraper.data.model.ContentType
+import io.aatricks.novelscraper.data.model.ExploreItem
+import io.aatricks.novelscraper.data.model.LibraryItem
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
@@ -9,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
+import org.mockito.Mockito.timeout
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -91,5 +96,96 @@ class LibraryViewModelTest {
         assertFalse("NovelFire" in vm.uiState.value.collapsedSources)
 
         verify(preferencesManager, atLeastOnce()).saveCollapsedSources(any())
+    }
+
+    @Test
+    fun `openNewChapter adds latest chapter when missing`() = runTest {
+        val baseTitle = "Novel"
+        val baseNovelUrl = "https://example.com/novel"
+        val sourceName = "Source1"
+        val latestUrl = "https://example.com/novel/chapter-10"
+        val details = ExploreItem(
+            title = baseTitle,
+            url = baseNovelUrl,
+            source = sourceName,
+            chapters = listOf(
+                ChapterInfo("Chapter 9", "https://example.com/novel/chapter-9"),
+                ChapterInfo("Chapter 10", latestUrl)
+            )
+        )
+        var loadedUrl: String? = null
+        var loadedId: String? = null
+        val insertedItem = argumentCaptor<LibraryItem>()
+
+        whenever(exploreRepository.getNovelDetails(baseNovelUrl, sourceName)).thenReturn(details)
+        whenever(libraryDao.getItemByUrl(latestUrl)).thenReturn(null)
+
+        viewModel.openNewChapter(baseTitle, baseNovelUrl, sourceName) { url, id ->
+            loadedUrl = url
+            loadedId = id
+        }
+        advanceUntilIdle()
+
+        verify(libraryDao, timeout(1000)).insertItem(insertedItem.capture())
+        assertEquals(latestUrl, insertedItem.firstValue.url)
+        assertEquals(ContentType.WEB, insertedItem.firstValue.contentType)
+        assertEquals(baseTitle, insertedItem.firstValue.baseTitle)
+        assertEquals(baseNovelUrl, insertedItem.firstValue.baseNovelUrl)
+        assertEquals(sourceName, insertedItem.firstValue.sourceName)
+        assertEquals(details.chapters.size, insertedItem.firstValue.totalChapters)
+        verify(contentRepository, timeout(1000)).prefetch(latestUrl)
+        assertEquals(latestUrl, loadedUrl)
+        assertEquals(insertedItem.firstValue.id, loadedId)
+        assertFalse(viewModel.uiState.value.isLoading)
+        assertNull(viewModel.uiState.value.error)
+    }
+
+    @Test
+    fun `openNewChapter reuses existing latest chapter when already in library`() = runTest {
+        val baseTitle = "Novel"
+        val baseNovelUrl = "https://example.com/novel"
+        val sourceName = "Source1"
+        val latestUrl = "https://example.com/novel/chapter-10"
+        val existingItem = LibraryItem(
+            id = "existing-id",
+            title = "Chapter 10",
+            url = latestUrl,
+            currentChapter = "Chapter 10",
+            baseTitle = baseTitle,
+            baseNovelUrl = baseNovelUrl,
+            sourceName = sourceName,
+            totalChapters = 1
+        )
+        val details = ExploreItem(
+            title = baseTitle,
+            url = baseNovelUrl,
+            source = sourceName,
+            chapters = listOf(
+                ChapterInfo("Chapter 9", "https://example.com/novel/chapter-9"),
+                ChapterInfo("Chapter 10", latestUrl)
+            )
+        )
+        var loadedUrl: String? = null
+        var loadedId: String? = null
+
+        whenever(exploreRepository.getNovelDetails(baseNovelUrl, sourceName)).thenReturn(details)
+        whenever(libraryDao.getItemByUrl(latestUrl)).thenReturn(existingItem)
+
+        viewModel.openNewChapter(baseTitle, baseNovelUrl, sourceName) { url, id ->
+            loadedUrl = url
+            loadedId = id
+        }
+        advanceUntilIdle()
+
+        verify(libraryDao, timeout(1000)).insertItem(check<LibraryItem> {
+            assertEquals(existingItem.id, it.id)
+            assertEquals(details.chapters.size, it.totalChapters)
+            assertEquals(latestUrl, it.url)
+        })
+        verify(contentRepository, never()).prefetch(any())
+        assertEquals(latestUrl, loadedUrl)
+        assertEquals(existingItem.id, loadedId)
+        assertFalse(viewModel.uiState.value.isLoading)
+        assertNull(viewModel.uiState.value.error)
     }
 }
