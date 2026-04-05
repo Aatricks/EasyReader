@@ -39,6 +39,7 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +69,7 @@ fun ChapterListSheet(
     var isDeleteMode by remember { mutableStateOf(false) }
     val selectedChapterUrls = remember { mutableStateListOf<String>() }
     val chaptersListState = rememberLazyListState()
+    val libraryUiState by libraryViewModel.uiState.collectAsState()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -75,7 +77,7 @@ fun ChapterListSheet(
         containerColor = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface
     ) {
-        val libraryItemsInGroup = libraryViewModel.uiState.value.groupedItems[uiState.baseTitle] ?: emptyList()
+        val libraryItemsInGroup = libraryUiState.groupedItems[uiState.baseTitle] ?: emptyList()
         val downloadedUrls = libraryItemsInGroup.map { it.url }.toSet()
         val readUrls = libraryItemsInGroup.filter { it.progress == 100 }.map { it.url }.toSet()
 

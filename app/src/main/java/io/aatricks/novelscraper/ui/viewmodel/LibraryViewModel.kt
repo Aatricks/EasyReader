@@ -3,7 +3,9 @@ package io.aatricks.novelscraper.ui.viewmodel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.aatricks.novelscraper.data.model.ContentType
+import io.aatricks.novelscraper.data.model.ChapterInfo
 import io.aatricks.novelscraper.data.model.LibraryItem
+import io.aatricks.novelscraper.data.model.ExploreItem
 import io.aatricks.novelscraper.data.model.SortMode
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
@@ -149,7 +151,7 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun addExploreItem(
-        item: io.aatricks.novelscraper.data.model.ExploreItem,
+        item: ExploreItem,
         exploreRepository: ExploreRepository
     ): Unit {
         viewModelScope.launch {
@@ -192,7 +194,7 @@ class LibraryViewModel @Inject constructor(
     }
 
     private suspend fun addWebExploreItem(
-        item: io.aatricks.novelscraper.data.model.ExploreItem,
+        item: ExploreItem,
         readingUrl: String
     ): Unit {
         val chapterTitle = contentRepository.fetchTitle(readingUrl) ?: "Chapter 1"
@@ -303,8 +305,9 @@ class LibraryViewModel @Inject constructor(
                 if (details == null || details.chapters.isEmpty()) {
                     throw Exception("No chapters found for this novel")
                 }
-                
-                val latestChapter = details.chapters.last()
+
+                val latestChapter = selectLatestChapter(details.chapters)
+                    ?: throw Exception("No latest chapter found for this novel")
                 var item = repository.getItemByUrl(latestChapter.url)
                 
                 if (item == null) {
@@ -528,4 +531,21 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+}
+
+internal fun selectLatestChapter(chapters: List<ChapterInfo>): ChapterInfo? {
+    if (chapters.isEmpty()) return null
+
+    val latestByNumber = chapters.withIndex()
+        .mapNotNull { indexedChapter ->
+            val chapter = indexedChapter.value
+            val chapterNumber = TextUtils.extractChapterNumber(chapter.title)
+                ?: TextUtils.extractChapterNumber(chapter.url)
+                ?: return@mapNotNull null
+            Triple(chapterNumber, indexedChapter.index, chapter)
+        }
+        .maxWithOrNull(compareBy<Triple<Double, Int, ChapterInfo>>({ it.first }, { it.second }))
+        ?.third
+
+    return latestByNumber ?: chapters.lastOrNull()
 }
