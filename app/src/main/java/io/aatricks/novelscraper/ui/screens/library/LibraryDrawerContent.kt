@@ -10,7 +10,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowOutward
 import androidx.compose.material.icons.filled.FileOpen
-import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -99,13 +98,7 @@ fun LibraryDrawerContent(
                     },
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Image,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-                    Text("Explore")
+                    Text("Discover")
                 }
             }
         }
@@ -124,7 +117,7 @@ fun LibraryDrawerContent(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-                Text("Import File")
+                Text("Import file")
             }
         }
 
@@ -145,12 +138,12 @@ fun LibraryDrawerContent(
         }
 
         if (recentUpdates.isNotEmpty()) {
-            item { DrawerSectionLabel("Updates") }
+            item { DrawerSectionLabel("Latest updates") }
             items(recentUpdates, key = { "update_${it.id}" }) { item ->
                 QuickLibraryItem(
                     item = item,
-                    supportingText = "New chapter available",
-                    trailingLabel = "NEW",
+                    supportingText = "Start at the newest chapter",
+                    trailingLabel = "Open latest",
                     onClick = {
                         openLatestUpdateItem(
                             item = item,
@@ -168,7 +161,10 @@ fun LibraryDrawerContent(
             items(recentItems, key = { "recent_${it.id}" }) { item ->
                 QuickLibraryItem(
                     item = item,
-                    supportingText = item.currentChapter.ifBlank { item.sourceName.ifBlank { "Library item" } },
+                    supportingText = item.currentChapter.ifBlank { "Resume where you left off" }
+                        .let { chapter ->
+                            if (chapter.startsWith("Resume")) chapter else "Resume $chapter"
+                        },
                     onClick = {
                         openLibraryItem(
                             item = item,
@@ -367,7 +363,7 @@ private fun EmptyQuickAccessState(): Unit {
                 )
             }
             Text(
-                text = "Use Explore to discover something new or import a file directly.",
+                text = "Use Discover to find something new or import a file directly.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

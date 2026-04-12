@@ -77,17 +77,13 @@ fun LibraryScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { navController.navigate(ExploreRoute) }) {
-                        Icon(
-                            imageVector = Icons.Default.Image,
-                            contentDescription = "Explore"
-                        )
+                    TextButton(onClick = { navController.navigate(ExploreRoute) }) {
+                        Text("Discover")
                     }
-                    IconButton(onClick = { isAddSectionVisible = !isAddSectionVisible }) {
-                        Icon(
-                            imageVector = if (isAddSectionVisible) Icons.Default.Close else Icons.Default.Add,
-                            contentDescription = if (isAddSectionVisible) "Close add" else "Add item"
-                        )
+                    FilledTonalButton(
+                        onClick = { isAddSectionVisible = !isAddSectionVisible }
+                    ) {
+                        Text(if (isAddSectionVisible) "Hide tools" else "Add / import")
                     }
                 }
             )
@@ -98,7 +94,7 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.surface)
                 .padding(paddingValues)
-                .padding(horizontal = EasyReaderSpacing.md, vertical = EasyReaderSpacing.sm)
+                .padding(horizontal = EasyReaderSpacing.md, vertical = EasyReaderSpacing.md)
         ) {
             AnimatedVisibility(
                 visible = isAddSectionVisible,
@@ -120,21 +116,43 @@ fun LibraryScreen(
                 )
             }
 
+            if (isAddSectionVisible) {
+                Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
+            }
+
             SearchLibraryField(
                 query = searchQuery,
                 onQueryChange = { libraryViewModel.updateSearchQuery(it) }
             )
 
-            Spacer(modifier = Modifier.height(EasyReaderSpacing.md))
+            if (libraryUiState.items.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
+                LibraryStatusRow(
+                    query = searchQuery,
+                    totalCount = libraryUiState.items.size,
+                    visibleCount = libraryUiState.filteredItems.size,
+                    isSelectionMode = libraryUiState.isSelectionMode,
+                    selectedCount = libraryUiState.selectedCount,
+                    onSelectionClick = {
+                        if (libraryUiState.isSelectionMode) {
+                            libraryViewModel.clearSelection()
+                        } else {
+                            libraryViewModel.enterSelectionMode()
+                        }
+                    }
+                )
+            } else {
+                Spacer(modifier = Modifier.height(EasyReaderSpacing.md))
+            }
 
             if (libraryUiState.isSelectionMode) {
+                Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
                 SelectionActions(
                     onDelete = { libraryViewModel.removeSelectedItems() },
                     onCancel = { libraryViewModel.clearSelection() }
                 )
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
 
             if (libraryUiState.items.isEmpty()) {
@@ -161,61 +179,78 @@ private fun AddNovelSection(
     onAddClick: () -> Unit,
     onOpenPdfClick: () -> Unit
 ): Unit {
-    Column {
-        OutlinedTextField(
-            value = urlInput,
-            onValueChange = onUrlChange,
-            label = { Text("Novel URL") },
-            placeholder = { Text("Enter novel URL...") },
-            modifier = Modifier.fillMaxWidth(),
-            trailingIcon = {
-                if (urlInput.isNotEmpty()) {
-                    IconButton(onClick = { onUrlChange("") }) {
-                        Icon(imageVector = Icons.Filled.Close, contentDescription = "Clear URL")
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f)
+    ) {
+        Column(modifier = Modifier.padding(EasyReaderSpacing.md)) {
+            Text(
+                text = "Add from the web or import a file",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
+            Text(
+                text = "Paste a novel URL to add it now, or import a file from your device.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
+
+            OutlinedTextField(
+                value = urlInput,
+                onValueChange = onUrlChange,
+                label = { Text("Novel URL") },
+                placeholder = { Text("Paste a novel URL") },
+                modifier = Modifier.fillMaxWidth(),
+                trailingIcon = {
+                    if (urlInput.isNotEmpty()) {
+                        IconButton(onClick = { onUrlChange("") }) {
+                            Icon(imageVector = Icons.Filled.Close, contentDescription = "Clear URL")
+                        }
                     }
+                },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                keyboardActions = KeyboardActions(onGo = { if (urlInput.isNotBlank()) onAddClick() }),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    cursorColor = MaterialTheme.colorScheme.primary
+                ),
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
+            ) {
+                Button(
+                    onClick = onAddClick,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    enabled = urlInput.isNotBlank(),
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
+                    Text("Add from URL", fontWeight = FontWeight.SemiBold)
                 }
-            },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-            keyboardActions = KeyboardActions(onGo = { if (urlInput.isNotBlank()) onAddClick() }),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                cursorColor = MaterialTheme.colorScheme.primary
-            ),
-            singleLine = true
-        )
 
-        Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
-        ) {
-            Button(
-                onClick = onAddClick,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                enabled = urlInput.isNotBlank(),
-                shape = MaterialTheme.shapes.large
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-                Text("Add", fontWeight = FontWeight.SemiBold)
-            }
-
-            Button(
-                onClick = onOpenPdfClick,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                shape = MaterialTheme.shapes.large
-            ) {
-                Text("Import File", fontWeight = FontWeight.SemiBold)
+                Button(
+                    onClick = onOpenPdfClick,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Text("Import file", fontWeight = FontWeight.SemiBold)
+                }
             }
         }
-        Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
     }
 }
 
@@ -224,10 +259,10 @@ private fun SearchLibraryField(
     query: String,
     onQueryChange: (String) -> Unit
 ): Unit {
-    OutlinedTextField(
+    TextField(
         value = query,
         onValueChange = onQueryChange,
-        placeholder = { Text("Search library...") },
+        placeholder = { Text("Search your library") },
         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
         trailingIcon = {
             if (query.isNotEmpty()) {
@@ -237,12 +272,49 @@ private fun SearchLibraryField(
             }
         },
         modifier = Modifier.fillMaxWidth(),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.14f),
+            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.14f),
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            disabledIndicatorColor = Color.Transparent
         ),
         singleLine = true
     )
+}
+
+@Composable
+private fun LibraryStatusRow(
+    query: String,
+    totalCount: Int,
+    visibleCount: Int,
+    isSelectionMode: Boolean,
+    selectedCount: Int,
+    onSelectionClick: () -> Unit
+): Unit {
+    val statusText = when {
+        isSelectionMode && selectedCount > 0 -> "$selectedCount selected"
+        isSelectionMode -> "Select titles to remove them"
+        query.isNotBlank() -> "${formatLibraryCount(visibleCount, "result")} in view"
+        else -> formatLibraryCount(totalCount, "title")
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = statusText,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        TextButton(onClick = onSelectionClick) {
+            Text(if (isSelectionMode) "Done" else "Select")
+        }
+    }
 }
 
 @Composable
@@ -269,7 +341,7 @@ private fun SelectionActions(
         ) {
             Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-            Text("Delete", fontWeight = FontWeight.SemiBold)
+            Text("Delete selected", fontWeight = FontWeight.SemiBold)
         }
         Button(
             onClick = onCancel,
@@ -284,7 +356,7 @@ private fun SelectionActions(
         ) {
             Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-            Text("Cancel", fontWeight = FontWeight.SemiBold)
+            Text("Done selecting", fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -325,3 +397,7 @@ private fun EmptyLibraryState() {
     }
 }
 
+private fun formatLibraryCount(count: Int, noun: String): String {
+    val suffix = if (count == 1) noun else "${noun}s"
+    return "$count $suffix"
+}

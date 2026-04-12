@@ -40,6 +40,7 @@ class LibraryViewModel @Inject constructor(
     val sortMode: StateFlow<SortMode> = _sortMode.asStateFlow()
 
     private val _selectedItems = MutableStateFlow<Set<String>>(emptySet())
+    private val _selectionModeEnabled = MutableStateFlow(false)
     private val _collapsedSources = MutableStateFlow<Set<String>>(emptySet())
     private val _chapterCacheStates = MutableStateFlow<Map<String, PrefetchResult>>(emptyMap())
 
@@ -69,9 +70,10 @@ class LibraryViewModel @Inject constructor(
             val repoFlow = combine(
                 repository.libraryItems,
                 _selectedItems,
-                _collapsedSources
-            ) { items, selected, collapsed ->
-                Triple(items, selected, collapsed)
+                _collapsedSources,
+                _selectionModeEnabled
+            ) { items, selected, collapsed, selectionModeEnabled ->
+                Triple(items, selected, collapsed) to selectionModeEnabled
             }
 
             combine(
@@ -80,7 +82,8 @@ class LibraryViewModel @Inject constructor(
                 _searchQuery,
                 _contentTypeFilter,
                 _sortMode
-            ) { repoData, cacheStates, query, filter, sort ->
+            ) { repoState, cacheStates, query, filter, sort ->
+                val (repoData, selectionModeEnabled) = repoState
                 val (items, selectedIds, collapsedSources) = repoData
                 
                 val filteredItems = filterAndSortItems(items, query, filter, sort)
@@ -91,7 +94,7 @@ class LibraryViewModel @Inject constructor(
                     groupedItems = repository.getGroupedByTitle(filteredItems),
                     groupedBySource = repository.getGroupedBySourceAndTitle(filteredItems),
                     collapsedSources = collapsedSources,
-                    isSelectionMode = selectedIds.isNotEmpty(),
+                    isSelectionMode = selectionModeEnabled || selectedIds.isNotEmpty(),
                     selectedIds = selectedIds,
                     selectedCount = selectedIds.size,
                     isEmpty = items.isEmpty(),
@@ -480,11 +483,17 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun selectAll(): Unit {
+        _selectionModeEnabled.value = true
         _selectedItems.value = repository.libraryItems.value.map { it.id }.toSet()
+    }
+
+    fun enterSelectionMode(): Unit {
+        _selectionModeEnabled.value = true
     }
 
     fun clearSelection(): Unit {
         _selectedItems.value = emptySet()
+        _selectionModeEnabled.value = false
     }
 
     fun updateSearchQuery(query: String): Unit {
@@ -530,6 +539,7 @@ class LibraryViewModel @Inject constructor(
                     contentRepository.clearCachesForUrls(selectedItems.map { it.url })
                     repository.removeItems(selectedIds)
                     _selectedItems.value = emptySet()
+                    _selectionModeEnabled.value = false
                 }
             }.onFailure { e ->
                 updateState { it.copy(error = "Failed to remove selected items: ${e.message}") }
@@ -543,6 +553,7 @@ class LibraryViewModel @Inject constructor(
                 repository.clearLibrary()
                 contentRepository.clearAllCache()
                 _selectedItems.value = emptySet()
+                _selectionModeEnabled.value = false
             }.onFailure { e ->
                 updateState { it.copy(error = "Failed to clear library: ${e.message}") }
             }

@@ -85,6 +85,22 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun `enter selection mode keeps selection affordance visible before choosing items`() = runTest {
+        advanceUntilIdle()
+
+        viewModel.enterSelectionMode()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.isSelectionMode)
+        assertTrue(viewModel.uiState.value.selectedIds.isEmpty())
+
+        viewModel.clearSelection()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.isSelectionMode)
+    }
+
+    @Test
     fun `toggle source expansion updates collapsed sources and persists`() = runTest {
         val vm = LibraryViewModel(libraryRepository, contentRepository, exploreRepository)
         advanceUntilIdle()

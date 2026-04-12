@@ -20,7 +20,7 @@ fun LoadingState() {
         icon = Icons.Default.AutoStories,
         iconTint = MaterialTheme.colorScheme.primary,
         title = "Loading chapter",
-        body = "Preparing the reader and restoring your place.",
+        body = "Preparing your chapter. If you've read it before, we'll restore your place.",
         action = {
             CircularProgressIndicator(
                 modifier = Modifier.size(26.dp),
@@ -52,7 +52,7 @@ fun EmptyState(onOpenLibrary: () -> Unit) {
         icon = Icons.AutoMirrored.Filled.MenuBook,
         iconTint = MaterialTheme.colorScheme.primary,
         title = "Pick something to read",
-        body = "Open your library to resume a chapter, browse updates, or start something new.",
+        body = "Open your library to resume where you left off, open the latest chapter, or start something new.",
         action = {
             FilledTonalButton(onClick = onOpenLibrary) {
                 Text("Open Library")

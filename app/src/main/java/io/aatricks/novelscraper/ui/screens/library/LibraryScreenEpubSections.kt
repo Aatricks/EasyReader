@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -42,6 +43,7 @@ import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 @Composable
 internal fun EpubItemCard(
     item: LibraryItem,
+    uiState: LibraryViewModel.LibraryUiState,
     contentRepository: ContentRepository,
     readerViewModel: ReaderViewModel,
     libraryViewModel: LibraryViewModel,
@@ -49,6 +51,7 @@ internal fun EpubItemCard(
 ): Unit {
     var epubBook by remember { mutableStateOf<EpubBook?>(null) }
     var isExpanded by remember { mutableStateOf(false) }
+    val isSelected = item.id in uiState.selectedIds
 
     LaunchedEffect(item.url) {
         epubBook = contentRepository.getEpubBook(item.url)
@@ -56,31 +59,46 @@ internal fun EpubItemCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f))
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)
+            }
+        )
     ) {
         Column(modifier = Modifier.padding(EasyReaderSpacing.sm)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (uiState.isSelectionMode) {
+                    Checkbox(
+                        checked = isSelected,
+                        onCheckedChange = { libraryViewModel.toggleSelection(item.id) }
+                    )
+                }
+
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .combinedClickable(
                             onClick = {
-                                epubBook?.let { book ->
-                                    val firstHref = book.spine.firstOrNull()
-                                    if (firstHref != null) {
-                                        readerViewModel.loadEpubChapter(item.url, firstHref, item.id)
-                                        libraryViewModel.markAsCurrentlyReading(item.id)
-                                        onCloseLibrary()
+                                if (uiState.isSelectionMode) {
+                                    libraryViewModel.toggleSelection(item.id)
+                                } else {
+                                    epubBook?.let { book ->
+                                        val firstHref = book.spine.firstOrNull()
+                                        if (firstHref != null) {
+                                            readerViewModel.loadEpubChapter(item.url, firstHref, item.id)
+                                            libraryViewModel.markAsCurrentlyReading(item.id)
+                                            onCloseLibrary()
+                                        }
                                     }
                                 }
                             },
-                            onLongClick = {
-                                libraryViewModel.removeItem(item.id)
-                            }
+                            onLongClick = { libraryViewModel.toggleSelection(item.id) }
                         )
                 ) {
                     Text(
