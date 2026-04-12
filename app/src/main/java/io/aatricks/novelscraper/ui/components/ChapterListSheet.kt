@@ -78,7 +78,7 @@ fun ChapterListSheet(
         contentColor = MaterialTheme.colorScheme.onSurface
     ) {
         val libraryItemsInGroup = libraryUiState.groupedItems[uiState.baseTitle] ?: emptyList()
-        val downloadedUrls = libraryItemsInGroup.map { it.url }.toSet()
+        val libraryUrls = libraryItemsInGroup.map { it.url }.toSet()
         val readUrls = libraryItemsInGroup.filter { it.progress == 100 }.map { it.url }.toSet()
 
         val allChapters = uiState.fullChapterList.ifEmpty {
@@ -86,15 +86,20 @@ fun ChapterListSheet(
                 ChapterInfo(it.currentChapter.ifBlank { it.title }, it.url)
             }
         }
+        val cacheStates = libraryUiState.chapterCacheStates
 
         val filteredChapters = if (isSelectionMode) {
             if (isDeleteMode) {
-                allChapters.filter { it.url in downloadedUrls }
+                allChapters.filter { it.url in libraryUrls }
             } else {
-                allChapters.filter { it.url !in downloadedUrls }
+                allChapters.filter { it.url !in libraryUrls }
             }
         } else {
             allChapters
+        }
+
+        LaunchedEffect(allChapters) {
+            libraryViewModel.refreshChapterCacheStates(allChapters.map { it.url })
         }
 
         LaunchedEffect(filteredChapters, uiState.content?.url) {
@@ -135,7 +140,7 @@ fun ChapterListSheet(
                                     allChapters = allChapters,
                                     currentChapterUrl = uiState.content?.url,
                                     readUrls = readUrls,
-                                    downloadedUrls = downloadedUrls
+                                    downloadedUrls = libraryUrls
                                 )
                             )
                         },
@@ -154,9 +159,9 @@ fun ChapterListSheet(
                             isSelectionMode = true
                             isDeleteMode = true
                             selectedChapterUrls.clear()
-                            selectedChapterUrls.addAll(downloadedUrls)
+                            selectedChapterUrls.addAll(libraryUrls)
                         },
-                        label = { Text("Downloaded") },
+                        label = { Text("In library") },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.LibraryAddCheck,
@@ -246,7 +251,10 @@ fun ChapterListSheet(
                     verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)
                 ) {
                     itemsIndexed(filteredChapters, key = { _, chapter -> chapter.url }) { index, chapter ->
-                        val isDownloaded = chapter.url in downloadedUrls
+                        val cacheState = cacheStates[chapter.url]
+                        val isOfflineReady = cacheState?.isComplete == true
+                        val isCaching = cacheState?.isInProgress == true
+                        val isInLibrary = chapter.url in libraryUrls
                         val isSelected = chapter.url in selectedChapterUrls
                         val isCurrent = chapter.url == uiState.content?.url
 
@@ -263,10 +271,15 @@ fun ChapterListSheet(
                                     overflow = TextOverflow.Ellipsis
                                 )
                             },
-                            supportingContent = if (isCurrent || isDownloaded) {
+                            supportingContent = if (isCurrent || isOfflineReady || isCaching || isInLibrary) {
                                 {
                                     Text(
-                                        text = if (isCurrent) "Currently reading" else "Saved locally",
+                                        text = when {
+                                            isCurrent -> "Currently reading"
+                                            isCaching -> "Caching..."
+                                            isOfflineReady -> "Saved locally"
+                                            else -> "In library"
+                                        },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -292,7 +305,7 @@ fun ChapterListSheet(
                                         tint = MaterialTheme.colorScheme.secondary,
                                         modifier = Modifier.size(18.dp)
                                     )
-                                } else if (isDownloaded) {
+                                } else if (isOfflineReady) {
                                     Icon(
                                         imageVector = Icons.Default.Check,
                                         contentDescription = null,
@@ -317,7 +330,7 @@ fun ChapterListSheet(
                                     onLongClick = {
                                         if (!isSelectionMode) {
                                             isSelectionMode = true
-                                            isDeleteMode = isDownloaded
+                                            isDeleteMode = isInLibrary
                                             selectedChapterUrls.clear()
                                             selectedChapterUrls.add(chapter.url)
                                         }

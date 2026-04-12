@@ -13,10 +13,7 @@ import io.aatricks.novelscraper.util.TextUtils
 import io.aatricks.novelscraper.util.UrlSecurity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -313,41 +310,60 @@ class ReaderViewModel @Inject constructor(
         loadJob?.cancel()
         progressUpdateJob?.cancel()
         loadJob = viewModelScope.launch {
-            this@ReaderViewModel.isExplicitNavigation = isExplicitNavigation
-            if (handleEpubUrl(url, libraryItemId, fromBottom, isSilent)) return@launch
+            performLoad(
+                url = url,
+                libraryItemId = libraryItemId,
+                fromBottom = fromBottom,
+                isSilent = isSilent,
+                isExplicitNavigation = isExplicitNavigation
+            )
+        }
+    }
 
-            saveCurrentProgress()
+    private suspend fun performLoad(
+        url: String,
+        libraryItemId: String?,
+        fromBottom: Boolean,
+        isSilent: Boolean,
+        isExplicitNavigation: Boolean,
+        preloadedResult: ContentResult.Success? = null
+    ): Unit {
+        this@ReaderViewModel.isExplicitNavigation = isExplicitNavigation
+        if (handleEpubUrl(url, libraryItemId, fromBottom, isSilent)) return
 
-            if (!isSilent) {
-                closeContent(_uiState.value.content)
-            }
+        saveCurrentProgress()
 
-            updateState {
-                it.copy(
-                    isLoading = !isSilent,
-                    error = null,
-                    lastAttemptedUrl = url,
-                    lastFromBottom = fromBottom,
-                    lastIsExplicitNavigation = isExplicitNavigation,
-                    content = if (isSilent) it.content else null
-                )
-            }
+        if (!isSilent) {
+            closeContent(_uiState.value.content)
+        }
 
+        updateState {
+            it.copy(
+                isLoading = !isSilent,
+                error = null,
+                lastAttemptedUrl = url,
+                lastFromBottom = fromBottom,
+                lastIsExplicitNavigation = isExplicitNavigation,
+                content = if (isSilent) it.content else null
+            )
+        }
+
+        val result = preloadedResult ?: run {
             val pdfResumeIndex = resolvePdfResumeIndex(url, libraryItemId, isExplicitNavigation)
-            val result = if (pdfResumeIndex != null) {
+            if (pdfResumeIndex != null) {
                 contentRepository.loadContent(url, pdfResumeIndex)
             } else {
                 contentRepository.loadContent(url)
             }
+        }
 
-            when (result) {
-                is ContentResult.Success -> {
-                    updateState { it.copy(lastAttemptedUrl = null) }
-                    handleLoadSuccess(result, libraryItemId, fromBottom)
-                }
-
-                is ContentResult.Error -> handleLoadError(result)
+        when (result) {
+            is ContentResult.Success -> {
+                updateState { it.copy(lastAttemptedUrl = null) }
+                handleLoadSuccess(result, libraryItemId, fromBottom)
             }
+
+            is ContentResult.Error -> handleLoadError(result)
         }
     }
 
@@ -501,6 +517,7 @@ class ReaderViewModel @Inject constructor(
         }
 
         updateNavigationUrls()
+        maybeWarmNextChapter(_uiState.value.content?.nextChapterUrl)
 
         libraryItem?.let { item ->
             if (item.baseNovelUrl.isNotBlank() && item.sourceName.isNotBlank()) {
@@ -511,6 +528,17 @@ class ReaderViewModel @Inject constructor(
         }
 
         isExplicitNavigation = false
+    }
+
+    private fun maybeWarmNextChapter(nextChapterUrl: String?) {
+        if (nextChapterUrl.isNullOrBlank() || !nextChapterUrl.startsWith("http")) return
+
+        viewModelScope.launch {
+            val cacheState = contentRepository.inspectCache(nextChapterUrl)
+            if (!cacheState.isComplete) {
+                contentRepository.prefetch(nextChapterUrl, PrefetchMode.SPECULATIVE)
+            }
+        }
     }
 
     private fun performAutoDeletion(currentUrl: String, novelName: String, chapterTitle: String) {
@@ -606,20 +634,34 @@ class ReaderViewModel @Inject constructor(
 
             updateState { it.copy(isNavigating = true) }
             val result = contentRepository.loadContent(url)
-            updateState { it.copy(isNavigating = false) }
 
             when (result) {
                 is ContentResult.Success -> {
                     val itemId = addChapterToLibrary(url, result.title, isNext = isNext)
-                    loadContent(url, itemId, fromBottom = fromBottom, isSilent = true, isExplicitNavigation = true)
+                    performLoad(
+                        url = url,
+                        libraryItemId = itemId,
+                        fromBottom = fromBottom,
+                        isSilent = true,
+                        isExplicitNavigation = true,
+                        preloadedResult = result
+                    )
                 }
 
                 is ContentResult.Error -> {
+                    updateState {
+                        it.copy(
+                            isNavigating = false,
+                            lastAttemptedUrl = url,
+                            lastFromBottom = fromBottom,
+                            lastIsExplicitNavigation = true
+                        )
+                    }
                     if (result.message.contains("404")) {
                         val msg = if (isNext) "Next chapter not found (404)" else "Previous chapter not found (404)"
                         updateState { it.copy(toastMessage = msg) }
                     } else {
-                        loadContent(url, fromBottom = fromBottom, isSilent = false, isExplicitNavigation = true)
+                        handleLoadError(result)
                     }
                 }
             }
@@ -904,6 +946,14 @@ class ReaderViewModel @Inject constructor(
 
     fun isContentCached(url: String): Boolean = contentRepository.isCached(url)
 
+    fun prefetchVisibleImage(imageUrl: String, pageUrl: String): Unit {
+        if (!imageUrl.startsWith("http")) return
+
+        viewModelScope.launch {
+            runCatching { contentRepository.warmImage(imageUrl, pageUrl) }
+        }
+    }
+
     fun clearCache(url: String): Unit {
         viewModelScope.launch { runCatching { contentRepository.clearCache(url) } }
     }
@@ -989,17 +1039,31 @@ class ReaderViewModel @Inject constructor(
             }
             updateState { it.copy(isNavigating = true) }
             val result = contentRepository.loadContent(url)
-            updateState { it.copy(isNavigating = false) }
             when (result) {
                 is ContentResult.Success -> {
                     val itemId = addChapterToLibrary(url, result.title, isNext = true)
-                    loadContent(url, itemId, isSilent = true, isExplicitNavigation = false)
+                    performLoad(
+                        url = url,
+                        libraryItemId = itemId,
+                        fromBottom = false,
+                        isSilent = true,
+                        isExplicitNavigation = false,
+                        preloadedResult = result
+                    )
                 }
 
                 is ContentResult.Error -> {
+                    updateState {
+                        it.copy(
+                            isNavigating = false,
+                            lastAttemptedUrl = url,
+                            lastFromBottom = false,
+                            lastIsExplicitNavigation = false
+                        )
+                    }
                     if (result.message.contains("404")) {
                         updateState { it.copy(toastMessage = "Chapter not found (404)") }
-                    } else loadContent(url, isSilent = false, isExplicitNavigation = false)
+                    } else handleLoadError(result)
                 }
             }
         }

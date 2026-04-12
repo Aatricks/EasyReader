@@ -6,6 +6,8 @@ import io.aatricks.novelscraper.data.model.ChapterInfo
 import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.model.ExploreItem
 import io.aatricks.novelscraper.data.model.LibraryItem
+import io.aatricks.novelscraper.data.model.PrefetchMode
+import io.aatricks.novelscraper.data.model.PrefetchResult
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
@@ -133,7 +135,7 @@ class LibraryViewModelTest {
         assertEquals(baseNovelUrl, insertedItem.firstValue.baseNovelUrl)
         assertEquals(sourceName, insertedItem.firstValue.sourceName)
         assertEquals(details.chapters.size, insertedItem.firstValue.totalChapters)
-        verify(contentRepository, timeout(1000)).prefetch(latestUrl)
+        verify(contentRepository, never()).prefetch(any(), any())
         assertEquals(latestUrl, loadedUrl)
         assertEquals(insertedItem.firstValue.id, loadedId)
         assertFalse(viewModel.uiState.value.isLoading)
@@ -182,10 +184,56 @@ class LibraryViewModelTest {
             assertEquals(details.chapters.size, it.totalChapters)
             assertEquals(latestUrl, it.url)
         })
-        verify(contentRepository, never()).prefetch(any())
+        verify(contentRepository, never()).prefetch(any(), any())
         assertEquals(latestUrl, loadedUrl)
         assertEquals(existingItem.id, loadedId)
         assertFalse(viewModel.uiState.value.isLoading)
         assertNull(viewModel.uiState.value.error)
+    }
+
+    @Test
+    fun `addChapters uses user requested prefetch and updates cache state`() = runTest {
+        val chapter = ChapterInfo("Chapter 11", "https://example.com/novel/chapter-11")
+        val prefetchResult = PrefetchResult(
+            url = chapter.url,
+            htmlCached = true,
+            totalImages = 5,
+            cachedImages = 5,
+            isComplete = true
+        )
+
+        whenever(libraryDao.getItemByUrl(chapter.url)).thenReturn(null)
+        whenever(contentRepository.prefetch(chapter.url, PrefetchMode.USER_REQUESTED)).thenReturn(prefetchResult)
+
+        viewModel.addChapters(
+            chapters = listOf(chapter),
+            baseTitle = "Novel",
+            baseNovelUrl = "https://example.com/novel",
+            sourceName = "Source1"
+        )
+        advanceUntilIdle()
+
+        verify(contentRepository, timeout(1000)).prefetch(chapter.url, PrefetchMode.USER_REQUESTED)
+        assertEquals(prefetchResult, viewModel.uiState.value.chapterCacheStates[chapter.url])
+    }
+
+    @Test
+    fun `refreshChapterCacheStates stores inspected results`() = runTest {
+        val chapterUrl = "https://example.com/novel/chapter-12"
+        val inspected = PrefetchResult(
+            url = chapterUrl,
+            htmlCached = true,
+            totalImages = 3,
+            cachedImages = 2,
+            isComplete = false,
+            isInProgress = true
+        )
+
+        whenever(contentRepository.inspectCache(chapterUrl)).thenReturn(inspected)
+
+        viewModel.refreshChapterCacheStates(listOf(chapterUrl))
+        advanceUntilIdle()
+
+        assertEquals(inspected, viewModel.uiState.value.chapterCacheStates[chapterUrl])
     }
 }

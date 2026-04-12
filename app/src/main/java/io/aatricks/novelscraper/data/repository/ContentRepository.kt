@@ -63,6 +63,9 @@ class ContentRepository @Inject constructor(
     suspend fun downloadAndCacheImage(imageUrl: String, pageUrl: String): File? = 
         webLoader.downloadAndCacheImage(imageUrl, pageUrl)
 
+    suspend fun warmImage(imageUrl: String, pageUrl: String): Boolean =
+        webLoader.warmImage(imageUrl, pageUrl) != null
+
     fun getCachedMediaFile(url: String): File = webLoader.getCachedMediaFile(url)
 
     fun getReferer(url: String): String = webLoader.getReferer(url)
@@ -90,22 +93,51 @@ class ContentRepository @Inject constructor(
         }.getOrNull()
     }
 
-    suspend fun prefetch(url: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun prefetch(url: String, mode: PrefetchMode): PrefetchResult = withContext(Dispatchers.IO) {
         runCatching {
             when {
-                url.startsWith("http") -> webLoader.prefetch(url)
-                
+                url.startsWith("http") -> webLoader.prefetch(url, mode)
+
                 url.endsWith(".epub", ignoreCase = true) || url.contains("epub") -> 
-                    epubLoader.prefetchEpub(url)
-                
+                    if (epubLoader.prefetchEpub(url)) {
+                        PrefetchResult(url, htmlCached = true, totalImages = 0, cachedImages = 0, isComplete = true)
+                    } else {
+                        PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+                    }
+
                 url.startsWith("content://") || url.startsWith("file://") -> {
-                    // Just check if we can open it
-                    true 
+                    PrefetchResult(url, htmlCached = true, totalImages = 0, cachedImages = 0, isComplete = true)
                 }
-                
-                else -> File(url).exists()
+
+                else -> {
+                    val exists = File(url).exists()
+                    PrefetchResult(url, htmlCached = exists, totalImages = 0, cachedImages = 0, isComplete = exists)
+                }
             }
-        }.getOrDefault(false)
+        }.getOrElse {
+            PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+        }
+    }
+
+    suspend fun inspectCache(url: String): PrefetchResult = withContext(Dispatchers.IO) {
+        runCatching {
+            when {
+                url.startsWith("http") -> webLoader.inspectCache(url)
+                url.endsWith(".epub", ignoreCase = true) || url.contains("epub") -> {
+                    val cached = epubLoader.getEpubBook(url) != null
+                    PrefetchResult(url, htmlCached = cached, totalImages = 0, cachedImages = 0, isComplete = cached)
+                }
+                url.startsWith("content://") || url.startsWith("file://") -> {
+                    PrefetchResult(url, htmlCached = true, totalImages = 0, cachedImages = 0, isComplete = true)
+                }
+                else -> {
+                    val exists = File(url).exists()
+                    PrefetchResult(url, htmlCached = exists, totalImages = 0, cachedImages = 0, isComplete = exists)
+                }
+            }
+        }.getOrElse {
+            PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+        }
     }
 
     suspend fun incrementChapterUrl(url: String): String? = adjustChapterUrl(url, 1)

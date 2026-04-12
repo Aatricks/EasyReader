@@ -6,13 +6,18 @@ import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.model.ChapterInfo
 import io.aatricks.novelscraper.data.model.LibraryItem
 import io.aatricks.novelscraper.data.model.ExploreItem
+import io.aatricks.novelscraper.data.model.PrefetchMode
+import io.aatricks.novelscraper.data.model.PrefetchResult
 import io.aatricks.novelscraper.data.model.SortMode
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
 import io.aatricks.novelscraper.util.TextUtils
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import javax.inject.Inject
 import android.util.Log
 
@@ -36,6 +41,7 @@ class LibraryViewModel @Inject constructor(
 
     private val _selectedItems = MutableStateFlow<Set<String>>(emptySet())
     private val _collapsedSources = MutableStateFlow<Set<String>>(emptySet())
+    private val _chapterCacheStates = MutableStateFlow<Map<String, PrefetchResult>>(emptyMap())
 
     init {
         _collapsedSources.value = repository.loadCollapsedSources()
@@ -54,7 +60,8 @@ class LibraryViewModel @Inject constructor(
         val selectedIds: Set<String> = emptySet(),
         val selectedCount: Int = 0,
         val isEmpty: Boolean = true,
-        val currentlyReading: LibraryItem? = null
+        val currentlyReading: LibraryItem? = null,
+        val chapterCacheStates: Map<String, PrefetchResult> = emptyMap()
     )
 
     private fun observeLibraryChanges(): Unit {
@@ -69,10 +76,11 @@ class LibraryViewModel @Inject constructor(
 
             combine(
                 repoFlow,
+                _chapterCacheStates,
                 _searchQuery,
                 _contentTypeFilter,
                 _sortMode
-            ) { repoData, query, filter, sort ->
+            ) { repoData, cacheStates, query, filter, sort ->
                 val (items, selectedIds, collapsedSources) = repoData
                 
                 val filteredItems = filterAndSortItems(items, query, filter, sort)
@@ -87,7 +95,8 @@ class LibraryViewModel @Inject constructor(
                     selectedIds = selectedIds,
                     selectedCount = selectedIds.size,
                     isEmpty = items.isEmpty(),
-                    currentlyReading = items.find { it.isCurrentlyReading }
+                    currentlyReading = items.find { it.isCurrentlyReading },
+                    chapterCacheStates = cacheStates
                 )
             }.collect { newState ->
                 updateState { newState }
@@ -236,7 +245,17 @@ class LibraryViewModel @Inject constructor(
                             baseNovelUrl = baseNovelUrl,
                             sourceName = sourceName
                         )
-                        contentRepository.prefetch(chapter.url)
+                        setCacheState(
+                            PrefetchResult(
+                                url = chapter.url,
+                                htmlCached = false,
+                                totalImages = 0,
+                                cachedImages = 0,
+                                isComplete = false,
+                                isInProgress = true
+                            )
+                        )
+                        setCacheState(contentRepository.prefetch(chapter.url, PrefetchMode.USER_REQUESTED))
                     }
                 }
             }
@@ -323,7 +342,6 @@ class LibraryViewModel @Inject constructor(
                         sourceName = sourceName,
                         totalChapters = details.chapters.size
                     )
-                    contentRepository.prefetch(latestChapter.url)
                 } else if (item.totalChapters < details.chapters.size) {
                     repository.updateItem(item.copy(totalChapters = details.chapters.size))
                 }
@@ -349,7 +367,19 @@ class LibraryViewModel @Inject constructor(
                     repository.libraryItems.value
                 }
                 items.forEach { item ->
-                    runCatching { contentRepository.prefetch(item.url) }
+                    setCacheState(
+                        PrefetchResult(
+                            url = item.url,
+                            htmlCached = false,
+                            totalImages = 0,
+                            cachedImages = 0,
+                            isComplete = false,
+                            isInProgress = true
+                        )
+                    )
+                    runCatching {
+                        setCacheState(contentRepository.prefetch(item.url, PrefetchMode.USER_REQUESTED))
+                    }
                 }
                 updateState { it.copy(isLoading = false) }
             }.onFailure { e ->
@@ -469,6 +499,28 @@ class LibraryViewModel @Inject constructor(
         _sortMode.value = mode
     }
 
+    fun refreshChapterCacheStates(urls: Collection<String>): Unit {
+        val targetUrls = urls.asSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .toList()
+        if (targetUrls.isEmpty()) return
+
+        viewModelScope.launch {
+            val results = supervisorScope {
+                targetUrls.map { url ->
+                    async { runCatching { contentRepository.inspectCache(url) }.getOrNull() }
+                }.awaitAll().filterNotNull()
+            }
+            if (results.isNotEmpty()) {
+                _chapterCacheStates.update { current ->
+                    current + results.associateBy { it.url }
+                }
+            }
+        }
+    }
+
     fun removeSelectedItems(): Unit {
         viewModelScope.launch {
             runCatching {
@@ -528,6 +580,12 @@ class LibraryViewModel @Inject constructor(
             }.onFailure { e ->
                 updateState { it.copy(error = "Failed to reset novel progress: ${e.message}") }
             }
+        }
+    }
+
+    private fun setCacheState(result: PrefetchResult): Unit {
+        _chapterCacheStates.update { current ->
+            current + (result.url to result)
         }
     }
 

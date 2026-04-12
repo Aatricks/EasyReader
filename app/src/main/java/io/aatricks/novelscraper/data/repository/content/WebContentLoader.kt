@@ -3,15 +3,20 @@ package io.aatricks.novelscraper.data.repository.content
 import android.graphics.BitmapFactory
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.data.model.ContentResult
+import io.aatricks.novelscraper.data.model.PrefetchMode
+import io.aatricks.novelscraper.data.model.PrefetchResult
 import io.aatricks.novelscraper.data.repository.HtmlParser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -26,6 +31,7 @@ import java.nio.file.SimpleFileVisitor
 import java.nio.file.attribute.BasicFileAttributes
 import io.aatricks.novelscraper.di.HtmlCacheDir
 import io.aatricks.novelscraper.di.MediaCacheDir
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -39,18 +45,39 @@ class WebContentLoader @Inject constructor(
     companion object {
         private val DIMENSION_SEMAPHORE = Semaphore(10)
         private const val MAX_CONCURRENT_DOWNLOADS = 3
-        private const val SKIP_DIMENSION_CHECK_THRESHOLD = 50
+        private const val MAX_SPECULATIVE_IMAGES = 3
+        private const val NON_ESSENTIAL_TIMEOUT_SECONDS = 5L
     }
 
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val shortTimeoutClient = okHttpClient.newBuilder()
+        .callTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .connectTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .build()
+    private val imageDownloadMutex = Mutex()
+    private val chapterPrefetchMutex = Mutex()
+    private val inFlightImageDownloads = mutableMapOf<String, Deferred<File?>>()
+    private val inFlightChapterPrefetches = mutableMapOf<String, Deferred<PrefetchResult>>()
+    private val inFlightChapterPrefetchModes = mutableMapOf<String, PrefetchMode>()
+
+    private data class CachedDocument(
+        val document: Document,
+        val fromCache: Boolean
+    )
 
     suspend fun loadWebContent(url: String): ContentResult = withContext(Dispatchers.IO) {
-        val document = getDocumentFromCacheOrNetwork(url)
+        val cachedDocument = getDocumentFromCacheOrNetwork(url)
+        val document = cachedDocument.document
 
         val elements = htmlParser.parse(document, url)
-        val finalElements = processChapterElements(elements, url)
+        val finalElements = processChapterElements(
+            elements = elements,
+            url = url,
+            diskOnly = cachedDocument.fromCache
+        )
 
-        backgroundCacheImages(finalElements, url)
+        backgroundCacheImages(extractImageUrls(finalElements), url)
         
         ContentResult.Success(
             elements = finalElements,
@@ -59,19 +86,45 @@ class WebContentLoader @Inject constructor(
         )
     }
 
-    suspend fun prefetch(url: String): Boolean = withContext(Dispatchers.IO) {
-        runCatching {
-            val html = downloadHtml(url)
-            getCachedFile(url).writeText(html)
-            val doc = Jsoup.parse(html, url)
-
-            extractImageUrls(htmlParser.parse(doc, url)).forEach { imageUrl ->
-                    repositoryScope.launch {
-                        runCatching { downloadAndCacheImage(imageUrl, url) }
-                    }
+    suspend fun prefetch(url: String, mode: PrefetchMode): PrefetchResult {
+        while (true) {
+            val existing = chapterPrefetchMutex.withLock { inFlightChapterPrefetches[url] }
+            if (existing != null) {
+                val result = runCatching { existing.await() }
+                    .getOrElse { inspectCache(url) }
+                    .copy(isInProgress = chapterPrefetchMutex.withLock { url in inFlightChapterPrefetches })
+                if (mode == PrefetchMode.USER_REQUESTED && !result.isComplete) continue
+                return result
             }
-            true
-        }.getOrDefault(false)
+
+            val deferred = repositoryScope.async {
+                executePrefetch(url, mode)
+            }
+
+            val active = chapterPrefetchMutex.withLock {
+                val current = inFlightChapterPrefetches[url]
+                if (current != null) {
+                    current
+                } else {
+                    inFlightChapterPrefetches[url] = deferred
+                    inFlightChapterPrefetchModes[url] = mode
+                    deferred
+                }
+            }
+
+            if (active !== deferred) continue
+
+            try {
+                return active.await().copy(isInProgress = false)
+            } finally {
+                chapterPrefetchMutex.withLock {
+                    if (inFlightChapterPrefetches[url] === active) {
+                        inFlightChapterPrefetches.remove(url)
+                        inFlightChapterPrefetchModes.remove(url)
+                    }
+                }
+            }
+        }
     }
 
     suspend fun fetchTitle(url: String): String? = withContext(Dispatchers.IO) {
@@ -89,43 +142,73 @@ class WebContentLoader @Inject constructor(
     }
 
     suspend fun downloadAndCacheImage(imageUrl: String, pageUrl: String): File? = withContext(Dispatchers.IO) {
+        downloadAndCacheImage(imageUrl, pageUrl, useShortTimeout = false)
+    }
+
+    suspend fun warmImage(imageUrl: String, pageUrl: String): File? = withContext(Dispatchers.IO) {
+        downloadAndCacheImage(imageUrl, pageUrl, useShortTimeout = true)
+    }
+
+    suspend fun inspectCache(url: String): PrefetchResult = withContext(Dispatchers.IO) {
+        inspectCacheInternal(url)
+    }
+
+    private suspend fun downloadAndCacheImage(
+        imageUrl: String,
+        pageUrl: String,
+        useShortTimeout: Boolean
+    ): File? = withContext(Dispatchers.IO) {
         if (!imageUrl.startsWith("http")) return@withContext null
-        
-        runCatching {
-            val cachedFile = getCachedMediaFile(imageUrl)
-            if (cachedFile.exists()) return@runCatching cachedFile
 
-            val request = Request.Builder()
-                .url(imageUrl)
-                .addHeader("User-Agent", "Mozilla/5.0")
-                .addHeader("Referer", getReferer(pageUrl))
-                .build()
+        val cachedFile = getCachedMediaFile(imageUrl)
+        if (cachedFile.exists()) return@withContext cachedFile
 
-            okHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@runCatching null
-                response.body?.let { body ->
-                    val tempFile = File(cachedFile.parent, "${cachedFile.name}.tmp")
-                    try {
-                        tempFile.writeBytes(body.bytes())
-                        if (tempFile.renameTo(cachedFile)) {
-                            cachedFile
-                        } else {
-                            // If rename fails, check if the file was created by another process
-                            if (cachedFile.exists()) {
+        val deferred = imageDownloadMutex.withLock {
+            inFlightImageDownloads[imageUrl] ?: repositoryScope.async {
+                runCatching {
+                    val request = Request.Builder()
+                        .url(imageUrl)
+                        .addHeader("User-Agent", "Mozilla/5.0")
+                        .addHeader("Referer", getReferer(pageUrl))
+                        .build()
+
+                    val client = if (useShortTimeout) shortTimeoutClient else okHttpClient
+                    client.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) return@runCatching null
+                        response.body?.let { body ->
+                            val tempFile = File(cachedFile.parent, "${cachedFile.name}.tmp")
+                            try {
+                                tempFile.writeBytes(body.bytes())
+                                if (tempFile.renameTo(cachedFile)) {
+                                    cachedFile
+                                } else if (cachedFile.exists()) {
+                                    tempFile.delete()
+                                    cachedFile
+                                } else {
+                                    tempFile.delete()
+                                    null
+                                }
+                            } catch (e: Exception) {
                                 tempFile.delete()
-                                cachedFile
-                            } else {
-                                tempFile.delete()
-                                null
+                                throw e
                             }
                         }
-                    } catch (e: Exception) {
-                        tempFile.delete()
-                        throw e
+                    }
+                }.getOrNull()
+            }.also { inFlightImageDownloads[imageUrl] = it }
+        }
+
+        try {
+            return@withContext deferred.await()
+        } finally {
+            if (deferred.isCompleted) {
+                imageDownloadMutex.withLock {
+                    if (inFlightImageDownloads[imageUrl] === deferred) {
+                        inFlightImageDownloads.remove(imageUrl)
                     }
                 }
             }
-        }.getOrNull()
+        }
     }
 
     fun getCachedMediaFile(url: String): File = File(mediaCacheDir, url.hashCode().toString())
@@ -135,7 +218,16 @@ class WebContentLoader @Inject constructor(
     fun isCached(url: String): Boolean = getCachedFile(url).exists()
 
     fun clearCache(url: String) {
-        getCachedFile(url).delete()
+        val cachedFile = getCachedFile(url)
+        if (cachedFile.exists()) {
+            runCatching {
+                val document = Jsoup.parse(cachedFile, "UTF-8", url)
+                extractImageUrls(htmlParser.parse(document, url))
+                    .distinct()
+                    .forEach { imageUrl -> getCachedMediaFile(imageUrl).delete() }
+            }
+        }
+        cachedFile.delete()
     }
 
     fun clearAllCache() {
@@ -149,14 +241,20 @@ class WebContentLoader @Inject constructor(
         return calculateDirectorySize(cacheDir) + calculateDirectorySize(mediaCacheDir)
     }
 
-    private fun getDocumentFromCacheOrNetwork(url: String): Document {
+    private fun getDocumentFromCacheOrNetwork(url: String, useShortTimeout: Boolean = false): CachedDocument {
         val cachedFile = getCachedFile(url)
         return if (cachedFile.exists()) {
-            Jsoup.parse(cachedFile, "UTF-8", url)
+            CachedDocument(
+                document = Jsoup.parse(cachedFile, "UTF-8", url),
+                fromCache = true
+            )
         } else {
-            val html = downloadHtml(url)
+            val html = downloadHtml(url, useShortTimeout = useShortTimeout)
             cachedFile.writeText(html)
-            Jsoup.parse(html, url)
+            CachedDocument(
+                document = Jsoup.parse(html, url),
+                fromCache = false
+            )
         }
     }
 
@@ -170,39 +268,27 @@ class WebContentLoader @Inject constructor(
         }
     }
 
-    private fun backgroundCacheImages(elements: List<ContentElement>, pageUrl: String): Unit {
+    private fun backgroundCacheImages(imageUrls: List<String>, pageUrl: String): Unit {
         repositoryScope.launch {
-            val imageChannel = Channel<String>(Channel.UNLIMITED)
-
-            repeat(MAX_CONCURRENT_DOWNLOADS) {
-                launch {
-                    for (url in imageChannel) {
-                        downloadAndCacheImage(url, pageUrl)
-                    }
-                }
-            }
-
-            elements.forEach { element ->
-                when (element) {
-                    is ContentElement.Image -> imageChannel.trySend(element.url)
-                    is ContentElement.ImageGroup -> element.images.forEach { img ->
-                        imageChannel.trySend(img.url)
-                    }
-                    else -> {}
-                }
-            }
-            imageChannel.close()
+            cacheImages(
+                imageUrls = imageUrls,
+                pageUrl = pageUrl,
+                maxImages = imageUrls.size,
+                useShortTimeout = true,
+                maxConcurrency = MAX_CONCURRENT_DOWNLOADS
+            )
         }
     }
 
-    private fun downloadHtml(url: String): String {
+    private fun downloadHtml(url: String, useShortTimeout: Boolean = false): String {
         val request = Request.Builder()
             .url(url)
             .addHeader("User-Agent", "Mozilla/5.0")
             .addHeader("Referer", getReferer(url))
             .build()
 
-        okHttpClient.newCall(request).execute().use { response ->
+        val client = if (useShortTimeout) shortTimeoutClient else okHttpClient
+        client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw Exception("HTTP ${response.code}")
             return response.body?.string() ?: throw Exception("Empty body")
         }
@@ -219,7 +305,11 @@ class WebContentLoader @Inject constructor(
         url
     }
 
-    private suspend fun processChapterElements(elements: List<ContentElement>, url: String): List<ContentElement> {
+    private suspend fun processChapterElements(
+        elements: List<ContentElement>,
+        url: String,
+        diskOnly: Boolean
+    ): List<ContentElement> {
         val imageElements = elements.flatMap { element ->
             when (element) {
                 is ContentElement.Image -> listOf(element)
@@ -230,7 +320,11 @@ class WebContentLoader @Inject constructor(
 
         if (imageElements.isEmpty()) return elements
 
-        val imagesWithDims = enrichImageDimensions(imageElements, url)
+        val imagesWithDims = enrichImageDimensions(
+            imageElements = imageElements,
+            pageUrl = url,
+            diskOnly = diskOnly
+        )
 
         val dimMap = imageElements.zip(imagesWithDims).toMap()
 
@@ -251,12 +345,13 @@ class WebContentLoader @Inject constructor(
 
     private suspend fun enrichImageDimensions(
         imageElements: List<ContentElement.Image>,
-        pageUrl: String
+        pageUrl: String,
+        diskOnly: Boolean
     ): List<ContentElement.Image> = withContext(Dispatchers.IO) {
         imageElements.map { img ->
             async {
                 DIMENSION_SEMAPHORE.withPermit {
-                    fetchImageDimensions(img.url, pageUrl, diskOnly = false)?.let { (w, h) ->
+                    fetchImageDimensions(img.url, pageUrl, diskOnly = diskOnly)?.let { (w, h) ->
                         img.copy(width = w, height = h)
                     } ?: img
                 }
@@ -340,7 +435,7 @@ class WebContentLoader @Inject constructor(
                 .addHeader("Range", "bytes=0-16383")
                 .build()
 
-            okHttpClient.newCall(req).execute().use { response ->
+            shortTimeoutClient.newCall(req).execute().use { response ->
                 if (response.isSuccessful) {
                     val opt = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                     BitmapFactory.decodeStream(response.body?.byteStream(), null, opt)
@@ -348,6 +443,91 @@ class WebContentLoader @Inject constructor(
                 } else null
             }
         }.getOrNull()
+    }
+
+    private suspend fun executePrefetch(url: String, mode: PrefetchMode): PrefetchResult {
+        val cachedDocument = getDocumentFromCacheOrNetwork(
+            url = url,
+            useShortTimeout = mode == PrefetchMode.SPECULATIVE
+        )
+        val imageUrls = extractImageUrls(htmlParser.parse(cachedDocument.document, url))
+            .distinct()
+            .filter { it.startsWith("http") }
+
+        val missingImages = imageUrls.filterNot { getCachedMediaFile(it).exists() }
+        val requestedImages = when (mode) {
+            PrefetchMode.USER_REQUESTED -> missingImages
+            PrefetchMode.SPECULATIVE -> missingImages.take(MAX_SPECULATIVE_IMAGES)
+        }
+
+        when (mode) {
+            PrefetchMode.USER_REQUESTED -> cacheImages(
+                imageUrls = requestedImages,
+                pageUrl = url,
+                maxImages = requestedImages.size,
+                useShortTimeout = false,
+                maxConcurrency = MAX_CONCURRENT_DOWNLOADS
+            )
+
+            PrefetchMode.SPECULATIVE -> cacheImages(
+                imageUrls = requestedImages,
+                pageUrl = url,
+                maxImages = requestedImages.size,
+                useShortTimeout = true,
+                maxConcurrency = 1
+            )
+        }
+
+        return inspectCacheInternal(url, cachedDocument.document).copy(isInProgress = false)
+    }
+
+    private suspend fun cacheImages(
+        imageUrls: List<String>,
+        pageUrl: String,
+        maxImages: Int,
+        useShortTimeout: Boolean,
+        maxConcurrency: Int
+    ): Int = supervisorScope {
+        if (imageUrls.isEmpty() || maxImages <= 0) return@supervisorScope 0
+
+        val semaphore = Semaphore(maxConcurrency.coerceAtLeast(1))
+        imageUrls
+            .distinct()
+            .take(maxImages)
+            .map { imageUrl ->
+                async {
+                    semaphore.withPermit {
+                        if (downloadAndCacheImage(imageUrl, pageUrl, useShortTimeout) != null) 1 else 0
+                    }
+                }
+            }
+            .awaitAll()
+            .sum()
+    }
+
+    private suspend fun inspectCacheInternal(
+        url: String,
+        cachedDocument: Document? = null
+    ): PrefetchResult {
+        val htmlCached = getCachedFile(url).exists()
+        val document = cachedDocument ?: getCachedFile(url)
+            .takeIf { it.exists() }
+            ?.let { Jsoup.parse(it, "UTF-8", url) }
+        val imageUrls = document?.let { doc ->
+            runCatching { extractImageUrls(htmlParser.parse(doc, url)).distinct() }.getOrDefault(emptyList())
+        } ?: emptyList()
+        val cachedImages = imageUrls.count { imageUrl ->
+            !imageUrl.startsWith("http") || getCachedMediaFile(imageUrl).exists()
+        }
+        val isInProgress = chapterPrefetchMutex.withLock { url in inFlightChapterPrefetches }
+        return PrefetchResult(
+            url = url,
+            htmlCached = htmlCached,
+            totalImages = imageUrls.size,
+            cachedImages = cachedImages,
+            isComplete = htmlCached && cachedImages == imageUrls.size,
+            isInProgress = isInProgress
+        )
     }
 
     private fun groupSimilarElements(elements: List<ContentElement>): List<ContentElement> {

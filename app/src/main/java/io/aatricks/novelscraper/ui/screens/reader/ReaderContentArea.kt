@@ -51,13 +51,10 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.SingletonImageLoader
-import coil3.request.ImageRequest
 import io.aatricks.novelscraper.data.model.ChapterContent
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.ui.components.BottomNavigationBar
@@ -78,7 +75,6 @@ internal fun ContentArea(
     onShowSettings: () -> Unit
 ): Unit {
     val uiState by readerViewModel.uiState.collectAsState()
-    val context = LocalContext.current
 
     val fontFamily = when (uiState.fontFamily) {
         "Serif" -> FontFamily.Serif
@@ -114,8 +110,7 @@ internal fun ContentArea(
     LaunchedEffect(listState.firstVisibleItemIndex, pagerState.currentPage, content.url) {
         val currentIndex = if (uiState.isPagedMode) pagerState.currentPage else listState.firstVisibleItemIndex
         prefetchImages(currentIndex, content, requestedIndices) { url ->
-            val request = ImageRequest.Builder(context).data(url).build()
-            SingletonImageLoader.get(context).enqueue(request)
+            readerViewModel.prefetchVisibleImage(url, content.url)
         }
     }
 

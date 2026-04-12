@@ -56,6 +56,25 @@ class ReaderViewModelTest {
             whenever(libraryRepository.markAsCurrentlyReading(any())).thenReturn(true)
             whenever(libraryRepository.updateProgress(any(), any(), any(), any(), any(), any(), any())).thenReturn(true)
             whenever(libraryRepository.updateReadingMode(any(), any())).thenReturn(true)
+            whenever(contentRepository.inspectCache(any())).thenAnswer { invocation ->
+                PrefetchResult(
+                    url = invocation.arguments[0] as String,
+                    htmlCached = false,
+                    totalImages = 0,
+                    cachedImages = 0,
+                    isComplete = false
+                )
+            }
+            whenever(contentRepository.prefetch(any(), any())).thenAnswer { invocation ->
+                PrefetchResult(
+                    url = invocation.arguments[0] as String,
+                    htmlCached = false,
+                    totalImages = 0,
+                    cachedImages = 0,
+                    isComplete = false
+                )
+            }
+            whenever(contentRepository.warmImage(any(), any())).thenReturn(true)
         }
 
         viewModel = ReaderViewModel(
@@ -479,5 +498,16 @@ class ReaderViewModelTest {
 
         verify(libraryRepository, never()).removeItems(any())
         verify(contentRepository, never()).clearCachesForUrls(any())
+    }
+
+    @Test
+    fun `prefetchVisibleImage delegates to repository warmup`() = runTest {
+        val imageUrl = "https://example.com/image.jpg"
+        val pageUrl = "https://example.com/chapter-1"
+
+        viewModel.prefetchVisibleImage(imageUrl, pageUrl)
+        advanceUntilIdle()
+
+        verify(contentRepository).warmImage(imageUrl, pageUrl)
     }
 }
