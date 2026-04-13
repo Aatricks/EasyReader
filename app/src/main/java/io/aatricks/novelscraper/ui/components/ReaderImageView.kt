@@ -1,8 +1,10 @@
 package io.aatricks.novelscraper.ui.components
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -12,21 +14,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
 import coil3.network.NetworkHeaders
 import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import io.aatricks.novelscraper.data.model.ContentElement
+import io.aatricks.novelscraper.ui.util.ImageDimensions
+import io.aatricks.novelscraper.ui.util.effectiveImageDimensions
 import io.aatricks.novelscraper.ui.util.imageAspectRatio
-import io.aatricks.novelscraper.ui.util.splitImageLayer
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-import androidx.compose.ui.platform.LocalConfiguration
+internal fun shouldUseLightweightImageContainer(enableZoom: Boolean): Boolean = !enableZoom
 
 @Composable
 fun ReaderImageView(
@@ -38,17 +43,30 @@ fun ReaderImageView(
     backgroundColor: Color = Color.Black,
     width: Int = 0,
     height: Int = 0,
+    resolvedWidth: Int = 0,
+    resolvedHeight: Int = 0,
     side: ContentElement.Image.Side = ContentElement.Image.Side.FULL,
     enableZoom: Boolean = false,
     dynamicHeight: Boolean = false,
     zoomStateKey: Any? = null,
     onZoomChanged: ((Boolean) -> Unit)? = null,
+    onDimensionsResolved: ((String, Int, Int) -> Unit)? = null,
     lockTapWhileZoomed: Boolean = false,
     onTap: (() -> Unit)? = null
 ) {
     val configuration = LocalConfiguration.current
     val screenHeight = configuration.screenHeightDp.dp
-    val aspectRatioModifier = Modifier.imageAspectRatio(side, width, height)
+    var runtimeDimensions by remember(imageUrl, pageUrl) { mutableStateOf<ImageDimensions?>(null) }
+    val effectiveDimensions = effectiveImageDimensions(
+        declaredWidth = width,
+        declaredHeight = height,
+        resolvedWidth = resolvedWidth.takeIf { it > 0 } ?: runtimeDimensions?.width ?: 0,
+        resolvedHeight = resolvedHeight.takeIf { it > 0 } ?: runtimeDimensions?.height ?: 0
+    )
+    val effectiveWidth = effectiveDimensions?.width ?: 0
+    val effectiveHeight = effectiveDimensions?.height ?: 0
+    val aspectRatioModifier = Modifier.imageAspectRatio(side, effectiveWidth, effectiveHeight)
+    val hasResolvedAspectRatio = effectiveDimensions != null
 
     // Hoist loading state so containerModifier can react to it, shrinking the container
     // once the image has loaded to avoid black gaps in long-strip (manhwa) mode.
@@ -60,19 +78,17 @@ fun ReaderImageView(
         dynamicHeight -> Modifier.fillMaxWidth().wrapContentHeight()
         enableZoom -> Modifier.fillMaxSize()
         else -> {
-            // For standard scrolling mode, we limit height to screen height to avoid "zoomed in" feel for very tall high-res images
-            val base = Modifier.fillMaxWidth()
-                .then(aspectRatioModifier)
-                .sizeIn(maxHeight = screenHeight)
-            
-            if (width <= 0 || height <= 0) {
-                if (isLoadingHoisted) {
-                    base.defaultMinSize(minHeight = 48.dp)
-                } else {
-                    base.wrapContentHeight()
-                }
+            if (hasResolvedAspectRatio) {
+                Modifier.fillMaxWidth()
+                    .then(aspectRatioModifier)
+                    .sizeIn(maxHeight = screenHeight)
+                    .wrapContentHeight()
             } else {
-                base.wrapContentHeight()
+                Modifier.fillMaxWidth()
+                    .wrapContentHeight()
+                    .let { base ->
+                        if (isLoadingHoisted) base.defaultMinSize(minHeight = 48.dp) else base
+                    }
             }
         }
     }
@@ -84,11 +100,12 @@ fun ReaderImageView(
     // Use FillHeight + alignment for split images to avoid stretching.
     // The container (ZoomableBox) has the half-image aspect ratio, and FillHeight + alignment
     // handles the cropping perfectly without needing graphicsLayer scaling.
-    val isSplit = side != ContentElement.Image.Side.FULL && width > 0 && height > 0
+    val isSplit = side != ContentElement.Image.Side.FULL && effectiveWidth > 0 && effectiveHeight > 0
 
     val imageModifier = when {
         enableZoom && !dynamicHeight && !isSplit -> Modifier.fillMaxSize()
-        else -> Modifier.fillMaxWidth().then(aspectRatioModifier)
+        hasResolvedAspectRatio -> Modifier.fillMaxWidth().then(aspectRatioModifier)
+        else -> Modifier.fillMaxWidth().wrapContentHeight()
     }
 
     val imageAlignment = when {
@@ -137,27 +154,58 @@ fun ReaderImageView(
                 .background(if (dynamicHeight) Color.Transparent else effectiveBackground),
             contentAlignment = Alignment.Center
         ) {
-            ZoomableBox(
-                modifier = imageModifier,
-                enableZoom = enableZoom,
-                dynamicHeight = dynamicHeight,
-                zoomStateKey = zoomStateKey,
-                onZoomChanged = onZoomChanged,
-                lockTapWhileZoomed = lockTapWhileZoomed,
-                onTap = onTap
-            ) {
+            val imageContent: @Composable () -> Unit = {
                 AsyncImage(
                     model = imageRequest,
                     contentDescription = altText,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = if (hasResolvedAspectRatio || enableZoom) {
+                        Modifier.fillMaxSize()
+                    } else {
+                        Modifier.fillMaxWidth().wrapContentHeight()
+                    },
                     alignment = imageAlignment,
                     contentScale = pagedContentScale,
-                    onSuccess = { isLoadingHoisted = false },
+                    onSuccess = { state: AsyncImagePainter.State.Success ->
+                        val resolved = ImageDimensions(
+                            width = state.result.image.width,
+                            height = state.result.image.height
+                        )
+                        if (resolved.width > 0 && resolved.height > 0) {
+                            runtimeDimensions = resolved
+                            onDimensionsResolved?.invoke(imageUrl, resolved.width, resolved.height)
+                        }
+                        isLoadingHoisted = false
+                    },
                     onError = {
                         isError = true
                         isLoadingHoisted = false
                     }
                 )
+            }
+
+            if (shouldUseLightweightImageContainer(enableZoom)) {
+                Box(
+                    modifier = imageModifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onTap?.invoke() }
+                    ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    imageContent()
+                }
+            } else {
+                ZoomableBox(
+                    modifier = imageModifier,
+                    enableZoom = enableZoom,
+                    dynamicHeight = dynamicHeight,
+                    zoomStateKey = zoomStateKey,
+                    onZoomChanged = onZoomChanged,
+                    lockTapWhileZoomed = lockTapWhileZoomed,
+                    onTap = onTap
+                ) {
+                    imageContent()
+                }
             }
 
             if (isLoadingHoisted && !cachedFile.exists()) {
@@ -206,25 +254,46 @@ fun ReaderImageView(
                 .background(if (dynamicHeight) Color.Transparent else effectiveBackground),
             contentAlignment = Alignment.Center
         ) {
-            ZoomableBox(
-                modifier = imageModifier,
-                enableZoom = enableZoom,
-                dynamicHeight = dynamicHeight,
-                zoomStateKey = zoomStateKey,
-                onZoomChanged = onZoomChanged,
-                lockTapWhileZoomed = lockTapWhileZoomed,
-                onTap = onTap
-            ) {
+            val imageContent: @Composable () -> Unit = {
                 if (imageData != null) {
                     imageData?.let { bitmap ->
                         Image(
                             bitmap = bitmap.asImageBitmap(),
                             contentDescription = altText,
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = if (hasResolvedAspectRatio || enableZoom) {
+                                Modifier.fillMaxSize()
+                            } else {
+                                Modifier.fillMaxWidth().wrapContentHeight()
+                            },
                             alignment = imageAlignment,
                             contentScale = pagedContentScale
                         )
                     }
+                }
+            }
+
+            if (shouldUseLightweightImageContainer(enableZoom)) {
+                Box(
+                    modifier = imageModifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onTap?.invoke() }
+                    ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    imageContent()
+                }
+            } else {
+                ZoomableBox(
+                    modifier = imageModifier,
+                    enableZoom = enableZoom,
+                    dynamicHeight = dynamicHeight,
+                    zoomStateKey = zoomStateKey,
+                    onZoomChanged = onZoomChanged,
+                    lockTapWhileZoomed = lockTapWhileZoomed,
+                    onTap = onTap
+                ) {
+                    imageContent()
                 }
             }
 

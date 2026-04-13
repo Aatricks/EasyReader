@@ -1,6 +1,5 @@
 package io.aatricks.novelscraper.data.repository.content
 
-import android.graphics.BitmapFactory
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.data.model.ContentResult
 import io.aatricks.novelscraper.data.model.PrefetchMode
@@ -419,10 +418,8 @@ class WebContentLoader @Inject constructor(
         
         runCatching {
             val cached = getCachedMediaFile(imageUrl)
-            if (cached.exists()) {
-                val opt = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(cached.absolutePath, opt)
-                if (opt.outWidth > 0) return@runCatching Pair(opt.outWidth, opt.outHeight)
+            ImageBoundsParser.parse(cached)?.let { bounds ->
+                return@runCatching bounds
             }
 
             // If disk-only mode (manhwa, large chapters), don't perform any network request.
@@ -437,12 +434,15 @@ class WebContentLoader @Inject constructor(
 
             shortTimeoutClient.newCall(req).execute().use { response ->
                 if (response.isSuccessful) {
-                    val opt = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    BitmapFactory.decodeStream(response.body?.byteStream(), null, opt)
-                    if (opt.outWidth > 0) Pair(opt.outWidth, opt.outHeight) else null
+                    val bytes = response.body?.bytes() ?: return@use null
+                    ImageBoundsParser.parse(bytes)
                 } else null
             }
-        }.getOrNull()
+        }.getOrNull() ?: downloadAndCacheImage(
+            imageUrl = imageUrl,
+            pageUrl = pageUrl,
+            useShortTimeout = true
+        )?.let { ImageBoundsParser.parse(it) }
     }
 
     private suspend fun executePrefetch(url: String, mode: PrefetchMode): PrefetchResult {

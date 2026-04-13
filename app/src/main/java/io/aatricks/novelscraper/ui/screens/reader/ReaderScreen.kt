@@ -400,6 +400,7 @@ private fun ReaderContent(
         )
         uiState.content == null -> EmptyState(onOpenLibrary = onOpenLibraryScreen)
         else -> ContentArea(
+            uiState = uiState,
             content = uiState.content,
             readerViewModel = readerViewModel,
             onLibraryClick = onOpenLibrary,
@@ -421,4 +422,3 @@ private fun NavigationOverlay(): Unit {
         CircularProgressIndicator(color = Color(0xFF4CAF50))
     }
 }
-

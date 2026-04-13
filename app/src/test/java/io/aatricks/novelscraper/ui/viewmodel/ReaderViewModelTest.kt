@@ -331,6 +331,62 @@ class ReaderViewModelTest {
     }
 
     @Test
+    fun `updateScrollPosition updates progress state without mutating broad ui state`() = runTest {
+        val itemId = "item-1"
+        val url = "https://example.com/1"
+
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(listOf(ContentElement.Text("Test")), "Test", url)
+        )
+        whenever(libraryRepository.getItemByUrl(url)).thenReturn(
+            LibraryItem(id = itemId, title = "Test", url = url)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(
+            LibraryItem(id = itemId, title = "Test", url = url)
+        )
+
+        viewModel.loadContent(url)
+        advanceUntilIdle()
+        viewModel.onUserInteraction()
+
+        val uiStateBeforeScroll = viewModel.uiState.value
+
+        viewModel.updateScrollPosition(
+            scrollOffset = 50f,
+            maxScrollOffset = 100f,
+            viewportHeight = 10f,
+            index = 5,
+            offset = 10
+        )
+
+        val uiStateAfterScroll = viewModel.uiState.value
+        val progressState = viewModel.progressState.value
+
+        assertEquals(uiStateBeforeScroll.scrollPosition, uiStateAfterScroll.scrollPosition, 0.001f)
+        assertEquals(uiStateBeforeScroll.scrollProgress, uiStateAfterScroll.scrollProgress)
+        assertEquals(uiStateBeforeScroll.scrollIndex, uiStateAfterScroll.scrollIndex)
+        assertEquals(uiStateBeforeScroll.scrollOffset, uiStateAfterScroll.scrollOffset)
+        assertEquals(55, progressState.scrollProgress)
+        assertEquals(55.555f, progressState.scrollPosition, 0.01f)
+        assertEquals(5, progressState.scrollIndex)
+        assertEquals(10, progressState.scrollOffset)
+    }
+
+    @Test
+    fun `seekToProgress updates progress state and seek ui fields`() = runTest {
+        viewModel.seekToProgress(42f)
+
+        val progressState = viewModel.progressState.value
+        val uiState = viewModel.uiState.value
+
+        assertEquals(42, progressState.scrollProgress)
+        assertEquals(42f, progressState.scrollPosition, 0.001f)
+        assertEquals(42, uiState.scrollProgress)
+        assertEquals(42f, uiState.scrollPosition, 0.001f)
+        assertTrue(uiState.seekTrigger > 0L)
+    }
+
+    @Test
     fun `toggleReadingMode updates repository`() = runTest {
         val itemId = "item-1"
         val url = "https://example.com/1"

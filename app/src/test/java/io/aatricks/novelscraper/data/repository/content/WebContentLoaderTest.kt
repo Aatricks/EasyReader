@@ -23,6 +23,7 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.nio.file.Files
+import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicInteger
 
 class WebContentLoaderTest {
@@ -145,6 +146,53 @@ class WebContentLoaderTest {
         assertEquals(3, speculativeDownloads.get())
     }
 
+    @Test
+    fun `loadWebContent falls back to short image download when range probe cannot resolve dimensions`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-fallback"
+        val imageUrl = "https://example.com/fallback-image.png"
+        val htmlParser = mock<HtmlParser>()
+        val rangeRequests = AtomicInteger(0)
+        val fullRequests = AtomicInteger(0)
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                when (request.url.toString()) {
+                    chapterUrl -> buildResponse(
+                        request,
+                        "<html><head><title>Fallback</title></head><body></body></html>",
+                        "text/html"
+                    )
+
+                    imageUrl -> {
+                        if (request.header("Range") != null) {
+                            rangeRequests.incrementAndGet()
+                            buildByteResponse(request, byteArrayOf(1, 2, 3, 4), "application/octet-stream")
+                        } else {
+                            fullRequests.incrementAndGet()
+                            buildByteResponse(request, tinyPng(width = 2, height = 3), "image/png")
+                        }
+                    }
+
+                    else -> buildResponse(request, "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(
+            listOf(ContentElement.Image(imageUrl))
+        )
+
+        val result = loader.loadWebContent(chapterUrl) as ContentResult.Success
+        val image = result.elements.single() as ContentElement.Image
+
+        assertEquals(1, rangeRequests.get())
+        assertEquals(1, fullRequests.get())
+        assertEquals(2, image.width)
+        assertEquals(3, image.height)
+        assertTrue(loader.getCachedMediaFile(imageUrl).exists())
+    }
+
     private fun createLoader(
         htmlParser: HtmlParser,
         interceptor: Interceptor
@@ -171,5 +219,47 @@ class WebContentLoaderTest {
             .message(if (code == 200) "OK" else "Error")
             .body(body.toResponseBody(contentType.toMediaType()))
             .build()
+    }
+
+    private fun buildByteResponse(
+        request: okhttp3.Request,
+        body: ByteArray,
+        contentType: String,
+        code: Int = 200
+    ): Response {
+        return Response.Builder()
+            .request(request)
+            .protocol(Protocol.HTTP_1_1)
+            .code(code)
+            .message(if (code == 200) "OK" else "Error")
+            .body(body.toResponseBody(contentType.toMediaType()))
+            .build()
+    }
+
+    private fun tinyPng(width: Int, height: Int): ByteArray {
+        val signature = byteArrayOf(
+            0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A
+        )
+        val ihdrData = ByteBuffer.allocate(13)
+            .putInt(width)
+            .putInt(height)
+            .put(8)
+            .put(2)
+            .put(0)
+            .put(0)
+            .put(0)
+            .array()
+        return signature +
+            pngChunk("IHDR", ihdrData) +
+            pngChunk("IEND", byteArrayOf())
+    }
+
+    private fun pngChunk(type: String, data: ByteArray): ByteArray {
+        return ByteBuffer.allocate(8 + data.size + 4)
+            .putInt(data.size)
+            .put(type.toByteArray(Charsets.US_ASCII))
+            .put(data)
+            .putInt(0)
+            .array()
     }
 }

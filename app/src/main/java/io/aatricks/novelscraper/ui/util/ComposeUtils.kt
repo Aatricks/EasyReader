@@ -28,10 +28,6 @@ fun Modifier.imageAspectRatio(
     width: Int,
     height: Int
 ): Modifier {
-    return if (width > 0 && height > 0) {
-        val effectiveWidth = if (side != ContentElement.Image.Side.FULL) width.toFloat() / 2f else width.toFloat()
-        this.aspectRatio(effectiveWidth / height.toFloat())
-    } else {
-        this
-    }
+    val aspectRatio = effectiveAspectRatio(side = side, width = width, height = height)
+    return if (aspectRatio != null) this.aspectRatio(aspectRatio) else this
 }

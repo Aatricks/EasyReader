@@ -62,20 +62,20 @@ import io.aatricks.novelscraper.ui.components.ReaderImageView
 import io.aatricks.novelscraper.ui.components.TopInfoBar
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.sample
 import kotlin.math.abs
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class, FlowPreview::class)
 @Composable
 internal fun ContentArea(
+    uiState: ReaderViewModel.ReaderUiState,
     content: ChapterContent,
     readerViewModel: ReaderViewModel,
     onLibraryClick: () -> Unit,
     onShowChapterList: () -> Unit,
     onShowSettings: () -> Unit
 ): Unit {
-    val uiState by readerViewModel.uiState.collectAsState()
-
     val fontFamily = when (uiState.fontFamily) {
         "Serif" -> FontFamily.Serif
         "Monospace" -> FontFamily.Monospace
@@ -157,7 +157,8 @@ internal fun ContentArea(
                     listState.canScrollForward
                 )
             }
-                .debounce(50)
+                .conflate()
+                .sample(120)
                 .collect {
                     if (content.paragraphs.isEmpty()) return@collect
 
@@ -260,8 +261,8 @@ internal fun ContentArea(
             exit = slideOutVertically(targetOffsetY = { it }),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
-            BottomNavigationBar(
-                progress = uiState.scrollPosition,
+            ReaderBottomNavigationBar(
+                readerViewModel = readerViewModel,
                 canNavigatePrevious = uiState.canNavigatePrevious,
                 canNavigateNext = uiState.canNavigateNext,
                 onPreviousClick = { readerViewModel.navigateToPreviousChapter(fromBottom = true) },
@@ -278,4 +279,25 @@ internal fun ContentArea(
             isRtl = uiState.isRtl
         )
     }
+}
+
+@Composable
+private fun ReaderBottomNavigationBar(
+    readerViewModel: ReaderViewModel,
+    canNavigatePrevious: Boolean,
+    canNavigateNext: Boolean,
+    onPreviousClick: () -> Unit,
+    onNextClick: () -> Unit,
+    onProgressChange: (Float) -> Unit
+) {
+    val progressState by readerViewModel.progressState.collectAsState()
+
+    BottomNavigationBar(
+        progress = progressState.scrollPosition,
+        canNavigatePrevious = canNavigatePrevious,
+        canNavigateNext = canNavigateNext,
+        onPreviousClick = onPreviousClick,
+        onNextClick = onNextClick,
+        onProgressChange = onProgressChange
+    )
 }
