@@ -1,7 +1,5 @@
 package io.aatricks.novelscraper.ui.viewmodel
 
-import io.aatricks.novelscraper.data.local.LibraryDao
-import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.model.ChapterInfo
 import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.model.ExploreItem
@@ -13,15 +11,13 @@ import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.*
 import org.mockito.Mockito.timeout
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.Assert.*
-import org.mockito.Mock
-import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -29,15 +25,7 @@ class LibraryViewModelTest {
 
     private lateinit var testDispatcher: TestDispatcher
 
-    private val libraryDao: LibraryDao = mock {
-        on { getAllItems() } doReturn flowOf(emptyList())
-    }
-    private val preferencesManager: PreferencesManager = mock {
-        on { loadLibraryItems() } doReturn emptyList()
-        on { loadCollapsedSources() } doReturn emptySet()
-    }
-    private val libraryRepository by lazy { LibraryRepository(libraryDao, preferencesManager) }
-
+    private val libraryRepository: LibraryRepository = mock()
     private val contentRepository: ContentRepository = mock()
     private val exploreRepository: ExploreRepository = mock()
 
@@ -45,8 +33,16 @@ class LibraryViewModelTest {
 
     @Before
     fun setup() {
-        testDispatcher = UnconfinedTestDispatcher()
+        testDispatcher = StandardTestDispatcher(TestCoroutineScheduler())
         Dispatchers.setMain(testDispatcher)
+        whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(emptyList()))
+        whenever(libraryRepository.loadCollapsedSources()).thenReturn(emptySet())
+        whenever(libraryRepository.getGroupedByTitle(anyOrNull())).thenReturn(emptyMap())
+        whenever(libraryRepository.getGroupedBySourceAndTitle(anyOrNull())).thenReturn(emptyMap())
+        runTest {
+            whenever(libraryRepository.clearUpdateIndicator(any())).thenReturn(false)
+            whenever(libraryRepository.updateItem(any())).thenReturn(true)
+        }
 
         viewModel = LibraryViewModel(
             libraryRepository,
@@ -113,7 +109,7 @@ class LibraryViewModelTest {
         advanceUntilIdle()
         assertFalse("NovelFire" in vm.uiState.value.collapsedSources)
 
-        verify(preferencesManager, atLeastOnce()).saveCollapsedSources(any())
+        verify(libraryRepository, atLeastOnce()).saveCollapsedSources(any())
     }
 
     @Test
@@ -133,10 +129,39 @@ class LibraryViewModelTest {
         )
         var loadedUrl: String? = null
         var loadedId: String? = null
-        val insertedItem = argumentCaptor<LibraryItem>()
+        val insertedTitle = argumentCaptor<String>()
+        val insertedUrl = argumentCaptor<String>()
+        val insertedContentType = argumentCaptor<ContentType>()
+        val insertedCurrentChapter = argumentCaptor<String>()
+        val insertedBaseTitle = argumentCaptor<String>()
+        val insertedBaseNovelUrl = argumentCaptor<String>()
+        val insertedSourceName = argumentCaptor<String>()
+        val insertedTotalChapters = argumentCaptor<Int>()
+        val createdItem = LibraryItem(
+            id = "new-id",
+            title = "Chapter 10",
+            url = latestUrl,
+            currentChapter = "Chapter 10",
+            baseTitle = baseTitle,
+            baseNovelUrl = baseNovelUrl,
+            sourceName = sourceName,
+            totalChapters = details.chapters.size
+        )
 
         whenever(exploreRepository.getNovelDetails(baseNovelUrl, sourceName)).thenReturn(details)
-        whenever(libraryDao.getItemByUrl(latestUrl)).thenReturn(null)
+        whenever(libraryRepository.getItemByUrl(latestUrl)).thenReturn(null)
+        whenever(
+            libraryRepository.addItem(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any()
+            )
+        ).thenReturn(createdItem)
 
         viewModel.openNewChapter(baseTitle, baseNovelUrl, sourceName) { url, id ->
             loadedUrl = url
@@ -144,16 +169,27 @@ class LibraryViewModelTest {
         }
         advanceUntilIdle()
 
-        verify(libraryDao, timeout(1000)).insertItem(insertedItem.capture())
-        assertEquals(latestUrl, insertedItem.firstValue.url)
-        assertEquals(ContentType.WEB, insertedItem.firstValue.contentType)
-        assertEquals(baseTitle, insertedItem.firstValue.baseTitle)
-        assertEquals(baseNovelUrl, insertedItem.firstValue.baseNovelUrl)
-        assertEquals(sourceName, insertedItem.firstValue.sourceName)
-        assertEquals(details.chapters.size, insertedItem.firstValue.totalChapters)
+        verify(libraryRepository, timeout(1000)).addItem(
+            insertedTitle.capture(),
+            insertedUrl.capture(),
+            insertedContentType.capture(),
+            insertedCurrentChapter.capture(),
+            insertedBaseTitle.capture(),
+            insertedBaseNovelUrl.capture(),
+            insertedSourceName.capture(),
+            insertedTotalChapters.capture()
+        )
+        assertEquals("Chapter 10", insertedTitle.firstValue)
+        assertEquals(latestUrl, insertedUrl.firstValue)
+        assertEquals(ContentType.WEB, insertedContentType.firstValue)
+        assertEquals("Chapter 10", insertedCurrentChapter.firstValue)
+        assertEquals(baseTitle, insertedBaseTitle.firstValue)
+        assertEquals(baseNovelUrl, insertedBaseNovelUrl.firstValue)
+        assertEquals(sourceName, insertedSourceName.firstValue)
+        assertEquals(details.chapters.size, insertedTotalChapters.firstValue.toInt())
         verify(contentRepository, never()).prefetch(any(), any())
         assertEquals(latestUrl, loadedUrl)
-        assertEquals(insertedItem.firstValue.id, loadedId)
+        assertEquals(createdItem.id, loadedId)
         assertFalse(viewModel.uiState.value.isLoading)
         assertNull(viewModel.uiState.value.error)
     }
@@ -187,7 +223,7 @@ class LibraryViewModelTest {
         var loadedId: String? = null
 
         whenever(exploreRepository.getNovelDetails(baseNovelUrl, sourceName)).thenReturn(details)
-        whenever(libraryDao.getItemByUrl(latestUrl)).thenReturn(existingItem)
+        whenever(libraryRepository.getItemByUrl(latestUrl)).thenReturn(existingItem)
 
         viewModel.openNewChapter(baseTitle, baseNovelUrl, sourceName) { url, id ->
             loadedUrl = url
@@ -195,7 +231,7 @@ class LibraryViewModelTest {
         }
         advanceUntilIdle()
 
-        verify(libraryDao, timeout(1000)).insertItem(check<LibraryItem> {
+        verify(libraryRepository, timeout(1000)).updateItem(check<LibraryItem> {
             assertEquals(existingItem.id, it.id)
             assertEquals(details.chapters.size, it.totalChapters)
             assertEquals(latestUrl, it.url)
@@ -218,7 +254,29 @@ class LibraryViewModelTest {
             isComplete = true
         )
 
-        whenever(libraryDao.getItemByUrl(chapter.url)).thenReturn(null)
+        whenever(libraryRepository.getItemByUrl(chapter.url)).thenReturn(null)
+        whenever(
+            libraryRepository.addItem(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any()
+            )
+        ).thenReturn(
+            LibraryItem(
+                id = "chapter-11-id",
+                title = chapter.title,
+                url = chapter.url,
+                currentChapter = "Chapter 11",
+                baseTitle = "Novel",
+                baseNovelUrl = "https://example.com/novel",
+                sourceName = "Source1"
+            )
+        )
         whenever(contentRepository.prefetch(chapter.url, PrefetchMode.USER_REQUESTED)).thenReturn(prefetchResult)
 
         viewModel.addChapters(

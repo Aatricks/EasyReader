@@ -54,9 +54,7 @@ class ContentRepositoryBenchmarkTest {
         val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, cacheDir, mediaCacheDir)
         
         // Generate images
-        val images = (1..imageCount).map {
-            ContentElement.Image("http://example.com/img_$it.jpg", width = 100, height = 100)
-        }
+        val imageUrls = (1..imageCount).map { "http://example.com/img_$it.jpg" }
 
         println("Starting benchmark with $imageCount images...")
 
@@ -67,7 +65,7 @@ class ContentRepositoryBenchmarkTest {
             // Using reflection to access private backgroundCacheImages on WebContentLoader
             val method = WebContentLoader::class.java.getDeclaredMethod("backgroundCacheImages", List::class.java, String::class.java)
             method.isAccessible = true
-            method.invoke(webLoader, images, "http://example.com/chapter1")
+            method.invoke(webLoader, imageUrls, "http://example.com/chapter1")
 
             // Wait for all to finish
             val completed = latch.await(30, TimeUnit.SECONDS)

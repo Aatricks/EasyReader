@@ -46,7 +46,7 @@ class ContentRepositoryEpubTest {
 
         val mockContext = mock<Context>()
         val mockHtmlParser = mock<HtmlParser>()
-        val mockOkHttpClient = mock<OkHttpClient>()
+        val okHttpClient = OkHttpClient()
         val mockContentResolver = mock<android.content.ContentResolver>()
 
         // Mock cache dirs
@@ -73,7 +73,7 @@ class ContentRepositoryEpubTest {
         // Use anyString() for Uri.parse
         mockedUriStatic.`when`<Uri> { Uri.parse(org.mockito.ArgumentMatchers.anyString()) }.thenReturn(mockUri)
 
-        val webLoader = WebContentLoader(mockHtmlParser, mockOkHttpClient, htmlCache, mediaCache)
+        val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, htmlCache, mediaCache)
         val pdfLoader = PdfContentLoader(mockContext)
         val epubLoader = EpubContentLoader(mockContext, epubCache)
         val localLoader = LocalContentLoader(mockContext, mockHtmlParser, pdfLoader, epubLoader)

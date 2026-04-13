@@ -15,10 +15,22 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mockito.kotlin.*
+import java.nio.ByteBuffer
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
 class ContentRepositoryConcurrencyTest {
+
+    private val tinyPng = ByteBuffer.allocate(8 + 8 + 13 + 4 + 8 + 4)
+        .put(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
+        .putInt(13)
+        .put("IHDR".toByteArray(Charsets.US_ASCII))
+        .put(ByteBuffer.allocate(13).putInt(2).putInt(3).put(8).put(2).put(0).put(0).put(0).array())
+        .putInt(0)
+        .putInt(0)
+        .put("IEND".toByteArray(Charsets.US_ASCII))
+        .putInt(0)
+        .array()
 
     @Test
     fun testBackgroundCacheImagesConcurrency() = runBlocking {
@@ -41,17 +53,17 @@ class ContentRepositoryConcurrencyTest {
         val interceptor = Interceptor { chain ->
             val request = chain.request()
             val url = request.url.toString()
-            if (url.endsWith(".jpg")) {
-                // Skip tracking for dimension check (Range header) to verify background caching limit
-                if (request.header("Range") != null) {
-                    return@Interceptor Response.Builder()
-                        .request(request)
-                        .protocol(Protocol.HTTP_1_1)
-                        .code(200)
-                        .message("OK")
-                        .body(ByteArray(1024).toResponseBody("image/jpeg".toMediaType()))
-                        .build()
-                }
+                if (url.endsWith(".jpg")) {
+                    // Skip tracking for dimension check (Range header) to verify background caching limit
+                    if (request.header("Range") != null) {
+                        return@Interceptor Response.Builder()
+                            .request(request)
+                            .protocol(Protocol.HTTP_1_1)
+                            .code(200)
+                            .message("OK")
+                            .body(tinyPng.toResponseBody("image/png".toMediaType()))
+                            .build()
+                    }
 
                 val current = activeRequests.incrementAndGet()
                 synchronized(maxConcurrentRequests) {
@@ -74,7 +86,7 @@ class ContentRepositoryConcurrencyTest {
                     .protocol(Protocol.HTTP_1_1)
                     .code(200)
                     .message("OK")
-                    .body(ByteArray(1024).toResponseBody("image/jpeg".toMediaType()))
+                    .body(tinyPng.toResponseBody("image/png".toMediaType()))
                     .build()
             } else {
                 // Return dummy HTML
@@ -118,7 +130,7 @@ class ContentRepositoryConcurrencyTest {
 
         println("Max concurrent requests: ${maxConcurrentRequests.get()}")
 
-        // Optimization verification: Concurrency should be limited by the semaphore (5)
+        // Background caching should respect the loader's download semaphore.
         // We allow 1 extra for potential timing/buffering issues.
         assertTrue("Expected limited concurrency (<= 6) but got ${maxConcurrentRequests.get()}", maxConcurrentRequests.get() <= 6)
     }
