@@ -267,7 +267,7 @@ class MainActivity : ComponentActivity() {
     override fun onPause(): Unit {
         super.onPause()
         runCatching {
-            readerViewModel.updateReadingProgress(readerViewModel.uiState.value.scrollProgress)
+            readerViewModel.persistLifecycleProgress()
         }
     }
 }

@@ -232,6 +232,34 @@ class ReaderViewModelTest {
     }
 
     @Test
+    fun `loadContent snaps zero-progress saved web state to true top`() = runTest {
+        val itemId = "web-item"
+        val url = "https://example.com/chapter-11"
+        val savedItem = LibraryItem(
+            id = itemId,
+            title = "Chapter 11",
+            url = url,
+            progress = 0,
+            lastReadIndex = 2,
+            lastReadOffset = 24,
+            lastScrollPosition = 5f
+        )
+
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(listOf(ContentElement.Text("Chapter content")), "Chapter 11", url)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(savedItem)
+
+        viewModel.loadContent(url, itemId)
+        advanceUntilIdle()
+
+        assertEquals(0, viewModel.uiState.value.scrollIndex)
+        assertEquals(0, viewModel.uiState.value.scrollOffset)
+        assertEquals(0, viewModel.uiState.value.scrollProgress)
+        assertEquals(0f, viewModel.uiState.value.scrollPosition, 0.001f)
+    }
+
+    @Test
     fun `updateScrollPosition saves progress after delay`() = runTest {
         val itemId = "item-1"
         val url = "https://example.com/1"
@@ -370,6 +398,90 @@ class ReaderViewModelTest {
         assertEquals(55.555f, progressState.scrollPosition, 0.01f)
         assertEquals(5, progressState.scrollIndex)
         assertEquals(10, progressState.scrollOffset)
+    }
+
+    @Test
+    fun `persistLifecycleProgress persists untouched chapter start as true top snapshot`() = runTest {
+        val itemId = "item-1"
+        val url = "https://example.com/1"
+
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(listOf(ContentElement.Text("Test")), "Test", url)
+        )
+        whenever(libraryRepository.getItemByUrl(url)).thenReturn(
+            LibraryItem(id = itemId, title = "Test", url = url)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(
+            LibraryItem(id = itemId, title = "Test", url = url)
+        )
+
+        viewModel.loadContent(url)
+        advanceUntilIdle()
+
+        viewModel.updateScrollPosition(
+            scrollOffset = 5f,
+            maxScrollOffset = 100f,
+            viewportHeight = 0f,
+            index = 1,
+            offset = 15
+        )
+
+        viewModel.persistLifecycleProgress()
+        advanceUntilIdle()
+
+        verify(libraryRepository).saveProgress(
+            itemId = eq(itemId),
+            currentChapter = any(),
+            progress = eq(0),
+            currentChapterUrl = eq(url),
+            lastScrollProgress = eq(0f),
+            lastReadIndex = eq(0),
+            lastReadOffset = eq(0)
+        )
+    }
+
+    @Test
+    fun `persistLifecycleProgress preserves live snapshot after user interaction`() = runTest {
+        val itemId = "item-1"
+        val url = "https://example.com/1"
+
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(listOf(ContentElement.Text("Test")), "Test", url)
+        )
+        whenever(libraryRepository.getItemByUrl(url)).thenReturn(
+            LibraryItem(id = itemId, title = "Test", url = url)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(
+            LibraryItem(id = itemId, title = "Test", url = url)
+        )
+
+        viewModel.loadContent(url)
+        advanceUntilIdle()
+        viewModel.onUserInteraction()
+
+        viewModel.updateScrollPosition(
+            scrollOffset = 12f,
+            maxScrollOffset = 100f,
+            viewportHeight = 0f,
+            index = 2,
+            offset = 30
+        )
+        advanceTimeBy(200)
+        runCurrent()
+        clearInvocations(libraryRepository)
+
+        viewModel.persistLifecycleProgress()
+        advanceUntilIdle()
+
+        verify(libraryRepository).saveProgress(
+            itemId = eq(itemId),
+            currentChapter = any(),
+            progress = eq(12),
+            currentChapterUrl = eq(url),
+            lastScrollProgress = eq(12f),
+            lastReadIndex = eq(2),
+            lastReadOffset = eq(30)
+        )
     }
 
     @Test
