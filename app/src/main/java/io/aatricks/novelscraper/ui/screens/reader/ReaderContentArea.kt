@@ -39,6 +39,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
@@ -60,6 +61,7 @@ import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.ui.components.BottomNavigationBar
 import io.aatricks.novelscraper.ui.components.ReaderImageView
 import io.aatricks.novelscraper.ui.components.TopInfoBar
+import io.aatricks.novelscraper.ui.util.resolveRestoreOffset
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.conflate
@@ -106,12 +108,43 @@ internal fun ContentArea(
     }
 
     val requestedIndices = remember(content.url) { mutableSetOf<Int>() }
+    var lastAppliedRestoreOffset by remember(content.url) { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(listState.firstVisibleItemIndex, pagerState.currentPage, content.url) {
         val currentIndex = if (uiState.isPagedMode) pagerState.currentPage else listState.firstVisibleItemIndex
         prefetchImages(currentIndex, content, requestedIndices) { url ->
             readerViewModel.prefetchVisibleImage(url, content.url)
         }
+    }
+
+    LaunchedEffect(content.url, uiState.isPagedMode, uiState.pendingRestoreOffsetFraction, uiState.scrollIndex) {
+        if (uiState.isPagedMode || uiState.pendingRestoreOffsetFraction == null || content.paragraphs.isEmpty()) {
+            return@LaunchedEffect
+        }
+
+        snapshotFlow {
+            val visibleItem = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == uiState.scrollIndex }
+            visibleItem?.size ?: 0
+        }
+            .collect { itemSize ->
+                if (itemSize <= 0) return@collect
+
+                val targetIndex = uiState.scrollIndex.coerceIn(0, content.paragraphs.lastIndex)
+                val targetOffset = resolveRestoreOffset(
+                    savedOffsetPx = uiState.scrollOffset,
+                    savedOffsetFraction = uiState.pendingRestoreOffsetFraction,
+                    itemSizePx = itemSize
+                )
+                val currentOffset = listState.firstVisibleItemScrollOffset
+                val isAlreadyApplied = listState.firstVisibleItemIndex == targetIndex &&
+                    abs(currentOffset - targetOffset) <= 2 &&
+                    lastAppliedRestoreOffset == targetOffset
+
+                if (!isAlreadyApplied) {
+                    listState.scrollToItem(targetIndex, targetOffset)
+                    lastAppliedRestoreOffset = targetOffset
+                }
+            }
     }
 
     LaunchedEffect(uiState.seekTrigger) {
@@ -182,7 +215,8 @@ internal fun ContentArea(
                         viewportHeight = viewportHeightInItems,
                         index = listState.firstVisibleItemIndex,
                         offset = listState.firstVisibleItemScrollOffset,
-                        canScrollForward = listState.canScrollForward
+                        canScrollForward = listState.canScrollForward,
+                        firstVisibleItemSize = firstItem.size
                     )
                 }
         }

@@ -29,6 +29,7 @@ data class LibraryItem(
     val lastScrollPosition: Float = 0f,
     val lastReadIndex: Int = 0,
     val lastReadOffset: Int = 0,
+    val lastReadOffsetFraction: Float? = null,
     val hasUpdates: Boolean = false,
     val chapterSummaries: Map<String, String> = emptyMap(),
     val baseTitle: String = "",

@@ -154,7 +154,8 @@ class LibraryRepository @Inject constructor(
         currentChapterUrl: String? = null,
         lastScrollProgress: Float? = null,
         lastReadIndex: Int? = null,
-        lastReadOffset: Int? = null
+        lastReadOffset: Int? = null,
+        lastReadOffsetFraction: Float? = null
     ): Unit {
         repositoryScope.launch {
             updateProgress(
@@ -164,7 +165,8 @@ class LibraryRepository @Inject constructor(
                 currentChapterUrl,
                 lastScrollProgress,
                 lastReadIndex,
-                lastReadOffset
+                lastReadOffset,
+                lastReadOffsetFraction
             )
         }
     }
@@ -176,7 +178,8 @@ class LibraryRepository @Inject constructor(
         currentChapterUrl: String? = null,
         lastScrollProgress: Float? = null,
         lastReadIndex: Int? = null,
-        lastReadOffset: Int? = null
+        lastReadOffset: Int? = null,
+        lastReadOffsetFraction: Float? = null
     ): Boolean = progressMutex.withLock {
         runRepoCatching("Failed to update progress", false) {
             libraryDao.getItemById(itemId)?.let { item ->
@@ -187,6 +190,7 @@ class LibraryRepository @Inject constructor(
                     lastScrollPosition = lastScrollProgress ?: item.lastScrollPosition,
                     lastReadIndex = lastReadIndex ?: item.lastReadIndex,
                     lastReadOffset = lastReadOffset ?: item.lastReadOffset,
+                    lastReadOffsetFraction = lastReadOffsetFraction ?: item.lastReadOffsetFraction,
                     lastRead = System.currentTimeMillis()
                 )
                 libraryDao.insertItem(updated)

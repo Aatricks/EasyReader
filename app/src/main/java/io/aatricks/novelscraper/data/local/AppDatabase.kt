@@ -7,7 +7,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import io.aatricks.novelscraper.data.model.LibraryItem
 
-@Database(entities = [LibraryItem::class], version = 2, exportSchema = false)
+@Database(entities = [LibraryItem::class], version = 3, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
@@ -60,6 +60,12 @@ abstract class AppDatabase : RoomDatabase() {
                 """.trimIndent())
                 db.execSQL("DROP TABLE library_items")
                 db.execSQL("ALTER TABLE library_items_new RENAME TO library_items")
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE library_items ADD COLUMN lastReadOffsetFraction REAL")
             }
         }
     }

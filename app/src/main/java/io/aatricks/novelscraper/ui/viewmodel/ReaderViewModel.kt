@@ -9,6 +9,7 @@ import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
 import io.aatricks.novelscraper.ui.theme.AccentTheme
+import io.aatricks.novelscraper.ui.util.normalizeRestoreOffset
 import io.aatricks.novelscraper.util.TextUtils
 import io.aatricks.novelscraper.util.UrlSecurity
 import kotlinx.coroutines.Dispatchers
@@ -30,7 +31,7 @@ class ReaderViewModel @Inject constructor(
     private val exploreRepository: ExploreRepository,
     private val preferencesManager: PreferencesManager
 ) : BaseViewModel<ReaderViewModel.ReaderUiState>(ReaderUiState()) {
-    private val _progressState = MutableStateFlow(ReaderProgressState(0f, 0, 0, 0, 0L, null))
+    private val _progressState = MutableStateFlow(ReaderProgressState(0f, 0, 0, 0, null, 0, 0L, null))
     val progressState: StateFlow<ReaderProgressState> = _progressState.asStateFlow()
 
     companion object {
@@ -46,6 +47,7 @@ class ReaderViewModel @Inject constructor(
     private var suppressAutoNavUntilUserInteraction: Boolean = false
     private var restoredScrollPercent: Float = 0f
     private var hasUserInteractedSinceLoad: Boolean = false
+    private var restoredProgressSnapshot: ReaderProgressState? = null
 
     // Track if we're explicitly navigating (not restoring from library)
     private var isExplicitNavigation: Boolean = false
@@ -128,6 +130,8 @@ class ReaderViewModel @Inject constructor(
         val scrollProgress: Int,
         val scrollIndex: Int,
         val scrollOffset: Int,
+        val scrollOffsetFraction: Float?,
+        val firstVisibleItemSize: Int,
         val seekTrigger: Long,
         val targetScrollPosition: Float?
     )
@@ -145,6 +149,7 @@ class ReaderViewModel @Inject constructor(
         val scrollProgress: Int = 0,
         val scrollIndex: Int = 0,
         val scrollOffset: Int = 0,
+        val pendingRestoreOffsetFraction: Float? = null,
         val isScrollingDown: Boolean = true,
         val hasReachedQuarterScreen: Boolean = false,
         val canNavigateNext: Boolean = false,
@@ -214,6 +219,8 @@ class ReaderViewModel @Inject constructor(
                 scrollProgress = scrollProgress,
                 scrollIndex = scrollIndex,
                 scrollOffset = scrollOffset,
+                scrollOffsetFraction = pendingRestoreOffsetFraction,
+                firstVisibleItemSize = 0,
                 seekTrigger = seekTrigger,
                 targetScrollPosition = targetScrollPosition
             )
@@ -224,6 +231,8 @@ class ReaderViewModel @Inject constructor(
         scrollProgress: Int,
         scrollIndex: Int,
         scrollOffset: Int,
+        scrollOffsetFraction: Float? = _progressState.value.scrollOffsetFraction,
+        firstVisibleItemSize: Int = _progressState.value.firstVisibleItemSize,
         seekTrigger: Long = _progressState.value.seekTrigger,
         targetScrollPosition: Float? = _progressState.value.targetScrollPosition
     ) {
@@ -232,6 +241,8 @@ class ReaderViewModel @Inject constructor(
             scrollProgress = scrollProgress,
             scrollIndex = scrollIndex,
             scrollOffset = scrollOffset,
+            scrollOffsetFraction = scrollOffsetFraction,
+            firstVisibleItemSize = firstVisibleItemSize,
             seekTrigger = seekTrigger,
             targetScrollPosition = targetScrollPosition
         )
@@ -433,7 +444,7 @@ class ReaderViewModel @Inject constructor(
     private suspend fun saveCurrentProgress(): Unit {
         val prevItemId = currentLibraryItemId ?: return
         val prevContent = _uiState.value.content ?: return
-        val progressSnapshot = _progressState.value
+        val progressSnapshot = currentPersistedSnapshot()
 
         if (isPlaceholderAtCurrentPosition(progressSnapshot.scrollIndex)) return
 
@@ -445,7 +456,8 @@ class ReaderViewModel @Inject constructor(
                 currentChapterUrl = prevContent.url,
                 lastScrollProgress = progressSnapshot.scrollPosition,
                 lastReadIndex = progressSnapshot.scrollIndex,
-                lastReadOffset = progressSnapshot.scrollOffset
+                lastReadOffset = progressSnapshot.scrollOffset,
+                lastReadOffsetFraction = progressSnapshot.scrollOffsetFraction
             )
         }
     }
@@ -526,6 +538,7 @@ class ReaderViewModel @Inject constructor(
                 scrollProgress = initialScroll.progress,
                 scrollIndex = initialScroll.index,
                 scrollOffset = initialScroll.offset,
+                pendingRestoreOffsetFraction = initialScroll.offsetFraction,
                 targetScrollPosition = initialScroll.targetPosition,
                 hasReachedQuarterScreen = fromBottom || initialScroll.progress >= 25,
                 novelName = novelName,
@@ -542,6 +555,7 @@ class ReaderViewModel @Inject constructor(
             scrollProgress = initialScroll.progress,
             scrollIndex = initialScroll.index,
             scrollOffset = initialScroll.offset,
+            scrollOffsetFraction = initialScroll.offsetFraction,
             targetScrollPosition = initialScroll.targetPosition
         )
 
@@ -612,6 +626,7 @@ class ReaderViewModel @Inject constructor(
         val position: Float,
         val progress: Int,
         val offset: Int,
+        val offsetFraction: Float?,
         val targetPosition: Float? = null
     )
 
@@ -630,8 +645,9 @@ class ReaderViewModel @Inject constructor(
                 position = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition,
                 progress = if (shouldRestoreAtTop) 0 else libraryItem.progress,
                 offset = if (shouldRestoreAtTop) 0 else libraryItem.lastReadOffset,
+                offsetFraction = if (shouldRestoreAtTop) 0f else libraryItem.lastReadOffsetFraction,
                 targetPosition = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition
-            )
+            ).also { restoredProgressSnapshot = it.toProgressState() }
         } else {
             restoredScrollPercent = if (fromBottom) 100f else 0f
             suppressAutoNavUntilUserInteraction = true
@@ -641,10 +657,22 @@ class ReaderViewModel @Inject constructor(
                 position = if (fromBottom) 100f else 0f,
                 progress = if (fromBottom) 100 else 0,
                 offset = if (fromBottom) 10000000 else 0,
+                offsetFraction = if (fromBottom) 1f else 0f,
                 targetPosition = if (fromBottom) 100f else 0f
-            )
+            ).also { restoredProgressSnapshot = it.toProgressState() }
         }
     }
+
+    private fun ScrollState.toProgressState(): ReaderProgressState = ReaderProgressState(
+        scrollPosition = position,
+        scrollProgress = progress,
+        scrollIndex = index,
+        scrollOffset = offset,
+        scrollOffsetFraction = offsetFraction,
+        firstVisibleItemSize = 0,
+        seekTrigger = 0L,
+        targetScrollPosition = targetPosition
+    )
 
     fun navigateToNextChapter(): Unit = navigateToAdjacentChapter(isNext = true)
     fun navigateToPreviousChapter(fromBottom: Boolean = false): Unit =
@@ -857,22 +885,32 @@ class ReaderViewModel @Inject constructor(
     fun onUserInteraction(): Unit {
         hasUserInteractedSinceLoad = true
         suppressAutoNavUntilUserInteraction = false
-        updateState { it.copy(targetScrollPosition = null) }
+        restoredProgressSnapshot = null
+        updateState { it.copy(targetScrollPosition = null, pendingRestoreOffsetFraction = null) }
         _progressState.update { it.copy(targetScrollPosition = null) }
     }
 
     fun persistLifecycleProgress(): Unit {
         val currentChapterUrl = _uiState.value.content?.url ?: return
-        val latest = _progressState.value
-        val shouldSnapToTop = !hasUserInteractedSinceLoad && _uiState.value.scrollProgress == 0
+        val latest = currentPersistedSnapshot()
+        val shouldSnapToTop = !hasUserInteractedSinceLoad && latest.scrollProgress == 0
 
         updateReadingProgress(
             progress = if (shouldSnapToTop) 0 else latest.scrollProgress,
             scrollPosition = if (shouldSnapToTop) 0f else latest.scrollPosition,
             index = if (shouldSnapToTop) 0 else latest.scrollIndex,
             offset = if (shouldSnapToTop) 0 else latest.scrollOffset,
+            offsetFraction = if (shouldSnapToTop) 0f else latest.scrollOffsetFraction,
             currentChapterUrl = currentChapterUrl
         )
+    }
+
+    private fun currentPersistedSnapshot(): ReaderProgressState {
+        return if (suppressAutoNavUntilUserInteraction && !hasUserInteractedSinceLoad) {
+            restoredProgressSnapshot ?: _progressState.value
+        } else {
+            _progressState.value
+        }
     }
 
     fun updateScrollPosition(
@@ -881,7 +919,8 @@ class ReaderViewModel @Inject constructor(
         viewportHeight: Float,
         index: Int,
         offset: Int,
-        canScrollForward: Boolean = true
+        canScrollForward: Boolean = true,
+        firstVisibleItemSize: Int = 0
     ): Unit {
         val deltaRaw = if (lastRawScrollOffset < 0f) 0f else scrollOffset - lastRawScrollOffset
         val isScrollingDown = deltaRaw > 0f
@@ -911,28 +950,33 @@ class ReaderViewModel @Inject constructor(
         lastReportedOffsetPx = offset
         lastReportedProgress = progress
 
+        if (suppressAutoNavUntilUserInteraction) {
+            lastRawScrollOffset = scrollOffset
+            return
+        }
+
+        val offsetFraction = normalizeRestoreOffset(offset, firstVisibleItemSize)
+
         _progressState.value = _progressState.value.copy(
             scrollPosition = progress,
             scrollProgress = progressInt,
             scrollIndex = index,
-            scrollOffset = offset
+            scrollOffset = offset,
+            scrollOffsetFraction = offsetFraction,
+            firstVisibleItemSize = firstVisibleItemSize
         )
 
         progressUpdateJob?.cancel()
         progressUpdateJob = viewModelScope.launch {
             delay(100)
 
-            if (suppressAutoNavUntilUserInteraction) {
-                lastRawScrollOffset = scrollOffset
-                return@launch
-            }
-
             if (progressInt >= 0) {
                 updateReadingProgress(
                     progress = progressInt,
                     scrollPosition = progress,
                     index = index,
-                    offset = offset
+                    offset = offset,
+                    offsetFraction = offsetFraction
                 )
             }
             lastRawScrollOffset = scrollOffset
@@ -944,15 +988,17 @@ class ReaderViewModel @Inject constructor(
         scrollPosition: Float? = null,
         index: Int? = null,
         offset: Int? = null,
+        offsetFraction: Float? = null,
         currentChapterUrl: String? = null
     ): Unit {
         currentLibraryItemId?.let { itemId ->
             runCatching {
                 val resolvedChapterUrl = currentChapterUrl ?: _uiState.value.content?.url ?: ""
-                val latest = _progressState.value
+                val latest = currentPersistedSnapshot()
                 val lastScroll = scrollPosition ?: latest.scrollPosition
                 val lastIndex = index ?: latest.scrollIndex
                 val lastOffset = offset ?: latest.scrollOffset
+                val lastOffsetFraction = offsetFraction ?: latest.scrollOffsetFraction
 
                 if (isPlaceholderAtCurrentPosition(lastIndex)) return@runCatching
 
@@ -963,7 +1009,8 @@ class ReaderViewModel @Inject constructor(
                     currentChapterUrl = resolvedChapterUrl,
                     lastScrollProgress = lastScroll,
                     lastReadIndex = lastIndex,
-                    lastReadOffset = lastOffset
+                    lastReadOffset = lastOffset,
+                    lastReadOffsetFraction = lastOffsetFraction
                 )
             }
         }
@@ -985,9 +1032,10 @@ class ReaderViewModel @Inject constructor(
     fun resetState(): Unit {
         closeContent(_uiState.value.content)
         _uiState.value = ReaderUiState()
-        _progressState.value = ReaderProgressState(0f, 0, 0, 0, 0L, null)
+        _progressState.value = ReaderProgressState(0f, 0, 0, 0, null, 0, 0L, null)
         currentLibraryItemId = null
         hasUserInteractedSinceLoad = false
+        restoredProgressSnapshot = null
         lastRawScrollOffset = -1f
         lastReportedIndex = -1
         lastReportedOffsetPx = -1
@@ -1052,6 +1100,7 @@ class ReaderViewModel @Inject constructor(
             scrollProgress = targetPercent.toInt(),
             scrollIndex = roughIndex,
             scrollOffset = offset,
+            scrollOffsetFraction = if (targetPercent == 100f) 1f else 0f,
             seekTrigger = _uiState.value.seekTrigger,
             targetScrollPosition = if (targetPercent == 100f) 100f else null
         )
@@ -1060,7 +1109,8 @@ class ReaderViewModel @Inject constructor(
             progress = targetPercent.toInt(),
             scrollPosition = targetPercent,
             index = roughIndex,
-            offset = offset
+            offset = offset,
+            offsetFraction = if (targetPercent == 100f) 1f else 0f
         )
     }
 
