@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class WebContentLoaderTest {
 
     @Test
-    fun `loadWebContent uses cached html without range probes for image dimensions`() = runBlocking {
+    fun `loadWebContent uses cached html and cached media without range probes for image dimensions`() = runBlocking {
         val chapterUrl = "https://example.com/chapter-1"
         val imageUrl = "https://example.com/image-1.jpg"
         val rangeRequests = AtomicInteger(0)
@@ -54,11 +54,58 @@ class WebContentLoaderTest {
             listOf(ContentElement.Image(imageUrl))
         )
         loader.getCachedFile(chapterUrl).writeText("<html><head><title>Chapter 1</title></head><body></body></html>")
+        loader.getCachedMediaFile(imageUrl).writeBytes(tinyPng(width = 2, height = 3))
 
         val result = loader.loadWebContent(chapterUrl)
 
         assertTrue(result is ContentResult.Success)
         assertEquals(0, rangeRequests.get())
+    }
+
+    @Test
+    fun `loadWebContent keeps grouped image structure when reopening from cached html without media cache`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-grouped"
+        val imageUrl1 = "https://example.com/group-1.png"
+        val imageUrl2 = "https://example.com/group-2.png"
+        val htmlParser = mock<HtmlParser>()
+        val rangeRequests = AtomicInteger(0)
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                when (request.url.toString()) {
+                    chapterUrl -> buildResponse(
+                        request,
+                        "<html><head><title>Grouped</title></head><body></body></html>",
+                        "text/html"
+                    )
+
+                    imageUrl1, imageUrl2 -> {
+                        if (request.header("Range") != null) {
+                            rangeRequests.incrementAndGet()
+                            buildByteResponse(request, tinyPng(width = 1000, height = 600), "image/png")
+                        } else {
+                            buildByteResponse(request, tinyPng(width = 1000, height = 600), "image/png")
+                        }
+                    }
+
+                    else -> buildResponse(request, "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(
+            listOf(
+                ContentElement.Image(imageUrl1),
+                ContentElement.Image(imageUrl2)
+            )
+        )
+
+        val firstLoad = loader.loadWebContent(chapterUrl) as ContentResult.Success
+        val secondLoad = loader.loadWebContent(chapterUrl) as ContentResult.Success
+
+        assertTrue(firstLoad.elements.single() is ContentElement.ImageGroup)
+        assertTrue(secondLoad.elements.single() is ContentElement.ImageGroup)
     }
 
     @Test

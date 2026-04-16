@@ -640,14 +640,29 @@ class ReaderViewModel @Inject constructor(
             restoredScrollPercent = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition
             suppressAutoNavUntilUserInteraction = true
             hasUserInteractedSinceLoad = false
-            ScrollState(
+            val scrollState = ScrollState(
                 index = if (shouldRestoreAtTop) 0 else libraryItem.lastReadIndex,
                 position = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition,
                 progress = if (shouldRestoreAtTop) 0 else libraryItem.progress,
-                offset = if (shouldRestoreAtTop) 0 else libraryItem.lastReadOffset,
+                offset = when {
+                    shouldRestoreAtTop -> 0
+                    libraryItem.lastReadOffsetFraction != null -> 0
+                    else -> libraryItem.lastReadOffset
+                },
                 offsetFraction = if (shouldRestoreAtTop) 0f else libraryItem.lastReadOffsetFraction,
                 targetPosition = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition
-            ).also { restoredProgressSnapshot = it.toProgressState() }
+            )
+            restoredProgressSnapshot = ReaderProgressState(
+                scrollPosition = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition,
+                scrollProgress = if (shouldRestoreAtTop) 0 else libraryItem.progress,
+                scrollIndex = if (shouldRestoreAtTop) 0 else libraryItem.lastReadIndex,
+                scrollOffset = if (shouldRestoreAtTop) 0 else libraryItem.lastReadOffset,
+                scrollOffsetFraction = if (shouldRestoreAtTop) 0f else libraryItem.lastReadOffsetFraction,
+                firstVisibleItemSize = 0,
+                seekTrigger = 0L,
+                targetScrollPosition = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition
+            )
+            scrollState
         } else {
             restoredScrollPercent = if (fromBottom) 100f else 0f
             suppressAutoNavUntilUserInteraction = true

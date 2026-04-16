@@ -70,10 +70,11 @@ class WebContentLoader @Inject constructor(
         val document = cachedDocument.document
 
         val elements = htmlParser.parse(document, url)
+        val canUseDiskOnlyDimensions = cachedDocument.fromCache && hasCachedMediaForAllRemoteImages(elements)
         val finalElements = processChapterElements(
             elements = elements,
             url = url,
-            diskOnly = cachedDocument.fromCache
+            diskOnly = canUseDiskOnlyDimensions
         )
 
         backgroundCacheImages(extractImageUrls(finalElements), url)
@@ -265,6 +266,12 @@ class WebContentLoader @Inject constructor(
                 else -> emptyList()
             }
         }
+    }
+
+    private fun hasCachedMediaForAllRemoteImages(elements: List<ContentElement>): Boolean {
+        return extractImageUrls(elements)
+            .filter { it.startsWith("http") }
+            .all { getCachedMediaFile(it).exists() }
     }
 
     private fun backgroundCacheImages(imageUrls: List<String>, pageUrl: String): Unit {

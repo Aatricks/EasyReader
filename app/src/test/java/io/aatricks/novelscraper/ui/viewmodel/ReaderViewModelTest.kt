@@ -233,6 +233,36 @@ class ReaderViewModelTest {
     }
 
     @Test
+    fun `loadContent defers raw offset when saved normalized anchor exists`() = runTest {
+        val itemId = "web-item"
+        val url = "https://example.com/chapter-10"
+        val savedItem = LibraryItem(
+            id = itemId,
+            title = "Chapter 10",
+            url = url,
+            progress = 55,
+            lastReadIndex = 4,
+            lastReadOffset = 180,
+            lastReadOffsetFraction = 0.3f,
+            lastScrollPosition = 55f
+        )
+
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(listOf(ContentElement.Text("Chapter content")), "Chapter 10", url)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(savedItem)
+
+        viewModel.loadContent(url, itemId)
+        advanceUntilIdle()
+
+        assertEquals(4, viewModel.uiState.value.scrollIndex)
+        assertEquals(0, viewModel.uiState.value.scrollOffset)
+        assertEquals(0.3f, viewModel.uiState.value.pendingRestoreOffsetFraction ?: 0f, 0.001f)
+        assertEquals(55, viewModel.uiState.value.scrollProgress)
+        assertEquals(55f, viewModel.uiState.value.scrollPosition, 0.001f)
+    }
+
+    @Test
     fun `loadContent snaps zero-progress saved web state to true top`() = runTest {
         val itemId = "web-item"
         val url = "https://example.com/chapter-11"
