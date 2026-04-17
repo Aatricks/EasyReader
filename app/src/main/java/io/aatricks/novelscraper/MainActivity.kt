@@ -25,6 +25,7 @@ import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
+import io.aatricks.novelscraper.data.repository.custom.CustomSourceRepository
 import io.aatricks.novelscraper.ui.ExploreRoute
 import io.aatricks.novelscraper.ui.LibraryRoute
 import io.aatricks.novelscraper.ui.ReaderRoute
@@ -51,6 +52,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var contentRepository: ContentRepository
     @Inject lateinit var libraryRepository: LibraryRepository
     @Inject lateinit var exploreRepository: ExploreRepository
+    @Inject lateinit var customSourceRepository: CustomSourceRepository
     @Inject lateinit var okHttpClient: OkHttpClient
 
     private val filePickerLauncher = registerForActivityResult(
@@ -163,7 +165,7 @@ class MainActivity : ComponentActivity() {
         val prefs = io.aatricks.novelscraper.data.local.PreferencesManager(applicationContext)
         lifecycleScope.launch {
             runCatching {
-                libraryRepository.refreshLibraryUpdates(exploreRepository)
+                libraryRepository.refreshLibraryUpdates(exploreRepository, customSourceRepository)
                 prefs.lastUpdateCheckTime = System.currentTimeMillis()
             }
         }

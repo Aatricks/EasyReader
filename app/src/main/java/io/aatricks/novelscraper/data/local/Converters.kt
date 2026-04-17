@@ -2,6 +2,7 @@ package io.aatricks.novelscraper.data.local
 
 import androidx.room.TypeConverter
 import io.aatricks.novelscraper.data.model.ContentType
+import io.aatricks.novelscraper.data.model.CustomSourceContentKind
 import io.aatricks.novelscraper.data.model.ReadingMode
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -46,6 +47,20 @@ class Converters {
             ReadingMode.valueOf(value)
         } catch (_: Exception) {
             ReadingMode.VERTICAL
+        }
+    }
+
+    @TypeConverter
+    fun fromCustomSourceContentKind(value: CustomSourceContentKind): String {
+        return value.name
+    }
+
+    @TypeConverter
+    fun toCustomSourceContentKind(value: String): CustomSourceContentKind {
+        return try {
+            CustomSourceContentKind.valueOf(value)
+        } catch (_: Exception) {
+            CustomSourceContentKind.NOVEL
         }
     }
 }

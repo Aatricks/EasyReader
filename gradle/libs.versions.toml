@@ -13,8 +13,10 @@ room = "2.7.0-alpha12"
 navigation = "2.8.5"
 coil = "3.0.4"
 kotlinxSerialization = "1.7.3"
-ktor = "2.2.4"
+ktor = "2.3.12"
 ksp = "2.1.0-1.0.29"
+llmedge = "0.3.9"
+itext = "7.2.5"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -61,6 +63,13 @@ ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.r
 ktor-client-content-negotiation = { group = "io.ktor", name = "ktor-client-content-negotiation", version.ref = "ktor" }
 ktor-serialization-kotlinx-json = { group = "io.ktor", name = "ktor-serialization-kotlinx-json", version.ref = "ktor" }
 
+# llmedge
+llmedge = { group = "io.github.aatricks", name = "llmedge", version.ref = "llmedge" }
+
+# iText
+itext-kernel = { group = "com.itextpdf", name = "kernel", version.ref = "itext" }
+itext-layout = { group = "com.itextpdf", name = "layout", version.ref = "itext" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
@@ -68,4 +77,3 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-

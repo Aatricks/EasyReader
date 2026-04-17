@@ -104,7 +104,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     // llmedge AI Library
-    implementation(files("libs/llmedge-release.aar"))
+    implementation(libs.llmedge)
     
     // Ktor
     implementation(libs.ktor.client.core)
@@ -120,7 +120,12 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     
     // PDF Parsing - iText7
-    implementation("com.itextpdf:itext7-core:7.2.5")
+    implementation(libs.itext.kernel) {
+        exclude(group = "org.bouncycastle")
+    }
+    testImplementation(libs.itext.layout) {
+        exclude(group = "org.bouncycastle")
+    }
     
     // Networking - OkHttp
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

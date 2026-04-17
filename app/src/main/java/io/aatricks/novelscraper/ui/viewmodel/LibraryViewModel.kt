@@ -6,12 +6,14 @@ import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.model.ChapterInfo
 import io.aatricks.novelscraper.data.model.LibraryItem
 import io.aatricks.novelscraper.data.model.ExploreItem
+import io.aatricks.novelscraper.data.model.AiSourceSetupPreview
 import io.aatricks.novelscraper.data.model.PrefetchMode
 import io.aatricks.novelscraper.data.model.PrefetchResult
 import io.aatricks.novelscraper.data.model.SortMode
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
+import io.aatricks.novelscraper.data.repository.custom.CustomSourceRepository
 import io.aatricks.novelscraper.util.TextUtils
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -25,7 +27,8 @@ import android.util.Log
 class LibraryViewModel @Inject constructor(
     val repository: LibraryRepository,
     private val contentRepository: ContentRepository,
-    private val exploreRepository: ExploreRepository
+    private val exploreRepository: ExploreRepository,
+    private val customSourceRepository: CustomSourceRepository
 ) : BaseViewModel<LibraryViewModel.LibraryUiState>(LibraryUiState()) {
 
     private val TAG = "LibraryViewModel"
@@ -62,7 +65,10 @@ class LibraryViewModel @Inject constructor(
         val selectedCount: Int = 0,
         val isEmpty: Boolean = true,
         val currentlyReading: LibraryItem? = null,
-        val chapterCacheStates: Map<String, PrefetchResult> = emptyMap()
+        val chapterCacheStates: Map<String, PrefetchResult> = emptyMap(),
+        val aiSetupPreview: AiSourceSetupPreview? = null,
+        val aiSetupFailure: String? = null,
+        val aiSetupFallbackUrl: String? = null
     )
 
     private fun observeLibraryChanges(): Unit {
@@ -102,7 +108,15 @@ class LibraryViewModel @Inject constructor(
                     chapterCacheStates = cacheStates
                 )
             }.collect { newState ->
-                updateState { newState }
+                updateState { current ->
+                    newState.copy(
+                        isLoading = current.isLoading,
+                        error = current.error,
+                        aiSetupPreview = current.aiSetupPreview,
+                        aiSetupFailure = current.aiSetupFailure,
+                        aiSetupFallbackUrl = current.aiSetupFallbackUrl
+                    )
+                }
             }
         }
     }
@@ -231,7 +245,8 @@ class LibraryViewModel @Inject constructor(
         chapters: List<io.aatricks.novelscraper.data.model.ChapterInfo>,
         baseTitle: String,
         baseNovelUrl: String,
-        sourceName: String
+        sourceName: String,
+        customRecipeId: String? = null
     ): Unit {
         viewModelScope.launch {
             chapters.forEach { chapter ->
@@ -246,7 +261,8 @@ class LibraryViewModel @Inject constructor(
                                 ?: chapter.title,
                             baseTitle = baseTitle,
                             baseNovelUrl = baseNovelUrl,
-                            sourceName = sourceName
+                            sourceName = sourceName,
+                            customRecipeId = customRecipeId
                         )
                         setCacheState(
                             PrefetchResult(
@@ -305,6 +321,79 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    fun beginAiSetup(url: String): Unit {
+        viewModelScope.launch {
+            runCatching {
+                updateState { it.copy(isLoading = true, aiSetupFailure = null, aiSetupPreview = null, aiSetupFallbackUrl = url) }
+                val preview = customSourceRepository.generateSetupPreview(url).getOrThrow()
+                updateState { it.copy(isLoading = false, aiSetupPreview = preview, aiSetupFailure = null, aiSetupFallbackUrl = url) }
+            }.onFailure { error ->
+                updateState {
+                    it.copy(
+                        isLoading = false,
+                        aiSetupPreview = null,
+                        aiSetupFailure = "AI setup failed: ${error.message}",
+                        aiSetupFallbackUrl = url
+                    )
+                }
+            }
+        }
+    }
+
+    fun confirmAiSetup(): Unit {
+        val preview = _uiState.value.aiSetupPreview ?: return
+        viewModelScope.launch {
+            runCatching {
+                updateState { it.copy(isLoading = true, error = null) }
+                if (repository.getItemByUrl(preview.firstChapterUrl) != null) {
+                    throw IllegalStateException("This item already exists in your library")
+                }
+
+                val savedRecipe = customSourceRepository.saveRecipe(preview)
+                val libraryTitle = if (preview.firstChapterTitle.contains(preview.title, ignoreCase = true)) {
+                    preview.firstChapterTitle
+                } else {
+                    "${preview.title} - ${preview.firstChapterTitle}"
+                }
+                repository.addItem(
+                    title = libraryTitle,
+                    url = preview.firstChapterUrl,
+                    contentType = ContentType.WEB,
+                    currentChapter = TextUtils.extractChapterLabel(preview.firstChapterTitle) ?: "Chapter 1",
+                    baseTitle = preview.title,
+                    baseNovelUrl = preview.baseNovelUrl,
+                    sourceName = preview.displayName,
+                    totalChapters = preview.chapterCount,
+                    customRecipeId = savedRecipe.id
+                )
+                updateState {
+                    it.copy(
+                        isLoading = false,
+                        aiSetupPreview = null,
+                        aiSetupFailure = null,
+                        aiSetupFallbackUrl = null
+                    )
+                }
+            }.onFailure { error ->
+                updateState { it.copy(isLoading = false, error = "Failed to save AI setup: ${error.message}") }
+            }
+        }
+    }
+
+    fun dismissAiSetupPreview(): Unit {
+        updateState { it.copy(aiSetupPreview = null) }
+    }
+
+    fun dismissAiSetupFailure(): Unit {
+        updateState { it.copy(aiSetupFailure = null, aiSetupFallbackUrl = null) }
+    }
+
+    fun addFallbackFromAiSetupFailure(): Unit {
+        val fallbackUrl = _uiState.value.aiSetupFallbackUrl ?: return
+        dismissAiSetupFailure()
+        fetchAndAdd(fallbackUrl)
+    }
+
     private fun inferContentType(url: String): ContentType {
         return when {
             url.endsWith(".epub", ignoreCase = true) || url.contains("epub") -> ContentType.EPUB
@@ -318,12 +407,17 @@ class LibraryViewModel @Inject constructor(
         baseTitle: String,
         baseNovelUrl: String,
         sourceName: String,
+        customRecipeId: String? = null,
         onChapterLoaded: (String, String) -> Unit
     ): Unit {
         viewModelScope.launch {
             runCatching {
                 updateState { it.copy(isLoading = true) }
-                val details = exploreRepository.getNovelDetails(baseNovelUrl, sourceName)
+                val details = if (!customRecipeId.isNullOrBlank()) {
+                    customSourceRepository.getNovelDetails(customRecipeId)
+                } else {
+                    exploreRepository.getNovelDetails(baseNovelUrl, sourceName)
+                }
                 if (details == null || details.chapters.isEmpty()) {
                     throw Exception("No chapters found for this novel")
                 }
@@ -343,7 +437,8 @@ class LibraryViewModel @Inject constructor(
                         baseTitle = baseTitle,
                         baseNovelUrl = baseNovelUrl,
                         sourceName = sourceName,
-                        totalChapters = details.chapters.size
+                        totalChapters = details.chapters.size,
+                        customRecipeId = customRecipeId
                     )
                 } else if (item.totalChapters < details.chapters.size) {
                     repository.updateItem(item.copy(totalChapters = details.chapters.size))

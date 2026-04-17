@@ -41,7 +41,7 @@ EasyReader is a clean, focused environment for consuming digital content. Whethe
 - **Immersive UI**: Full-screen, edge-to-edge display with Material3 dynamic colors.
 - **Smart Navigation**: Fluid swipe gestures to navigate chapters and auto-restore scroll position.
 - **Intelligent Formatting**: Automatic removal of page numbers, ads, and HTML noise.
-- **AI Summaries**: Generate concise summaries of long chapters using on-device [`llmedge`](https://github.com/Aatricks/LLMEdge).
+- **AI Summaries**: Generate concise summaries of long chapters using on-device [`llmedge`](https://github.com/Aatricks/llmedge).
 
 ### **Library & Management**
 - **Cloud-free Caching**: Store everything locally for privacy and speed.

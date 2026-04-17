@@ -6,6 +6,7 @@ import io.aatricks.novelscraper.data.local.LibraryDao
 import io.aatricks.novelscraper.data.model.LibraryItem
 import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.model.ReadingMode
+import io.aatricks.novelscraper.data.repository.custom.CustomSourceRepository
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -95,7 +96,8 @@ class LibraryRepository @Inject constructor(
         baseTitle: String = title,
         baseNovelUrl: String = "",
         sourceName: String = "",
-        totalChapters: Int = 0
+        totalChapters: Int = 0,
+        customRecipeId: String? = null
     ): LibraryItem = io {
         val newItem = LibraryItem(
             id = UUID.randomUUID().toString(),
@@ -109,7 +111,8 @@ class LibraryRepository @Inject constructor(
             baseTitle = baseTitle,
             baseNovelUrl = baseNovelUrl,
             sourceName = sourceName,
-            totalChapters = totalChapters
+            totalChapters = totalChapters,
+            customRecipeId = customRecipeId
         )
 
         libraryDao.insertItem(newItem)
@@ -306,7 +309,10 @@ class LibraryRepository @Inject constructor(
         true
     } ?: false
 
-    suspend fun refreshLibraryUpdates(exploreRepository: ExploreRepository): Unit = io {
+    suspend fun refreshLibraryUpdates(
+        exploreRepository: ExploreRepository,
+        customSourceRepository: CustomSourceRepository? = null
+    ): Unit = io {
         runRepoCatching("Refresh updates failed") {
             val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
             val groupedItems = getGroupedByTitle(allItems)
@@ -331,13 +337,19 @@ class LibraryRepository @Inject constructor(
                         val localUpdates = mutableListOf<LibraryItem>()
                         for ((baseTitle, items) in channel) {
                             if (items.isNotEmpty()) {
-                                val latestInLibrary = items.last()
-                                if (latestInLibrary.baseNovelUrl.isNotBlank() && latestInLibrary.sourceName.isNotBlank()) {
+                            val latestInLibrary = items.last()
+                                val hasBuiltInSource = latestInLibrary.baseNovelUrl.isNotBlank() && latestInLibrary.sourceName.isNotBlank()
+                                val hasCustomSource = !latestInLibrary.customRecipeId.isNullOrBlank() && customSourceRepository != null
+                                if (hasBuiltInSource || hasCustomSource) {
                                     val newUpdates = runRepoCatching("Failed to refresh updates for $baseTitle", emptyList<LibraryItem>()) {
-                                        val details = exploreRepository.getNovelDetails(
-                                            latestInLibrary.baseNovelUrl,
-                                            latestInLibrary.sourceName
-                                        )
+                                        val details = if (hasCustomSource) {
+                                            customSourceRepository?.getNovelDetails(latestInLibrary.customRecipeId!!)
+                                        } else {
+                                            exploreRepository.getNovelDetails(
+                                                latestInLibrary.baseNovelUrl,
+                                                latestInLibrary.sourceName
+                                            )
+                                        }
                                         if (details != null && details.chapters.isNotEmpty()) {
                                             val sourceChapterCount = details.chapters.size
                                             if (sourceChapterCount > latestInLibrary.totalChapters) {

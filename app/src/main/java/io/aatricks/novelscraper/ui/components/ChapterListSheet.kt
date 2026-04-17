@@ -196,7 +196,8 @@ fun ChapterListSheet(
                                         chapters = chaptersToDownload,
                                         baseTitle = uiState.baseTitle,
                                         baseNovelUrl = uiState.baseNovelUrl,
-                                        sourceName = uiState.sourceName
+                                        sourceName = uiState.sourceName,
+                                        customRecipeId = uiState.customRecipeId
                                     )
                                 }
                             }

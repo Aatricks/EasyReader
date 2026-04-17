@@ -5,12 +5,14 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import io.aatricks.novelscraper.data.model.CustomSourceRecipe
 import io.aatricks.novelscraper.data.model.LibraryItem
 
-@Database(entities = [LibraryItem::class], version = 3, exportSchema = false)
+@Database(entities = [LibraryItem::class, CustomSourceRecipe::class], version = 4, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
+    abstract fun customSourceRecipeDao(): CustomSourceRecipeDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -66,6 +68,26 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE library_items ADD COLUMN lastReadOffsetFraction REAL")
+            }
+        }
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE library_items ADD COLUMN customRecipeId TEXT")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS custom_source_recipes (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        displayName TEXT NOT NULL,
+                        baseNovelUrl TEXT NOT NULL,
+                        contentKind TEXT NOT NULL,
+                        recipeJson TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        lastValidatedAt INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
             }
         }
     }

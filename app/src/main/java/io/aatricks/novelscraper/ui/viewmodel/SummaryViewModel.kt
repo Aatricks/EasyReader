@@ -7,6 +7,7 @@ import io.aatricks.novelscraper.data.repository.SummaryService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import android.util.Log
 import javax.inject.Inject
@@ -21,6 +22,7 @@ class SummaryViewModel @Inject constructor(
 ) : BaseViewModel<SummaryViewModel.SummaryUiState>(SummaryUiState()) {
     
     private val TAG = "SummaryViewModel"
+    private var generationJob: Job? = null
     
     // UI State
     data class SummaryUiState(
@@ -67,7 +69,8 @@ class SummaryViewModel @Inject constructor(
             return
         }
         
-        viewModelScope.launch {
+        generationJob?.cancel()
+        generationJob = viewModelScope.launch {
             updateState { it.copy(
                 isGenerating = true,
                 activeChapterUrl = chapterUrl,
@@ -115,7 +118,8 @@ class SummaryViewModel @Inject constructor(
     }
 
     fun cancelGeneration(): Unit {
-        runCatching { io.aatricks.llmedge.LLMEdgeManager.cancelGeneration() }
+        generationJob?.cancel()
+        generationJob = null
         updateState { it.copy(isGenerating = false, activeChapterUrl = null) }
     }
     

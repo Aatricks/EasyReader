@@ -32,6 +32,7 @@
 -dontwarn com.google.android.gms.tasks.Task
 -dontwarn com.google.gson.Gson
 -dontwarn com.google.gson.reflect.TypeToken
+-dontwarn com.gemalto.jp2.JP2Decoder
 -dontwarn com.ml.shubham0204.sentence_embeddings.SentenceEmbedding
 -dontwarn com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 -dontwarn com.tom_roush.pdfbox.pdmodel.PDDocument

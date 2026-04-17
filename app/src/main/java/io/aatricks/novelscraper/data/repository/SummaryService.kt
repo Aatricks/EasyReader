@@ -2,12 +2,20 @@ package io.aatricks.novelscraper.data.repository
 
 import android.content.Context
 import android.util.Log
-import io.aatricks.llmedge.SmolLM
-import io.aatricks.llmedge.LLMEdgeManager
+import io.aatricks.llmedge.LLMEdge
+import io.aatricks.llmedge.model.ModelSpec
+import io.aatricks.llmedge.text.TextGenerationRequest
+import io.aatricks.llmedge.text.TextModelOptions
+import io.aatricks.llmedge.text.TextStreamEvent
+import io.aatricks.llmedge.text.runtime.SmolLM
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
-import java.io.File
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
 
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -27,11 +35,16 @@ class SummaryService @Inject constructor(
         private val WHITESPACE_REGEX = Regex("\\s+")
     }
 
-    private var modelFile: File? = null
+    private var edgeScope: CoroutineScope? = null
+    private var edge: LLMEdge? = null
     @Volatile
     private var isInitialized = false
     private var initDeferred: CompletableDeferred<Result<Unit>>? = null
     private val initLock = Any()
+    private val modelSpec = ModelSpec.huggingFace(
+        repoId = "unsloth/Qwen3-0.6B-GGUF",
+        filename = "Qwen3-0.6B-Q4_K_M.gguf"
+    )
     
     /**
      * Initialize the SmolLM model (lazy loading)
@@ -52,26 +65,13 @@ class SummaryService @Inject constructor(
         if (deferred == null) return@withContext Result.success(Unit)
         
         val result = runCatching {
-            Log.d(TAG, "Downloading and ensuring model via LLMEdgeManager for chapter summarization")
-
-            val modelId = "unsloth/Qwen3-0.6B-GGUF"
-            val modelFilename = "Qwen3-0.6B-Q4_K_M.gguf"
-
-            val downloadedFile = LLMEdgeManager.downloadModel(
-                context = context,
-                modelId = modelId,
-                filename = modelFilename,
-                preferSystemDownloader = true
-            )
-
-            Log.d(TAG, "Model ready: ${downloadedFile.name} (path=${downloadedFile.absolutePath})")
-
-            modelFile = downloadedFile
-            LLMEdgeManager.preferPerformanceMode = false
+            Log.d(TAG, "Prefetching llmedge model for chapter summarization")
+            val modelFile = getOrCreateEdge().models.prefetch(modelSpec)
+            Log.d(TAG, "Model ready: ${modelFile.name} (path=${modelFile.absolutePath})")
             isInitialized = true
             Unit
         }.onFailure { e ->
-            Log.e(TAG, "Failed to initialize SmolLM", e)
+            Log.e(TAG, "Failed to initialize llmedge text runtime", e)
         }
         
         deferred.complete(result)
@@ -87,17 +87,20 @@ class SummaryService @Inject constructor(
         content: List<String>,
         onProgress: ((String) -> Unit)? = null
     ): Result<String> = withContext(Dispatchers.Default) {
-        runCatching {
+        try {
             initialize().getOrThrow()
-            
+
             val selectedContent = selectKeyContent(content, maxWords = 300)
             val prompt = buildPrompt(chapterTitle, selectedContent)
-            
-            Log.d(TAG, "Generating summary (${selectedContent.split(WHITESPACE_REGEX).size} words, ~${(selectedContent.length + prompt.length) / 4 + 200} tokens)")
-            
-            generateWithRetry(prompt, selectedContent, content, onProgress)
-        }.onFailure { e ->
+
+            Log.d(TAG, "Generating summary (${selectedContent.split(WHITESPACE_REGEX).size} words)")
+
+            Result.success(generateWithRetry(prompt, selectedContent, content, onProgress))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
             Log.e(TAG, "Failed to generate summary", e)
+            Result.failure(e)
         }
     }
 
@@ -127,18 +130,35 @@ class SummaryService @Inject constructor(
     }
 
     private suspend fun generateText(prompt: String, onProgress: ((String) -> Unit)?): String {
-        val params = LLMEdgeManager.TextGenerationParams(
+        val request = TextGenerationRequest(
             prompt = prompt,
+            model = modelSpec,
             systemPrompt = "You are a concise chapter summarizer.",
-            modelId = "unsloth/Qwen3-0.6B-GGUF",
-            modelFilename = modelFile?.name ?: "Qwen3-0.6B-Q4_K_M.gguf",
-            modelPath = modelFile?.absolutePath,
-            temperature = 0.3f,
+            options = TextModelOptions(
+                temperature = 0.3f,
+                thinkingMode = SmolLM.ThinkingMode.DISABLED,
+                reasoningBudget = 0
+            ),
             maxTokens = 256,
-            thinkingMode = SmolLM.ThinkingMode.DISABLED
+            batchSize = 8
         )
-        return withContext(Dispatchers.IO) { 
-            LLMEdgeManager.generateText(context, params, onProgress).trim()
+
+        val chunks = StringBuilder()
+        var completedText: String? = null
+        return withContext(Dispatchers.IO) {
+            getOrCreateEdge().text.stream(request).collect { event ->
+                when (event) {
+                    is TextStreamEvent.Chunk -> {
+                        chunks.append(event.value)
+                        onProgress?.invoke(event.value)
+                    }
+                    is TextStreamEvent.Completed -> {
+                        completedText = event.fullText
+                    }
+                    else -> Unit
+                }
+            }
+            (completedText ?: chunks.toString()).trim()
         }
     }
     
@@ -153,8 +173,10 @@ class SummaryService @Inject constructor(
      * Release resources
      */
     fun release(): Unit {
-        runCatching { LLMEdgeManager.cancelGeneration() }
-        modelFile = null
+        runCatching { edge?.close() }
+        runCatching { edgeScope?.cancel() }
+        edge = null
+        edgeScope = null
         isInitialized = false
         Log.d(TAG, "SummaryService released")
     }
@@ -227,5 +249,15 @@ class SummaryService @Inject constructor(
     /**
      * Check if service is ready
      */
-    fun isReady(): Boolean = isInitialized && modelFile != null
+    fun isReady(): Boolean = isInitialized
+
+    private fun getOrCreateEdge(): LLMEdge {
+        edge?.let { return it }
+
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val created = LLMEdge.create(context, scope)
+        edgeScope = scope
+        edge = created
+        return created
+    }
 }

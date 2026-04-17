@@ -4,6 +4,7 @@ import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.model.*
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
+import io.aatricks.novelscraper.data.repository.custom.CustomSourceRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -31,6 +32,9 @@ class ReaderViewModelNavigationTest {
 
     @Mock
     lateinit var exploreRepository: ExploreRepository
+
+    @Mock
+    lateinit var customSourceRepository: CustomSourceRepository
 
     @Mock
     lateinit var preferencesManager: PreferencesManager
@@ -77,7 +81,8 @@ class ReaderViewModelNavigationTest {
             contentRepository,
             libraryRepository,
             exploreRepository,
-            preferencesManager
+            preferencesManager,
+            customSourceRepository
         )
     }
 
@@ -181,7 +186,7 @@ class ReaderViewModelNavigationTest {
         whenever(libraryRepository.getItemById(currentItem.id)).thenReturn(currentItem)
         whenever(libraryRepository.getItemById(nextItem.id)).thenReturn(nextItem)
         whenever(libraryRepository.getChaptersByBaseTitle(currentItem.baseTitle)).thenReturn(listOf(currentItem, nextItem))
-        whenever(libraryRepository.addItem(any(), eq(nextUrl), eq(ContentType.WEB), any(), any(), any(), any(), any()))
+        whenever(libraryRepository.addItem(any(), eq(nextUrl), eq(ContentType.WEB), any(), any(), any(), any(), any(), anyOrNull()))
             .thenReturn(nextItem)
         whenever(exploreRepository.getNovelDetails(any(), any())).thenReturn(null)
 
@@ -231,7 +236,7 @@ class ReaderViewModelNavigationTest {
         whenever(libraryRepository.getItemById(currentItem.id)).thenReturn(currentItem)
         whenever(libraryRepository.getItemById(targetItem.id)).thenReturn(targetItem)
         whenever(libraryRepository.getChaptersByBaseTitle(currentItem.baseTitle)).thenReturn(listOf(currentItem, targetItem))
-        whenever(libraryRepository.addItem(any(), eq(targetUrl), eq(ContentType.WEB), any(), any(), any(), any(), any()))
+        whenever(libraryRepository.addItem(any(), eq(targetUrl), eq(ContentType.WEB), any(), any(), any(), any(), any(), anyOrNull()))
             .thenReturn(targetItem)
         whenever(exploreRepository.getNovelDetails(any(), any())).thenReturn(null)
 
@@ -243,5 +248,39 @@ class ReaderViewModelNavigationTest {
 
         verify(contentRepository, times(1)).loadContent(targetUrl)
         assertEquals(targetUrl, viewModel.uiState.value.content?.url)
+    }
+
+    @Test
+    fun `loadContent uses custom source repository when item has recipe id`() = runTest {
+        val url = "https://example.com/series/the-great-story/chapter-1"
+        val libraryItem = LibraryItem(
+            id = "item-1",
+            title = "Chapter 1",
+            url = url,
+            currentChapter = "Chapter 1",
+            baseTitle = "The Great Story",
+            baseNovelUrl = "https://example.com/series/the-great-story",
+            sourceName = "Example Source",
+            customRecipeId = "recipe-1"
+        )
+
+        whenever(libraryRepository.getItemByUrl(url)).thenReturn(libraryItem)
+        whenever(libraryRepository.getItemById(libraryItem.id)).thenReturn(libraryItem)
+        whenever(libraryRepository.getChaptersByBaseTitle(libraryItem.baseTitle)).thenReturn(listOf(libraryItem))
+        whenever(customSourceRepository.loadContent("recipe-1", url)).thenReturn(
+            ContentResult.Success(
+                elements = listOf(ContentElement.Text("Recipe-backed content")),
+                title = "Chapter 1",
+                url = url
+            )
+        )
+        whenever(exploreRepository.getNovelDetails(any(), any())).thenReturn(null)
+
+        viewModel.loadContent(url, libraryItem.id)
+        advanceUntilIdle()
+
+        verify(customSourceRepository).loadContent("recipe-1", url)
+        verify(contentRepository, never()).loadContent(url)
+        assertEquals(url, viewModel.uiState.value.content?.url)
     }
 }

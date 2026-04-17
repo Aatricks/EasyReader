@@ -8,6 +8,7 @@ import io.aatricks.novelscraper.data.model.*
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
+import io.aatricks.novelscraper.data.repository.custom.CustomSourceRepository
 import io.aatricks.novelscraper.ui.theme.AccentTheme
 import io.aatricks.novelscraper.ui.util.normalizeRestoreOffset
 import io.aatricks.novelscraper.util.TextUtils
@@ -29,7 +30,8 @@ class ReaderViewModel @Inject constructor(
     val contentRepository: ContentRepository,
     private val libraryRepository: LibraryRepository,
     private val exploreRepository: ExploreRepository,
-    private val preferencesManager: PreferencesManager
+    private val preferencesManager: PreferencesManager,
+    private val customSourceRepository: CustomSourceRepository
 ) : BaseViewModel<ReaderViewModel.ReaderUiState>(ReaderUiState()) {
     private val _progressState = MutableStateFlow(ReaderProgressState(0f, 0, 0, 0, null, 0, 0L, null))
     val progressState: StateFlow<ReaderProgressState> = _progressState.asStateFlow()
@@ -160,6 +162,7 @@ class ReaderViewModel @Inject constructor(
         val baseTitle: String = "",
         val baseNovelUrl: String = "",
         val sourceName: String = "",
+        val customRecipeId: String? = null,
         val isPagedMode: Boolean = false,
         val isRtl: Boolean = true,
         val fullChapterList: List<ChapterInfo> = emptyList(),
@@ -382,11 +385,7 @@ class ReaderViewModel @Inject constructor(
 
         val result = preloadedResult ?: run {
             val pdfResumeIndex = resolvePdfResumeIndex(url, libraryItemId, isExplicitNavigation)
-            if (pdfResumeIndex != null) {
-                contentRepository.loadContent(url, pdfResumeIndex)
-            } else {
-                contentRepository.loadContent(url)
-            }
+            loadContentResult(url, libraryItemId, pdfResumeIndex = pdfResumeIndex)
         }
 
         when (result) {
@@ -431,6 +430,25 @@ class ReaderViewModel @Inject constructor(
             ?: return null
 
         return libraryItem.takeIf { it.contentType == ContentType.PDF }?.lastReadIndex
+    }
+
+    private suspend fun loadContentResult(
+        url: String,
+        libraryItemId: String?,
+        customRecipeIdOverride: String? = null,
+        pdfResumeIndex: Int? = null
+    ): ContentResult {
+        val customRecipeId = customRecipeIdOverride
+            ?: libraryItemId?.let { libraryRepository.getItemById(it)?.customRecipeId }
+            ?: libraryRepository.getItemByUrl(url)?.customRecipeId
+
+        return if (!customRecipeId.isNullOrBlank() && url.startsWith("http")) {
+            customSourceRepository.loadContent(customRecipeId, url)
+        } else if (pdfResumeIndex != null) {
+            contentRepository.loadContent(url, pdfResumeIndex)
+        } else {
+            contentRepository.loadContent(url)
+        }
     }
 
     private fun isPlaceholderAtCurrentPosition(index: Int? = null): Boolean {
@@ -546,6 +564,7 @@ class ReaderViewModel @Inject constructor(
                 baseTitle = baseTitle,
                 baseNovelUrl = libraryItem?.baseNovelUrl ?: "",
                 sourceName = libraryItem?.sourceName ?: "",
+                customRecipeId = libraryItem?.customRecipeId,
                 isPagedMode = isPaged,
                 fullChapterList = currentFullList
             )
@@ -563,8 +582,8 @@ class ReaderViewModel @Inject constructor(
         maybeWarmNextChapter(_uiState.value.content?.nextChapterUrl)
 
         libraryItem?.let { item ->
-            if (item.baseNovelUrl.isNotBlank() && item.sourceName.isNotBlank()) {
-                loadFullChapterList(item.baseNovelUrl, item.sourceName)
+            if (item.baseNovelUrl.isNotBlank() && (item.sourceName.isNotBlank() || !item.customRecipeId.isNullOrBlank())) {
+                loadFullChapterList(item.baseNovelUrl, item.sourceName, item.customRecipeId)
             }
             libraryRepository.markAsCurrentlyReading(item.id)
             performAutoDeletion(content.url, novelName, chapterTitle)
@@ -708,7 +727,8 @@ class ReaderViewModel @Inject constructor(
             }
 
             updateState { it.copy(isNavigating = true) }
-            val result = contentRepository.loadContent(url)
+            val currentItem = currentLibraryItemId?.let { libraryRepository.getItemById(it) }
+            val result = loadContentResult(url, libraryItemId = null, customRecipeIdOverride = currentItem?.customRecipeId)
 
             when (result) {
                 is ContentResult.Success -> {
@@ -768,7 +788,8 @@ class ReaderViewModel @Inject constructor(
                 currentChapter = chapterLabel,
                 baseTitle = baseTitle,
                 baseNovelUrl = currentItem.baseNovelUrl,
-                sourceName = currentItem.sourceName
+                sourceName = currentItem.sourceName,
+                customRecipeId = currentItem.customRecipeId
             )
             libraryRepository.updateReadingMode(newItem.id, currentItem.readingMode)
             newItem.id
@@ -848,7 +869,8 @@ class ReaderViewModel @Inject constructor(
                     hasReachedQuarterScreen = fromBottom || initialScroll.progress >= 25,
                     novelName = novelName,
                     chapterTitle = chapterTitle,
-                    baseTitle = baseTitle
+                    baseTitle = baseTitle,
+                    customRecipeId = libraryItem?.customRecipeId
                 )
             }
             syncProgressState(
@@ -1166,7 +1188,8 @@ class ReaderViewModel @Inject constructor(
                 return@launch
             }
             updateState { it.copy(isNavigating = true) }
-            val result = contentRepository.loadContent(url)
+            val currentItem = currentLibraryItemId?.let { libraryRepository.getItemById(it) }
+            val result = loadContentResult(url, libraryItemId = null, customRecipeIdOverride = currentItem?.customRecipeId)
             when (result) {
                 is ContentResult.Success -> {
                     val itemId = addChapterToLibrary(url, result.title, isNext = true)
@@ -1197,11 +1220,15 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun loadFullChapterList(baseUrl: String, sourceName: String): Unit {
+    fun loadFullChapterList(baseUrl: String, sourceName: String, customRecipeId: String? = null): Unit {
         viewModelScope.launch {
             runCatching {
                 updateState { it.copy(isChaptersLoading = true) }
-                val details = exploreRepository.getNovelDetails(baseUrl, sourceName)
+                val details = if (!customRecipeId.isNullOrBlank()) {
+                    customSourceRepository.getNovelDetails(customRecipeId)
+                } else {
+                    exploreRepository.getNovelDetails(baseUrl, sourceName)
+                }
                 if (details != null && details.chapters.isNotEmpty()) {
                     updateState { it.copy(fullChapterList = details.chapters, isChaptersLoading = false, isFullChapterListLoaded = true) }
                     updateNavigationUrls()

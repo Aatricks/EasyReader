@@ -8,6 +8,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import io.aatricks.novelscraper.data.local.AppDatabase
+import io.aatricks.novelscraper.data.local.CustomSourceRecipeDao
 import io.aatricks.novelscraper.data.local.LibraryDao
 import javax.inject.Singleton
 
@@ -22,7 +23,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "easy_reader_v2.db"
         )
-        .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+        .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
         .fallbackToDestructiveMigration(false)
         .build()
     }
@@ -31,5 +32,11 @@ object DatabaseModule {
     @Singleton
     fun provideLibraryDao(database: AppDatabase): LibraryDao {
         return database.libraryDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideCustomSourceRecipeDao(database: AppDatabase): CustomSourceRecipeDao {
+        return database.customSourceRecipeDao()
     }
 }

@@ -212,7 +212,7 @@ private fun openLatestUpdateItem(
         return
     }
 
-    libraryViewModel.openNewChapter(baseTitle, item.baseNovelUrl, item.sourceName) { url, id ->
+    libraryViewModel.openNewChapter(baseTitle, item.baseNovelUrl, item.sourceName, item.customRecipeId) { url, id ->
         readerViewModel.openChapterFromStart(url, id)
         libraryViewModel.markAsCurrentlyReading(id)
         onCloseDrawer()

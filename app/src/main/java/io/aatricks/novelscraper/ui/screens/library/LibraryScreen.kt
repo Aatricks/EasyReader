@@ -109,6 +109,9 @@ fun LibraryScreen(
                         urlInput = ""
                         isAddSectionVisible = false
                     },
+                    onAiSetupClick = {
+                        libraryViewModel.beginAiSetup(urlInput)
+                    },
                     onOpenPdfClick = {
                         onNavigateBack()
                         onOpenFilePicker()
@@ -170,6 +173,51 @@ fun LibraryScreen(
             }
         }
     }
+
+    libraryUiState.aiSetupPreview?.let { preview ->
+        AlertDialog(
+            onDismissRequest = { libraryViewModel.dismissAiSetupPreview() },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        libraryViewModel.confirmAiSetup()
+                        urlInput = ""
+                        isAddSectionVisible = false
+                    }
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { libraryViewModel.dismissAiSetupPreview() }) { Text("Cancel") }
+            },
+            title = { Text("Confirm AI Setup") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)) {
+                    Text("Source: ${preview.displayName}")
+                    Text("Title: ${preview.title}")
+                    Text("Type: ${preview.contentKind.name.replace('_', ' ')}")
+                    Text("Base URL: ${preview.baseNovelUrl}")
+                    Text("First chapter: ${preview.firstChapterTitle}")
+                    Text("Detected chapters: ${preview.chapterCount}")
+                }
+            }
+        )
+    }
+
+    libraryUiState.aiSetupFailure?.let { failure ->
+        AlertDialog(
+            onDismissRequest = { libraryViewModel.dismissAiSetupFailure() },
+            confirmButton = {
+                TextButton(onClick = { libraryViewModel.addFallbackFromAiSetupFailure() }) {
+                    Text("Add Generic")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { libraryViewModel.dismissAiSetupFailure() }) { Text("Close") }
+            },
+            title = { Text("AI Setup Failed") },
+            text = { Text(failure) }
+        )
+    }
 }
 
 @Composable
@@ -177,6 +225,7 @@ private fun AddNovelSection(
     urlInput: String,
     onUrlChange: (String) -> Unit,
     onAddClick: () -> Unit,
+    onAiSetupClick: () -> Unit,
     onOpenPdfClick: () -> Unit
 ): Unit {
     Surface(
@@ -237,6 +286,17 @@ private fun AddNovelSection(
                     Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
                     Text("Add from URL", fontWeight = FontWeight.SemiBold)
+                }
+
+                FilledTonalButton(
+                    onClick = onAiSetupClick,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
+                    enabled = urlInput.startsWith("http://") || urlInput.startsWith("https://"),
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Text("AI Setup", fontWeight = FontWeight.SemiBold)
                 }
 
                 Button(

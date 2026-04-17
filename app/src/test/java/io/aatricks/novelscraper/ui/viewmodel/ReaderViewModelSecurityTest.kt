@@ -4,6 +4,7 @@ import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
+import io.aatricks.novelscraper.data.repository.custom.CustomSourceRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +35,9 @@ class ReaderViewModelSecurityTest {
     @Mock
     lateinit var preferencesManager: PreferencesManager
 
+    @Mock
+    lateinit var customSourceRepository: CustomSourceRepository
+
     private lateinit var viewModel: ReaderViewModel
 
     @Before
@@ -57,7 +61,8 @@ class ReaderViewModelSecurityTest {
             contentRepository,
             libraryRepository,
             exploreRepository,
-            preferencesManager
+            preferencesManager,
+            customSourceRepository
         )
     }
 

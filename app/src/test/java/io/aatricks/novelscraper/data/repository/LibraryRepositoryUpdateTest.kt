@@ -5,6 +5,7 @@ import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.model.ChapterInfo
 import io.aatricks.novelscraper.data.model.ExploreItem
 import io.aatricks.novelscraper.data.model.LibraryItem
+import io.aatricks.novelscraper.data.repository.custom.CustomSourceRepository
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -25,6 +26,9 @@ class LibraryRepositoryUpdateTest {
 
     @Mock
     private lateinit var exploreRepository: ExploreRepository
+
+    @Mock
+    private lateinit var customSourceRepository: CustomSourceRepository
 
     private lateinit var repository: LibraryRepository
 
@@ -206,6 +210,33 @@ class LibraryRepositoryUpdateTest {
         // Verify that it was updated
         verify(libraryDao).insertItems(argThat {
             size == 1 && first().id == "old_but_reading" && first().totalChapters == 15
+        })
+    }
+
+    @Test
+    fun testRefreshLibraryUpdates_uses_custom_source_repository_when_recipe_present() = runBlocking {
+        val item = LibraryItem(
+            id = "custom",
+            title = "Custom Novel",
+            url = "url_custom",
+            baseTitle = "Custom Novel",
+            baseNovelUrl = "https://example.com/series/custom-novel",
+            sourceName = "Example Source",
+            totalChapters = 10,
+            customRecipeId = "recipe-1"
+        )
+        val chapters = List(15) { ChapterInfo("Ch $it", "url$it") }
+
+        whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(item)))
+        whenever(customSourceRepository.getNovelDetails("recipe-1"))
+            .thenReturn(ExploreItem("Custom Novel", item.baseNovelUrl, source = "Example Source", chapters = chapters))
+
+        repository.refreshLibraryUpdates(exploreRepository, customSourceRepository)
+
+        verify(customSourceRepository).getNovelDetails("recipe-1")
+        verify(exploreRepository, never()).getNovelDetails(any(), any())
+        verify(libraryDao).insertItems(argThat {
+            size == 1 && first().id == "custom" && first().totalChapters == 15
         })
     }
 }

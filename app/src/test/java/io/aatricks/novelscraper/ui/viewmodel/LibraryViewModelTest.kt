@@ -8,6 +8,7 @@ import io.aatricks.novelscraper.data.model.PrefetchMode
 import io.aatricks.novelscraper.data.model.PrefetchResult
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
+import io.aatricks.novelscraper.data.repository.custom.CustomSourceRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -28,6 +29,7 @@ class LibraryViewModelTest {
     private val libraryRepository: LibraryRepository = mock()
     private val contentRepository: ContentRepository = mock()
     private val exploreRepository: ExploreRepository = mock()
+    private val customSourceRepository: CustomSourceRepository = mock()
 
     private lateinit var viewModel: LibraryViewModel
 
@@ -47,7 +49,8 @@ class LibraryViewModelTest {
         viewModel = LibraryViewModel(
             libraryRepository,
             contentRepository,
-            exploreRepository
+            exploreRepository,
+            customSourceRepository
         )
     }
 
@@ -98,7 +101,7 @@ class LibraryViewModelTest {
 
     @Test
     fun `toggle source expansion updates collapsed sources and persists`() = runTest {
-        val vm = LibraryViewModel(libraryRepository, contentRepository, exploreRepository)
+        val vm = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, customSourceRepository)
         advanceUntilIdle()
 
         vm.toggleSourceExpansion("NovelFire")
@@ -159,7 +162,8 @@ class LibraryViewModelTest {
                 any(),
                 any(),
                 any(),
-                any()
+                any(),
+                anyOrNull()
             )
         ).thenReturn(createdItem)
 
@@ -177,7 +181,8 @@ class LibraryViewModelTest {
             insertedBaseTitle.capture(),
             insertedBaseNovelUrl.capture(),
             insertedSourceName.capture(),
-            insertedTotalChapters.capture()
+            insertedTotalChapters.capture(),
+            anyOrNull()
         )
         assertEquals("Chapter 10", insertedTitle.firstValue)
         assertEquals(latestUrl, insertedUrl.firstValue)
@@ -244,6 +249,84 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun `beginAiSetup stores preview and confirmAiSetup saves recipe-backed item`() = runTest {
+        val url = "https://example.com/unsupported"
+        val preview = io.aatricks.novelscraper.data.model.AiSourceSetupPreview(
+            displayName = "Example Source",
+            title = "The Great Story",
+            baseNovelUrl = "https://example.com/series/the-great-story",
+            firstChapterUrl = "https://example.com/series/the-great-story/chapter-1",
+            firstChapterTitle = "Chapter 1",
+            chapterCount = 12,
+            contentKind = io.aatricks.novelscraper.data.model.CustomSourceContentKind.NOVEL,
+            recipe = io.aatricks.novelscraper.data.model.CustomSourceRecipeDefinition(
+                displayName = "Example Source",
+                baseNovelUrl = "https://example.com/series/the-great-story",
+                contentKind = io.aatricks.novelscraper.data.model.CustomSourceContentKind.NOVEL,
+                titleSelector = ".series-title",
+                chapterItemSelector = ".chapter-list li",
+                textContentSelector = ".chapter-content p"
+            )
+        )
+        val savedRecipe = io.aatricks.novelscraper.data.model.CustomSourceRecipe(
+            id = "recipe-1",
+            displayName = "Example Source",
+            baseNovelUrl = preview.baseNovelUrl,
+            contentKind = preview.contentKind,
+            recipeJson = "{}",
+            createdAt = 1L,
+            updatedAt = 1L,
+            lastValidatedAt = 1L
+        )
+        doReturn(Result.success(preview)).whenever(customSourceRepository).generateSetupPreview(url)
+        doReturn(savedRecipe).whenever(customSourceRepository).saveRecipe(preview)
+        whenever(libraryRepository.getItemByUrl(preview.firstChapterUrl)).thenReturn(null)
+        whenever(
+            libraryRepository.addItem(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                anyOrNull()
+            )
+        ).thenReturn(
+            LibraryItem(
+                id = "item-1",
+                title = "The Great Story - Chapter 1",
+                url = preview.firstChapterUrl,
+                baseTitle = preview.title,
+                baseNovelUrl = preview.baseNovelUrl,
+                sourceName = preview.displayName,
+                customRecipeId = savedRecipe.id
+            )
+        )
+
+        viewModel.beginAiSetup(url)
+        advanceUntilIdle()
+
+        assertEquals(preview, viewModel.uiState.value.aiSetupPreview)
+
+        viewModel.confirmAiSetup()
+        advanceUntilIdle()
+
+        verify(libraryRepository).addItem(
+            any(),
+            eq(preview.firstChapterUrl),
+            eq(ContentType.WEB),
+            any(),
+            eq(preview.title),
+            eq(preview.baseNovelUrl),
+            eq(preview.displayName),
+            eq(preview.chapterCount),
+            eq(savedRecipe.id)
+        )
+    }
+
+    @Test
     fun `addChapters uses user requested prefetch and updates cache state`() = runTest {
         val chapter = ChapterInfo("Chapter 11", "https://example.com/novel/chapter-11")
         val prefetchResult = PrefetchResult(
@@ -264,7 +347,8 @@ class LibraryViewModelTest {
                 any(),
                 any(),
                 any(),
-                any()
+                any(),
+                anyOrNull()
             )
         ).thenReturn(
             LibraryItem(

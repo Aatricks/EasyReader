@@ -35,7 +35,8 @@ data class LibraryItem(
     val baseTitle: String = "",
     val readingMode: ReadingMode = ReadingMode.VERTICAL,
     val baseNovelUrl: String = "",
-    val sourceName: String = ""
+    val sourceName: String = "",
+    val customRecipeId: String? = null
 ) {
     init {
         require(title.isNotBlank()) { "Title cannot be blank" }
