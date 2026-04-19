@@ -85,6 +85,7 @@ private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
         ?: items.maxByOrNull { it.dateAdded }
         ?: fallbackItem
     val latestKnownChapterCount = items.maxOfOrNull { it.totalChapters } ?: 0
+    val isFinished = items.any { isNovelFinished(it, latestKnownChapterCount) }
 
     return DrawerNovelEntry(
         novelKey = libraryNovelKey(fallbackItem),
@@ -92,7 +93,7 @@ private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
         resumeItem = resumeItem,
         updateItem = updateItem,
         hasUpdates = items.any { it.hasUpdates },
-        isFinished = isNovelFinished(resumeItem, latestKnownChapterCount),
+        isFinished = isFinished,
         activityTimestamp = items.maxOfOrNull { maxOf(it.lastRead, it.dateAdded) } ?: 0L,
         updateTimestamp = items.filter { it.hasUpdates }.maxOfOrNull { it.dateAdded } ?: Long.MIN_VALUE
     )

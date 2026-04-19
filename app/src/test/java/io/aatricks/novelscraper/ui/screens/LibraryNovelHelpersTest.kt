@@ -129,6 +129,54 @@ class LibraryNovelHelpersTest {
         assertTrue(sections.recentUpdates.isEmpty())
     }
 
+    @Test
+    fun `buildDrawerNovelSections hides finished novels even when resume item is older chapter`() {
+        val sections = buildDrawerNovelSections(
+            listOf(
+                libraryItem(
+                    id = "current-1",
+                    title = "Chapter 2",
+                    baseTitle = "Current Novel",
+                    currentChapter = "Chapter 2",
+                    totalChapters = 10,
+                    progress = 20,
+                    lastRead = 300,
+                    isCurrentlyReading = true
+                ),
+                libraryItem(
+                    id = "finished-old-1",
+                    title = "Chapter 18",
+                    baseTitle = "Finished But Opened Older",
+                    currentChapter = "Chapter 18",
+                    totalChapters = 20,
+                    progress = 25,
+                    lastRead = 250,
+                    isCurrentlyReading = true
+                ),
+                libraryItem(
+                    id = "finished-last-1",
+                    title = "Chapter 20",
+                    baseTitle = "Finished But Opened Older",
+                    currentChapter = "Chapter 20",
+                    totalChapters = 20,
+                    progress = 100,
+                    lastRead = 260
+                ),
+                libraryItem(
+                    id = "unfinished-1",
+                    title = "Chapter 11",
+                    baseTitle = "Still Reading",
+                    currentChapter = "Chapter 11",
+                    totalChapters = 20,
+                    progress = 100,
+                    lastRead = 200
+                )
+            )
+        )
+
+        assertEquals(listOf("Still Reading"), sections.recentNovels.map { it.displayTitle })
+    }
+
     private fun libraryItem(
         id: String,
         title: String,
