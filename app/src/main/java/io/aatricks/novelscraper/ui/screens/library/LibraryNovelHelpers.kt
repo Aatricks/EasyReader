@@ -4,6 +4,7 @@ import io.aatricks.novelscraper.data.model.LibraryItem
 import io.aatricks.novelscraper.util.TextUtils
 
 private const val FINISHED_PROGRESS_THRESHOLD = 90
+private const val FINISHED_CHAPTER_TOLERANCE = 2
 
 internal data class DrawerNovelEntry(
     val novelKey: String,
@@ -69,11 +70,10 @@ internal fun buildDrawerNovelSections(items: List<LibraryItem>): DrawerNovelSect
 }
 
 internal fun isNovelFinished(item: LibraryItem, latestKnownChapterCount: Int): Boolean {
-    if (latestKnownChapterCount <= 0) return false
+    if (item.progress < FINISHED_PROGRESS_THRESHOLD) return false
 
     val currentChapterNumber = extractLibraryChapterNumber(item) ?: return false
-    return currentChapterNumber >= latestKnownChapterCount.toDouble() &&
-        item.progress >= FINISHED_PROGRESS_THRESHOLD
+    return latestKnownChapterCount > 0 && currentChapterNumber >= latestKnownChapterCount.toDouble()
 }
 
 private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
@@ -88,14 +88,31 @@ private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
         ?: items.maxByOrNull { it.dateAdded }
         ?: fallbackItem
     val latestKnownChapterCount = items.maxOfOrNull { it.totalChapters } ?: 0
-    val isFinished = items.any { isNovelFinished(it, latestKnownChapterCount) }
+    val hasUpdates = items.any { it.hasUpdates }
+    val highestKnownLibraryChapterNumber = items
+        .mapNotNull(::extractLibraryChapterNumber)
+        .maxOrNull()
+    val isFinished = items.any { item ->
+        isNovelFinished(item, latestKnownChapterCount) ||
+            (
+                !hasUpdates &&
+                    highestKnownLibraryChapterNumber != null &&
+                    item.progress >= FINISHED_PROGRESS_THRESHOLD &&
+                    extractLibraryChapterNumber(item)?.let { currentChapterNumber ->
+                        val isAtHighestStoredChapter = currentChapterNumber >= highestKnownLibraryChapterNumber
+                        val isCloseToKnownTotal = latestKnownChapterCount <= 0 ||
+                            latestKnownChapterCount.toDouble() - currentChapterNumber <= FINISHED_CHAPTER_TOLERANCE
+                        isAtHighestStoredChapter && isCloseToKnownTotal
+                    } == true
+                )
+    }
 
     return DrawerNovelEntry(
         novelKey = libraryNovelKey(fallbackItem),
         displayTitle = libraryNovelDisplayTitle(fallbackItem),
         resumeItem = resumeItem,
         updateItem = updateItem,
-        hasUpdates = items.any { it.hasUpdates },
+        hasUpdates = hasUpdates,
         isFinished = isFinished,
         activityTimestamp = items.maxOfOrNull { maxOf(it.lastRead, it.dateAdded) } ?: 0L,
         updateTimestamp = items.filter { it.hasUpdates }.maxOfOrNull { it.dateAdded } ?: Long.MIN_VALUE

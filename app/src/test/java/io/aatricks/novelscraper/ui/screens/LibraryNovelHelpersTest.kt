@@ -187,6 +187,53 @@ class LibraryNovelHelpersTest {
     }
 
     @Test
+    fun `buildDrawerNovelSections hides novels when highest stored chapter is nearly complete and no updates exist`() {
+        val sections = buildDrawerNovelSections(
+            listOf(
+                libraryItem(
+                    id = "current-1",
+                    title = "Chapter 2",
+                    baseTitle = "Current Novel",
+                    currentChapter = "Chapter 2",
+                    totalChapters = 10,
+                    progress = 20,
+                    lastRead = 300,
+                    isCurrentlyReading = true
+                ),
+                libraryItem(
+                    id = "mismatch-1",
+                    title = "Chapter 1185",
+                    baseTitle = "Count Mismatch Novel",
+                    currentChapter = "Chapter 1185",
+                    totalChapters = 1187,
+                    progress = 99,
+                    lastRead = 260
+                ),
+                libraryItem(
+                    id = "mismatch-2",
+                    title = "Chapter 1184",
+                    baseTitle = "Count Mismatch Novel",
+                    currentChapter = "Chapter 1184",
+                    totalChapters = 1187,
+                    progress = 100,
+                    lastRead = 250
+                ),
+                libraryItem(
+                    id = "unfinished-1",
+                    title = "Chapter 11",
+                    baseTitle = "Still Reading",
+                    currentChapter = "Chapter 11",
+                    totalChapters = 20,
+                    progress = 100,
+                    lastRead = 200
+                )
+            )
+        )
+
+        assertEquals(listOf("Still Reading"), sections.recentNovels.map { it.displayTitle })
+    }
+
+    @Test
     fun `isNovelFinished requires at least ninety percent progress on latest chapter`() {
         val almostDone = libraryItem(
             id = "almost-done",
