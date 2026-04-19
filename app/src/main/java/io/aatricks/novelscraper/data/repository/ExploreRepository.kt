@@ -2,6 +2,7 @@ package io.aatricks.novelscraper.data.repository
 
 import io.aatricks.novelscraper.data.model.ExploreItem
 import io.aatricks.novelscraper.data.repository.source.NovelSource
+import io.aatricks.novelscraper.util.normalizeExploreItemDetails
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -68,7 +69,7 @@ class ExploreRepository @Inject constructor(
 
     suspend fun getNovelDetails(url: String, sourceName: String): ExploreItem? {
         val source = sources.find { it.name == sourceName } ?: return null
-        return runCatching { source.getNovelDetails(url) }.getOrNull()
+        return runCatching { normalizeExploreItemDetails(source.getNovelDetails(url)) }.getOrNull()
     }
 
     private fun filterSources(sourceName: String?): List<NovelSource> {

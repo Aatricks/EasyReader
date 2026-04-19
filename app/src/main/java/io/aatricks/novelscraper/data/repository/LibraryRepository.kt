@@ -1,6 +1,7 @@
 package io.aatricks.novelscraper.data.repository
 
 import io.aatricks.novelscraper.util.TextUtils
+import io.aatricks.novelscraper.util.normalizeChapterList
 import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.local.LibraryDao
 import io.aatricks.novelscraper.data.model.LibraryItem
@@ -339,7 +340,7 @@ class LibraryRepository @Inject constructor(
                                             latestInLibrary.sourceName
                                         )
                                         if (details != null && details.chapters.isNotEmpty()) {
-                                            val sourceChapterCount = details.chapters.size
+                                            val sourceChapterCount = normalizeChapterList(details.chapters).size
                                             if (sourceChapterCount > latestInLibrary.totalChapters) {
                                                 val itemToMark = items.find { it.isCurrentlyReading } ?: latestInLibrary
                                                 items.map { item ->

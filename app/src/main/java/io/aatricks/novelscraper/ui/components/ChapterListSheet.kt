@@ -55,6 +55,7 @@ import io.aatricks.novelscraper.data.model.ChapterInfo
 import io.aatricks.novelscraper.ui.theme.EasyReaderSpacing
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
+import io.aatricks.novelscraper.util.normalizeChapterList
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -81,11 +82,13 @@ fun ChapterListSheet(
         val libraryUrls = libraryItemsInGroup.map { it.url }.toSet()
         val readUrls = libraryItemsInGroup.filter { it.progress == 100 }.map { it.url }.toSet()
 
-        val allChapters = uiState.fullChapterList.ifEmpty {
-            libraryItemsInGroup.map {
-                ChapterInfo(it.currentChapter.ifBlank { it.title }, it.url)
+        val allChapters = normalizeChapterList(
+            uiState.fullChapterList.ifEmpty {
+                libraryItemsInGroup.map {
+                    ChapterInfo(it.currentChapter.ifBlank { it.title }, it.url)
+                }
             }
-        }
+        )
         val cacheStates = libraryUiState.chapterCacheStates
 
         val filteredChapters = if (isSelectionMode) {

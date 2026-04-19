@@ -13,6 +13,7 @@ import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
 import io.aatricks.novelscraper.util.TextUtils
+import io.aatricks.novelscraper.util.normalizeChapterList
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.*
@@ -324,11 +325,12 @@ class LibraryViewModel @Inject constructor(
             runCatching {
                 updateState { it.copy(isLoading = true) }
                 val details = exploreRepository.getNovelDetails(baseNovelUrl, sourceName)
-                if (details == null || details.chapters.isEmpty()) {
+                val normalizedChapters = normalizeChapterList(details?.chapters.orEmpty())
+                if (details == null || normalizedChapters.isEmpty()) {
                     throw Exception("No chapters found for this novel")
                 }
 
-                val latestChapter = selectLatestChapter(details.chapters)
+                val latestChapter = selectLatestChapter(normalizedChapters)
                     ?: throw Exception("No latest chapter found for this novel")
                 var item = repository.getItemByUrl(latestChapter.url)
                 
@@ -343,10 +345,10 @@ class LibraryViewModel @Inject constructor(
                         baseTitle = baseTitle,
                         baseNovelUrl = baseNovelUrl,
                         sourceName = sourceName,
-                        totalChapters = details.chapters.size
+                        totalChapters = normalizedChapters.size
                     )
-                } else if (item.totalChapters < details.chapters.size) {
-                    repository.updateItem(item.copy(totalChapters = details.chapters.size))
+                } else if (item.totalChapters < normalizedChapters.size) {
+                    repository.updateItem(item.copy(totalChapters = normalizedChapters.size))
                 }
                 
                 repository.clearUpdateIndicator(item.id)

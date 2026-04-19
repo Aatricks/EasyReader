@@ -9,6 +9,7 @@ import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
 import io.aatricks.novelscraper.ui.theme.AccentTheme
+import io.aatricks.novelscraper.util.normalizeChapterList
 import io.aatricks.novelscraper.ui.util.normalizeRestoreOffset
 import io.aatricks.novelscraper.util.TextUtils
 import io.aatricks.novelscraper.util.UrlSecurity
@@ -515,13 +516,15 @@ class ReaderViewModel @Inject constructor(
         if (currentFullList.isEmpty() && baseTitle.isNotBlank()) {
             val libChapters = libraryRepository.getChaptersByBaseTitle(baseTitle)
             if (libChapters.isNotEmpty()) {
-                currentFullList = libChapters.map {
-                    ChapterInfo(
-                        title = it.title,
-                        url = it.url,
-                        number = TextUtils.extractChapterNumber(it.currentChapter.ifBlank { it.title })
-                    )
-                }
+                currentFullList = normalizeChapterList(
+                    libChapters.map {
+                        ChapterInfo(
+                            title = it.title,
+                            url = it.url,
+                            number = TextUtils.extractChapterNumber(it.currentChapter.ifBlank { it.title })
+                        )
+                    }
+                )
             }
         }
 
@@ -1202,13 +1205,20 @@ class ReaderViewModel @Inject constructor(
             runCatching {
                 updateState { it.copy(isChaptersLoading = true) }
                 val details = exploreRepository.getNovelDetails(baseUrl, sourceName)
-                if (details != null && details.chapters.isNotEmpty()) {
-                    updateState { it.copy(fullChapterList = details.chapters, isChaptersLoading = false, isFullChapterListLoaded = true) }
+                val normalizedChapters = normalizeChapterList(details?.chapters.orEmpty())
+                if (details != null && normalizedChapters.isNotEmpty()) {
+                    updateState {
+                        it.copy(
+                            fullChapterList = normalizedChapters,
+                            isChaptersLoading = false,
+                            isFullChapterListLoaded = true
+                        )
+                    }
                     updateNavigationUrls()
                     currentLibraryItemId?.let { id ->
                         libraryRepository.getItemById(id)?.let { item ->
-                            if (item.totalChapters != details.chapters.size) {
-                                libraryRepository.updateItem(item.copy(totalChapters = details.chapters.size))
+                            if (item.totalChapters != normalizedChapters.size) {
+                                libraryRepository.updateItem(item.copy(totalChapters = normalizedChapters.size))
                             }
                         }
                     }

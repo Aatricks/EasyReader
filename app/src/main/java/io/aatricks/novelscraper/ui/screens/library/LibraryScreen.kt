@@ -59,6 +59,12 @@ fun LibraryScreen(
 
     var urlInput by remember { mutableStateOf("") }
     var isAddSectionVisible by remember { mutableStateOf(false) }
+    val totalNovelCount = remember(libraryUiState.items) {
+        countDistinctNovelTitles(libraryUiState.items)
+    }
+    val visibleNovelCount = remember(libraryUiState.filteredItems) {
+        countDistinctNovelTitles(libraryUiState.filteredItems)
+    }
 
     LaunchedEffect(Unit) {
         summaryViewModel.initializeSummaryService()
@@ -129,8 +135,8 @@ fun LibraryScreen(
                 Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
                 LibraryStatusRow(
                     query = searchQuery,
-                    totalCount = libraryUiState.items.size,
-                    visibleCount = libraryUiState.filteredItems.size,
+                    totalCount = totalNovelCount,
+                    visibleCount = visibleNovelCount,
                     isSelectionMode = libraryUiState.isSelectionMode,
                     selectedCount = libraryUiState.selectedCount,
                     onSelectionClick = {

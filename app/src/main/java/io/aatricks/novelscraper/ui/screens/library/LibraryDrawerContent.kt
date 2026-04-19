@@ -38,33 +38,12 @@ fun LibraryDrawerContent(
     onCloseDrawer: () -> Unit
 ): Unit {
     val libraryUiState by libraryViewModel.uiState.collectAsState()
-
-    val continueItem = libraryUiState.currentlyReading
-        ?: libraryUiState.items.maxByOrNull { it.lastRead }
-
-    val recentUpdates = remember(libraryUiState.items, continueItem?.id) {
-        libraryUiState.items
-            .filter { it.hasUpdates }
-            .groupBy { it.baseTitle.ifBlank { it.title } }
-            .values
-            .mapNotNull { group -> group.maxByOrNull { it.dateAdded } }
-            .filterNot { it.id == continueItem?.id }
-            .sortedByDescending { it.dateAdded }
-            .take(4)
+    val drawerSections = remember(libraryUiState.items) {
+        buildDrawerNovelSections(libraryUiState.items)
     }
-
-    val recentUpdateIds = remember(recentUpdates) {
-        recentUpdates.map { it.id }.toSet()
-    }
-
-    val recentItems = remember(libraryUiState.items, continueItem?.id, recentUpdateIds) {
-        libraryUiState.items
-            .sortedByDescending { maxOf(it.lastRead, it.dateAdded) }
-            .distinctBy { it.baseTitle.ifBlank { it.title } }
-            .filterNot { it.id == continueItem?.id }
-            .filterNot { it.id in recentUpdateIds }
-            .take(6)
-    }
+    val continueNovel = drawerSections.continueNovel
+    val recentUpdates = drawerSections.recentUpdates
+    val recentItems = drawerSections.recentNovels
 
     LazyColumn(
         modifier = Modifier
@@ -121,13 +100,13 @@ fun LibraryDrawerContent(
             }
         }
 
-        if (continueItem != null) {
+        if (continueNovel != null) {
             item {
                 ContinueReadingCard(
-                    item = continueItem,
+                    item = continueNovel.resumeItem,
                     onClick = {
                         openLibraryItem(
-                            item = continueItem,
+                            item = continueNovel.resumeItem,
                             libraryViewModel = libraryViewModel,
                             readerViewModel = readerViewModel,
                             onCloseDrawer = onCloseDrawer
@@ -139,14 +118,14 @@ fun LibraryDrawerContent(
 
         if (recentUpdates.isNotEmpty()) {
             item { DrawerSectionLabel("Latest updates") }
-            items(recentUpdates, key = { "update_${it.id}" }) { item ->
+            items(recentUpdates, key = { "update_${it.novelKey}" }) { novel ->
                 QuickLibraryItem(
-                    item = item,
+                    item = novel.updateItem,
                     supportingText = "Start at the newest chapter",
                     trailingLabel = "Open latest",
                     onClick = {
                         openLatestUpdateItem(
-                            item = item,
+                            item = novel.updateItem,
                             libraryViewModel = libraryViewModel,
                             readerViewModel = readerViewModel,
                             onCloseDrawer = onCloseDrawer
@@ -158,16 +137,16 @@ fun LibraryDrawerContent(
 
         if (recentItems.isNotEmpty()) {
             item { DrawerSectionLabel("Recent") }
-            items(recentItems, key = { "recent_${it.id}" }) { item ->
+            items(recentItems, key = { "recent_${it.novelKey}" }) { novel ->
                 QuickLibraryItem(
-                    item = item,
-                    supportingText = item.currentChapter.ifBlank { "Resume where you left off" }
+                    item = novel.resumeItem,
+                    supportingText = novel.resumeItem.currentChapter.ifBlank { "Resume where you left off" }
                         .let { chapter ->
                             if (chapter.startsWith("Resume")) chapter else "Resume $chapter"
                         },
                     onClick = {
                         openLibraryItem(
-                            item = item,
+                            item = novel.resumeItem,
                             libraryViewModel = libraryViewModel,
                             readerViewModel = readerViewModel,
                             onCloseDrawer = onCloseDrawer

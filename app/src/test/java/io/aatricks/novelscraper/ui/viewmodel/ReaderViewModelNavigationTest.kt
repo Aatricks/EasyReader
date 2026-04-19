@@ -244,4 +244,53 @@ class ReaderViewModelNavigationTest {
         verify(contentRepository, times(1)).loadContent(targetUrl)
         assertEquals(targetUrl, viewModel.uiState.value.content?.url)
     }
+
+    @Test
+    fun `loadContent normalizes duplicate source chapters before exposing fullChapterList`() = runTest {
+        val baseUrl = "http://example.com/series"
+        val sourceName = "Source"
+        val currentUrl = "http://example.com/ch2"
+        val currentItem = LibraryItem(
+            id = "current-id",
+            title = "Chapter 2",
+            url = currentUrl,
+            currentChapter = "Chapter 2",
+            baseTitle = "My Manga",
+            baseNovelUrl = baseUrl,
+            sourceName = sourceName,
+            totalChapters = 1
+        )
+        val details = ExploreItem(
+            title = "My Manga",
+            url = baseUrl,
+            source = sourceName,
+            chapters = listOf(
+                ChapterInfo("Chapter 1", "http://example.com/ch1"),
+                ChapterInfo("Chapter 2", currentUrl),
+                ChapterInfo("Chapter 2 duplicate", currentUrl),
+                ChapterInfo("Chapter 3", "http://example.com/ch3")
+            )
+        )
+
+        whenever(contentRepository.loadContent(currentUrl)).thenReturn(
+            ContentResult.Success(listOf(ContentElement.Text("Current")), "Chapter 2", currentUrl)
+        )
+        whenever(contentRepository.incrementChapterUrl(currentUrl)).thenReturn("http://example.com/guessed-next")
+        whenever(contentRepository.decrementChapterUrl(currentUrl)).thenReturn("http://example.com/ch1")
+        whenever(libraryRepository.getItemById(currentItem.id)).thenReturn(currentItem)
+        whenever(libraryRepository.updateItem(any())).thenReturn(true)
+        whenever(exploreRepository.getNovelDetails(baseUrl, sourceName)).thenReturn(details)
+
+        viewModel.loadContent(currentUrl, currentItem.id)
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("http://example.com/ch1", currentUrl, "http://example.com/ch3"),
+            viewModel.uiState.value.fullChapterList.map { it.url }
+        )
+        verify(libraryRepository).updateItem(check<LibraryItem> {
+            assertEquals(currentItem.id, it.id)
+            assertEquals(3, it.totalChapters)
+        })
+    }
 }
