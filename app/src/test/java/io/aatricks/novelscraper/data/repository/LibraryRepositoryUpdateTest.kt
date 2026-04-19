@@ -17,6 +17,9 @@ import org.mockito.kotlin.*
 
 class LibraryRepositoryUpdateTest {
 
+    private fun chapterList(size: Int, prefix: String): List<ChapterInfo> =
+        List(size) { index -> ChapterInfo("Ch $index", "$prefix/ch-$index") }
+
     @Mock
     private lateinit var preferencesManager: PreferencesManager
 
@@ -95,9 +98,9 @@ class LibraryRepositoryUpdateTest {
         whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(item1, item2, item3)))
 
         // Mock explore repo to return more chapters for each
-        val chapters1 = List(15) { ChapterInfo("Ch $it", "url") }
-        val chapters2 = List(25) { ChapterInfo("Ch $it", "url") }
-        val chapters3 = List(35) { ChapterInfo("Ch $it", "url") }
+        val chapters1 = chapterList(15, "novel1")
+        val chapters2 = chapterList(25, "novel2")
+        val chapters3 = chapterList(35, "novel3")
 
         whenever(exploreRepository.getNovelDetails("novel1", "Source1"))
             .thenReturn(ExploreItem("Novel 1", "novel1", source = "Source1", chapters = chapters1))
@@ -122,7 +125,7 @@ class LibraryRepositoryUpdateTest {
         whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(item1, item2)))
 
         // Mock explore repo: novel1 succeeds, novel2 fails
-        val chapters1 = List(15) { ChapterInfo("Ch $it", "url") }
+        val chapters1 = chapterList(15, "novel1")
         whenever(exploreRepository.getNovelDetails("novel1", "Source1")).thenReturn(ExploreItem("Novel 1", "novel1", source = "Source1", chapters = chapters1))
         whenever(exploreRepository.getNovelDetails("novel2", "Source1")).thenThrow(RuntimeException("Network error"))
 
@@ -159,7 +162,7 @@ class LibraryRepositoryUpdateTest {
         whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(recentItem, oldItem)))
 
         // Mock explore repo
-        val chapters = List(15) { ChapterInfo("Ch $it", "url") }
+        val chapters = chapterList(15, "novel_recent")
         whenever(exploreRepository.getNovelDetails("novel_recent", "Source1"))
             .thenReturn(ExploreItem("Recent Novel", "novel_recent", source = "Source1", chapters = chapters))
 
@@ -193,7 +196,7 @@ class LibraryRepositoryUpdateTest {
         whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(oldButReadingItem)))
 
         // Mock explore repo
-        val chapters = List(15) { ChapterInfo("Ch $it", "url") }
+        val chapters = chapterList(15, "novel_old_reading")
         whenever(exploreRepository.getNovelDetails("novel_old_reading", "Source1"))
             .thenReturn(ExploreItem("Old Novel Reading", "novel_old_reading", source = "Source1", chapters = chapters))
 
