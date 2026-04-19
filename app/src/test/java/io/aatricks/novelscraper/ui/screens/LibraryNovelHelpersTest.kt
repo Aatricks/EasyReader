@@ -21,7 +21,7 @@ class LibraryNovelHelpersTest {
     }
 
     @Test
-    fun `buildDrawerNovelSections hides only novels finished on latest chapter`() {
+    fun `buildDrawerNovelSections hides novels only when latest chapter progress reaches threshold`() {
         val sections = buildDrawerNovelSections(
             listOf(
                 libraryItem(
@@ -51,6 +51,15 @@ class LibraryNovelHelpersTest {
                     totalChapters = 20,
                     progress = 65,
                     lastRead = 400
+                ),
+                libraryItem(
+                    id = "latest-nearly-done-1",
+                    title = "Chapter 20",
+                    baseTitle = "Latest Nearly Done",
+                    currentChapter = "Chapter 20",
+                    totalChapters = 20,
+                    progress = 90,
+                    lastRead = 375
                 ),
                 libraryItem(
                     id = "mid-read-1",
@@ -99,7 +108,7 @@ class LibraryNovelHelpersTest {
     }
 
     @Test
-    fun `buildDrawerNovelSections keeps recent novels when chapter progress is unknown`() {
+    fun `buildDrawerNovelSections keeps recent novels when latest chapter cannot be determined`() {
         val sections = buildDrawerNovelSections(
             listOf(
                 libraryItem(
@@ -175,6 +184,22 @@ class LibraryNovelHelpersTest {
         )
 
         assertEquals(listOf("Still Reading"), sections.recentNovels.map { it.displayTitle })
+    }
+
+    @Test
+    fun `isNovelFinished requires at least ninety percent progress on latest chapter`() {
+        val almostDone = libraryItem(
+            id = "almost-done",
+            title = "Chapter 20",
+            baseTitle = "Almost Done",
+            currentChapter = "Chapter 20",
+            totalChapters = 20,
+            progress = 89
+        )
+        val doneEnough = almostDone.copy(id = "done-enough", progress = 90)
+
+        assertTrue(!isNovelFinished(almostDone, latestKnownChapterCount = 20))
+        assertTrue(isNovelFinished(doneEnough, latestKnownChapterCount = 20))
     }
 
     private fun libraryItem(

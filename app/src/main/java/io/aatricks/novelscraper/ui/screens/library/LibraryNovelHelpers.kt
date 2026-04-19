@@ -3,6 +3,8 @@ package io.aatricks.novelscraper.ui.screens
 import io.aatricks.novelscraper.data.model.LibraryItem
 import io.aatricks.novelscraper.util.TextUtils
 
+private const val FINISHED_PROGRESS_THRESHOLD = 90
+
 internal data class DrawerNovelEntry(
     val novelKey: String,
     val displayTitle: String,
@@ -67,10 +69,11 @@ internal fun buildDrawerNovelSections(items: List<LibraryItem>): DrawerNovelSect
 }
 
 internal fun isNovelFinished(item: LibraryItem, latestKnownChapterCount: Int): Boolean {
-    if (latestKnownChapterCount <= 0 || item.progress < 100) return false
+    if (latestKnownChapterCount <= 0) return false
 
     val currentChapterNumber = extractLibraryChapterNumber(item) ?: return false
-    return currentChapterNumber >= latestKnownChapterCount.toDouble()
+    return currentChapterNumber >= latestKnownChapterCount.toDouble() &&
+        item.progress >= FINISHED_PROGRESS_THRESHOLD
 }
 
 private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
