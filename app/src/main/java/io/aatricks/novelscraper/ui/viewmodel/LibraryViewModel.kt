@@ -273,7 +273,7 @@ class LibraryViewModel @Inject constructor(
                 if (repository.getItemByUrl(url) != null) {
                     throw Exception("This item already exists in your library")
                 }
-                val contentType = inferContentType(url)
+                val contentType = contentRepository.inferContentType(url)
                 val fetchedTitle = runCatching { contentRepository.fetchTitle(url) }.getOrNull() ?: url
                 
                 if (contentType == ContentType.EPUB) {
@@ -303,15 +303,6 @@ class LibraryViewModel @Inject constructor(
             }.onFailure { e ->
                 updateState { it.copy(isLoading = false, error = "Failed to add item: ${e.message}") }
             }
-        }
-    }
-
-    private fun inferContentType(url: String): ContentType {
-        return when {
-            url.endsWith(".epub", ignoreCase = true) || url.contains("epub") -> ContentType.EPUB
-            url.endsWith(".pdf", ignoreCase = true) || url.contains("pdf") -> ContentType.PDF
-            url.endsWith(".html", ignoreCase = true) || url.endsWith(".htm", ignoreCase = true) -> ContentType.HTML
-            else -> ContentType.WEB
         }
     }
 

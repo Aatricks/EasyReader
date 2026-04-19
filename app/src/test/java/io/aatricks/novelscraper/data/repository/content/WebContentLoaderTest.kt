@@ -15,6 +15,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mockito.kotlin.any
@@ -27,6 +28,36 @@ import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicInteger
 
 class WebContentLoaderTest {
+
+    @Test
+    fun `colliding chapter urls keep distinct cache files and titles`() = runBlocking {
+        val urlA = "https://example.com/Aa"
+        val urlB = "https://example.com/BB"
+        val imageA = "https://example.com/image/Aa.jpg"
+        val imageB = "https://example.com/image/BB.jpg"
+        val htmlParser = mock<HtmlParser>()
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                buildResponse(chain.request(), "", "text/plain", code = 404)
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(urlA))).thenReturn(emptyList())
+        whenever(htmlParser.parse(any(), eq(urlB))).thenReturn(emptyList())
+
+        loader.getCachedFile(urlA).writeText("<html><head><title>Chapter A</title></head><body></body></html>")
+        loader.getCachedFile(urlB).writeText("<html><head><title>Chapter B</title></head><body></body></html>")
+
+        val resultA = loader.loadWebContent(urlA) as ContentResult.Success
+        val resultB = loader.loadWebContent(urlB) as ContentResult.Success
+
+        assertEquals(urlA.hashCode(), urlB.hashCode())
+        assertNotEquals(loader.getCachedFile(urlA).name, loader.getCachedFile(urlB).name)
+        assertNotEquals(loader.getCachedMediaFile(imageA).name, loader.getCachedMediaFile(imageB).name)
+        assertEquals("Chapter A", resultA.title)
+        assertEquals("Chapter B", resultB.title)
+    }
 
     @Test
     fun `loadWebContent uses cached html and cached media without range probes for image dimensions`() = runBlocking {

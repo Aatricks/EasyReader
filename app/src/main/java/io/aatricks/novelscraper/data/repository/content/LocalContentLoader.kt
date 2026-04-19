@@ -17,7 +17,8 @@ class LocalContentLoader @Inject constructor(
     @ApplicationContext private val context: Context,
     private val htmlParser: HtmlParser,
     private val pdfLoader: PdfContentLoader,
-    private val epubLoader: EpubContentLoader
+    private val epubLoader: EpubContentLoader,
+    private val contentUriTypeResolver: ContentUriTypeResolver
 ) {
     suspend fun loadLocalContent(url: String, pdfResumeIndex: Int? = null): ContentResult {
         if (!url.startsWith("content://") && !url.startsWith("file://")) {
@@ -25,7 +26,7 @@ class LocalContentLoader @Inject constructor(
         }
 
         val uri = Uri.parse(url)
-        val mime = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+        val mime = contentUriTypeResolver.resolveMimeType(url)
             ?: return loadFileByExtension(url, pdfResumeIndex)
         
         return when {

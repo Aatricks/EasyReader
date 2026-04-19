@@ -2,6 +2,7 @@ package io.aatricks.novelscraper.data.repository
 
 import android.content.Context
 import io.aatricks.novelscraper.data.model.ContentElement
+import io.aatricks.novelscraper.data.repository.content.ContentUriTypeResolver
 import io.aatricks.novelscraper.data.repository.content.EpubContentLoader
 import io.aatricks.novelscraper.data.repository.content.LocalContentLoader
 import io.aatricks.novelscraper.data.repository.content.PdfContentLoader
@@ -37,6 +38,7 @@ class ContentRepositoryConcurrencyTest {
         // Setup mocks
         val mockContext = mock<Context>()
         val mockHtmlParser = mock<HtmlParser>()
+        val contentUriTypeResolver = mock<ContentUriTypeResolver>()
         val cacheDir = File(System.getProperty("java.io.tmpdir"), "test_cache_${System.currentTimeMillis()}")
         val mediaCacheDir = File(cacheDir, "media_cache")
         val epubCacheDir = File(cacheDir, "epub_cache")
@@ -109,9 +111,9 @@ class ContentRepositoryConcurrencyTest {
         val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, cacheDir, mediaCacheDir)
         val pdfLoader = PdfContentLoader(mockContext)
         val epubLoader = EpubContentLoader(mockContext, epubCacheDir)
-        val localLoader = LocalContentLoader(mockContext, mockHtmlParser, pdfLoader, epubLoader)
+        val localLoader = LocalContentLoader(mockContext, mockHtmlParser, pdfLoader, epubLoader, contentUriTypeResolver)
         
-        val repository = ContentRepository(webLoader, pdfLoader, epubLoader, localLoader)
+        val repository = ContentRepository(webLoader, pdfLoader, epubLoader, localLoader, contentUriTypeResolver, mockContext, okHttpClient)
 
         // Mock HtmlParser to return many images
         val images = (1..50).map { ContentElement.Image("http://example.com/img$it.jpg", width = 100, height = 100) }

@@ -3,6 +3,7 @@ package io.aatricks.novelscraper.data.repository
 import android.content.Context
 import android.net.Uri
 import io.aatricks.novelscraper.data.model.EpubBook
+import io.aatricks.novelscraper.data.repository.content.ContentUriTypeResolver
 import io.aatricks.novelscraper.data.repository.content.EpubContentLoader
 import io.aatricks.novelscraper.data.repository.content.LocalContentLoader
 import io.aatricks.novelscraper.data.repository.content.PdfContentLoader
@@ -48,6 +49,7 @@ class ContentRepositoryEpubTest {
         val mockHtmlParser = mock<HtmlParser>()
         val okHttpClient = OkHttpClient()
         val mockContentResolver = mock<android.content.ContentResolver>()
+        val contentUriTypeResolver = mock<ContentUriTypeResolver>()
 
         // Mock cache dirs
         val cacheDir = File(tempDir, "cache")
@@ -65,6 +67,7 @@ class ContentRepositoryEpubTest {
         whenever(mockContentResolver.openInputStream(any())).thenAnswer(streamAnswer)
         whenever(mockContentResolver.openInputStream(isNull())).thenAnswer(streamAnswer)
         whenever(mockContentResolver.getType(any())).thenReturn("application/epub+zip")
+        whenever(contentUriTypeResolver.resolveMimeType(any())).thenReturn("application/epub+zip")
 
         // Mock Uri.parse
         mockedUriStatic = Mockito.mockStatic(Uri::class.java)
@@ -76,9 +79,9 @@ class ContentRepositoryEpubTest {
         val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, htmlCache, mediaCache)
         val pdfLoader = PdfContentLoader(mockContext)
         val epubLoader = EpubContentLoader(mockContext, epubCache)
-        val localLoader = LocalContentLoader(mockContext, mockHtmlParser, pdfLoader, epubLoader)
+        val localLoader = LocalContentLoader(mockContext, mockHtmlParser, pdfLoader, epubLoader, contentUriTypeResolver)
 
-        repository = ContentRepository(webLoader, pdfLoader, epubLoader, localLoader)
+        repository = ContentRepository(webLoader, pdfLoader, epubLoader, localLoader, contentUriTypeResolver, mockContext, okHttpClient)
     }
 
     @After

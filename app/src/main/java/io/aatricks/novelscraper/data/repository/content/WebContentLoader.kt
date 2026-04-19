@@ -5,6 +5,7 @@ import io.aatricks.novelscraper.data.model.ContentResult
 import io.aatricks.novelscraper.data.model.PrefetchMode
 import io.aatricks.novelscraper.data.model.PrefetchResult
 import io.aatricks.novelscraper.data.repository.HtmlParser
+import io.aatricks.novelscraper.util.CacheKeyUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -160,8 +161,11 @@ class WebContentLoader @Inject constructor(
     ): File? = withContext(Dispatchers.IO) {
         if (!imageUrl.startsWith("http")) return@withContext null
 
-        val cachedFile = getCachedMediaFile(imageUrl)
-        if (cachedFile.exists()) return@withContext cachedFile
+        findExistingCachedMediaFile(imageUrl)?.let { existingFile ->
+            return@withContext existingFile
+        }
+
+        val cachedFile = primaryCachedMediaFile(imageUrl)
 
         val deferred = imageDownloadMutex.withLock {
             inFlightImageDownloads[imageUrl] ?: repositoryScope.async {
@@ -211,23 +215,23 @@ class WebContentLoader @Inject constructor(
         }
     }
 
-    fun getCachedMediaFile(url: String): File = File(mediaCacheDir, url.hashCode().toString())
+    fun getCachedMediaFile(url: String): File = findExistingCachedMediaFile(url) ?: primaryCachedMediaFile(url)
 
-    fun getCachedFile(url: String): File = File(cacheDir, "${url.hashCode()}.html")
+    fun getCachedFile(url: String): File = findExistingCachedFile(url) ?: primaryCachedFile(url)
 
-    fun isCached(url: String): Boolean = getCachedFile(url).exists()
+    fun isCached(url: String): Boolean = findExistingCachedFile(url) != null
 
     fun clearCache(url: String) {
-        val cachedFile = getCachedFile(url)
-        if (cachedFile.exists()) {
+        val cachedFile = findExistingCachedFile(url)
+        if (cachedFile != null) {
             runCatching {
                 val document = Jsoup.parse(cachedFile, "UTF-8", url)
                 extractImageUrls(htmlParser.parse(document, url))
                     .distinct()
-                    .forEach { imageUrl -> getCachedMediaFile(imageUrl).delete() }
+                    .forEach(::deleteCachedMediaFiles)
             }
         }
-        cachedFile.delete()
+        deleteCachedHtmlFiles(url)
     }
 
     fun clearAllCache() {
@@ -242,15 +246,15 @@ class WebContentLoader @Inject constructor(
     }
 
     private fun getDocumentFromCacheOrNetwork(url: String, useShortTimeout: Boolean = false): CachedDocument {
-        val cachedFile = getCachedFile(url)
-        return if (cachedFile.exists()) {
+        val cachedFile = findExistingCachedFile(url)
+        return if (cachedFile != null) {
             CachedDocument(
                 document = Jsoup.parse(cachedFile, "UTF-8", url),
                 fromCache = true
             )
         } else {
             val html = downloadHtml(url, useShortTimeout = useShortTimeout)
-            cachedFile.writeText(html)
+            primaryCachedFile(url).writeText(html)
             CachedDocument(
                 document = Jsoup.parse(html, url),
                 fromCache = false
@@ -516,9 +520,8 @@ class WebContentLoader @Inject constructor(
         url: String,
         cachedDocument: Document? = null
     ): PrefetchResult {
-        val htmlCached = getCachedFile(url).exists()
-        val document = cachedDocument ?: getCachedFile(url)
-            .takeIf { it.exists() }
+        val htmlCached = findExistingCachedFile(url) != null
+        val document = cachedDocument ?: findExistingCachedFile(url)
             ?.let { Jsoup.parse(it, "UTF-8", url) }
         val imageUrls = document?.let { doc ->
             runCatching { extractImageUrls(htmlParser.parse(doc, url)).distinct() }.getOrDefault(emptyList())
@@ -622,4 +625,37 @@ class WebContentLoader @Inject constructor(
         }
         return size
     }
+
+    private fun primaryCachedMediaFile(url: String): File =
+        File(mediaCacheDir, CacheKeyUtils.keyFor(url))
+
+    private fun legacyCachedMediaFile(url: String): File =
+        File(mediaCacheDir, url.hashCode().toString())
+
+    private fun findExistingCachedMediaFile(url: String): File? =
+        cacheFileVariants(primaryCachedMediaFile(url), legacyCachedMediaFile(url))
+            .firstOrNull(File::exists)
+
+    private fun deleteCachedMediaFiles(url: String) {
+        cacheFileVariants(primaryCachedMediaFile(url), legacyCachedMediaFile(url))
+            .forEach { it.delete() }
+    }
+
+    private fun primaryCachedFile(url: String): File =
+        File(cacheDir, "${CacheKeyUtils.keyFor(url)}.html")
+
+    private fun legacyCachedFile(url: String): File =
+        File(cacheDir, "${url.hashCode()}.html")
+
+    private fun findExistingCachedFile(url: String): File? =
+        cacheFileVariants(primaryCachedFile(url), legacyCachedFile(url))
+            .firstOrNull(File::exists)
+
+    private fun deleteCachedHtmlFiles(url: String) {
+        cacheFileVariants(primaryCachedFile(url), legacyCachedFile(url))
+            .forEach { it.delete() }
+    }
+
+    private fun cacheFileVariants(primary: File, legacy: File): List<File> =
+        listOf(primary, legacy).distinctBy(File::getAbsolutePath)
 }

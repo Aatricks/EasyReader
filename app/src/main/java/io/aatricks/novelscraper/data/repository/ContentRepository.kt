@@ -1,5 +1,8 @@
 package io.aatricks.novelscraper.data.repository
 
+import android.content.Context
+import android.net.Uri
+import coil3.SingletonImageLoader
 import io.aatricks.novelscraper.data.model.*
 import io.aatricks.novelscraper.data.repository.content.*
 import kotlinx.coroutines.async
@@ -7,9 +10,11 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 import java.io.File
-import javax.inject.Inject
 import javax.inject.Singleton
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
 
 /**
  * Repository for content loading and processing (Web, PDF, HTML, EPUB)
@@ -20,44 +25,41 @@ class ContentRepository @Inject constructor(
     private val webLoader: WebContentLoader,
     private val pdfLoader: PdfContentLoader,
     private val epubLoader: EpubContentLoader,
-    private val localLoader: LocalContentLoader
+    private val localLoader: LocalContentLoader,
+    private val contentUriTypeResolver: ContentUriTypeResolver,
+    @ApplicationContext private val context: Context,
+    private val okHttpClient: OkHttpClient
 ) {
 
     companion object {
-        // Optimization: Define Regex patterns as constants
         private val CHAPTER_URL_PATTERNS = listOf(
             Regex("(chapter[-_/])(\\d+)", RegexOption.IGNORE_CASE),
             Regex("(ch[-_/]?)(\\d+)", RegexOption.IGNORE_CASE)
         )
     }
 
+    private enum class ContentKind {
+        WEB,
+        EPUB,
+        PDF,
+        HTML,
+        LOCAL,
+        UNKNOWN
+    }
+
     suspend fun loadContent(url: String): ContentResult = loadContent(url, pdfResumeIndex = null)
 
     suspend fun loadContent(url: String, pdfResumeIndex: Int?): ContentResult = withContext(Dispatchers.IO) {
         runCatching {
-            when {
-                isRemoteWebUrl(url) -> webLoader.loadWebContent(url)
-                isLikelyLocalResource(url) -> localLoader.loadLocalContent(url, pdfResumeIndex)
-                else -> ContentResult.Error("Unsupported file type")
+            when (resolveContentKind(url)) {
+                ContentKind.WEB -> webLoader.loadWebContent(url)
+                ContentKind.EPUB, ContentKind.PDF, ContentKind.HTML, ContentKind.LOCAL ->
+                    localLoader.loadLocalContent(url, pdfResumeIndex)
+                ContentKind.UNKNOWN -> ContentResult.Error("Unsupported file type")
             }
         }.getOrElse { e ->
             ContentResult.Error("Failed to load content: ${e.message}", e as? Exception)
         }
-    }
-
-    private fun isRemoteWebUrl(url: String): Boolean =
-        url.startsWith("http://") || url.startsWith("https://")
-
-    private fun isLikelyLocalResource(url: String): Boolean {
-        val lower = url.lowercase()
-        return url.startsWith("content://") ||
-                url.startsWith("file://") ||
-                url.contains("/storage/") ||
-                url.startsWith("/") ||
-                lower.endsWith(".pdf") ||
-                lower.endsWith(".epub") ||
-                lower.endsWith(".html") ||
-                lower.endsWith(".htm")
     }
 
     suspend fun downloadAndCacheImage(imageUrl: String, pageUrl: String): File? = 
@@ -74,45 +76,46 @@ class ContentRepository @Inject constructor(
 
     suspend fun fetchTitle(url: String): String? = withContext(Dispatchers.IO) {
         runCatching {
-            when {
-                url.endsWith(".epub", ignoreCase = true) || url.contains("epub") -> 
+            when (resolveContentKind(url)) {
+                ContentKind.EPUB ->
                     epubLoader.getEpubBook(url)?.metadata?.title
-                
-                url.endsWith(".pdf", ignoreCase = true) || url.contains("pdf") -> {
+
+                ContentKind.PDF -> {
                     if (url.startsWith("content://")) {
                         val uri = android.net.Uri.parse(url)
                         uri.lastPathSegment?.substringBeforeLast(".") ?: "PDF"
                     } else {
-                        File(url).nameWithoutExtension
+                        localFileNameWithoutExtension(url) ?: "PDF"
                     }
                 }
-                
-                url.startsWith("http") -> webLoader.fetchTitle(url)
+
+                ContentKind.WEB -> webLoader.fetchTitle(url)
                 else -> null
             }
         }.getOrNull()
     }
 
+    suspend fun inferContentType(url: String): ContentType = withContext(Dispatchers.IO) {
+        when (resolveContentKind(url)) {
+            ContentKind.EPUB -> ContentType.EPUB
+            ContentKind.PDF -> ContentType.PDF
+            ContentKind.HTML -> ContentType.HTML
+            else -> ContentType.WEB
+        }
+    }
+
     suspend fun prefetch(url: String, mode: PrefetchMode): PrefetchResult = withContext(Dispatchers.IO) {
         runCatching {
-            when {
-                url.startsWith("http") -> webLoader.prefetch(url, mode)
-
-                url.endsWith(".epub", ignoreCase = true) || url.contains("epub") -> 
+            when (resolveContentKind(url)) {
+                ContentKind.WEB -> webLoader.prefetch(url, mode)
+                ContentKind.EPUB ->
                     if (epubLoader.prefetchEpub(url)) {
                         PrefetchResult(url, htmlCached = true, totalImages = 0, cachedImages = 0, isComplete = true)
                     } else {
                         PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
                     }
-
-                url.startsWith("content://") || url.startsWith("file://") -> {
-                    PrefetchResult(url, htmlCached = true, totalImages = 0, cachedImages = 0, isComplete = true)
-                }
-
-                else -> {
-                    val exists = File(url).exists()
-                    PrefetchResult(url, htmlCached = exists, totalImages = 0, cachedImages = 0, isComplete = exists)
-                }
+                ContentKind.PDF, ContentKind.HTML, ContentKind.LOCAL -> localContentResult(url)
+                ContentKind.UNKNOWN -> PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
             }
         }.getOrElse {
             PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
@@ -121,19 +124,14 @@ class ContentRepository @Inject constructor(
 
     suspend fun inspectCache(url: String): PrefetchResult = withContext(Dispatchers.IO) {
         runCatching {
-            when {
-                url.startsWith("http") -> webLoader.inspectCache(url)
-                url.endsWith(".epub", ignoreCase = true) || url.contains("epub") -> {
-                    val cached = epubLoader.getEpubBook(url) != null
+            when (resolveContentKind(url)) {
+                ContentKind.WEB -> webLoader.inspectCache(url)
+                ContentKind.EPUB -> {
+                    val cached = epubLoader.isCached(url)
                     PrefetchResult(url, htmlCached = cached, totalImages = 0, cachedImages = 0, isComplete = cached)
                 }
-                url.startsWith("content://") || url.startsWith("file://") -> {
-                    PrefetchResult(url, htmlCached = true, totalImages = 0, cachedImages = 0, isComplete = true)
-                }
-                else -> {
-                    val exists = File(url).exists()
-                    PrefetchResult(url, htmlCached = exists, totalImages = 0, cachedImages = 0, isComplete = exists)
-                }
+                ContentKind.PDF, ContentKind.HTML, ContentKind.LOCAL -> localContentResult(url)
+                ContentKind.UNKNOWN -> PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
             }
         }.getOrElse {
             PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
@@ -164,13 +162,17 @@ class ContentRepository @Inject constructor(
     suspend fun getEpubImage(url: String): ByteArray? = epubLoader.getEpubImage(url)
 
     suspend fun clearCache(url: String): Unit = withContext(Dispatchers.IO) {
-        when {
-            url.contains("epub") -> epubLoader.clearCache(url)
-            url.endsWith(".pdf", ignoreCase = true) || url.contains("pdf") || url.startsWith("content://") -> {
+        when (resolveContentKind(url)) {
+            ContentKind.EPUB -> {
+                epubLoader.clearCache(url)
+                webLoader.clearCache(url)
+            }
+            ContentKind.PDF -> {
                 pdfLoader.clearCache(url)
                 webLoader.clearCache(url)
             }
-            else -> webLoader.clearCache(url)
+            ContentKind.WEB, ContentKind.HTML, ContentKind.LOCAL -> webLoader.clearCache(url)
+            ContentKind.UNKNOWN -> Unit
         }
     }
 
@@ -199,11 +201,133 @@ class ContentRepository @Inject constructor(
             webLoader.clearAllCache()
             epubLoader.clearAllCache()
             pdfLoader.clearAllCache()
+            clearHttpCache()
+            clearImageCache()
             true
         }.getOrDefault(false)
     }
 
     suspend fun getCacheSize(): Long = withContext(Dispatchers.IO) {
-        webLoader.getCacheSize() + epubLoader.getCacheSize()
+        webLoader.getCacheSize() +
+            epubLoader.getCacheSize() +
+            getHttpCacheSize() +
+            calculateDirectorySize(File(context.cacheDir, "image_cache"))
+    }
+
+    private fun localContentResult(url: String): PrefetchResult {
+        val exists = localResourceExists(url)
+        return PrefetchResult(url, htmlCached = exists, totalImages = 0, cachedImages = 0, isComplete = exists)
+    }
+
+    private fun localResourceExists(url: String): Boolean {
+        return when {
+            url.startsWith("content://") -> true
+            url.startsWith("file://") -> File(url.removePrefix("file://")).exists()
+            else -> File(url).exists()
+        }
+    }
+
+    private fun localFileNameWithoutExtension(url: String): String? {
+        return when {
+            url.startsWith("file://") -> File(url.removePrefix("file://")).nameWithoutExtension
+            else -> File(url).nameWithoutExtension
+        }?.takeIf { it.isNotBlank() }
+    }
+
+    private fun clearHttpCache() {
+        val httpCacheDir = File(context.cacheDir, "http_cache")
+        val httpCache = okHttpClient.cache
+
+        if (httpCache != null) {
+            runCatching { httpCache.evictAll() }
+        } else {
+            httpCacheDir.deleteRecursively()
+        }
+
+        httpCacheDir.mkdirs()
+    }
+
+    private fun clearImageCache() {
+        runCatching {
+            val imageLoader = SingletonImageLoader.get(context)
+            imageLoader.memoryCache?.clear()
+            imageLoader.diskCache?.clear()
+        }
+
+        File(context.cacheDir, "image_cache").apply {
+            deleteRecursively()
+            mkdirs()
+        }
+    }
+
+    private fun getHttpCacheSize(): Long {
+        val httpCacheDir = File(context.cacheDir, "http_cache")
+        return runCatching { okHttpClient.cache?.size() ?: calculateDirectorySize(httpCacheDir) }
+            .getOrElse { calculateDirectorySize(httpCacheDir) }
+    }
+
+    private fun calculateDirectorySize(dir: File): Long {
+        if (!dir.exists()) return 0L
+        return dir.walkTopDown()
+            .filter(File::isFile)
+            .sumOf(File::length)
+    }
+
+    private fun isRemoteWebUrl(url: String): Boolean =
+        url.startsWith("http://") || url.startsWith("https://")
+
+    private fun isLikelyLocalResource(url: String): Boolean {
+        val lower = url.lowercase()
+        return url.startsWith("content://") ||
+            url.startsWith("file://") ||
+            url.contains("/storage/") ||
+            url.startsWith("/") ||
+            lower.endsWith(".pdf") ||
+            lower.endsWith(".epub") ||
+            lower.endsWith(".html") ||
+            lower.endsWith(".htm")
+    }
+
+    private fun resolveContentKind(url: String): ContentKind {
+        return when {
+            isRemoteWebUrl(url) -> ContentKind.WEB
+            isLikelyLocalResource(url) -> resolveLocalContentKind(url)
+            else -> ContentKind.UNKNOWN
+        }
+    }
+
+    private fun resolveLocalContentKind(url: String): ContentKind {
+        if (url.startsWith("content://")) {
+            detectContentUriKind(url)?.let { return it }
+        }
+
+        val candidate = when {
+            url.startsWith("file://") -> url.removePrefix("file://")
+            url.startsWith("content://") -> url.substringAfterLast('/')
+            else -> url
+        }
+
+        return inferLocalContentKind(candidate)
+    }
+
+    private fun detectContentUriKind(url: String): ContentKind? {
+        val mime = contentUriTypeResolver.resolveMimeType(url)?.lowercase() ?: return null
+
+        return when {
+            "epub" in mime -> ContentKind.EPUB
+            "pdf" in mime -> ContentKind.PDF
+            "html" in mime || mime.startsWith("text/") -> ContentKind.HTML
+            else -> null
+        }
+    }
+
+    private fun inferLocalContentKind(candidate: String): ContentKind {
+        val lower = candidate.lowercase()
+        return when {
+            lower.endsWith(".epub") -> ContentKind.EPUB
+            lower.endsWith(".pdf") -> ContentKind.PDF
+            lower.endsWith(".html") || lower.endsWith(".htm") -> ContentKind.HTML
+            else -> ContentKind.LOCAL
+        }
     }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.LruCache
 import io.aatricks.novelscraper.data.model.*
+import io.aatricks.novelscraper.util.CacheKeyUtils
 import io.aatricks.novelscraper.util.ZipUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -50,7 +51,7 @@ class EpubContentLoader @Inject constructor(
     suspend fun prefetchEpub(path: String): Boolean = withContext(Dispatchers.IO) {
         runCatching {
             val book = getEpubBook(path) ?: throw Exception("Failed to load EPUB")
-            val dir = File(epubCacheDir, path.hashCode().toString()).apply { mkdirs() }
+            val dir = primaryPrefetchedImageDir(path).apply { mkdirs() }
             
             val file = resolveEpubFile(path)
             ZipFile(file).use { zip ->
@@ -98,8 +99,10 @@ class EpubContentLoader @Inject constructor(
 
     fun clearCache(url: String) {
         epubBookCache.remove(url)
-        File(epubCacheDir, url.hashCode().toString()).deleteRecursively()
-        File(epubCacheDir, "${url.hashCode()}.epub").delete()
+        cacheFileVariants(primaryPrefetchedImageDir(url), legacyPrefetchedImageDir(url))
+            .forEach { it.deleteRecursively() }
+        cacheFileVariants(primaryCachedEpubFile(url), legacyCachedEpubFile(url))
+            .forEach { it.delete() }
     }
 
     fun clearAllCache() {
@@ -110,6 +113,14 @@ class EpubContentLoader @Inject constructor(
 
     fun getCacheSize(): Long {
         return calculateDirectorySize(epubCacheDir)
+    }
+
+    fun isCached(path: String): Boolean {
+        return if (path.startsWith("content://")) {
+            findExistingCachedEpubFile(path) != null
+        } else {
+            File(path).exists()
+        }
     }
 
     private fun parseEpubFile(filePath: String): EpubBook {
@@ -267,9 +278,11 @@ class EpubContentLoader @Inject constructor(
 
     private fun resolveEpubFile(path: String): File {
         return if (path.startsWith("content://")) {
-            val finalFile = File(epubCacheDir, "${path.hashCode()}.epub")
+            findExistingCachedEpubFile(path)?.let { return it }
+
+            val finalFile = primaryCachedEpubFile(path)
             if (!finalFile.exists()) {
-                val tmpFile = File(epubCacheDir, "${path.hashCode()}.tmp")
+                val tmpFile = File(epubCacheDir, "${CacheKeyUtils.keyFor(path)}.tmp")
                 try {
                     context.contentResolver.openInputStream(Uri.parse(path))?.use { input ->
                         tmpFile.outputStream().use { output -> input.copyTo(output) }
@@ -309,4 +322,23 @@ class EpubContentLoader @Inject constructor(
         }
         return size
     }
+
+    private fun primaryCachedEpubFile(path: String): File =
+        File(epubCacheDir, "${CacheKeyUtils.keyFor(path)}.epub")
+
+    private fun legacyCachedEpubFile(path: String): File =
+        File(epubCacheDir, "${path.hashCode()}.epub")
+
+    private fun findExistingCachedEpubFile(path: String): File? =
+        cacheFileVariants(primaryCachedEpubFile(path), legacyCachedEpubFile(path))
+            .firstOrNull(File::exists)
+
+    private fun primaryPrefetchedImageDir(path: String): File =
+        File(epubCacheDir, CacheKeyUtils.keyFor(path))
+
+    private fun legacyPrefetchedImageDir(path: String): File =
+        File(epubCacheDir, path.hashCode().toString())
+
+    private fun cacheFileVariants(primary: File, legacy: File): List<File> =
+        listOf(primary, legacy).distinctBy(File::getAbsolutePath)
 }
