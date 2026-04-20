@@ -228,15 +228,8 @@ internal fun rememberReaderNestedScrollConnection(
                         onPullAmountChange(0f)
                     }
                 } else {
-                    val layoutInfo = listState.layoutInfo
-                    val viewportHeight = layoutInfo.viewportSize.height
-                    val totalVisibleHeight = layoutInfo.visibleItemsInfo.sumOf { it.size }
-
-                    val isAtTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
-                    val isAtBottom = !listState.canScrollForward && (
-                        layoutInfo.totalItemsCount <= 5 ||
-                            totalVisibleHeight > viewportHeight
-                        )
+                    val isAtTop = !listState.canScrollBackward
+                    val isAtBottom = !listState.canScrollForward
 
                     if (available.y > 0 && isAtTop && uiState.canNavigatePrevious) {
                         pullAmount += available.y * 0.5f
