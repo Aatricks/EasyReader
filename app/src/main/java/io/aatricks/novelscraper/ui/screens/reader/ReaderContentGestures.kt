@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -39,6 +40,17 @@ import io.aatricks.novelscraper.data.model.ChapterContent
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 import kotlin.math.abs
+
+private const val USER_SCROLL_START_THRESHOLD_PX = 5f
+
+internal fun shouldDispatchReaderScrollStart(
+    available: Offset,
+    hasHandledCurrentGesture: Boolean
+): Boolean {
+    if (hasHandledCurrentGesture) return false
+    return abs(available.y) > USER_SCROLL_START_THRESHOLD_PX ||
+        abs(available.x) > USER_SCROLL_START_THRESHOLD_PX
+}
 
 @Composable
 internal fun PullToNavigateOverlay(
@@ -132,15 +144,19 @@ internal fun rememberReaderNestedScrollConnection(
     onNavigateNext: () -> Unit
 ): NestedScrollConnection {
     var pullAmount by remember { mutableFloatStateOf(0f) }
+    var handledUserScrollStart by remember { mutableStateOf(false) }
 
     return remember(content, uiState.isPagedMode, uiState.isRtl, pagerState.currentPage) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.UserInput) {
-                    if (abs(available.y) > 5f || abs(available.x) > 5f) {
+                if (source == NestedScrollSource.UserInput &&
+                    shouldDispatchReaderScrollStart(available, handledUserScrollStart)
+                ) {
+                    if (uiState.showControls) {
                         onHideControls()
                     }
                     onUserInteraction()
+                    handledUserScrollStart = true
                 }
 
                 if (uiState.isPagedMode) {
@@ -255,7 +271,13 @@ internal fun rememberReaderNestedScrollConnection(
                     }
                 }
                 pullAmount = 0f
+                handledUserScrollStart = false
                 onPullAmountChange(0f)
+                return Velocity.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                handledUserScrollStart = false
                 return Velocity.Zero
             }
         }

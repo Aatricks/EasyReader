@@ -901,11 +901,26 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun onUserInteraction(): Unit {
+        val uiState = _uiState.value
+        val progressState = _progressState.value
+        val requiresInteractionCleanup = !hasUserInteractedSinceLoad ||
+            suppressAutoNavUntilUserInteraction ||
+            restoredProgressSnapshot != null ||
+            uiState.targetScrollPosition != null ||
+            uiState.pendingRestoreOffsetFraction != null ||
+            progressState.targetScrollPosition != null
+
+        if (!requiresInteractionCleanup) return
+
         hasUserInteractedSinceLoad = true
         suppressAutoNavUntilUserInteraction = false
         restoredProgressSnapshot = null
-        updateState { it.copy(targetScrollPosition = null, pendingRestoreOffsetFraction = null) }
-        _progressState.update { it.copy(targetScrollPosition = null) }
+        if (uiState.targetScrollPosition != null || uiState.pendingRestoreOffsetFraction != null) {
+            updateState { it.copy(targetScrollPosition = null, pendingRestoreOffsetFraction = null) }
+        }
+        if (progressState.targetScrollPosition != null) {
+            _progressState.update { it.copy(targetScrollPosition = null) }
+        }
     }
 
     fun persistLifecycleProgress(): Unit {
@@ -1139,7 +1154,11 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun toggleControls(): Unit = updateState { it.copy(showControls = !it.showControls) }
-    fun hideControls(): Unit = updateState { it.copy(showControls = false) }
+
+    fun hideControls(): Unit {
+        if (!_uiState.value.showControls) return
+        updateState { it.copy(showControls = false) }
+    }
 
     fun toggleReadingMode(): Unit {
         val newMode = !uiState.value.isPagedMode
