@@ -47,6 +47,8 @@ class WebContentLoader @Inject constructor(
         private const val MAX_CONCURRENT_DOWNLOADS = 3
         private const val MAX_SPECULATIVE_IMAGES = 3
         private const val NON_ESSENTIAL_TIMEOUT_SECONDS = 5L
+        private const val MAX_IMAGES_PER_GROUP = 3
+        private const val MAX_GROUPED_STRIP_RATIO = 4.0f
     }
 
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -588,23 +590,22 @@ class WebContentLoader @Inject constructor(
         }
         val lastRatio = last.height.toFloat() / last.width
         val currentRatio = current.height.toFloat() / current.width
-        // Group if at least one image is shorter than a normal manga page (h/w < 1.2) and
-        // combined they form a continuous result (total h/w < 8.0).
-        // Larger limit (8.0) handles long-strip manhwa composed of many small strips.
-        return (currentRatio < 1.2f || lastRatio < 1.2f) && lastRatio + currentRatio < 8.0f
+        // Keep short-strip continuity, but cap group height so scroll mode retains
+        // enough recycling granularity for smooth movement through downloaded chapters.
+        return (currentRatio < 1.2f || lastRatio < 1.2f) &&
+            lastRatio + currentRatio < MAX_GROUPED_STRIP_RATIO
     }
 
     private fun shouldGroupWithLastGroup(last: ContentElement, current: ContentElement.Image): Boolean {
         if (last !is ContentElement.ImageGroup) return false
         if (current.side != ContentElement.Image.Side.FULL) return false
+        if (last.images.size >= MAX_IMAGES_PER_GROUP) return false
         val lastInGroup = last.images.last()
         if (lastInGroup.width <= 0 || current.width <= 0) return false
         if (kotlin.math.abs(lastInGroup.width - current.width).toFloat() / lastInGroup.width > 0.05f) return false
         val groupRatio = last.images.sumOf { it.height }.toFloat() / lastInGroup.width
         val currentRatio = current.height.toFloat() / current.width
-        // Allow grouping up to 8.0 ratio (about 4 screen heights) to maintain continuity
-        // while still allowing some LazyColumn recycling for extremely long chapters.
-        return currentRatio < 1.2f && groupRatio + currentRatio < 8.0f
+        return currentRatio < 1.2f && groupRatio + currentRatio < MAX_GROUPED_STRIP_RATIO
     }
 
     private fun calculateDirectorySize(dir: File): Long {

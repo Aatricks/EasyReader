@@ -140,6 +140,40 @@ class WebContentLoaderTest {
     }
 
     @Test
+    fun `loadWebContent caps strip groups to keep scroll rows smaller`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-long-strip"
+        val imageUrls = (1..4).map { "https://example.com/strip-$it.png" }
+        val htmlParser = mock<HtmlParser>()
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                when (request.url.toString()) {
+                    chapterUrl -> buildResponse(
+                        request,
+                        "<html><head><title>Long Strip</title></head><body></body></html>",
+                        "text/html"
+                    )
+
+                    in imageUrls -> buildByteResponse(request, tinyPng(width = 1000, height = 600), "image/png")
+                    else -> buildResponse(request, "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(
+            imageUrls.map { ContentElement.Image(it) }
+        )
+
+        val result = loader.loadWebContent(chapterUrl) as ContentResult.Success
+
+        assertEquals(2, result.elements.size)
+        assertTrue(result.elements.first() is ContentElement.ImageGroup)
+        assertEquals(3, (result.elements.first() as ContentElement.ImageGroup).images.size)
+        assertTrue(result.elements.last() is ContentElement.Image)
+    }
+
+    @Test
     fun `image downloads are single flight across warm and direct cache requests`() = runBlocking {
         val pageUrl = "https://example.com/chapter-2"
         val imageUrl = "https://example.com/image-2.jpg"
