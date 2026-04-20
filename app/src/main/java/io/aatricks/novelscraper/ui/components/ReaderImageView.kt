@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
@@ -23,6 +24,8 @@ import coil3.network.NetworkHeaders
 import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import coil3.size.Precision
+import coil3.size.Scale
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.ui.util.ImageDimensions
 import io.aatricks.novelscraper.ui.util.effectiveImageDimensions
@@ -35,6 +38,57 @@ internal fun shouldUseLightweightImageContainer(enableZoom: Boolean): Boolean = 
 
 internal fun shouldUseAnimatedImageLoadingUi(enableZoom: Boolean, isCached: Boolean): Boolean =
     !shouldUseLightweightImageContainer(enableZoom) && !isCached
+
+internal fun shouldSubsampleReaderImage(enableZoom: Boolean, dynamicHeight: Boolean): Boolean =
+    !enableZoom && !dynamicHeight
+
+internal fun calculateReaderInSampleSize(
+    sourceWidth: Int,
+    sourceHeight: Int,
+    targetWidth: Int,
+    targetHeight: Int
+): Int {
+    if (sourceWidth <= 0 || sourceHeight <= 0 || targetWidth <= 0 || targetHeight <= 0) {
+        return 1
+    }
+    var inSampleSize = 1
+    var halfWidth = sourceWidth / 2
+    var halfHeight = sourceHeight / 2
+
+    while (halfWidth / inSampleSize >= targetWidth && halfHeight / inSampleSize >= targetHeight) {
+        inSampleSize *= 2
+    }
+
+    return inSampleSize.coerceAtLeast(1)
+}
+
+internal fun decodeReaderBitmap(
+    bytes: ByteArray,
+    targetWidth: Int,
+    targetHeight: Int,
+    subsample: Boolean
+): android.graphics.Bitmap? {
+    if (!subsample) {
+        return android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    }
+
+    val boundsOptions = android.graphics.BitmapFactory.Options().apply {
+        inJustDecodeBounds = true
+    }
+    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOptions)
+
+    val decodeOptions = android.graphics.BitmapFactory.Options().apply {
+        inSampleSize = calculateReaderInSampleSize(
+            sourceWidth = boundsOptions.outWidth,
+            sourceHeight = boundsOptions.outHeight,
+            targetWidth = targetWidth,
+            targetHeight = targetHeight
+        )
+        inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+    }
+
+    return android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
+}
 
 @Composable
 fun ReaderImageView(
@@ -58,7 +112,14 @@ fun ReaderImageView(
     onTap: (() -> Unit)? = null
 ) {
     val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
     val screenHeight = configuration.screenHeightDp.dp
+    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.roundToPx() }
+    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.roundToPx() }
+    val shouldSubsampleImage = shouldSubsampleReaderImage(
+        enableZoom = enableZoom,
+        dynamicHeight = dynamicHeight
+    )
     var runtimeDimensions by remember(imageUrl, pageUrl) { mutableStateOf<ImageDimensions?>(null) }
     val effectiveDimensions = effectiveImageDimensions(
         declaredWidth = width,
@@ -144,6 +205,11 @@ fun ReaderImageView(
             ImageRequest.Builder(context)
                 .data(if (isCachedImage && imageUrl.startsWith("http")) cachedFile else imageUrl)
                 .apply {
+                    if (shouldSubsampleImage) {
+                        size(screenWidthPx, screenHeightPx)
+                        scale(Scale.FIT)
+                        precision(Precision.INEXACT)
+                    }
                     if (referer != null) {
                         httpHeaders(NetworkHeaders.Builder()
                             .set("Referer", referer)
@@ -243,8 +309,12 @@ fun ReaderImageView(
                 val bytes = readerViewModel.contentRepository.getEpubImage(imageUrl)
                 if (bytes != null) {
                     val bitmap = withContext(Dispatchers.IO) {
-                        val opt = android.graphics.BitmapFactory.Options()
-                        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opt)
+                        decodeReaderBitmap(
+                            bytes = bytes,
+                            targetWidth = screenWidthPx,
+                            targetHeight = screenHeightPx,
+                            subsample = shouldSubsampleImage
+                        )
                     }
                     imageData = bitmap
                 } else {
