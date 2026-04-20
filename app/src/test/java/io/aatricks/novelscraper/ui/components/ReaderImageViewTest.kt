@@ -15,4 +15,19 @@ class ReaderImageViewTest {
     fun `zoom enabled images keep zoomable container`() {
         assertFalse(shouldUseLightweightImageContainer(enableZoom = true))
     }
+
+    @Test
+    fun `lightweight scroll images skip animated loading ui`() {
+        assertFalse(shouldUseAnimatedImageLoadingUi(enableZoom = false, isCached = false))
+    }
+
+    @Test
+    fun `zoom images keep animated loading ui when uncached`() {
+        assertTrue(shouldUseAnimatedImageLoadingUi(enableZoom = true, isCached = false))
+    }
+
+    @Test
+    fun `cached zoom images skip animated loading ui`() {
+        assertFalse(shouldUseAnimatedImageLoadingUi(enableZoom = true, isCached = true))
+    }
 }

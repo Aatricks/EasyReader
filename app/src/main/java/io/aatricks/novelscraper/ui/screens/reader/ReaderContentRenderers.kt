@@ -36,6 +36,20 @@ import io.aatricks.novelscraper.ui.components.ReaderImageView
 import io.aatricks.novelscraper.ui.components.ZoomableBox
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
 
+private const val CONTENT_TYPE_PLACEHOLDER = "placeholder"
+private const val CONTENT_TYPE_PAGE = "page"
+private const val CONTENT_TYPE_TEXT = "text"
+private const val CONTENT_TYPE_IMAGE = "image"
+private const val CONTENT_TYPE_IMAGE_GROUP = "image_group"
+
+private fun readerContentType(element: ContentElement): String = when (element) {
+    is ContentElement.Placeholder -> CONTENT_TYPE_PLACEHOLDER
+    is ContentElement.PageContent -> CONTENT_TYPE_PAGE
+    is ContentElement.Text -> CONTENT_TYPE_TEXT
+    is ContentElement.Image -> CONTENT_TYPE_IMAGE
+    is ContentElement.ImageGroup -> CONTENT_TYPE_IMAGE_GROUP
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun PagedReaderView(
@@ -309,7 +323,8 @@ internal fun ScrollingReaderView(
     ) {
         itemsIndexed(
             content.paragraphs,
-            key = { index, _ -> "${content.url}_$index" }
+            key = { index, _ -> "${content.url}_$index" },
+            contentType = { _, element -> readerContentType(element) }
         ) { _, element ->
             when (element) {
                 is ContentElement.Placeholder -> {

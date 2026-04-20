@@ -33,6 +33,9 @@ import kotlinx.coroutines.withContext
 
 internal fun shouldUseLightweightImageContainer(enableZoom: Boolean): Boolean = !enableZoom
 
+internal fun shouldUseAnimatedImageLoadingUi(enableZoom: Boolean, isCached: Boolean): Boolean =
+    !shouldUseLightweightImageContainer(enableZoom) && !isCached
+
 @Composable
 fun ReaderImageView(
     imageUrl: String,
@@ -129,13 +132,17 @@ fun ReaderImageView(
                 java.io.File(imageUrl.removePrefix("file://"))
             }
         }
+        val isCachedImage = imageUrl.startsWith("file") || cachedFile.exists()
+        val showAnimatedLoadingUi = shouldUseAnimatedImageLoadingUi(
+            enableZoom = enableZoom,
+            isCached = isCachedImage
+        )
 
-        val imageRequest = remember(imageUrl, pageUrl) {
-            val isCached = imageUrl.startsWith("file") || cachedFile.exists()
+        val imageRequest = remember(imageUrl, pageUrl, isCachedImage, showAnimatedLoadingUi) {
             val referer = if (imageUrl.startsWith("http")) readerViewModel.contentRepository.getReferer(pageUrl) else null
             
             ImageRequest.Builder(context)
-                .data(if (isCached && imageUrl.startsWith("http")) cachedFile else imageUrl)
+                .data(if (isCachedImage && imageUrl.startsWith("http")) cachedFile else imageUrl)
                 .apply {
                     if (referer != null) {
                         httpHeaders(NetworkHeaders.Builder()
@@ -144,7 +151,7 @@ fun ReaderImageView(
                             .build())
                     }
                 }
-                .crossfade(!isCached)
+                .crossfade(showAnimatedLoadingUi)
                 .build()
         }
         var isError by remember(imageRequest) { mutableStateOf(false) }
@@ -208,7 +215,7 @@ fun ReaderImageView(
                 }
             }
 
-            if (isLoadingHoisted && !cachedFile.exists()) {
+            if (isLoadingHoisted && showAnimatedLoadingUi) {
                 CircularProgressIndicator(
                     color = Color.Gray.copy(alpha = 0.5f),
                     modifier = Modifier.size(32.dp)
@@ -227,6 +234,7 @@ fun ReaderImageView(
     } else {
         var imageData by remember(imageUrl) { mutableStateOf<android.graphics.Bitmap?>(null) }
         var hasError by remember(imageUrl) { mutableStateOf(false) }
+        val showAnimatedLoadingUi = !shouldUseLightweightImageContainer(enableZoom)
 
         LaunchedEffect(imageUrl) {
             try {
@@ -297,7 +305,7 @@ fun ReaderImageView(
                 }
             }
 
-            if (isLoadingHoisted) {
+            if (isLoadingHoisted && showAnimatedLoadingUi) {
                 CircularProgressIndicator(color = Color.Gray, modifier = Modifier.size(32.dp).padding(16.dp))
             }
             if (hasError) {
