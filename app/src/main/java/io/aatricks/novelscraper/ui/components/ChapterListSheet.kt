@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.aatricks.novelscraper.data.model.ChapterInfo
+import io.aatricks.novelscraper.data.model.PrefetchResult
 import io.aatricks.novelscraper.ui.theme.EasyReaderSpacing
 import io.aatricks.novelscraper.ui.viewmodel.LibraryViewModel
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
@@ -260,6 +261,11 @@ fun ChapterListSheet(
                         val isInLibrary = chapter.url in libraryUrls
                         val isSelected = chapter.url in selectedChapterUrls
                         val isCurrent = chapter.url == uiState.content?.url
+                        val statusText = chapterCacheStatusText(
+                            isCurrent = isCurrent,
+                            cacheState = cacheState,
+                            isInLibrary = isInLibrary
+                        )
 
                         ListItem(
                             headlineContent = {
@@ -274,15 +280,10 @@ fun ChapterListSheet(
                                     overflow = TextOverflow.Ellipsis
                                 )
                             },
-                            supportingContent = if (isCurrent || isOfflineReady || isCaching || isInLibrary) {
+                            supportingContent = if (statusText != null) {
                                 {
                                     Text(
-                                        text = when {
-                                            isCurrent -> "Currently reading"
-                                            isCaching -> "Caching..."
-                                            isOfflineReady -> "Saved locally"
-                                            else -> "In library"
-                                        },
+                                        text = statusText,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -358,6 +359,21 @@ fun ChapterListSheet(
             Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
         }
     }
+}
+
+internal fun chapterCacheStatusText(
+    isCurrent: Boolean,
+    cacheState: PrefetchResult?,
+    isInLibrary: Boolean
+): String? {
+    if (isCurrent) return "Currently reading"
+    if (cacheState?.isInProgress == true) return "Caching..."
+    if (cacheState?.isComplete == true) return "Saved locally"
+    if (cacheState != null && cacheState.totalImages > 0 && cacheState.cachedImages in 1 until cacheState.totalImages) {
+        return "Saved partially: ${cacheState.cachedImages}/${cacheState.totalImages} images"
+    }
+    if (isInLibrary) return "In library"
+    return null
 }
 
 internal fun computeUnreadChapterSelection(

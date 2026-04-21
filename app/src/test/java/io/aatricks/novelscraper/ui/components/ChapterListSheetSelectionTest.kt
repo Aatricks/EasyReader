@@ -1,7 +1,9 @@
 package io.aatricks.novelscraper.ui.components
 
 import io.aatricks.novelscraper.data.model.ChapterInfo
+import io.aatricks.novelscraper.data.model.PrefetchResult
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ChapterListSheetSelectionTest {
@@ -60,5 +62,50 @@ class ChapterListSheetSelectionTest {
         )
 
         assertEquals(emptyList<String>(), selected)
+    }
+
+    @Test
+    fun `chapter cache status text shows partial cache progress`() {
+        val status = chapterCacheStatusText(
+            isCurrent = false,
+            cacheState = PrefetchResult(
+                url = "url-1",
+                htmlCached = true,
+                totalImages = 5,
+                cachedImages = 3,
+                isComplete = false
+            ),
+            isInLibrary = true
+        )
+
+        assertEquals("Saved partially: 3/5 images", status)
+    }
+
+    @Test
+    fun `chapter cache status text prefers saved locally for complete chapters`() {
+        val status = chapterCacheStatusText(
+            isCurrent = false,
+            cacheState = PrefetchResult(
+                url = "url-1",
+                htmlCached = true,
+                totalImages = 5,
+                cachedImages = 5,
+                isComplete = true
+            ),
+            isInLibrary = true
+        )
+
+        assertEquals("Saved locally", status)
+    }
+
+    @Test
+    fun `chapter cache status text is empty for undownloaded chapter`() {
+        val status = chapterCacheStatusText(
+            isCurrent = false,
+            cacheState = null,
+            isInLibrary = false
+        )
+
+        assertNull(status)
     }
 }

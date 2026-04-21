@@ -26,6 +26,7 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 class WebContentLoaderTest {
 
@@ -303,6 +304,142 @@ class WebContentLoaderTest {
         assertEquals(2, image.width)
         assertEquals(3, image.height)
         assertTrue(loader.getCachedMediaFile(imageUrl).exists())
+    }
+
+    @Test
+    fun `user requested prefetch retries temporary rate limits and reaches complete cache`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-rate-limit"
+        val imageUrl = "https://example.com/rate-limited.jpg"
+        val htmlParser = mock<HtmlParser>()
+        val imageAttempts = AtomicInteger(0)
+        val startedAt = System.currentTimeMillis()
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                when (request.url.toString()) {
+                    chapterUrl -> buildResponse(
+                        request,
+                        "<html><head><title>Rate Limit</title></head><body></body></html>",
+                        "text/html"
+                    )
+
+                    imageUrl -> {
+                        val attempt = imageAttempts.incrementAndGet()
+                        if (attempt == 1) {
+                            buildResponse(request, "", "text/plain", code = 429)
+                                .newBuilder()
+                                .header("Retry-After", "1")
+                                .build()
+                        } else {
+                            buildByteResponse(request, tinyPng(width = 2, height = 3), "image/png")
+                        }
+                    }
+
+                    else -> buildResponse(request, "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Image(imageUrl)))
+
+        val result = loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
+        val elapsedMs = System.currentTimeMillis() - startedAt
+
+        assertEquals(2, imageAttempts.get())
+        assertTrue("Expected Retry-After pacing, elapsed=$elapsedMs", elapsedMs >= 900)
+        assertTrue(result.isComplete)
+        assertEquals(1, result.cachedImages)
+    }
+
+    @Test
+    fun `loadWebContent does not trigger full download when range probe is rate limited`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-probe-rate-limit"
+        val imageUrl = "https://example.com/probe-rate-limit.png"
+        val htmlParser = mock<HtmlParser>()
+        val rangeRequests = AtomicInteger(0)
+        val firstFullRequestAt = AtomicLong(0)
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                when (request.url.toString()) {
+                    chapterUrl -> buildResponse(
+                        request,
+                        "<html><head><title>Probe Rate Limit</title></head><body></body></html>",
+                        "text/html"
+                    )
+
+                    imageUrl -> {
+                        if (request.header("Range") != null) {
+                            rangeRequests.incrementAndGet()
+                            buildResponse(request, "", "text/plain", code = 429)
+                        } else {
+                            firstFullRequestAt.compareAndSet(0, System.currentTimeMillis())
+                            buildByteResponse(request, tinyPng(width = 2, height = 3), "image/png")
+                        }
+                    }
+
+                    else -> buildResponse(request, "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Image(imageUrl)))
+
+        val result = loader.loadWebContent(chapterUrl) as ContentResult.Success
+        val returnedAt = System.currentTimeMillis()
+        val image = result.elements.single() as ContentElement.Image
+
+        assertTrue(rangeRequests.get() >= 1)
+        assertTrue(firstFullRequestAt.get() == 0L || firstFullRequestAt.get() > returnedAt)
+        assertEquals(0, image.width)
+        assertEquals(0, image.height)
+    }
+
+    @Test
+    fun `image requests are serialized per host across concurrent downloads`() = runBlocking {
+        val pageUrl = "https://example.com/chapter-host-gate"
+        val imageUrls = listOf(
+            "https://cdn.example.com/a.jpg",
+            "https://cdn.example.com/b.jpg"
+        )
+        val activeRequests = AtomicInteger(0)
+        val maxConcurrentRequests = AtomicInteger(0)
+        val firstRequestAt = AtomicLong(0)
+        val secondRequestAt = AtomicLong(0)
+        val loader = createLoader(
+            htmlParser = mock(),
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                if (request.url.host == "cdn.example.com") {
+                    val startedAt = System.currentTimeMillis()
+                    if (request.url.toString() == imageUrls[0]) {
+                        firstRequestAt.compareAndSet(0, startedAt)
+                    } else {
+                        secondRequestAt.compareAndSet(0, startedAt)
+                    }
+                    val current = activeRequests.incrementAndGet()
+                    maxConcurrentRequests.updateAndGet { maxOf(it, current) }
+                    try {
+                        Thread.sleep(120)
+                    } finally {
+                        activeRequests.decrementAndGet()
+                    }
+                    buildByteResponse(request, tinyPng(width = 2, height = 3), "image/png")
+                } else {
+                    buildResponse(request, "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        listOf(
+            async { loader.downloadAndCacheImage(imageUrls[0], pageUrl) },
+            async { loader.downloadAndCacheImage(imageUrls[1], pageUrl) }
+        ).awaitAll()
+
+        assertEquals(1, maxConcurrentRequests.get())
+        assertTrue(secondRequestAt.get() - firstRequestAt.get() >= 100)
     }
 
     private fun createLoader(
