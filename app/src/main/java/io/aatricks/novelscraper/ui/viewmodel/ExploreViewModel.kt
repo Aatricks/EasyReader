@@ -57,13 +57,17 @@ class ExploreViewModel @Inject constructor(
     private fun loadInitialData(): Unit {
         currentJob?.cancel()
         currentJob = viewModelScope.launch {
+            updateState {
+                it.copy(
+                    isLoading = true,
+                    canLoadMore = true
+                )
+            }
             runCatching {
                 val tags = exploreRepository.getTags(_uiState.value.selectedSource)
                 updateState {
                     it.copy(
-                        isLoading = true,
                         availableTags = tags,
-                        canLoadMore = true
                     )
                 }
                 val novels = exploreRepository.getPopularNovels(1, _uiState.value.selectedSource, _uiState.value.selectedTags.toList())
@@ -76,6 +80,7 @@ class ExploreViewModel @Inject constructor(
                     )
                 }
             }.onFailure {
+                if (it is kotlinx.coroutines.CancellationException) throw it
                 updateState { it.copy(isLoading = false, canLoadMore = false) }
             }
         }
@@ -130,6 +135,7 @@ class ExploreViewModel @Inject constructor(
                     )
                 }
             }.onFailure {
+                if (it is kotlinx.coroutines.CancellationException) throw it
                 updateState { it.copy(isLoading = false, canLoadMore = false) }
             }
         }
@@ -148,6 +154,7 @@ class ExploreViewModel @Inject constructor(
                 val novels = exploreRepository.getPopularNovels(1, _uiState.value.selectedSource, newTags.toList())
                 updateState { it.copy(items = novels, isLoading = false, canLoadMore = novels.isNotEmpty()) }
             }.onFailure {
+                if (it is kotlinx.coroutines.CancellationException) throw it
                 updateState { it.copy(isLoading = false, canLoadMore = false) }
             }
         }
@@ -161,6 +168,7 @@ class ExploreViewModel @Inject constructor(
                 val novels = exploreRepository.getPopularNovels(1, _uiState.value.selectedSource, emptyList())
                 updateState { it.copy(items = novels, isLoading = false, canLoadMore = novels.isNotEmpty()) }
             }.onFailure {
+                if (it is kotlinx.coroutines.CancellationException) throw it
                 updateState { it.copy(isLoading = false, canLoadMore = false) }
             }
         }
@@ -175,6 +183,7 @@ class ExploreViewModel @Inject constructor(
                 val novels = exploreRepository.searchNovels(_uiState.value.searchQuery, 1, _uiState.value.selectedSource)
                 updateState { it.copy(items = novels, isLoading = false, canLoadMore = novels.isNotEmpty()) }
             }.onFailure {
+                if (it is kotlinx.coroutines.CancellationException) throw it
                 updateState { it.copy(isLoading = false, canLoadMore = false) }
             }
         }
@@ -201,6 +210,7 @@ class ExploreViewModel @Inject constructor(
                     canLoadMore = distinctNewItems.isNotEmpty()
                 ) }
             }.onFailure {
+                if (it is kotlinx.coroutines.CancellationException) throw it
                 updateState { it.copy(isLoading = false, canLoadMore = false) }
             }
         }
