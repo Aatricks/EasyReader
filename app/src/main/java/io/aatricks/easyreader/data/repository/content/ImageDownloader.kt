@@ -40,6 +40,7 @@ class ImageDownloader @Inject constructor(
         private const val NON_ESSENTIAL_TIMEOUT_SECONDS = 5L
         private const val HOST_REQUEST_SPACING_MS = 450L
         private const val HOST_RATE_LIMIT_SPACING_MS = 1200L
+        const val MAX_HOST_THROTTLE_MS = 10_000L
         private const val USER_REQUEST_ATTEMPTS = 4
         private const val SHORT_REQUEST_ATTEMPTS = 2
         private const val MAX_IMAGE_BYTES = 20 * 1024 * 1024L // 20MB
@@ -214,7 +215,7 @@ class ImageDownloader @Inject constructor(
 
     private fun parseRetryAfterMs(value: String): Long? {
         val seconds = value.trim().toLongOrNull() ?: return null
-        return seconds.coerceAtLeast(1L) * 1000L
+        return (seconds.coerceAtLeast(1L) * 1000L).coerceAtMost(MAX_HOST_THROTTLE_MS)
     }
 
     private fun shouldRetryResponseCode(code: Int): Boolean {

@@ -14,11 +14,14 @@ import io.aatricks.easyreader.ui.util.normalizeRestoreOffset
 import io.aatricks.easyreader.util.TextUtils
 import io.aatricks.easyreader.util.UrlSecurity
 import io.aatricks.easyreader.util.FieldUpdate
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
 import kotlin.math.abs
 
@@ -334,7 +337,8 @@ class ReaderViewModel @Inject constructor(
         libraryItemId: String? = null,
         fromBottom: Boolean = false,
         isSilent: Boolean = false,
-        isExplicitNavigation: Boolean = this.isExplicitNavigation
+        isExplicitNavigation: Boolean = this.isExplicitNavigation,
+        resetWebStateBeforeLoad: Boolean = false
     ): Unit {
         loadJob?.cancel()
         progressController.cancelProgressUpdate()
@@ -344,7 +348,8 @@ class ReaderViewModel @Inject constructor(
                 libraryItemId = libraryItemId,
                 fromBottom = fromBottom,
                 isSilent = isSilent,
-                isExplicitNavigation = isExplicitNavigation
+                isExplicitNavigation = isExplicitNavigation,
+                resetWebStateBeforeLoad = resetWebStateBeforeLoad
             )
         }
     }
@@ -355,44 +360,56 @@ class ReaderViewModel @Inject constructor(
         fromBottom: Boolean,
         isSilent: Boolean,
         isExplicitNavigation: Boolean,
-        preloadedResult: ContentResult.Success? = null
+        preloadedResult: ContentResult.Success? = null,
+        resetWebStateBeforeLoad: Boolean = false
     ): Unit {
-        this@ReaderViewModel.isExplicitNavigation = isExplicitNavigation
-        if (handleEpubUrl(url, libraryItemId, fromBottom, isSilent)) return
+        try {
+            this@ReaderViewModel.isExplicitNavigation = isExplicitNavigation
+            if (handleEpubUrl(url, libraryItemId, fromBottom, isSilent)) return
 
-        progressController.saveCurrentProgress(_uiState.value.content)
+            progressController.saveCurrentProgress(_uiState.value.content)
 
-        if (!isSilent) {
-            closeContent(_uiState.value.content)
-        }
-
-        updateState {
-            it.copy(
-                isLoading = !isSilent,
-                error = null,
-                lastAttemptedUrl = url,
-                lastFromBottom = fromBottom,
-                lastIsExplicitNavigation = isExplicitNavigation,
-                content = if (isSilent) it.content else null
-            )
-        }
-
-        val result = preloadedResult ?: run {
-            val pdfResumeIndex = resolvePdfResumeIndex(url, libraryItemId, isExplicitNavigation)
-            if (pdfResumeIndex != null) {
-                contentRepository.loadContent(url, pdfResumeIndex)
-            } else {
-                contentRepository.loadContent(url)
-            }
-        }
-
-        when (result) {
-            is ContentResult.Success -> {
-                updateState { it.copy(lastAttemptedUrl = null) }
-                handleLoadSuccess(result, libraryItemId, fromBottom)
+            if (!isSilent) {
+                closeContent(_uiState.value.content)
             }
 
-            is ContentResult.Error -> handleLoadError(result)
+            if (resetWebStateBeforeLoad) {
+                contentRepository.resetWebLoadState(url, clearCachedHtml = true)
+            }
+
+            updateState {
+                it.copy(
+                    isLoading = !isSilent,
+                    error = null,
+                    lastAttemptedUrl = url,
+                    lastFromBottom = fromBottom,
+                    lastIsExplicitNavigation = isExplicitNavigation,
+                    content = if (isSilent) it.content else null
+                )
+            }
+
+            val result = preloadedResult ?: run {
+                val pdfResumeIndex = resolvePdfResumeIndex(url, libraryItemId, isExplicitNavigation)
+                if (pdfResumeIndex != null) {
+                    contentRepository.loadContent(url, pdfResumeIndex)
+                } else {
+                    contentRepository.loadContent(url)
+                }
+            }
+            currentCoroutineContext().ensureActive()
+
+            when (result) {
+                is ContentResult.Success -> {
+                    updateState { it.copy(lastAttemptedUrl = null) }
+                    handleLoadSuccess(result, libraryItemId, fromBottom)
+                }
+
+                is ContentResult.Error -> handleLoadError(result)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleLoadError(ContentResult.Error("Failed to load chapter content", e))
         }
     }
 
@@ -890,7 +907,13 @@ class ReaderViewModel @Inject constructor(
         val fromBottom = _uiState.value.lastFromBottom
         val isExplicit = _uiState.value.lastIsExplicitNavigation
         url?.let {
-            loadContent(it, currentLibraryItemId, fromBottom = fromBottom, isExplicitNavigation = isExplicit)
+            loadContent(
+                it,
+                currentLibraryItemId,
+                fromBottom = fromBottom,
+                isExplicitNavigation = isExplicit,
+                resetWebStateBeforeLoad = true
+            )
         }
     }
 

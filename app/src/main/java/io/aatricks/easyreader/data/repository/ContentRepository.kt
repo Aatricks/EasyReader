@@ -7,8 +7,11 @@ import io.aatricks.easyreader.data.model.*
 import io.aatricks.easyreader.data.repository.content.*
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.io.File
@@ -32,6 +35,7 @@ class ContentRepository @Inject constructor(
 ) {
 
     companion object {
+        private const val WEB_CHAPTER_LOAD_TIMEOUT_MS = 25_000L
         private val CHAPTER_URL_PATTERNS = listOf(
             Regex("(chapter[-_/])(\\d+)", RegexOption.IGNORE_CASE),
             Regex("(ch[-_/]?)(\\d+)", RegexOption.IGNORE_CASE)
@@ -50,15 +54,29 @@ class ContentRepository @Inject constructor(
     suspend fun loadContent(url: String): ContentResult = loadContent(url, pdfResumeIndex = null)
 
     suspend fun loadContent(url: String, pdfResumeIndex: Int?): ContentResult = withContext(Dispatchers.IO) {
-        runCatching {
+        try {
             when (resolveContentKind(url)) {
-                ContentKind.WEB -> webLoader.loadWebContent(url)
+                ContentKind.WEB -> withTimeout(WEB_CHAPTER_LOAD_TIMEOUT_MS) {
+                    webLoader.loadWebContent(url)
+                }
                 ContentKind.EPUB, ContentKind.PDF, ContentKind.HTML, ContentKind.LOCAL ->
                     localLoader.loadLocalContent(url, pdfResumeIndex)
                 ContentKind.UNKNOWN -> ContentResult.Error("Unsupported file type")
             }
-        }.getOrElse { e ->
-            ContentResult.Error("Failed to load content: ${e.message}", e as? Exception)
+        } catch (e: TimeoutCancellationException) {
+            ContentResult.Error("Timed out loading chapter")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            ContentResult.Error("Failed to load content: ${e.message}", e)
+        }
+    }
+
+    suspend fun resetWebLoadState(url: String, clearCachedHtml: Boolean) = withContext(Dispatchers.IO) {
+        if (resolveContentKind(url) != ContentKind.WEB) return@withContext
+        webLoader.resetInFlightState(url)
+        if (clearCachedHtml) {
+            webLoader.clearCachedHtml(url)
         }
     }
 

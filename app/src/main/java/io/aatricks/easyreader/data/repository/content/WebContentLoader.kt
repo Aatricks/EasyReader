@@ -1,5 +1,6 @@
 package io.aatricks.easyreader.data.repository.content
 
+import android.util.Log
 import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.ContentResult
 import io.aatricks.easyreader.data.model.ImageRequestPriority
@@ -47,6 +48,7 @@ class WebContentLoader @Inject constructor(
     @HtmlCacheDir private val cacheDir: File
 ) {
     companion object {
+        private const val TAG = "WebContentLoader"
         private val DIMENSION_SEMAPHORE = Semaphore(10)
         private const val MAX_CONCURRENT_DOWNLOADS = 3
         private const val MAX_SPECULATIVE_IMAGES = 3
@@ -59,6 +61,7 @@ class WebContentLoader @Inject constructor(
         private const val MAX_SPECULATIVE_PREFETCH_ATTEMPTS = 1
         private const val MAX_USER_PREFETCH_ATTEMPTS = 3
         private const val MAX_DIMENSION_SNIFF_BYTES = 64 * 1024L // 64KB
+        private const val FETCH_REMOTE_DIMENSIONS_DURING_INITIAL_LOAD = false
     }
 
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -85,24 +88,65 @@ class WebContentLoader @Inject constructor(
     )
 
     suspend fun loadWebContent(url: String): ContentResult = withContext(Dispatchers.IO) {
-        val cachedDocument = getDocumentFromCacheOrNetwork(url)
-        val document = cachedDocument.document
+        val startedAtMs = System.currentTimeMillis()
+        Log.d(TAG, "start load url=$url")
+        try {
+            val cachedDocument = getDocumentFromCacheOrNetwork(url)
+            val document = cachedDocument.document
+            Log.d(
+                TAG,
+                "cache/html fetch complete url=$url fromCache=${cachedDocument.fromCache} elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+            )
 
-        val elements = htmlParser.parse(document, url)
-        val canUseDiskOnlyDimensions = cachedDocument.fromCache && hasCachedMediaForAllRemoteImages(elements)
-        val finalElements = processChapterElements(
-            elements = elements,
-            url = url,
-            diskOnly = canUseDiskOnlyDimensions
-        )
+            val elements = htmlParser.parse(document, url)
+            Log.d(
+                TAG,
+                "HTML parse complete url=$url elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+            )
 
-        backgroundCacheImages(extractImageUrls(finalElements), url)
-        
-        ContentResult.Success(
-            elements = finalElements,
-            title = document.title().takeIf { it.isNotBlank() },
-            url = url
-        )
+            val imageCount = extractImageUrls(elements).size
+            Log.d(
+                TAG,
+                "image extraction count url=$url imageCount=$imageCount elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+            )
+
+            val canUseDiskOnlyDimensions = cachedDocument.fromCache && hasCachedMediaForAllRemoteImages(elements)
+            val useDiskOnlyDimensions = canUseDiskOnlyDimensions || !FETCH_REMOTE_DIMENSIONS_DURING_INITIAL_LOAD
+
+            Log.d(
+                TAG,
+                "dimension enrichment start url=$url diskOnly=$useDiskOnlyDimensions elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+            )
+            val finalElements = processChapterElements(
+                elements = elements,
+                url = url,
+                diskOnly = useDiskOnlyDimensions
+            )
+            Log.d(
+                TAG,
+                "dimension enrichment end url=$url elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+            )
+
+            backgroundCacheImages(extractImageUrls(finalElements), url)
+
+            val success = ContentResult.Success(
+                elements = finalElements,
+                title = document.title().takeIf { it.isNotBlank() },
+                url = url
+            )
+            Log.d(
+                TAG,
+                "success url=$url elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+            )
+            success
+        } catch (e: Exception) {
+            Log.e(
+                TAG,
+                "error url=$url elapsedMs=${System.currentTimeMillis() - startedAtMs} message=${e.message}",
+                e
+            )
+            throw e
+        }
     }
 
     suspend fun prefetch(url: String, mode: PrefetchMode): PrefetchResult {
@@ -123,6 +167,17 @@ class WebContentLoader @Inject constructor(
 
             val deferred = repositoryScope.async {
                 executePrefetch(url, mode)
+            }.also { created ->
+                created.invokeOnCompletion {
+                    repositoryScope.launch {
+                        chapterPrefetchMutex.withLock {
+                            if (inFlightChapterPrefetches[url] === created) {
+                                inFlightChapterPrefetches.remove(url)
+                                inFlightChapterPrefetchModes.remove(url)
+                            }
+                        }
+                    }
+                }
             }
 
             val active = chapterPrefetchMutex.withLock {
@@ -137,18 +192,9 @@ class WebContentLoader @Inject constructor(
                 }
             }
 
-            try {
-                val result = active.await().copy(isInProgress = false)
-                if (result.isComplete || !result.isRetryable || mode == PrefetchMode.SPECULATIVE) return result
-                lastResult = result
-            } finally {
-                chapterPrefetchMutex.withLock {
-                    if (inFlightChapterPrefetches[url] === active) {
-                        inFlightChapterPrefetches.remove(url)
-                        inFlightChapterPrefetchModes.remove(url)
-                    }
-                }
-            }
+            val result = active.await().copy(isInProgress = false)
+            if (result.isComplete || !result.isRetryable || mode == PrefetchMode.SPECULATIVE) return result
+            lastResult = result
         }
         return lastResult ?: inspectCache(url)
     }
@@ -197,6 +243,17 @@ class WebContentLoader @Inject constructor(
                     .forEach(imageCache::deleteCachedMediaFiles)
             }
         }
+        deleteCachedHtmlFiles(url)
+    }
+
+    suspend fun resetInFlightState(url: String) {
+        chapterPrefetchMutex.withLock {
+            inFlightChapterPrefetches.remove(url)
+            inFlightChapterPrefetchModes.remove(url)
+        }
+    }
+
+    fun clearCachedHtml(url: String) {
         deleteCachedHtmlFiles(url)
     }
 
@@ -432,20 +489,7 @@ class WebContentLoader @Inject constructor(
                     rangeHeader = "bytes=0-${MAX_DIMENSION_SNIFF_BYTES - 1}"
                 )
             ) {
-                is ImageFetchResult.BoundedSuccess -> {
-                    val parsed = ImageBoundsParser.parse(result.bytes)
-                    if (parsed != null) {
-                        parsed
-                    } else {
-                        val dlResult = downloadAndCacheImageInternal(
-                            imageUrl = imageUrl,
-                            pageUrl = pageUrl,
-                            priority = ImageRequestPriority.SPECULATIVE
-                        )
-                        (dlResult as? ImageDownloadResult.Success)?.file?.let(ImageBoundsParser::parse)
-                    }
-                }
-
+                is ImageFetchResult.BoundedSuccess -> ImageBoundsParser.parse(result.bytes)
                 else -> null
             }
         }.getOrNull()
@@ -611,8 +655,17 @@ class WebContentLoader @Inject constructor(
                         tempFile.delete()
                         ImageDownloadResult.Failure(true)
                     }
-                }.also {
-                    inFlightImageDownloads[imageUrl] = InFlightImageDownload(priority, it)
+                }.also { created ->
+                    created.invokeOnCompletion {
+                        repositoryScope.launch {
+                            imageDownloadMutex.withLock {
+                                if (inFlightImageDownloads[imageUrl]?.deferred === created) {
+                                    inFlightImageDownloads.remove(imageUrl)
+                                }
+                            }
+                        }
+                    }
+                    inFlightImageDownloads[imageUrl] = InFlightImageDownload(priority, created)
                 }
             }
         }
@@ -658,7 +711,8 @@ class WebContentLoader @Inject constructor(
 
     private fun parseRetryAfterMs(value: String): Long? {
         val seconds = value.trim().toLongOrNull() ?: return null
-        return seconds.coerceAtLeast(1L) * 1000L
+        return (seconds.coerceAtLeast(1L) * 1000L)
+            .coerceAtMost(ImageDownloader.MAX_HOST_THROTTLE_MS)
     }
 
     private fun shouldRetryResponseCode(code: Int): Boolean {

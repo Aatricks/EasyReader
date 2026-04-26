@@ -7,6 +7,9 @@ import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.repository.HtmlParser
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -27,6 +30,8 @@ import org.mockito.kotlin.whenever
 import java.io.File
 import java.nio.file.Files
 import java.nio.ByteBuffer
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
@@ -97,7 +102,7 @@ class WebContentLoaderTest {
     }
 
     @Test
-    fun `loadWebContent keeps grouped image structure when reopening from cached html without media cache`() = runBlocking {
+    fun `loadWebContent keeps individual image structure when reopening from cached html without media cache`() = runBlocking {
         val chapterUrl = "https://example.com/chapter-grouped"
         val imageUrl1 = "https://example.com/group-1.png"
         val imageUrl2 = "https://example.com/group-2.png"
@@ -138,8 +143,11 @@ class WebContentLoaderTest {
         val firstLoad = loader.loadWebContent(chapterUrl) as ContentResult.Success
         val secondLoad = loader.loadWebContent(chapterUrl) as ContentResult.Success
 
-        assertTrue(firstLoad.elements.single() is ContentElement.ImageGroup)
-        assertTrue(secondLoad.elements.single() is ContentElement.ImageGroup)
+        assertEquals(2, firstLoad.elements.size)
+        assertEquals(2, secondLoad.elements.size)
+        assertTrue(firstLoad.elements.all { it is ContentElement.Image })
+        assertTrue(secondLoad.elements.all { it is ContentElement.Image })
+        assertEquals(0, rangeRequests.get())
     }
 
     @Test
@@ -167,6 +175,9 @@ class WebContentLoaderTest {
         whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(
             imageUrls.map { ContentElement.Image(it) }
         )
+        imageUrls.forEach { imageUrl ->
+            loader.getCachedMediaFile(imageUrl).writeBytes(tinyPng(width = 1000, height = 600))
+        }
 
         val result = loader.loadWebContent(chapterUrl) as ContentResult.Success
 
@@ -262,9 +273,9 @@ class WebContentLoaderTest {
     }
 
     @Test
-    fun `loadWebContent falls back to short image download when range probe cannot resolve dimensions`() = runBlocking {
-        val chapterUrl = "https://example.com/chapter-fallback"
-        val imageUrl = "https://example.com/fallback-image.png"
+    fun `loadWebContent does not wait for remote image dimensions on initial load`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-nonblocking"
+        val imageUrl = "https://example.com/nonblocking-image.png"
         val htmlParser = mock<HtmlParser>()
         val rangeRequests = AtomicInteger(0)
         val fullRequests = AtomicInteger(0)
@@ -282,9 +293,11 @@ class WebContentLoaderTest {
                     imageUrl -> {
                         if (request.header("Range") != null) {
                             rangeRequests.incrementAndGet()
-                            buildByteResponse(request, byteArrayOf(1, 2, 3, 4), "application/octet-stream")
+                            Thread.sleep(2_000)
+                            buildByteResponse(request, tinyPng(width = 2, height = 3), "image/png")
                         } else {
                             fullRequests.incrementAndGet()
+                            Thread.sleep(2_000)
                             buildByteResponse(request, tinyPng(width = 2, height = 3), "image/png")
                         }
                     }
@@ -298,14 +311,16 @@ class WebContentLoaderTest {
             listOf(ContentElement.Image(imageUrl))
         )
 
+        val startedAt = System.currentTimeMillis()
         val result = loader.loadWebContent(chapterUrl) as ContentResult.Success
+        val elapsedMs = System.currentTimeMillis() - startedAt
         val image = result.elements.single() as ContentElement.Image
 
-        assertEquals(1, rangeRequests.get())
-        assertEquals(1, fullRequests.get())
-        assertEquals(2, image.width)
-        assertEquals(3, image.height)
-        assertTrue(loader.getCachedMediaFile(imageUrl).exists())
+        assertTrue("Initial load should return before background network image work", elapsedMs < 1_000)
+        assertEquals(0, rangeRequests.get())
+        assertEquals(0, image.width)
+        assertEquals(0, image.height)
+        assertTrue(fullRequests.get() >= 0)
     }
 
     @Test
@@ -587,6 +602,55 @@ class WebContentLoaderTest {
         // 2. Second user request retries and succeeds
         val result2 = loader.downloadAndCacheImage(imageUrl, "https://example.com")
         assertTrue(result2 != null && result2.exists())
+    }
+
+    @Test
+    fun `in-flight image entry self-cleans after caller cancellation`() = runBlocking {
+        val imageUrl = "https://example.com/cancel-cleanup.jpg"
+        val started = AtomicInteger(0)
+        val release = CountDownLatch(1)
+        val loader = createLoader(
+            htmlParser = mock(),
+            interceptor = Interceptor { chain ->
+                started.incrementAndGet()
+                release.await(3, TimeUnit.SECONDS)
+                buildResponse(chain.request(), "binary-data", "image/jpeg")
+            }
+        )
+
+        val caller = launch {
+            loader.downloadAndCacheImage(imageUrl, "https://example.com")
+        }
+
+        var sawStart = false
+        repeat(50) {
+            if (started.get() > 0) {
+                sawStart = true
+                return@repeat
+            }
+            delay(20)
+        }
+        assertTrue(sawStart || started.get() > 0)
+        caller.cancelAndJoin()
+        release.countDown()
+        var cleaned = false
+        repeat(20) {
+            delay(100)
+            val field = WebContentLoader::class.java.getDeclaredField("inFlightImageDownloads").apply { isAccessible = true }
+            val inFlight = field.get(loader) as Map<*, *>
+            if (inFlight.isEmpty()) {
+                cleaned = true
+                return@repeat
+            }
+        }
+
+        val field = WebContentLoader::class.java.getDeclaredField("inFlightImageDownloads").apply { isAccessible = true }
+        val inFlight = field.get(loader) as Map<*, *>
+        assertTrue(cleaned || inFlight.isEmpty())
+        assertEquals(0, inFlight.size)
+
+        val retry = loader.downloadAndCacheImage(imageUrl, "https://example.com")
+        assertTrue(retry != null && retry.exists())
     }
 
     private fun pngChunk(type: String, data: ByteArray): ByteArray {

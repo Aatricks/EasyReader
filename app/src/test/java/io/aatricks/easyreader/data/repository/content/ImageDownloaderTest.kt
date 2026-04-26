@@ -131,6 +131,31 @@ class ImageDownloaderTest {
     }
 
     @Test
+    fun `Retry-After header is clamped to max host throttle`() = runBlocking {
+        val imageUrl = "https://example.com/rate-limited.jpg"
+        val client = createClient { chain ->
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(400)
+                .message("Bad Request")
+                .addHeader("Retry-After", "3600")
+                .body("error".toResponseBody("text/plain".toMediaType()))
+                .build()
+        }
+        val downloader = ImageDownloader(client)
+
+        val result = downloader.executeImageRequest(
+            imageUrl = imageUrl,
+            pageUrl = "https://example.com",
+            priority = ImageRequestPriority.USER_REQUESTED
+        )
+
+        assertTrue(result is ImageFetchResult.HttpError)
+        assertEquals(ImageDownloader.MAX_HOST_THROTTLE_MS, (result as ImageFetchResult.HttpError).retryAfterMs)
+    }
+
+    @Test
     fun `dimension sniff reads across partial chunks until EOF and parses bounds`() = runBlocking {
         val imageUrl = "https://example.com/chunked.png"
         val pngBytes = tinyPngHeader(width = 320, height = 240)

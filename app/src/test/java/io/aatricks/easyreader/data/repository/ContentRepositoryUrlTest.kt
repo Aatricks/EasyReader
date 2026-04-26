@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import io.aatricks.easyreader.data.model.ContentType
+import io.aatricks.easyreader.data.model.ContentResult
 import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.repository.content.EpubContentLoader
 import io.aatricks.easyreader.data.repository.content.LocalContentLoader
@@ -12,6 +13,7 @@ import io.aatricks.easyreader.data.repository.content.ContentUriTypeResolver
 import io.aatricks.easyreader.data.repository.content.WebContentLoader
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.TimeoutCancellationException
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -152,5 +154,36 @@ class ContentRepositoryUrlTest {
         verify(okHttpCache).evictAll()
         assertTrue(imageCacheDir.exists())
         assertFalse(imageCacheDir.listFiles()?.isNotEmpty() == true)
+    }
+
+    @Test
+    fun webTimeoutReturnsBoundedError() = runTest {
+        val url = "https://example.com/chapter-timeout"
+        whenever(webLoader.loadWebContent(url)).thenThrow(createTimeoutCancellationException())
+
+        val result = repository.loadContent(url)
+
+        assertTrue(result is ContentResult.Error)
+        assertEquals("Timed out loading chapter", (result as ContentResult.Error).message)
+    }
+
+    @Test
+    fun resetWebLoadStateOnlyAffectsWebUrls() = runTest {
+        val webUrl = "https://example.com/chapter-1"
+        val localUrl = "file:///tmp/book.epub"
+
+        repository.resetWebLoadState(webUrl, clearCachedHtml = true)
+        repository.resetWebLoadState(localUrl, clearCachedHtml = true)
+
+        verify(webLoader, times(1)).resetInFlightState(webUrl)
+        verify(webLoader, times(1)).clearCachedHtml(webUrl)
+        verify(webLoader, times(1)).resetInFlightState(any())
+        verify(webLoader, times(1)).clearCachedHtml(any())
+    }
+
+    private fun createTimeoutCancellationException(): TimeoutCancellationException {
+        val ctor = TimeoutCancellationException::class.java.getDeclaredConstructor(String::class.java)
+        ctor.isAccessible = true
+        return ctor.newInstance("boom")
     }
 }

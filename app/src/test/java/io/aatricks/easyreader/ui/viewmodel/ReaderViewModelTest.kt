@@ -8,6 +8,7 @@ import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.util.FieldUpdate
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -776,5 +777,46 @@ class ReaderViewModelTest {
         advanceUntilIdle()
 
         verify(contentRepository).warmImage(imageUrl, pageUrl)
+    }
+
+    @Test
+    fun `switching chapters cancels old load without poisoning newer load`() = runTest {
+        val firstUrl = "https://example.com/manhwa-1"
+        val secondUrl = "https://example.com/manhwa-2"
+
+        whenever(contentRepository.loadContent(any())).thenAnswer { invocation ->
+            when (invocation.arguments[0] as String) {
+                firstUrl -> throw CancellationException("Superseded by navigation")
+                secondUrl -> ContentResult.Success(listOf(ContentElement.Text("new")), "New", secondUrl)
+                else -> ContentResult.Error("Unexpected")
+            }
+        }
+
+        viewModel.loadContent(firstUrl)
+        runCurrent()
+        viewModel.loadContent(secondUrl)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.isLoading)
+        assertNull(viewModel.uiState.value.error)
+        assertEquals(secondUrl, viewModel.uiState.value.content?.url)
+    }
+
+    @Test
+    fun `retryLoad resets web loader state before retrying`() = runTest {
+        val url = "https://example.com/chapter-retry"
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Error("initial failure"),
+            ContentResult.Success(listOf(ContentElement.Text("ok")), "Recovered", url)
+        )
+
+        viewModel.loadContent(url)
+        advanceUntilIdle()
+        viewModel.retryLoad()
+        advanceUntilIdle()
+
+        verify(contentRepository).resetWebLoadState(url, true)
+        assertEquals(url, viewModel.uiState.value.content?.url)
+        assertFalse(viewModel.uiState.value.isLoading)
     }
 }
