@@ -90,6 +90,9 @@ android {
         getByName("ai") {
             java.srcDirs("src/ai/java")
         }
+        getByName("debug") {
+            assets.srcDirs("schemas")
+        }
         getByName("test") {
             java.srcDirs("src/test/java")
         }
