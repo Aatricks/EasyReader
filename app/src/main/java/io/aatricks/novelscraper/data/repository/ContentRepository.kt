@@ -110,15 +110,15 @@ class ContentRepository @Inject constructor(
                 ContentKind.WEB -> webLoader.prefetch(url, mode)
                 ContentKind.EPUB ->
                     if (epubLoader.prefetchEpub(url)) {
-                        PrefetchResult(url, htmlCached = true, totalImages = 0, cachedImages = 0, isComplete = true)
+                        PrefetchResult(url, htmlCached = true, totalImages = 0, cachedImages = 0, isComplete = true, isRetryable = false)
                     } else {
-                        PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+                        PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = true)
                     }
                 ContentKind.PDF, ContentKind.HTML, ContentKind.LOCAL -> localContentResult(url)
-                ContentKind.UNKNOWN -> PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+                ContentKind.UNKNOWN -> PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = false)
             }
         }.getOrElse {
-            PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+            PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = true)
         }
     }
 
@@ -128,13 +128,13 @@ class ContentRepository @Inject constructor(
                 ContentKind.WEB -> webLoader.inspectCache(url)
                 ContentKind.EPUB -> {
                     val cached = epubLoader.isCached(url)
-                    PrefetchResult(url, htmlCached = cached, totalImages = 0, cachedImages = 0, isComplete = cached)
+                    PrefetchResult(url, htmlCached = cached, totalImages = 0, cachedImages = 0, isComplete = cached, isRetryable = !cached)
                 }
                 ContentKind.PDF, ContentKind.HTML, ContentKind.LOCAL -> localContentResult(url)
-                ContentKind.UNKNOWN -> PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+                ContentKind.UNKNOWN -> PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = false)
             }
         }.getOrElse {
-            PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+            PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = true)
         }
     }
 
@@ -216,7 +216,7 @@ class ContentRepository @Inject constructor(
 
     private fun localContentResult(url: String): PrefetchResult {
         val exists = localResourceExists(url)
-        return PrefetchResult(url, htmlCached = exists, totalImages = 0, cachedImages = 0, isComplete = exists)
+        return PrefetchResult(url, htmlCached = exists, totalImages = 0, cachedImages = 0, isComplete = exists, isRetryable = !exists)
     }
 
     private fun localResourceExists(url: String): Boolean {

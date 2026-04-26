@@ -11,5 +11,6 @@ data class PrefetchResult(
     val totalImages: Int,
     val cachedImages: Int,
     val isComplete: Boolean,
-    val isInProgress: Boolean = false
+    val isInProgress: Boolean = false,
+    val isRetryable: Boolean = true
 )
