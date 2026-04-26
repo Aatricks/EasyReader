@@ -19,6 +19,7 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.util.concurrent.CancellationException
 
 /**
  * [SummaryEngine] implementation using the llmedge library.
@@ -60,39 +61,86 @@ class LlmEdgeSummaryEngine @Inject constructor(
     private var activeGenerationJob: Job? = null
     private val generationLock = Any()
 
+    internal var createTextClient: (Context, CoroutineScope) -> TextClient = TextClient::create
+    internal var prepareTextClient: suspend (TextClient) -> Unit = { client ->
+        client.prepare(modelSpec, modelOptions)
+    }
+
     override fun isAvailable(): Boolean = isInitialized && textClient != null
 
     override suspend fun initialize(): Result<Unit> = withContext(Dispatchers.IO) {
-        if (isInitialized) return@withContext Result.success(Unit)
+        var deferred: CompletableDeferred<Result<Unit>>? = null
+        var isOwner = false
 
-        val deferred = synchronized(initLock) {
-            if (isInitialized) return@synchronized null
-            initDeferred?.let { return@synchronized it }
-            CompletableDeferred<Result<Unit>>().also { initDeferred = it }
+        synchronized(initLock) {
+            if (isInitialized) {
+                return@withContext Result.success(Unit)
+            }
+
+            val existing = initDeferred
+            if (existing != null) {
+                deferred = existing
+                isOwner = false
+            } else {
+                deferred = CompletableDeferred()
+                initDeferred = deferred
+                isOwner = true
+            }
         }
 
-        if (deferred != null && deferred.isCompleted.not() && initDeferred !== deferred) {
-            return@withContext deferred.await()
-        }
-        if (deferred == null) return@withContext Result.success(Unit)
+        val initWaiter = deferred ?: return@withContext Result.failure(
+            IllegalStateException("Initialization deferred was not created")
+        )
 
-        val result = runCatching {
+        if (!isOwner) {
+            return@withContext initWaiter.await()
+        }
+
+        var client: TextClient? = null
+        var handedOff = false
+
+        val result = try {
             Log.d(TAG, "Creating llmedge text client for $MODEL_ID")
 
-            val client = TextClient.create(context, scope)
-            client.prepare(modelSpec, modelOptions)
+            val createdClient = createTextClient(context, scope)
+            client = createdClient
+            prepareTextClient(createdClient)
 
-            textClient = client
-            isInitialized = true
-            Unit
-        }.onFailure { e ->
-            Log.e(TAG, "Failed to initialize LLMEdge", e)
-            textClient?.close()
-            textClient = null
+            synchronized(initLock) {
+                if (initDeferred === initWaiter) {
+                    textClient = createdClient
+                    isInitialized = true
+                    handedOff = true
+                }
+            }
+
+            if (handedOff) {
+                Result.success(Unit)
+            } else {
+                client?.close()
+                Result.failure(CancellationException("Summary engine initialization was cancelled"))
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to initialize LLMEdge", t)
+            if (!handedOff) {
+                client?.close()
+            }
+            synchronized(initLock) {
+                if (!handedOff && textClient === client) {
+                    textClient = null
+                }
+            }
+            Result.failure(t)
         }
 
-        deferred.complete(result)
-        synchronized(initLock) { initDeferred = null }
+        initWaiter.complete(result)
+
+            synchronized(initLock) {
+                if (initDeferred === initWaiter) {
+                    initDeferred = null
+                }
+            }
+
         result
     }
 
@@ -151,11 +199,24 @@ class LlmEdgeSummaryEngine @Inject constructor(
     }
 
     override fun release() {
+        val initializationDeferred = synchronized(initLock) {
+            isInitialized = false
+            val deferred = initDeferred
+            initDeferred = null
+            deferred
+        }
+
         cancelGeneration()
         textClient?.close()
         textClient = null
         scope.cancel()
-        isInitialized = false
+
+        if (initializationDeferred != null && initializationDeferred.isCompleted.not()) {
+            initializationDeferred.complete(
+                Result.failure(CancellationException("Summary engine was released"))
+            )
+        }
+
         Log.d(TAG, "LlmEdgeSummaryEngine released")
     }
 }
