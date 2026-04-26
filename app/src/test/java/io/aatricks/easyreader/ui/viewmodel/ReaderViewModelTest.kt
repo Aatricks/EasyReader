@@ -576,6 +576,99 @@ class ReaderViewModelTest {
     }
 
     @Test
+    fun `persistLifecycleProgress cancels pending debounced save to avoid overwrite`() = runTest {
+        val itemId = "item-1"
+        val url = "https://example.com/manhwa/10"
+
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(listOf(ContentElement.Image("https://cdn.example.com/1.jpg")), "Chapter 10", url)
+        )
+        whenever(libraryRepository.getItemByUrl(url)).thenReturn(
+            LibraryItem(id = itemId, title = "Chapter 10", url = url)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(
+            LibraryItem(id = itemId, title = "Chapter 10", url = url)
+        )
+
+        viewModel.loadContent(url)
+        advanceUntilIdle()
+        viewModel.onUserInteraction()
+        clearInvocations(libraryRepository)
+
+        viewModel.updateScrollPosition(
+            scrollOffset = 33f,
+            maxScrollOffset = 100f,
+            viewportHeight = 0f,
+            index = 5,
+            offset = 120,
+            firstVisibleItemSize = 300
+        )
+
+        viewModel.persistLifecycleProgress()
+        advanceTimeBy(250)
+        runCurrent()
+        advanceUntilIdle()
+
+        verify(libraryRepository, times(1)).updateProgressExplicit(
+            itemId = eq(itemId),
+            currentChapter = any(),
+            progress = eq(FieldUpdate.Set(33)),
+            currentChapterUrl = eq(FieldUpdate.Set(url)),
+            lastScrollProgress = eq(FieldUpdate.Set(33f)),
+            lastReadIndex = eq(FieldUpdate.Set(5)),
+            lastReadOffset = eq(FieldUpdate.Set(120)),
+            lastReadOffsetFraction = eq(FieldUpdate.Set(0.4f))
+        )
+    }
+
+    @Test
+    fun `loadContent restores manhwa index and offset fraction across reloads`() = runTest {
+        val itemId = "item-1"
+        val url = "https://example.com/webtoon/chapter-9"
+        val savedItem = LibraryItem(
+            id = itemId,
+            title = "Chapter 9",
+            url = url,
+            progress = 64,
+            lastReadIndex = 5,
+            lastReadOffset = 220,
+            lastReadOffsetFraction = 0.4f,
+            lastScrollPosition = 64f
+        )
+        val unknownDimensionContent = ContentResult.Success(
+            elements = (1..8).map { ContentElement.Image("https://cdn.example.com/panel-$it.jpg") },
+            title = "Chapter 9",
+            url = url
+        )
+        val knownDimensionContent = ContentResult.Success(
+            elements = (1..8).map { index ->
+                ContentElement.Image(
+                    url = "https://cdn.example.com/panel-$index.jpg",
+                    width = 1080 + index,
+                    height = 1920 + index
+                )
+            },
+            title = "Chapter 9",
+            url = url
+        )
+
+        whenever(contentRepository.loadContent(url)).thenReturn(unknownDimensionContent, knownDimensionContent)
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(savedItem)
+
+        viewModel.loadContent(url, itemId)
+        advanceUntilIdle()
+        assertEquals(5, viewModel.uiState.value.scrollIndex)
+        assertEquals(0.4f, viewModel.uiState.value.pendingRestoreOffsetFraction ?: 0f, 0.001f)
+        assertEquals("https://cdn.example.com/panel-6.jpg", (viewModel.uiState.value.content?.paragraphs?.get(5) as ContentElement.Image).url)
+
+        viewModel.loadContent(url, itemId)
+        advanceUntilIdle()
+        assertEquals(5, viewModel.uiState.value.scrollIndex)
+        assertEquals(0.4f, viewModel.uiState.value.pendingRestoreOffsetFraction ?: 0f, 0.001f)
+        assertEquals("https://cdn.example.com/panel-6.jpg", (viewModel.uiState.value.content?.paragraphs?.get(5) as ContentElement.Image).url)
+    }
+
+    @Test
     fun `seekToProgress updates progress state and seek ui fields`() = runTest {
         viewModel.seekToProgress(42f)
 

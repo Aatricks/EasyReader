@@ -365,6 +365,7 @@ class WebContentLoader @Inject constructor(
         url: String,
         diskOnly: Boolean
     ): List<ContentElement> {
+        val isLongStrip = isLongStripContent(url = url, elements = elements)
         val imageElements = elements.flatMap { element ->
             when (element) {
                 is ContentElement.Image -> listOf(element)
@@ -392,10 +393,33 @@ class WebContentLoader @Inject constructor(
             }
         }
 
+        if (isLongStrip) {
+            return dimensionedElements
+        }
+
         // 2. Group adjacent images/groups before splitting wide ones
         val groupedElements = groupSimilarElements(dimensionedElements)
 
         return expandWideElements(groupedElements, url)
+    }
+
+    private fun isLongStripContent(url: String, elements: List<ContentElement>): Boolean {
+        val isManga = url.contains("manga", ignoreCase = true) &&
+            !url.contains("manhwa", ignoreCase = true) &&
+            !url.contains("webtoon", ignoreCase = true)
+        if (isManga) return false
+
+        val imageCount = elements.sumOf {
+            when (it) {
+                is ContentElement.Image -> 1
+                is ContentElement.ImageGroup -> it.images.size
+                else -> 0
+            }
+        }
+        val textCount = elements.count { it is ContentElement.Text }
+        return url.contains("manhwa", ignoreCase = true) ||
+            url.contains("webtoon", ignoreCase = true) ||
+            (imageCount > textCount && imageCount > 2)
     }
 
     private suspend fun enrichImageDimensions(

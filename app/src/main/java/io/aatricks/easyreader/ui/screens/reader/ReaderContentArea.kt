@@ -34,11 +34,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
@@ -56,6 +58,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.aatricks.easyreader.data.model.ChapterContent
 import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.ui.components.BottomNavigationBar
@@ -63,6 +68,7 @@ import io.aatricks.easyreader.ui.components.ReaderImageView
 import io.aatricks.easyreader.ui.components.TopInfoBar
 import io.aatricks.easyreader.ui.util.resolveRestoreOffset
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.sample
@@ -109,6 +115,8 @@ internal fun ContentArea(
 
     val requestedIndices = remember(content.url) { mutableSetOf<Int>() }
     var lastAppliedRestoreOffset by remember(content.url) { mutableStateOf<Int?>(null) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(listState.firstVisibleItemIndex, pagerState.currentPage, content.url) {
         val currentIndex = if (uiState.isPagedMode) pagerState.currentPage else listState.firstVisibleItemIndex
@@ -182,6 +190,52 @@ internal fun ContentArea(
             )
         }
     } else {
+        DisposableEffect(lifecycleOwner, listState, content.url, uiState.isPagedMode) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event != Lifecycle.Event.ON_PAUSE && event != Lifecycle.Event.ON_STOP) return@LifecycleEventObserver
+                if (uiState.isPagedMode) return@LifecycleEventObserver
+
+                val layoutInfo = listState.layoutInfo
+                val firstItem = layoutInfo.visibleItemsInfo.firstOrNull()
+                val snapshot = firstItem?.let {
+                    calculateReaderScrollSnapshot(
+                        firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                        firstVisibleItemMeasuredIndex = it.index,
+                        firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset,
+                        canScrollForward = listState.canScrollForward,
+                        totalItemsCount = layoutInfo.totalItemsCount,
+                        viewportHeightPx = layoutInfo.viewportSize.height,
+                        firstVisibleItemSize = it.size
+                    )
+                }
+
+                flushReaderLifecycleProgress(
+                    snapshot = snapshot,
+                    updateScrollPosition = { flushSnapshot ->
+                        readerViewModel.updateScrollPosition(
+                            scrollOffset = flushSnapshot.scrollOffset,
+                            maxScrollOffset = flushSnapshot.maxScrollOffset,
+                            viewportHeight = flushSnapshot.viewportHeightInItems,
+                            index = flushSnapshot.index,
+                            offset = flushSnapshot.offset,
+                            canScrollForward = flushSnapshot.canScrollForward,
+                            firstVisibleItemSize = flushSnapshot.firstVisibleItemSize
+                        )
+                    },
+                    persistProgress = {
+                        coroutineScope.launch {
+                            readerViewModel.persistLifecycleProgress()
+                        }
+                    }
+                )
+            }
+
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose {
+                lifecycleOwner.lifecycle.removeObserver(observer)
+            }
+        }
+
         LaunchedEffect(listState, content.url) {
             snapshotFlow {
                 Triple(
@@ -200,23 +254,24 @@ internal fun ContentArea(
                     if (visibleItems.isEmpty()) return@collect
 
                     val firstItem = visibleItems.first()
-                    val totalItems = layoutInfo.totalItemsCount
-
-                    val currentScrollOffset = firstItem.index.toFloat() +
-                        (listState.firstVisibleItemScrollOffset.toFloat() / firstItem.size.coerceAtLeast(1).toFloat())
-
-                    val viewportHeightInItems =
-                        layoutInfo.viewportSize.height.toFloat() / firstItem.size.coerceAtLeast(1).toFloat()
-                    val maxScrollOffset = (totalItems - 1).coerceAtLeast(0).toFloat()
+                    val snapshot = calculateReaderScrollSnapshot(
+                        firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                        firstVisibleItemMeasuredIndex = firstItem.index,
+                        firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset,
+                        canScrollForward = listState.canScrollForward,
+                        totalItemsCount = layoutInfo.totalItemsCount,
+                        viewportHeightPx = layoutInfo.viewportSize.height,
+                        firstVisibleItemSize = firstItem.size
+                    ) ?: return@collect
 
                     readerViewModel.updateScrollPosition(
-                        scrollOffset = currentScrollOffset,
-                        maxScrollOffset = maxScrollOffset + viewportHeightInItems,
-                        viewportHeight = viewportHeightInItems,
-                        index = listState.firstVisibleItemIndex,
-                        offset = listState.firstVisibleItemScrollOffset,
-                        canScrollForward = listState.canScrollForward,
-                        firstVisibleItemSize = firstItem.size
+                        scrollOffset = snapshot.scrollOffset,
+                        maxScrollOffset = snapshot.maxScrollOffset,
+                        viewportHeight = snapshot.viewportHeightInItems,
+                        index = snapshot.index,
+                        offset = snapshot.offset,
+                        canScrollForward = snapshot.canScrollForward,
+                        firstVisibleItemSize = snapshot.firstVisibleItemSize
                     )
                 }
         }
@@ -313,6 +368,55 @@ internal fun ContentArea(
             isRtl = uiState.isRtl
         )
     }
+}
+
+internal data class ReaderScrollSnapshot(
+    val scrollOffset: Float,
+    val maxScrollOffset: Float,
+    val viewportHeightInItems: Float,
+    val index: Int,
+    val offset: Int,
+    val canScrollForward: Boolean,
+    val firstVisibleItemSize: Int
+)
+
+internal fun calculateReaderScrollSnapshot(
+    firstVisibleItemIndex: Int,
+    firstVisibleItemMeasuredIndex: Int,
+    firstVisibleItemScrollOffset: Int,
+    canScrollForward: Boolean,
+    totalItemsCount: Int,
+    viewportHeightPx: Int,
+    firstVisibleItemSize: Int
+): ReaderScrollSnapshot? {
+    if (totalItemsCount <= 0 || firstVisibleItemSize <= 0) return null
+
+    val itemSize = firstVisibleItemSize.coerceAtLeast(1)
+    val currentScrollOffset = firstVisibleItemMeasuredIndex.toFloat() +
+        (firstVisibleItemScrollOffset.toFloat() / itemSize.toFloat())
+    val viewportHeightInItems = viewportHeightPx.toFloat() / itemSize.toFloat()
+    val maxScrollOffset = (totalItemsCount - 1).coerceAtLeast(0).toFloat() + viewportHeightInItems
+
+    return ReaderScrollSnapshot(
+        scrollOffset = currentScrollOffset,
+        maxScrollOffset = maxScrollOffset,
+        viewportHeightInItems = viewportHeightInItems,
+        index = firstVisibleItemIndex,
+        offset = firstVisibleItemScrollOffset,
+        canScrollForward = canScrollForward,
+        firstVisibleItemSize = itemSize
+    )
+}
+
+internal fun flushReaderLifecycleProgress(
+    snapshot: ReaderScrollSnapshot?,
+    updateScrollPosition: (ReaderScrollSnapshot) -> Unit,
+    persistProgress: () -> Unit
+) {
+    if (snapshot != null) {
+        updateScrollPosition(snapshot)
+    }
+    persistProgress()
 }
 
 @Composable

@@ -1,5 +1,6 @@
 package io.aatricks.easyreader.ui.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -40,6 +41,7 @@ class ReaderViewModel @Inject constructor(
     val progressState: StateFlow<ReaderProgressState> = progressController.progressState
 
     companion object {
+        private const val TAG = "ReaderViewModel"
         private val DOUBLE_NEWLINE_REGEX = Regex("""\n\s*\n""")
         private const val MIN_SCROLL_OFFSET_DELTA_PX = 8
     }
@@ -840,8 +842,13 @@ class ReaderViewModel @Inject constructor(
 
     suspend fun persistLifecycleProgress(): Unit {
         val currentChapterUrl = _uiState.value.content?.url ?: return
+        progressController.cancelProgressUpdate()
         val latest = currentPersistedSnapshot()
         val shouldSnapToTop = !hasUserInteractedSinceLoad && latest.scrollProgress == 0
+        Log.d(
+            TAG,
+            "persistLifecycleProgress url=$currentChapterUrl index=${latest.scrollIndex} offset=${latest.scrollOffset} offsetFraction=${latest.scrollOffsetFraction} firstVisibleItemSize=${latest.firstVisibleItemSize}"
+        )
 
         updateReadingProgress(
             progress = if (shouldSnapToTop) 0 else latest.scrollProgress,

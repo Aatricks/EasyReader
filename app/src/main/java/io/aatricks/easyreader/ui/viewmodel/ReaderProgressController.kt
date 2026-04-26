@@ -1,5 +1,6 @@
 package io.aatricks.easyreader.ui.viewmodel
 
+import android.util.Log
 import io.aatricks.easyreader.data.model.*
 import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.ui.util.normalizeRestoreOffset
@@ -37,8 +38,10 @@ class ReaderProgressController(
     private var progressUpdateJob: Job? = null
 
     companion object {
+        private const val TAG = "ReaderProgress"
         private const val MIN_SCROLL_OFFSET_DELTA_PX = 8
         private const val MIN_SCROLL_PROGRESS_DELTA_PERCENT = 0.35f
+        private const val MIN_STABLE_MANHWA_ITEM_SIZE_PX = 96
     }
 
     fun syncProgressState(
@@ -230,6 +233,11 @@ class ReaderProgressController(
             firstVisibleItemSize = firstVisibleItemSize
         )
 
+        if (shouldSkipPersistForUnstableManhwaSample(content, index, firstVisibleItemSize)) {
+            lastRawScrollOffset = scrollOffset
+            return
+        }
+
         progressUpdateJob?.cancel()
         progressUpdateJob = scope.launch {
             delay(100)
@@ -268,6 +276,17 @@ class ReaderProgressController(
 
             if (isPlaceholderAtCurrentPosition(content, lastIndex)) return@runCatching
 
+            val currentElement = content?.paragraphs?.getOrNull(lastIndex)
+            val elementAnchor = when (currentElement) {
+                is ContentElement.Image -> currentElement.url
+                is ContentElement.ImageGroup -> currentElement.images.firstOrNull()?.url
+                else -> null
+            }
+            Log.d(
+                TAG,
+                "saveProgress url=$resolvedChapterUrl index=$lastIndex offset=$lastOffset offsetFraction=$lastOffsetFraction firstVisibleItemSize=${latest.firstVisibleItemSize} anchor=$elementAnchor"
+            )
+
             libraryRepository.updateProgressExplicit(
                 itemId = itemId,
                 currentChapter = "",
@@ -303,6 +322,33 @@ class ReaderProgressController(
 
     fun cancelProgressUpdate() {
         progressUpdateJob?.cancel()
+    }
+
+    private fun shouldSkipPersistForUnstableManhwaSample(
+        content: ChapterContent?,
+        index: Int,
+        firstVisibleItemSize: Int
+    ): Boolean {
+        if (content == null || firstVisibleItemSize >= MIN_STABLE_MANHWA_ITEM_SIZE_PX) return false
+
+        val isLongStrip = isLongStripContent(content)
+        if (!isLongStrip) return false
+
+        return when (content.paragraphs.getOrNull(index)) {
+            is ContentElement.Image, is ContentElement.ImageGroup -> true
+            else -> false
+        }
+    }
+
+    private fun isLongStripContent(content: ChapterContent): Boolean {
+        val isManga = content.url.contains("manga", ignoreCase = true) &&
+            !content.url.contains("manhwa", ignoreCase = true) &&
+            !content.url.contains("webtoon", ignoreCase = true)
+        if (isManga) return false
+
+        return content.url.contains("manhwa", ignoreCase = true) ||
+            content.url.contains("webtoon", ignoreCase = true) ||
+            (content.getImageCount() > content.getTextCount() && content.getImageCount() > 2)
     }
 }
 

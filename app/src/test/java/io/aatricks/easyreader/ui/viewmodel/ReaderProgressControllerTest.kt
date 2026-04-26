@@ -4,6 +4,8 @@ import io.aatricks.easyreader.data.model.*
 import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.util.FieldUpdate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -139,6 +141,38 @@ class ReaderProgressControllerTest {
         assertEquals(true, controller.hasUserInteractedSinceLoad)
         assertEquals(false, controller.suppressAutoNavUntilUserInteraction)
         assertNull(controller.restoredProgressSnapshot)
+    }
+
+    @Test
+    fun `updateScrollPosition skips persistence for tiny long-strip image samples`() = runTest {
+        val controller = ReaderProgressController(libraryRepository, this)
+        controller.currentLibraryItemId = "test-id"
+        val content = ChapterContent(
+            paragraphs = listOf(
+                ContentElement.Image("https://cdn.example.com/1.jpg"),
+                ContentElement.Image("https://cdn.example.com/2.jpg"),
+                ContentElement.Image("https://cdn.example.com/3.jpg")
+            ),
+            title = "Chapter 1",
+            url = "https://example.com/webtoon/chapter-1"
+        )
+
+        controller.updateScrollPosition(
+            scrollOffset = 1.4f,
+            maxScrollOffset = 10f,
+            viewportHeight = 1f,
+            index = 1,
+            offset = 40,
+            content = content,
+            canScrollForward = true,
+            firstVisibleItemSize = 48
+        )
+        advanceTimeBy(200)
+        runCurrent()
+
+        assertEquals(1, controller.progressState.value.scrollIndex)
+        assertEquals(40, controller.progressState.value.scrollOffset)
+        verify(libraryRepository, never()).updateProgressExplicit(any(), any(), any(), any(), any(), any(), any(), any())
     }
 
     private fun assertNull(value: Any?) {

@@ -151,7 +151,7 @@ class WebContentLoaderTest {
     }
 
     @Test
-    fun `loadWebContent caps strip groups to keep scroll rows smaller`() = runBlocking {
+    fun `loadWebContent keeps long-strip rows ungrouped for stable restore`() = runBlocking {
         val chapterUrl = "https://example.com/chapter-long-strip"
         val imageUrls = (1..4).map { "https://example.com/strip-$it.png" }
         val htmlParser = mock<HtmlParser>()
@@ -181,10 +181,51 @@ class WebContentLoaderTest {
 
         val result = loader.loadWebContent(chapterUrl) as ContentResult.Success
 
-        assertEquals(2, result.elements.size)
-        assertTrue(result.elements.first() is ContentElement.ImageGroup)
-        assertEquals(3, (result.elements.first() as ContentElement.ImageGroup).images.size)
-        assertTrue(result.elements.last() is ContentElement.Image)
+        assertEquals(4, result.elements.size)
+        assertTrue(result.elements.all { it is ContentElement.Image })
+        assertEquals(imageUrls, result.elements.map { (it as ContentElement.Image).url })
+    }
+
+    @Test
+    fun `loadWebContent keeps long-strip manhwa top-level image order stable across unknown and known dimensions`() = runBlocking {
+        val chapterUrl = "https://example.com/manhwa/chapter-7"
+        val imageUrls = (1..8).map { "https://example.com/manhwa-$it.png" }
+        val htmlParser = mock<HtmlParser>()
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                when (request.url.toString()) {
+                    chapterUrl -> buildResponse(
+                        request,
+                        "<html><head><title>Manhwa</title></head><body></body></html>",
+                        "text/html"
+                    )
+                    in imageUrls -> buildByteResponse(request, tinyPng(width = 1080, height = 1920), "image/png")
+                    else -> buildResponse(request, "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(imageUrls.map { ContentElement.Image(it) })
+
+        val firstLoad = loader.loadWebContent(chapterUrl) as ContentResult.Success
+
+        imageUrls.forEachIndexed { index, imageUrl ->
+            loader.getCachedMediaFile(imageUrl).writeBytes(tinyPng(width = 1080 + index, height = 1920 + index))
+        }
+        val secondLoad = loader.loadWebContent(chapterUrl) as ContentResult.Success
+
+        val firstUrls = firstLoad.elements.mapNotNull { (it as? ContentElement.Image)?.url }
+        val secondUrls = secondLoad.elements.mapNotNull { (it as? ContentElement.Image)?.url }
+
+        assertEquals(8, firstLoad.elements.size)
+        assertEquals(8, secondLoad.elements.size)
+        assertTrue(firstLoad.elements.all { it is ContentElement.Image })
+        assertTrue(secondLoad.elements.all { it is ContentElement.Image })
+        assertEquals(imageUrls, firstUrls)
+        assertEquals(imageUrls, secondUrls)
+        assertEquals(firstUrls[5], secondUrls[5])
     }
 
     @Test

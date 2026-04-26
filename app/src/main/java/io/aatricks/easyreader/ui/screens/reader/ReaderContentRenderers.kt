@@ -50,6 +50,16 @@ private fun readerContentType(element: ContentElement): String = when (element) 
     is ContentElement.ImageGroup -> CONTENT_TYPE_IMAGE_GROUP
 }
 
+internal fun stableContentElementKey(pageUrl: String, index: Int, element: ContentElement): String {
+    return when (element) {
+        is ContentElement.Image -> "img:${element.url}"
+        is ContentElement.ImageGroup -> "group:${element.images.joinToString("|") { it.url }}"
+        is ContentElement.Text -> "txt:$pageUrl:$index:${element.content.take(64).hashCode()}"
+        is ContentElement.Placeholder -> "placeholder:$pageUrl:$index:${element.text}"
+        is ContentElement.PageContent -> "page:$pageUrl:$index"
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun PagedReaderView(
@@ -323,7 +333,7 @@ internal fun ScrollingReaderView(
     ) {
         itemsIndexed(
             content.paragraphs,
-            key = { index, _ -> "${content.url}_$index" },
+            key = { index, element -> stableContentElementKey(content.url, index, element) },
             contentType = { _, element -> readerContentType(element) }
         ) { _, element ->
             when (element) {
