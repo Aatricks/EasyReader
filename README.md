@@ -88,6 +88,10 @@ Open the project in Android Studio, sync Gradle, and run the default debug varia
 
 For CI-style flavor coverage, PR validation uses only `:app:lintStandardDebug`, `:app:testStandardDebugUnitTest`, and `:app:assembleStandardDebug`.
 
+### Benchmarks
+
+Normal unit-test tasks do not compile or run benchmark sources. Files under `app/src/benchmark/java` are kept as opt-in manual benchmark references and are not part of PR CI. There is currently no dedicated Gradle benchmark task; add one with a separate source set and classpath before relying on these sources for automated benchmark runs.
+
 ### Release Signing
 
 Release builds are separate from the normal debug workflow.
