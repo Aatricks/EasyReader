@@ -4,14 +4,13 @@ import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.model.ExploreItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.jsoup.Connection
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 
 abstract class BaseJsoupSource(
-    protected open val preferencesManager: PreferencesManager? = null,
-    protected open val okHttpClient: okhttp3.OkHttpClient? = null
+    protected open val preferencesManager: PreferencesManager,
+    protected open val okHttpClient: okhttp3.OkHttpClient
 ) : NovelSource {
 
     companion object {
@@ -26,40 +25,17 @@ abstract class BaseJsoupSource(
     }
 
     protected fun getDocument(url: String): Document {
-        val client = okHttpClient
-        if (client != null) {
-            val request = okhttp3.Request.Builder()
-                .url(url)
-                .header("User-Agent", userAgent)
-                .header("Referer", baseUrl)
-                .build()
+        val request = okhttp3.Request.Builder()
+            .url(url)
+            .header("User-Agent", userAgent)
+            .header("Referer", baseUrl)
+            .build()
 
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) throw java.io.IOException("Unexpected code $response")
-                val html = response.body?.string() ?: throw java.io.IOException("Empty response")
-                return Jsoup.parse(html, url)
-            }
+        okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw java.io.IOException("Unexpected code $response")
+            val html = response.body?.string() ?: throw java.io.IOException("Empty response")
+            return Jsoup.parse(html, url)
         }
-
-        // Fallback to Jsoup's connection if okHttpClient is not available
-        val connection = Jsoup.connect(url)
-            .userAgent(userAgent)
-            .referrer(baseUrl)
-            .timeout(timeout.toInt())
-            .followRedirects(true)
-
-        return connection.get()
-    }
-
-    protected fun connect(url: String): Connection {
-        // This method is now legacy as we prefer getDocument with okHttpClient
-        val connection = Jsoup.connect(url)
-            .userAgent(userAgent)
-            .referrer(baseUrl)
-            .timeout(timeout.toInt())
-            .followRedirects(true)
-
-        return connection
     }
 
     protected fun Element.absoluteUrl(attributeKey: String): String {

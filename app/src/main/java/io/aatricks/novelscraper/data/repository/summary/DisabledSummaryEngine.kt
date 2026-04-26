@@ -10,10 +10,10 @@ import javax.inject.Singleton
 class DisabledSummaryEngine @Inject constructor() : SummaryEngine {
     override fun isAvailable(): Boolean = false
 
-    override fun initialize(): Result<Unit> = 
+    override suspend fun initialize(): Result<Unit> = 
         Result.failure(IllegalStateException("AI Summarization is disabled in this build."))
 
-    override fun generateSummary(
+    override suspend fun generateSummary(
         prompt: String,
         onProgress: ((String) -> Unit)?
     ): Result<String> = 
