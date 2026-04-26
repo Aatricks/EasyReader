@@ -3,17 +3,25 @@ name: Android CI
 on:
   push:
     branches: [ "main" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
+    inputs:
+      run_release:
+        description: "Run signed release build"
+        type: boolean
+        required: false
+        default: false
   schedule:
     - cron: "0 6 * * 1"
 
 jobs:
-  standard-pr-validation:
-    name: standard-pr-validation
+  standard-validation:
+    name: standard-validation
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    # Keep PR and main push validation strictly unsigned standardDebug checks.
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
 
     steps:
     - uses: actions/checkout@v4
@@ -28,21 +36,38 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Lint standardDebug
-      # standardDebug is the default PR validation path.
-      run: ./gradlew :app:lintStandardDebug
+    - name: Validate standardDebug
+      # PR/default validation path with no release/signing requirements.
+      run: ./gradlew :app:lintStandardDebug :app:testStandardDebugUnitTest :app:assembleStandardDebug
 
-    - name: Run standardDebug unit tests
-      run: ./gradlew :app:testStandardDebugUnitTest
-
-    - name: Build standardDebug
-      run: ./gradlew :app:assembleStandardDebug
-
-  ai-validation:
-    name: ai-validation
+  ai-debug-validation:
+    name: ai-debug-validation
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
+    # AI debug validation runs on trusted automation and optional manual dispatch.
+    # It stays unsigned and never touches release signing secrets.
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_release != true)
 
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Validate aiDebug
+      run: ./gradlew :app:lintAiDebug :app:testAiDebugUnitTest :app:assembleAiDebug
+
+  release-build:
+    name: release-build
+    runs-on: ubuntu-latest
+    # Signed releases run only from version tag pushes or explicit manual dispatch.
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'workflow_dispatch' && inputs.run_release == true)
     steps:
     - uses: actions/checkout@v4
 
@@ -64,23 +89,13 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Lint aiDebug
-      # aiDebug is validated separately on trusted pushes to main.
-      run: ./gradlew :app:lintAiDebug
+    - name: Build signed release variants
+      run: ./gradlew :app:assembleStandardRelease :app:assembleAiRelease
 
-    - name: Run aiDebug unit tests
-      run: ./gradlew :app:testAiDebugUnitTest
-
-    - name: Build aiDebug and releases
-      run: |
-        ./gradlew :app:assembleAiDebug :app:assembleStandardRelease :app:assembleAiRelease
-
-    - name: Upload APKs
+    - name: Upload release APKs
       uses: actions/upload-artifact@v4
       with:
-        name: app-apks
+        name: release-apks
         path: |
-          app/build/outputs/apk/standard/debug/*.apk
           app/build/outputs/apk/standard/release/*.apk
-          app/build/outputs/apk/ai/debug/*.apk
           app/build/outputs/apk/ai/release/*.apk
