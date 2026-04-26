@@ -20,9 +20,12 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import okio.buffer
+import okio.sink
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.io.File
@@ -58,6 +61,8 @@ class WebContentLoader @Inject constructor(
         private const val USER_REQUEST_ATTEMPTS = 4
         private const val SHORT_REQUEST_ATTEMPTS = 2
         private const val USER_REQUEST_PREFETCH_PASSES = 3
+        private const val MAX_IMAGE_BYTES = 20 * 1024 * 1024L // 20MB
+        private const val MAX_DIMENSION_SNIFF_BYTES = 64 * 1024L // 64KB
     }
 
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -85,9 +90,11 @@ class WebContentLoader @Inject constructor(
     )
 
     private sealed interface ImageFetchResult {
-        data class Success(val bytes: ByteArray) : ImageFetchResult
+        data class Success(val file: File) : ImageFetchResult
+        data class BoundedSuccess(val bytes: ByteArray) : ImageFetchResult
         data class HttpError(val code: Int, val retryAfterMs: Long? = null) : ImageFetchResult
         data class NetworkError(val exception: IOException) : ImageFetchResult
+        object TooLarge : ImageFetchResult
     }
 
     suspend fun loadWebContent(url: String): ContentResult = withContext(Dispatchers.IO) {
@@ -190,39 +197,40 @@ class WebContentLoader @Inject constructor(
         }
 
         val cachedFile = primaryCachedMediaFile(imageUrl)
+        val tempFile = File(cachedFile.parent, "${cachedFile.name}.tmp")
 
         val deferred = imageDownloadMutex.withLock {
             inFlightImageDownloads[imageUrl] ?: repositoryScope.async {
                 runCatching {
-                    when (
-                        val result = executeImageRequest(
-                            imageUrl = imageUrl,
-                            pageUrl = pageUrl,
-                            useShortTimeout = useShortTimeout
-                        )
-                    ) {
+                    val result = executeImageRequest(
+                        imageUrl = imageUrl,
+                        pageUrl = pageUrl,
+                        useShortTimeout = useShortTimeout,
+                        destinationFile = tempFile
+                    )
+
+                    when (result) {
                         is ImageFetchResult.Success -> {
-                            val tempFile = File(cachedFile.parent, "${cachedFile.name}.tmp")
-                            try {
-                                tempFile.writeBytes(result.bytes)
-                                if (tempFile.renameTo(cachedFile)) {
-                                    cachedFile
-                                } else if (cachedFile.exists()) {
-                                    tempFile.delete()
-                                    cachedFile
-                                } else {
-                                    tempFile.delete()
-                                    null
-                                }
-                            } catch (e: Exception) {
+                            if (tempFile.renameTo(cachedFile)) {
+                                cachedFile
+                            } else if (cachedFile.exists()) {
                                 tempFile.delete()
-                                throw e
+                                cachedFile
+                            } else {
+                                tempFile.delete()
+                                null
                             }
                         }
 
-                        else -> null
+                        else -> {
+                            tempFile.delete()
+                            null
+                        }
                     }
-                }.getOrNull()
+                }.getOrElse {
+                    tempFile.delete()
+                    null
+                }
             }.also { inFlightImageDownloads[imageUrl] = it }
         }
 
@@ -465,10 +473,10 @@ class WebContentLoader @Inject constructor(
                     imageUrl = imageUrl,
                     pageUrl = pageUrl,
                     useShortTimeout = true,
-                    rangeHeader = "bytes=0-16383"
+                    rangeHeader = "bytes=0-${MAX_DIMENSION_SNIFF_BYTES - 1}"
                 )
             ) {
-                is ImageFetchResult.Success -> {
+                is ImageFetchResult.BoundedSuccess -> {
                     val parsed = ImageBoundsParser.parse(result.bytes)
                     if (parsed != null) {
                         parsed
@@ -578,7 +586,8 @@ class WebContentLoader @Inject constructor(
         imageUrl: String,
         pageUrl: String,
         useShortTimeout: Boolean,
-        rangeHeader: String? = null
+        rangeHeader: String? = null,
+        destinationFile: File? = null
     ): ImageFetchResult {
         val attempts = if (useShortTimeout) SHORT_REQUEST_ATTEMPTS else USER_REQUEST_ATTEMPTS
         val client = if (useShortTimeout) shortTimeoutClient else okHttpClient
@@ -596,7 +605,7 @@ class WebContentLoader @Inject constructor(
                         }
 
                         client.newCall(requestBuilder.build()).execute().use { response ->
-                            parseImageResponse(response)
+                            parseImageResponse(response, destinationFile)
                         }
                     }
                 }.getOrElse { throwable ->
@@ -604,6 +613,8 @@ class WebContentLoader @Inject constructor(
                 }
             ) {
                 is ImageFetchResult.Success -> return result
+                is ImageFetchResult.BoundedSuccess -> return result
+                is ImageFetchResult.TooLarge -> return result
                 is ImageFetchResult.HttpError -> {
                     if (!shouldRetryResponseCode(result.code) || attempt == attempts - 1) return result
                     delay(nextRetryDelayMs(result.retryAfterMs, imageUrl, attempt))
@@ -646,6 +657,8 @@ class WebContentLoader @Inject constructor(
 
                 is ImageFetchResult.NetworkError -> HOST_RATE_LIMIT_SPACING_MS
                 is ImageFetchResult.Success -> HOST_REQUEST_SPACING_MS
+                is ImageFetchResult.BoundedSuccess -> HOST_REQUEST_SPACING_MS
+                is ImageFetchResult.TooLarge -> HOST_REQUEST_SPACING_MS
             }
             state.nextAllowedAtMs = System.currentTimeMillis() + spacingMs
             result
@@ -653,13 +666,16 @@ class WebContentLoader @Inject constructor(
     }
 
     private suspend fun hostThrottleStateFor(imageUrl: String): HostThrottleState {
-        val hostKey = runCatching { URI(imageUrl).host?.lowercase() }.getOrNull().orEmpty().ifBlank { imageUrl }
+        val hostKey = imageUrl.toHttpUrlOrNull()?.host?.lowercase() ?: imageUrl
         return hostThrottleMutex.withLock {
             hostThrottleStates.getOrPut(hostKey) { HostThrottleState() }
         }
     }
 
-    private fun parseImageResponse(response: Response): ImageFetchResult {
+    private fun parseImageResponse(
+        response: Response,
+        destinationFile: File? = null
+    ): ImageFetchResult {
         if (!response.isSuccessful) {
             return ImageFetchResult.HttpError(
                 code = response.code,
@@ -667,8 +683,48 @@ class WebContentLoader @Inject constructor(
             )
         }
 
-        val bytes = response.body?.bytes() ?: return ImageFetchResult.HttpError(response.code)
-        return ImageFetchResult.Success(bytes)
+        val body = response.body ?: return ImageFetchResult.HttpError(response.code)
+        val maxBytes = if (destinationFile != null) MAX_IMAGE_BYTES else MAX_DIMENSION_SNIFF_BYTES
+
+        val contentLength = body.contentLength()
+        if (contentLength != -1L && contentLength > maxBytes) {
+            return ImageFetchResult.TooLarge
+        }
+
+        return if (destinationFile != null) {
+            try {
+                destinationFile.sink().buffer().use { sink ->
+                    val source = body.source()
+                    var totalRead = 0L
+                    while (true) {
+                        val read = source.read(sink.buffer, 8192)
+                        if (read == -1L) break
+                        totalRead += read
+                        if (totalRead > maxBytes) {
+                            return ImageFetchResult.TooLarge
+                        }
+                        sink.emitCompleteSegments()
+                    }
+                }
+                ImageFetchResult.Success(destinationFile)
+            } catch (e: Exception) {
+                ImageFetchResult.NetworkError(e as? IOException ?: IOException(e))
+            }
+        } else {
+            try {
+                body.source().use { source ->
+                    val buffer = okio.Buffer()
+                    val read = source.read(buffer, maxBytes + 1)
+                    if (read > maxBytes) {
+                        ImageFetchResult.TooLarge
+                    } else {
+                        ImageFetchResult.BoundedSuccess(buffer.readByteArray())
+                    }
+                }
+            } catch (e: Exception) {
+                ImageFetchResult.NetworkError(e as? IOException ?: IOException(e))
+            }
+        }
     }
 
     private fun parseRetryAfterMs(value: String): Long? {

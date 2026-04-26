@@ -16,6 +16,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mockito.kotlin.any
@@ -440,6 +441,106 @@ class WebContentLoaderTest {
 
         assertEquals(1, maxConcurrentRequests.get())
         assertTrue(secondRequestAt.get() - firstRequestAt.get() >= 100)
+    }
+
+    @Test
+    fun `oversized Content-Length is rejected before download`() = runBlocking {
+        val imageUrl = "https://example.com/big-image.jpg"
+        val loader = createLoader(
+            htmlParser = mock(),
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                val body = object : okhttp3.ResponseBody() {
+                    override fun contentType() = "image/jpeg".toMediaType()
+                    override fun contentLength() = 21 * 1024 * 1024L
+                    override fun source() = okio.Buffer()
+                }
+                Response.Builder()
+                    .request(request)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(body)
+                    .build()
+            }
+        )
+
+        val result = loader.downloadAndCacheImage(imageUrl, "https://example.com")
+
+        assertNull(result)
+        assertFalse(loader.getCachedMediaFile(imageUrl).exists())
+    }
+
+    @Test
+    fun `oversized body without Content-Length is aborted during stream`() = runBlocking {
+        val imageUrl = "https://example.com/stream-big.jpg"
+        val loader = createLoader(
+            htmlParser = mock(),
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                val bigData = ByteArray(8192)
+                val body = object : okhttp3.ResponseBody() {
+                    override fun contentType() = "image/jpeg".toMediaType()
+                    override fun contentLength() = -1L
+                    override fun source(): okio.BufferedSource {
+                        val buffer = okio.Buffer()
+                        // Provide more than 20MB in chunks
+                        repeat(2600) { // 2600 * 8192 > 20MB
+                            buffer.write(bigData)
+                        }
+                        return buffer
+                    }
+                }
+                Response.Builder()
+                    .request(request)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(body)
+                    .build()
+            }
+        )
+
+        val result = loader.downloadAndCacheImage(imageUrl, "https://example.com")
+
+        assertNull(result)
+        assertFalse(loader.getCachedMediaFile(imageUrl).exists())
+        val cachedFile = loader.getCachedMediaFile(imageUrl)
+        val tempFile = File(cachedFile.parent, "${cachedFile.name}.tmp")
+        assertFalse(tempFile.exists())
+    }
+
+    @Test
+    fun `mid-stream failure deletes temp and leaves no final file`() = runBlocking {
+        val imageUrl = "https://example.com/fail-mid-stream.jpg"
+        val loader = createLoader(
+            htmlParser = mock(),
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                val body = object : okhttp3.ResponseBody() {
+                    override fun contentType() = "image/jpeg".toMediaType()
+                    override fun contentLength() = 1024 * 1024L
+                    override fun source(): okio.BufferedSource {
+                        throw java.io.IOException("Network cut")
+                    }
+                }
+                Response.Builder()
+                    .request(request)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(body)
+                    .build()
+            }
+        )
+
+        val result = loader.downloadAndCacheImage(imageUrl, "https://example.com")
+
+        assertNull(result)
+        assertFalse(loader.getCachedMediaFile(imageUrl).exists())
+        val cachedFile = loader.getCachedMediaFile(imageUrl)
+        val tempFile = File(cachedFile.parent, "${cachedFile.name}.tmp")
+        assertFalse(tempFile.exists())
     }
 
     private fun createLoader(
