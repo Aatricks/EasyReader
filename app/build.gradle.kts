@@ -10,10 +10,11 @@ plugins {
 }
 
 android {
-    namespace = "io.aatricks.novelscraper"
+    namespace = "io.aatricks.easyreader"
     compileSdk = 36
 
     defaultConfig {
+        // Keep the legacy applicationId so existing installs continue to update in-place.
         applicationId = "io.aatricks.novelscraper"
         minSdk = 30
         targetSdk = 34

@@ -92,6 +92,8 @@ For CI-style flavor coverage, the workflow also runs `:app:lintStandardDebug`, `
 
 Release builds are separate from the normal debug workflow.
 
+The app keeps the legacy `io.aatricks.novelscraper` application ID on purpose so existing installs can continue updating in place. The source namespace has moved to `io.aatricks.easyreader` to match the EasyReader name.
+
 If you need a release build, create a local `keystore.properties` file at the repository root with these keys:
 
 - `storeFile`
