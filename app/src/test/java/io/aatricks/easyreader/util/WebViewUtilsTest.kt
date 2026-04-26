@@ -37,34 +37,42 @@ class WebViewUtilsTest {
 
     @Test
     fun `shouldAllowCloudflareNavigation allows safe https urls`() {
-        assertTrue(WebViewUtils.shouldAllowCloudflareNavigation("https://example.com"))
-        assertTrue(WebViewUtils.shouldAllowCloudflareNavigation("https://www.google.com/search?q=test"))
-    }
-
-    @Test
-    fun `shouldAllowCloudflareNavigation allows about blank`() {
-        assertTrue(WebViewUtils.shouldAllowCloudflareNavigation("about:blank"))
+        assertTrue(WebViewUtils.shouldAllowCloudflareNavigation("https://example.com/path"))
+        assertTrue(WebViewUtils.shouldAllowCloudflareNavigation("http://example.com/path"))
+        assertTrue(WebViewUtils.shouldAllowCloudflareNavigation("HTTPS://www.google.com/search?q=test"))
     }
 
     @Test
     fun `shouldAllowCloudflareNavigation blocks non-http schemes`() {
         assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("file:///etc/passwd"))
         assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("content://media/external/images/media"))
-        assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("intent:#Intent;scheme=http;package=com.android.chrome;end"))
-    }
-
-    @Test
-    fun `shouldAllowCloudflareNavigation blocks risky content`() {
+        assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("intent://something"))
         assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("javascript:alert(1)"))
-        assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("https://example.com/login?next=javascript:alert(1)"))
         assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("data:text/html,<html><body>Hacked</body></html>"))
+        assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("mailto:test@example.com"))
+        assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("tel:123"))
     }
 
     @Test
     fun `shouldAllowCloudflareNavigation blocks unsafe hosts via UrlSecurity`() {
-        // localhost is blocked by UrlSecurity
-        assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("https://localhost"))
-        assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("https://127.0.0.1"))
-        assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("https://192.168.1.1"))
+        assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("http://127.0.0.1"))
+        assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("http://localhost"))
+        assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("http://169.254.169.254"))
+    }
+
+    @Test
+    fun `shouldAllowCloudflareNavigation allows blocked-scheme words in query when parsed scheme is safe`() {
+        assertTrue(
+            WebViewUtils.shouldAllowCloudflareNavigation(
+                "https://example.com/search?q=file:data:intent:javascript:"
+            )
+        )
+    }
+
+    @Test
+    fun `shouldAllowCloudflareNavigation blocks malformed urls`() {
+        assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("https://"))
+        assertFalse(WebViewUtils.shouldAllowCloudflareNavigation("not a url"))
+        assertFalse(WebViewUtils.shouldAllowCloudflareNavigation(null))
     }
 }

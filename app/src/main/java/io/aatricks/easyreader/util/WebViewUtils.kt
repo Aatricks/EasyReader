@@ -3,6 +3,7 @@ package io.aatricks.easyreader.util
 import android.os.Build
 import android.webkit.WebSettings
 import android.webkit.WebView
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 object WebViewUtils {
     /**
@@ -47,31 +48,16 @@ object WebViewUtils {
 
     /**
      * Determines if a navigation request within the Cloudflare WebView should be allowed.
-     * Blocks non-http/https schemes and unsafe hosts.
+     * Validation is based on parsed URL scheme/host, not substring matching in path/query.
      */
     fun shouldAllowCloudflareNavigation(url: String?): Boolean {
         if (url == null) return false
 
-        // Special case: allow about:blank as it's often used for cleanup or initial state
-        if (url.equals("about:blank", ignoreCase = true)) return true
+        // Parse first so only the actual URL scheme is validated.
+        val parsedUrl = url.toHttpUrlOrNull() ?: return false
+        if (parsedUrl.scheme != "http" && parsedUrl.scheme != "https") return false
 
-        // 1. Only allow http/https schemes
-        if (!url.startsWith("http://", ignoreCase = true) && 
-            !url.startsWith("https://", ignoreCase = true)) {
-            return false
-        }
-
-        // 2. Block risky schemes that might be embedded or used in redirects
-        val lowerUrl = url.lowercase()
-        val blockedSchemes = listOf(
-            "javascript:", "file:", "content:", "data:", 
-            "intent:", "market:", "tel:", "mailto:", "about:"
-        )
-        if (blockedSchemes.any { lowerUrl.contains(it) }) {
-            return false
-        }
-
-        // 3. Use UrlSecurity for deep validation (hosts, private IPs, DNS rebinding prevention)
-        return UrlSecurity.isSafeUrlSynchronous(url)
+        // Keep host/IP safety checks centralized in UrlSecurity.
+        return UrlSecurity.isSafeUrlSynchronous(parsedUrl)
     }
 }
