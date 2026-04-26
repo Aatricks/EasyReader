@@ -172,7 +172,12 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     
     // PDF Parsing - iText7
-    implementation(libs.itext7.core)
+    implementation(libs.itext7.core) {
+        exclude(group = "org.bouncycastle")
+    }
+    implementation(libs.bouncycastle.bcprov.jdk15to18)
+    implementation(libs.bouncycastle.bcpkix.jdk15to18)
+    implementation(libs.bouncycastle.bcutil.jdk15to18)
     
     // Networking - OkHttp
     implementation(libs.okhttp)

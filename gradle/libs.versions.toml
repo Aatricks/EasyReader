@@ -23,6 +23,7 @@ jsoup = "1.17.2"
 itext7 = "7.2.5"
 mockitoInline = "5.2.0"
 llmedge = "0.3.9"
+bouncycastle = "1.72"
 ksp = "2.1.0-1.0.29"
 robolectric = "4.12.1"
 androidxTestCore = "1.5.0"
@@ -75,6 +76,9 @@ kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 # HTML/PDF/Networking
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 itext7-core = { group = "com.itextpdf", name = "itext7-core", version.ref = "itext7" }
+bouncycastle-bcprov-jdk15to18 = { group = "org.bouncycastle", name = "bcprov-jdk15to18", version.ref = "bouncycastle" }
+bouncycastle-bcpkix-jdk15to18 = { group = "org.bouncycastle", name = "bcpkix-jdk15to18", version.ref = "bouncycastle" }
+bouncycastle-bcutil-jdk15to18 = { group = "org.bouncycastle", name = "bcutil-jdk15to18", version.ref = "bouncycastle" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okhttp-logging-interceptor = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
 

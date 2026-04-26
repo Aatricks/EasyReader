@@ -37,6 +37,7 @@
 -dontwarn com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 -dontwarn com.tom_roush.pdfbox.pdmodel.PDDocument
 -dontwarn com.tom_roush.pdfbox.text.PDFTextStripper
+-dontwarn com.gemalto.jp2.JP2Decoder
 -dontwarn java.lang.management.ManagementFactory
 -dontwarn java.lang.management.RuntimeMXBean
 -dontwarn kotlinx.coroutines.tasks.TasksKt
