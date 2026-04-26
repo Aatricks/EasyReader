@@ -7,7 +7,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import io.aatricks.novelscraper.data.model.LibraryItem
 
-@Database(entities = [LibraryItem::class], version = 3, exportSchema = false)
+@Database(entities = [LibraryItem::class], version = 4, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
@@ -66,6 +66,68 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE library_items ADD COLUMN lastReadOffsetFraction REAL")
+            }
+        }
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Recreate table to add indices and handle potential duplicates by URL
+                db.execSQL("""
+                    CREATE TABLE library_items_new (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        url TEXT NOT NULL,
+                        timestamp INTEGER NOT NULL,
+                        progress INTEGER NOT NULL,
+                        isCurrentlyReading INTEGER NOT NULL,
+                        isSelected INTEGER NOT NULL,
+                        currentChapter TEXT NOT NULL,
+                        currentChapterUrl TEXT NOT NULL,
+                        totalChapters INTEGER NOT NULL,
+                        contentType TEXT NOT NULL,
+                        dateAdded INTEGER NOT NULL,
+                        lastRead INTEGER NOT NULL,
+                        isDownloading INTEGER NOT NULL,
+                        lastScrollPosition REAL NOT NULL,
+                        lastReadIndex INTEGER NOT NULL,
+                        lastReadOffset INTEGER NOT NULL,
+                        lastReadOffsetFraction REAL,
+                        hasUpdates INTEGER NOT NULL,
+                        chapterSummaries TEXT NOT NULL,
+                        baseTitle TEXT NOT NULL,
+                        readingMode TEXT NOT NULL,
+                        baseNovelUrl TEXT NOT NULL,
+                        sourceName TEXT NOT NULL
+                    )
+                """.trimIndent())
+
+                // Add indices
+                db.execSQL("CREATE UNIQUE INDEX index_library_items_url ON library_items_new (url)")
+                db.execSQL("CREATE INDEX index_library_items_baseTitle ON library_items_new (baseTitle)")
+                db.execSQL("CREATE INDEX index_library_items_isCurrentlyReading ON library_items_new (isCurrentlyReading)")
+                db.execSQL("CREATE INDEX index_library_items_lastRead ON library_items_new (lastRead)")
+
+                // Copy data, keeping the one with latest lastRead for each URL
+                // Ordering by lastRead ASC ensures the latest one "wins" with INSERT OR REPLACE
+                db.execSQL("""
+                    INSERT OR REPLACE INTO library_items_new (
+                        id, title, url, timestamp, progress, isCurrentlyReading, isSelected,
+                        currentChapter, currentChapterUrl, totalChapters, contentType,
+                        dateAdded, lastRead, isDownloading, lastScrollPosition, lastReadIndex,
+                        lastReadOffset, lastReadOffsetFraction, hasUpdates, chapterSummaries,
+                        baseTitle, readingMode, baseNovelUrl, sourceName
+                    ) SELECT
+                        id, title, url, timestamp, progress, isCurrentlyReading, isSelected,
+                        currentChapter, currentChapterUrl, totalChapters, contentType,
+                        dateAdded, lastRead, isDownloading, lastScrollPosition, lastReadIndex,
+                        lastReadOffset, lastReadOffsetFraction, hasUpdates, chapterSummaries,
+                        baseTitle, readingMode, baseNovelUrl, sourceName
+                    FROM library_items
+                    ORDER BY lastRead ASC
+                """.trimIndent())
+
+                db.execSQL("DROP TABLE library_items")
+                db.execSQL("ALTER TABLE library_items_new RENAME TO library_items")
             }
         }
     }

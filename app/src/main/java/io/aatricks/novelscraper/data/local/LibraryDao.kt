@@ -16,7 +16,7 @@ interface LibraryDao {
     @Query("SELECT * FROM library_items WHERE id = :id")
     suspend fun getItemById(id: String): LibraryItem?
 
-    @Query("SELECT * FROM library_items WHERE url = :url")
+    @Query("SELECT * FROM library_items WHERE url = :url ORDER BY lastRead DESC LIMIT 1")
     suspend fun getItemByUrl(url: String): LibraryItem?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

@@ -76,11 +76,15 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+    ksp {
+        arg("room.schemaLocation", "$projectDir/schemas")
+    }
     buildFeatures {
         compose = true
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
         unitTests.all {
             it.testLogging {
                 events("passed", "skipped", "failed", "standardOut", "standardError")
@@ -113,6 +117,7 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
+    testImplementation(libs.room.testing)
 
     // Navigation
     implementation(libs.navigation.compose)
@@ -145,6 +150,8 @@ dependencies {
     
     // Testing
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
     testImplementation(libs.mockito.core)
     testImplementation(libs.mockito.kotlin)
     testImplementation("org.mockito:mockito-inline:5.2.0")

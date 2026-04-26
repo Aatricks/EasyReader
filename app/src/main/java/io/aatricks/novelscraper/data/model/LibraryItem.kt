@@ -1,6 +1,7 @@
 package io.aatricks.novelscraper.data.model
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import kotlinx.serialization.Serializable
 
@@ -9,7 +10,15 @@ import kotlinx.serialization.Serializable
  * Immutable by default with validation in init block.
  */
 @Serializable
-@Entity(tableName = "library_items")
+@Entity(
+    tableName = "library_items",
+    indices = [
+        Index(value = ["url"], unique = true),
+        Index(value = ["baseTitle"]),
+        Index(value = ["isCurrentlyReading"]),
+        Index(value = ["lastRead"])
+    ]
+)
 data class LibraryItem(
     @PrimaryKey
     val id: String = System.currentTimeMillis().toString(),
