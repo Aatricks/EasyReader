@@ -2,6 +2,7 @@ package io.aatricks.novelscraper.data.repository.content
 
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.data.model.ContentResult
+import io.aatricks.novelscraper.data.model.ImageRequestPriority
 import io.aatricks.novelscraper.data.model.PrefetchMode
 import io.aatricks.novelscraper.data.repository.HtmlParser
 import kotlinx.coroutines.async
@@ -602,6 +603,124 @@ class WebContentLoaderTest {
         return signature +
             pngChunk("IHDR", ihdrData) +
             pngChunk("IEND", byteArrayOf())
+    }
+
+    @Test
+    fun `speculative failure does not prevent user-requested success`() = runBlocking {
+        val imageUrl = "https://example.com/spec-fail.jpg"
+        val attempts = AtomicInteger(0)
+        val loader = createLoader(
+            htmlParser = mock(),
+            interceptor = Interceptor { chain ->
+                val count = attempts.incrementAndGet()
+                if (count <= 2) {
+                    // Speculative attempts fail (500 is retried)
+                    buildResponse(chain.request(), "", "text/plain", code = 500)
+                } else {
+                    // User-requested attempt succeeds
+                    buildResponse(chain.request(), "binary-data", "image/jpeg")
+                }
+            }
+        )
+
+        // 1. Speculative fails
+        val specResult = loader.warmImage(imageUrl, "https://example.com")
+        assertNull(specResult)
+        assertEquals(2, attempts.get()) // SHORT_REQUEST_ATTEMPTS = 2
+
+        // 2. User-requested succeeds
+        val userResult = loader.downloadAndCacheImage(imageUrl, "https://example.com")
+        assertTrue(userResult != null && userResult.exists())
+        assertTrue(attempts.get() > 2)
+    }
+
+    @Test
+    fun `user requested and speculative deduplicate correctly`() = runBlocking {
+        val imageUrl = "https://example.com/dedupe.jpg"
+        val imageRequests = AtomicInteger(0)
+        val loader = createLoader(
+            htmlParser = mock(),
+            interceptor = Interceptor { chain ->
+                imageRequests.incrementAndGet()
+                Thread.sleep(100)
+                buildResponse(chain.request(), "binary-data", "image/jpeg")
+            }
+        )
+
+        // Case 1: User-requested in flight, speculative joins
+        val results1 = listOf(
+            async { loader.downloadAndCacheImage(imageUrl, "https://example.com") },
+            async { loader.warmImage(imageUrl, "https://example.com") }
+        ).awaitAll()
+
+        assertEquals(1, imageRequests.get())
+        assertTrue(results1.all { it != null })
+
+        // Clear cache for next case
+        loader.getCachedMediaFile(imageUrl).delete()
+        imageRequests.set(0)
+
+        // Case 2: Two user requests dedupe
+        val results2 = listOf(
+            async { loader.downloadAndCacheImage(imageUrl, "https://example.com") },
+            async { loader.downloadAndCacheImage(imageUrl, "https://example.com") }
+        ).awaitAll()
+
+        assertEquals(1, imageRequests.get())
+        assertTrue(results2.all { it != null })
+    }
+
+    @Test
+    fun `user requested waits for speculative then retries on failure`() = runBlocking {
+        val imageUrl = "https://example.com/overlap.jpg"
+        val attempts = AtomicInteger(0)
+        val loader = createLoader(
+            htmlParser = mock(),
+            interceptor = Interceptor { chain ->
+                val count = attempts.incrementAndGet()
+                Thread.sleep(50)
+                if (count <= 2) { // Fail first two attempts (speculative, 500 is retried)
+                    buildResponse(chain.request(), "", "text/plain", code = 500)
+                } else {
+                    buildResponse(chain.request(), "binary-data", "image/jpeg")
+                }
+            }
+        )
+
+        val specJob = async { loader.warmImage(imageUrl, "https://example.com") }
+        kotlinx.coroutines.delay(20) // Ensure speculative is in flight
+        val userJob = async { loader.downloadAndCacheImage(imageUrl, "https://example.com") }
+
+        val specResult = specJob.await()
+        val userResult = userJob.await()
+
+        assertNull(specResult)
+        assertTrue(userResult != null && userResult.exists())
+        assertTrue(attempts.get() > 2)
+    }
+
+    @Test
+    fun `failed job cleans map so retry works`() = runBlocking {
+        val imageUrl = "https://example.com/retry.jpg"
+        val attempts = AtomicInteger(0)
+        val loader = createLoader(
+            htmlParser = mock(),
+            interceptor = Interceptor { chain ->
+                if (attempts.incrementAndGet() <= 4) { // USER_REQUEST_ATTEMPTS is 4
+                    buildResponse(chain.request(), "", "text/plain", code = 500)
+                } else {
+                    buildResponse(chain.request(), "binary-data", "image/jpeg")
+                }
+            }
+        )
+
+        // 1. First user request fails
+        val result1 = loader.downloadAndCacheImage(imageUrl, "https://example.com")
+        assertNull(result1)
+
+        // 2. Second user request retries and succeeds
+        val result2 = loader.downloadAndCacheImage(imageUrl, "https://example.com")
+        assertTrue(result2 != null && result2.exists())
     }
 
     private fun pngChunk(type: String, data: ByteArray): ByteArray {

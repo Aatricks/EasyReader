@@ -2,6 +2,7 @@ package io.aatricks.novelscraper.data.repository.content
 
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.data.model.ContentResult
+import io.aatricks.novelscraper.data.model.ImageRequestPriority
 import io.aatricks.novelscraper.data.model.PrefetchMode
 import io.aatricks.novelscraper.data.model.PrefetchResult
 import io.aatricks.novelscraper.data.repository.HtmlParser
@@ -74,7 +75,13 @@ class WebContentLoader @Inject constructor(
     private val imageDownloadMutex = Mutex()
     private val chapterPrefetchMutex = Mutex()
     private val hostThrottleMutex = Mutex()
-    private val inFlightImageDownloads = mutableMapOf<String, Deferred<File?>>()
+
+    private data class InFlightImageDownload(
+        val priority: ImageRequestPriority,
+        val deferred: Deferred<File?>
+    )
+
+    private val inFlightImageDownloads = mutableMapOf<String, InFlightImageDownload>()
     private val inFlightChapterPrefetches = mutableMapOf<String, Deferred<PrefetchResult>>()
     private val inFlightChapterPrefetchModes = mutableMapOf<String, PrefetchMode>()
     private val hostThrottleStates = mutableMapOf<String, HostThrottleState>()
@@ -174,11 +181,11 @@ class WebContentLoader @Inject constructor(
     }
 
     suspend fun downloadAndCacheImage(imageUrl: String, pageUrl: String): File? = withContext(Dispatchers.IO) {
-        downloadAndCacheImage(imageUrl, pageUrl, useShortTimeout = false)
+        downloadAndCacheImage(imageUrl, pageUrl, ImageRequestPriority.USER_REQUESTED)
     }
 
     suspend fun warmImage(imageUrl: String, pageUrl: String): File? = withContext(Dispatchers.IO) {
-        downloadAndCacheImage(imageUrl, pageUrl, useShortTimeout = true)
+        downloadAndCacheImage(imageUrl, pageUrl, ImageRequestPriority.SPECULATIVE)
     }
 
     suspend fun inspectCache(url: String): PrefetchResult = withContext(Dispatchers.IO) {
@@ -188,7 +195,7 @@ class WebContentLoader @Inject constructor(
     private suspend fun downloadAndCacheImage(
         imageUrl: String,
         pageUrl: String,
-        useShortTimeout: Boolean
+        priority: ImageRequestPriority
     ): File? = withContext(Dispatchers.IO) {
         if (!imageUrl.startsWith("http")) return@withContext null
 
@@ -199,39 +206,66 @@ class WebContentLoader @Inject constructor(
         val cachedFile = primaryCachedMediaFile(imageUrl)
         val tempFile = File(cachedFile.parent, "${cachedFile.name}.tmp")
 
-        val deferred = imageDownloadMutex.withLock {
-            inFlightImageDownloads[imageUrl] ?: repositoryScope.async {
-                runCatching {
-                    val result = executeImageRequest(
-                        imageUrl = imageUrl,
-                        pageUrl = pageUrl,
-                        useShortTimeout = useShortTimeout,
-                        destinationFile = tempFile
-                    )
+        var inFlight = imageDownloadMutex.withLock { inFlightImageDownloads[imageUrl] }
 
-                    when (result) {
-                        is ImageFetchResult.Success -> {
-                            if (tempFile.renameTo(cachedFile)) {
-                                cachedFile
-                            } else if (cachedFile.exists()) {
-                                tempFile.delete()
-                                cachedFile
-                            } else {
+        // Rule: USER_REQUESTED encountering existing SPECULATIVE awaits it once;
+        // if it fails/null, starts a new USER_REQUESTED download.
+        if (priority == ImageRequestPriority.USER_REQUESTED &&
+            inFlight != null &&
+            inFlight.priority == ImageRequestPriority.SPECULATIVE
+        ) {
+            val result = inFlight.deferred.await()
+            if (result != null) return@withContext result
+
+            // Speculative failed, clear it so we can start a USER_REQUESTED one
+            imageDownloadMutex.withLock {
+                if (inFlightImageDownloads[imageUrl] === inFlight) {
+                    inFlightImageDownloads.remove(imageUrl)
+                }
+            }
+            inFlight = null
+        }
+
+        val deferred = imageDownloadMutex.withLock {
+            val current = inFlightImageDownloads[imageUrl]
+            if (current != null) {
+                current.deferred
+            } else {
+                repositoryScope.async {
+                    runCatching {
+                        val result = executeImageRequest(
+                            imageUrl = imageUrl,
+                            pageUrl = pageUrl,
+                            priority = priority,
+                            destinationFile = tempFile
+                        )
+
+                        when (result) {
+                            is ImageFetchResult.Success -> {
+                                if (tempFile.renameTo(cachedFile)) {
+                                    cachedFile
+                                } else if (cachedFile.exists()) {
+                                    tempFile.delete()
+                                    cachedFile
+                                } else {
+                                    tempFile.delete()
+                                    null
+                                }
+                            }
+
+                            else -> {
                                 tempFile.delete()
                                 null
                             }
                         }
-
-                        else -> {
-                            tempFile.delete()
-                            null
-                        }
+                    }.getOrElse {
+                        tempFile.delete()
+                        null
                     }
-                }.getOrElse {
-                    tempFile.delete()
-                    null
+                }.also {
+                    inFlightImageDownloads[imageUrl] = InFlightImageDownload(priority, it)
                 }
-            }.also { inFlightImageDownloads[imageUrl] = it }
+            }
         }
 
         try {
@@ -239,7 +273,7 @@ class WebContentLoader @Inject constructor(
         } finally {
             if (deferred.isCompleted) {
                 imageDownloadMutex.withLock {
-                    if (inFlightImageDownloads[imageUrl] === deferred) {
+                    if (inFlightImageDownloads[imageUrl]?.deferred === deferred) {
                         inFlightImageDownloads.remove(imageUrl)
                     }
                 }
@@ -277,7 +311,7 @@ class WebContentLoader @Inject constructor(
         return calculateDirectorySize(cacheDir) + calculateDirectorySize(mediaCacheDir)
     }
 
-    private fun getDocumentFromCacheOrNetwork(url: String, useShortTimeout: Boolean = false): CachedDocument {
+    private fun getDocumentFromCacheOrNetwork(url: String, priority: ImageRequestPriority = ImageRequestPriority.USER_REQUESTED): CachedDocument {
         val cachedFile = findExistingCachedFile(url)
         return if (cachedFile != null) {
             CachedDocument(
@@ -285,7 +319,7 @@ class WebContentLoader @Inject constructor(
                 fromCache = true
             )
         } else {
-            val html = downloadHtml(url, useShortTimeout = useShortTimeout)
+            val html = downloadHtml(url, priority = priority)
             primaryCachedFile(url).writeText(html)
             CachedDocument(
                 document = Jsoup.parse(html, url),
@@ -316,19 +350,20 @@ class WebContentLoader @Inject constructor(
                 imageUrls = imageUrls,
                 pageUrl = pageUrl,
                 maxImages = imageUrls.size,
-                useShortTimeout = true,
+                priority = ImageRequestPriority.SPECULATIVE,
                 maxConcurrency = MAX_CONCURRENT_DOWNLOADS
             )
         }
     }
 
-    private fun downloadHtml(url: String, useShortTimeout: Boolean = false): String {
+    private fun downloadHtml(url: String, priority: ImageRequestPriority = ImageRequestPriority.USER_REQUESTED): String {
         val request = Request.Builder()
             .url(url)
             .addHeader("User-Agent", "Mozilla/5.0")
             .addHeader("Referer", getReferer(url))
             .build()
 
+        val useShortTimeout = priority == ImageRequestPriority.SPECULATIVE
         val client = if (useShortTimeout) shortTimeoutClient else okHttpClient
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw Exception("HTTP ${response.code}")
@@ -472,7 +507,7 @@ class WebContentLoader @Inject constructor(
                 val result = executeImageRequest(
                     imageUrl = imageUrl,
                     pageUrl = pageUrl,
-                    useShortTimeout = true,
+                    priority = ImageRequestPriority.SPECULATIVE,
                     rangeHeader = "bytes=0-${MAX_DIMENSION_SNIFF_BYTES - 1}"
                 )
             ) {
@@ -484,7 +519,7 @@ class WebContentLoader @Inject constructor(
                         downloadAndCacheImage(
                             imageUrl = imageUrl,
                             pageUrl = pageUrl,
-                            useShortTimeout = true
+                            priority = ImageRequestPriority.SPECULATIVE
                         )?.let(ImageBoundsParser::parse)
                     }
                 }
@@ -495,9 +530,10 @@ class WebContentLoader @Inject constructor(
     }
 
     private suspend fun executePrefetch(url: String, mode: PrefetchMode): PrefetchResult {
+        val priority = if (mode == PrefetchMode.SPECULATIVE) ImageRequestPriority.SPECULATIVE else ImageRequestPriority.USER_REQUESTED
         val cachedDocument = getDocumentFromCacheOrNetwork(
             url = url,
-            useShortTimeout = mode == PrefetchMode.SPECULATIVE
+            priority = priority
         )
         val imageUrls = extractImageUrls(htmlParser.parse(cachedDocument.document, url))
             .distinct()
@@ -512,7 +548,7 @@ class WebContentLoader @Inject constructor(
                         imageUrls = missingImages,
                         pageUrl = url,
                         maxImages = missingImages.size,
-                        useShortTimeout = false,
+                        priority = ImageRequestPriority.USER_REQUESTED,
                         maxConcurrency = MAX_CONCURRENT_DOWNLOADS
                     )
                 }
@@ -525,7 +561,7 @@ class WebContentLoader @Inject constructor(
                     imageUrls = requestedImages,
                     pageUrl = url,
                     maxImages = requestedImages.size,
-                    useShortTimeout = true,
+                    priority = ImageRequestPriority.SPECULATIVE,
                     maxConcurrency = 1
                 )
             }
@@ -538,7 +574,7 @@ class WebContentLoader @Inject constructor(
         imageUrls: List<String>,
         pageUrl: String,
         maxImages: Int,
-        useShortTimeout: Boolean,
+        priority: ImageRequestPriority,
         maxConcurrency: Int
     ): Int = supervisorScope {
         if (imageUrls.isEmpty() || maxImages <= 0) return@supervisorScope 0
@@ -550,7 +586,7 @@ class WebContentLoader @Inject constructor(
             .map { imageUrl ->
                 async {
                     semaphore.withPermit {
-                        if (downloadAndCacheImage(imageUrl, pageUrl, useShortTimeout) != null) 1 else 0
+                        if (downloadAndCacheImage(imageUrl, pageUrl, priority) != null) 1 else 0
                     }
                 }
             }
@@ -585,10 +621,11 @@ class WebContentLoader @Inject constructor(
     private suspend fun executeImageRequest(
         imageUrl: String,
         pageUrl: String,
-        useShortTimeout: Boolean,
+        priority: ImageRequestPriority,
         rangeHeader: String? = null,
         destinationFile: File? = null
     ): ImageFetchResult {
+        val useShortTimeout = priority == ImageRequestPriority.SPECULATIVE
         val attempts = if (useShortTimeout) SHORT_REQUEST_ATTEMPTS else USER_REQUEST_ATTEMPTS
         val client = if (useShortTimeout) shortTimeoutClient else okHttpClient
 
