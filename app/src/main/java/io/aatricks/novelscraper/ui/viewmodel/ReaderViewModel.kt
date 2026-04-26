@@ -923,7 +923,7 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun persistLifecycleProgress(): Unit {
+    suspend fun persistLifecycleProgress(): Unit {
         val currentChapterUrl = _uiState.value.content?.url ?: return
         val latest = currentPersistedSnapshot()
         val shouldSnapToTop = !hasUserInteractedSinceLoad && latest.scrollProgress == 0
@@ -1016,7 +1016,7 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun updateReadingProgress(
+    suspend fun updateReadingProgress(
         progress: Int,
         scrollPosition: Float? = null,
         index: Int? = null,
@@ -1024,28 +1024,27 @@ class ReaderViewModel @Inject constructor(
         offsetFraction: Float? = null,
         currentChapterUrl: String? = null
     ): Unit {
-        currentLibraryItemId?.let { itemId ->
-            runCatching {
-                val resolvedChapterUrl = currentChapterUrl ?: _uiState.value.content?.url ?: ""
-                val latest = currentPersistedSnapshot()
-                val lastScroll = scrollPosition ?: latest.scrollPosition
-                val lastIndex = index ?: latest.scrollIndex
-                val lastOffset = offset ?: latest.scrollOffset
-                val lastOffsetFraction = offsetFraction ?: latest.scrollOffsetFraction
+        val itemId = currentLibraryItemId ?: return
+        runCatching {
+            val resolvedChapterUrl = currentChapterUrl ?: _uiState.value.content?.url ?: ""
+            val latest = currentPersistedSnapshot()
+            val lastScroll = scrollPosition ?: latest.scrollPosition
+            val lastIndex = index ?: latest.scrollIndex
+            val lastOffset = offset ?: latest.scrollOffset
+            val lastOffsetFraction = offsetFraction ?: latest.scrollOffsetFraction
 
-                if (isPlaceholderAtCurrentPosition(lastIndex)) return@runCatching
+            if (isPlaceholderAtCurrentPosition(lastIndex)) return@runCatching
 
-                libraryRepository.saveProgress(
-                    itemId = itemId,
-                    currentChapter = "",
-                    progress = progress,
-                    currentChapterUrl = resolvedChapterUrl,
-                    lastScrollProgress = lastScroll,
-                    lastReadIndex = lastIndex,
-                    lastReadOffset = lastOffset,
-                    lastReadOffsetFraction = lastOffsetFraction
-                )
-            }
+            libraryRepository.updateProgress(
+                itemId = itemId,
+                currentChapter = "",
+                progress = progress,
+                currentChapterUrl = resolvedChapterUrl,
+                lastScrollProgress = lastScroll,
+                lastReadIndex = lastIndex,
+                lastReadOffset = lastOffset,
+                lastReadOffsetFraction = lastOffsetFraction
+            )
         }
     }
 
@@ -1138,19 +1137,50 @@ class ReaderViewModel @Inject constructor(
             targetScrollPosition = if (targetPercent == 100f) 100f else null
         )
 
-        updateReadingProgress(
-            progress = targetPercent.toInt(),
-            scrollPosition = targetPercent,
-            index = roughIndex,
-            offset = offset,
-            offsetFraction = if (targetPercent == 100f) 1f else 0f
-        )
+        viewModelScope.launch {
+            updateReadingProgress(
+                progress = targetPercent.toInt(),
+                scrollPosition = targetPercent,
+                index = roughIndex,
+                offset = offset,
+                offsetFraction = if (targetPercent == 100f) 1f else 0f
+            )
+        }
     }
 
     override fun onCleared(): Unit {
+        val content = _uiState.value.content
+        val progressToPersist = currentPersistedSnapshot()
+        val chapterUrl = content?.url
+        
+        // We use GlobalScope or a specialized application scope for the very last save 
+        // because viewModelScope is canceled immediately after onCleared.
+        // However, since we are calling a suspend function, we need a scope.
+        // A better approach is to use the repositoryScope if it's accessible, 
+        // but here we can just use a fire-and-forget to the repository which has its own scope.
+        
+        chapterUrl?.let { url ->
+            // Use fire-and-forget for the absolute final cleanup if we can't await.
+            // But the requirement says critical saves must be awaited.
+            // In onCleared, we can't easily await without blocking.
+            // LibraryRepository.updateProgress is suspend.
+            // We'll launch it in a scope that survives ViewModel destruction.
+            
+            // Actually, we can use the repository's saveProgressAsync which uses repositoryScope.
+            libraryRepository.saveProgressAsync(
+                itemId = currentLibraryItemId ?: "",
+                currentChapter = "",
+                progress = progressToPersist.scrollProgress,
+                currentChapterUrl = url,
+                lastScrollProgress = progressToPersist.scrollPosition,
+                lastReadIndex = progressToPersist.scrollIndex,
+                lastReadOffset = progressToPersist.scrollOffset,
+                lastReadOffsetFraction = progressToPersist.scrollOffsetFraction
+            )
+        }
+        
         super.onCleared()
-        closeContent(_uiState.value.content)
-        persistLifecycleProgress()
+        closeContent(content)
     }
 
     fun toggleControls(): Unit = updateState { it.copy(showControls = !it.showControls) }

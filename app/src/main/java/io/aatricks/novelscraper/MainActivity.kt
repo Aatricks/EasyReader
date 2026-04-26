@@ -267,7 +267,9 @@ class MainActivity : ComponentActivity() {
     override fun onPause(): Unit {
         super.onPause()
         runCatching {
-            readerViewModel.persistLifecycleProgress()
+            lifecycleScope.launch {
+                readerViewModel.persistLifecycleProgress()
+            }
         }
     }
 }

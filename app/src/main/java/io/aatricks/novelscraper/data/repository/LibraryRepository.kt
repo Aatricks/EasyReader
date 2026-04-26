@@ -148,7 +148,7 @@ class LibraryRepository @Inject constructor(
             updatedCount > 0
         } ?: false
 
-    fun saveProgress(
+    fun saveProgressAsync(
         itemId: String,
         currentChapter: String,
         progress: Int,

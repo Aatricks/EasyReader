@@ -315,7 +315,7 @@ class ReaderViewModelTest {
         viewModel.updateScrollPosition(50f, 100f, 10f, 5, 10)
 
         // Should NOT have saved yet (debounced)
-        verify(libraryRepository, never()).saveProgress(any(), any(), any(), any(), any(), any(), any(), any())
+        verify(libraryRepository, never()).updateProgress(any(), any(), any(), any(), any(), any(), any(), any())
 
         // Advance time
         advanceTimeBy(200)
@@ -323,7 +323,7 @@ class ReaderViewModelTest {
         advanceUntilIdle()
 
         // Now it should have saved
-        verify(libraryRepository).saveProgress(
+        verify(libraryRepository).updateProgress(
             itemId = eq(itemId),
             currentChapter = any(),
             progress = any(),
@@ -381,7 +381,7 @@ class ReaderViewModelTest {
         runCurrent()
         advanceUntilIdle()
 
-        verify(libraryRepository, times(1)).saveProgress(
+        verify(libraryRepository, times(1)).updateProgress(
             itemId = eq(itemId),
             currentChapter = any(),
             progress = any(),
@@ -467,7 +467,7 @@ class ReaderViewModelTest {
         viewModel.persistLifecycleProgress()
         advanceUntilIdle()
 
-        verify(libraryRepository).saveProgress(
+        verify(libraryRepository).updateProgress(
             itemId = eq(itemId),
             currentChapter = any(),
             progress = eq(0),
@@ -515,7 +515,7 @@ class ReaderViewModelTest {
         viewModel.persistLifecycleProgress()
         advanceUntilIdle()
 
-        verify(libraryRepository).saveProgress(
+        verify(libraryRepository).updateProgress(
             itemId = eq(itemId),
             currentChapter = any(),
             progress = eq(57),
@@ -561,7 +561,7 @@ class ReaderViewModelTest {
         viewModel.persistLifecycleProgress()
         advanceUntilIdle()
 
-        verify(libraryRepository).saveProgress(
+        verify(libraryRepository).updateProgress(
             itemId = eq(itemId),
             currentChapter = any(),
             progress = eq(12),
@@ -637,8 +637,8 @@ class ReaderViewModelTest {
         viewModel.updateReadingProgress(50, 50f, 0, 0)
         advanceUntilIdle()
 
-        // Should NOT have called libraryRepository.saveProgress
-        verify(libraryRepository, never()).saveProgress(any(), any(), any(), any(), any(), any(), any(), any())
+        // Should NOT have called libraryRepository.updateProgress
+        verify(libraryRepository, never()).updateProgress(any(), any(), any(), any(), any(), any(), any(), any())
 
         // Now setup item with REAL content
         val realContent = listOf(ContentElement.Text("Real page content"))
@@ -653,8 +653,8 @@ class ReaderViewModelTest {
         viewModel.updateReadingProgress(60, 60f, 0, 0)
         advanceUntilIdle()
 
-        // Should HAVE called libraryRepository.saveProgress
-        verify(libraryRepository).saveProgress(eq(itemId), any(), eq(60), any(), eq(60f), eq(0), eq(0), anyOrNull())
+        // Should HAVE called libraryRepository.updateProgress
+        verify(libraryRepository).updateProgress(eq(itemId), any(), eq(60), any(), eq(60f), eq(0), eq(0), anyOrNull())
     }
 
     @Test
