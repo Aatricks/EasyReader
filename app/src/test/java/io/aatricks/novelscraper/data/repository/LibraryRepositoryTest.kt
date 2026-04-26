@@ -4,6 +4,7 @@ import io.aatricks.novelscraper.data.local.LibraryDao
 import io.aatricks.novelscraper.data.local.PreferencesManager
 import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.model.LibraryItem
+import io.aatricks.novelscraper.util.FieldUpdate
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
@@ -65,6 +66,69 @@ class LibraryRepositoryTest {
             assertEquals("Chapter 2", it.currentChapter)
             assertEquals(50, it.progress)
         })
+    }
+
+    @Test
+    fun testUpdateProgressExplicit() = runBlocking {
+        val itemId = "test-id"
+        val item = LibraryItem(
+            id = itemId,
+            title = "Test",
+            url = "url",
+            lastReadOffsetFraction = 0.5f,
+            lastReadIndex = 10
+        )
+        whenever(libraryDao.getItemById(itemId)).thenReturn(item)
+
+        // Set new value for index, clear fraction, keep others unchanged
+        repository.updateProgressExplicit(
+            itemId = itemId,
+            lastReadIndex = FieldUpdate.Set(20),
+            lastReadOffsetFraction = FieldUpdate.Clear
+        )
+
+        verify(libraryDao).insertItem(check {
+            assertEquals(20, it.lastReadIndex)
+            assertNull(it.lastReadOffsetFraction)
+            assertEquals("Test", it.title) // Unchanged
+        })
+    }
+
+    @Test
+    fun testUpdateProgressExplicitPreserve() = runBlocking {
+        val itemId = "test-id"
+        val item = LibraryItem(
+            id = itemId,
+            title = "Test",
+            url = "url",
+            lastReadOffsetFraction = 0.5f
+        )
+        whenever(libraryDao.getItemById(itemId)).thenReturn(item)
+
+        // Use updateProgress (old method) which should preserve nullable fields if passed as null
+        repository.updateProgress(itemId, "Chapter 1", 10, lastReadOffsetFraction = null)
+
+        verify(libraryDao).insertItem(check {
+            assertEquals(0.5f, it.lastReadOffsetFraction)
+        })
+    }
+
+    @Test
+    fun testResetProgressClearsAllFields() = runBlocking {
+        val itemId = "test-id"
+        val item = LibraryItem(
+            id = itemId,
+            title = "Test",
+            url = "url",
+            progress = 50,
+            lastReadOffsetFraction = 0.5f,
+            lastReadIndex = 10
+        )
+        whenever(libraryDao.getItemById(itemId)).thenReturn(item)
+
+        repository.resetProgress(itemId)
+
+        verify(libraryDao).resetProgress(eq(itemId), any())
     }
 
     @Test

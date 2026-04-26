@@ -13,6 +13,7 @@ import io.aatricks.novelscraper.util.normalizeChapterList
 import io.aatricks.novelscraper.ui.util.normalizeRestoreOffset
 import io.aatricks.novelscraper.util.TextUtils
 import io.aatricks.novelscraper.util.UrlSecurity
+import io.aatricks.novelscraper.util.FieldUpdate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -450,15 +451,15 @@ class ReaderViewModel @Inject constructor(
         if (isPlaceholderAtCurrentPosition(progressSnapshot.scrollIndex)) return
 
         runCatching {
-            libraryRepository.updateProgress(
+            libraryRepository.updateProgressExplicit(
                 itemId = prevItemId,
                 currentChapter = "",
-                progress = progressSnapshot.scrollProgress,
-                currentChapterUrl = prevContent.url,
-                lastScrollProgress = progressSnapshot.scrollPosition,
-                lastReadIndex = progressSnapshot.scrollIndex,
-                lastReadOffset = progressSnapshot.scrollOffset,
-                lastReadOffsetFraction = progressSnapshot.scrollOffsetFraction
+                progress = FieldUpdate.Set(progressSnapshot.scrollProgress),
+                currentChapterUrl = FieldUpdate.Set(prevContent.url),
+                lastScrollProgress = FieldUpdate.Set(progressSnapshot.scrollPosition),
+                lastReadIndex = FieldUpdate.Set(progressSnapshot.scrollIndex),
+                lastReadOffset = FieldUpdate.Set(progressSnapshot.scrollOffset),
+                lastReadOffsetFraction = progressSnapshot.scrollOffsetFraction?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Clear
             )
         }
     }
@@ -1035,15 +1036,15 @@ class ReaderViewModel @Inject constructor(
 
             if (isPlaceholderAtCurrentPosition(lastIndex)) return@runCatching
 
-            libraryRepository.updateProgress(
+            libraryRepository.updateProgressExplicit(
                 itemId = itemId,
                 currentChapter = "",
-                progress = progress,
-                currentChapterUrl = resolvedChapterUrl,
-                lastScrollProgress = lastScroll,
-                lastReadIndex = lastIndex,
-                lastReadOffset = lastOffset,
-                lastReadOffsetFraction = lastOffsetFraction
+                progress = FieldUpdate.Set(progress),
+                currentChapterUrl = FieldUpdate.Set(resolvedChapterUrl),
+                lastScrollProgress = FieldUpdate.Set(lastScroll),
+                lastReadIndex = FieldUpdate.Set(lastIndex),
+                lastReadOffset = FieldUpdate.Set(lastOffset),
+                lastReadOffsetFraction = lastOffsetFraction?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Clear
             )
         }
     }
@@ -1166,16 +1167,16 @@ class ReaderViewModel @Inject constructor(
             // LibraryRepository.updateProgress is suspend.
             // We'll launch it in a scope that survives ViewModel destruction.
             
-            // Actually, we can use the repository's saveProgressAsync which uses repositoryScope.
-            libraryRepository.saveProgressAsync(
+            // Actually, we can use the repository's saveProgressExplicitAsync which uses repositoryScope.
+            libraryRepository.saveProgressExplicitAsync(
                 itemId = currentLibraryItemId ?: "",
                 currentChapter = "",
-                progress = progressToPersist.scrollProgress,
-                currentChapterUrl = url,
-                lastScrollProgress = progressToPersist.scrollPosition,
-                lastReadIndex = progressToPersist.scrollIndex,
-                lastReadOffset = progressToPersist.scrollOffset,
-                lastReadOffsetFraction = progressToPersist.scrollOffsetFraction
+                progress = FieldUpdate.Set(progressToPersist.scrollProgress),
+                currentChapterUrl = FieldUpdate.Set(url),
+                lastScrollProgress = FieldUpdate.Set(progressToPersist.scrollPosition),
+                lastReadIndex = FieldUpdate.Set(progressToPersist.scrollIndex),
+                lastReadOffset = FieldUpdate.Set(progressToPersist.scrollOffset),
+                lastReadOffsetFraction = progressToPersist.scrollOffsetFraction?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Clear
             )
         }
         

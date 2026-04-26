@@ -7,6 +7,7 @@ import io.aatricks.novelscraper.data.model.ReadingMode
 import io.aatricks.novelscraper.data.repository.ContentRepository
 import io.aatricks.novelscraper.data.repository.ExploreRepository
 import io.aatricks.novelscraper.data.repository.LibraryRepository
+import io.aatricks.novelscraper.util.FieldUpdate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,7 +55,7 @@ class ReaderViewModelTest {
             whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(emptyList()))
             whenever(libraryRepository.getCurrentlyReading()).thenReturn(null)
             whenever(libraryRepository.markAsCurrentlyReading(any())).thenReturn(true)
-            whenever(libraryRepository.updateProgress(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(true)
+            whenever(libraryRepository.updateProgressExplicit(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(true)
             whenever(libraryRepository.updateReadingMode(any(), any())).thenReturn(true)
             whenever(contentRepository.inspectCache(any())).thenAnswer { invocation ->
                 PrefetchResult(
@@ -132,15 +133,15 @@ class ReaderViewModelTest {
         advanceUntilIdle()
 
         // Verify updateProgress was called for the INITIAL item
-        verify(libraryRepository).updateProgress(
+        verify(libraryRepository).updateProgressExplicit(
             itemId = eq(initialItemId),
             currentChapter = any(),
             progress = any(),
-            currentChapterUrl = eq(initialUrl),
+            currentChapterUrl = eq(FieldUpdate.Set(initialUrl)),
             lastScrollProgress = any(),
             lastReadIndex = any(),
             lastReadOffset = any(),
-            lastReadOffsetFraction = anyOrNull()
+            lastReadOffsetFraction = any()
         )
     }
 
@@ -315,7 +316,7 @@ class ReaderViewModelTest {
         viewModel.updateScrollPosition(50f, 100f, 10f, 5, 10)
 
         // Should NOT have saved yet (debounced)
-        verify(libraryRepository, never()).updateProgress(any(), any(), any(), any(), any(), any(), any(), any())
+        verify(libraryRepository, never()).updateProgressExplicit(any(), any(), any(), any(), any(), any(), any(), any())
 
         // Advance time
         advanceTimeBy(200)
@@ -323,15 +324,15 @@ class ReaderViewModelTest {
         advanceUntilIdle()
 
         // Now it should have saved
-        verify(libraryRepository).updateProgress(
+        verify(libraryRepository).updateProgressExplicit(
             itemId = eq(itemId),
             currentChapter = any(),
             progress = any(),
-            currentChapterUrl = eq(url),
+            currentChapterUrl = eq(FieldUpdate.Set(url)),
             lastScrollProgress = any(),
-            lastReadIndex = eq(5),
-            lastReadOffset = eq(10),
-            lastReadOffsetFraction = anyOrNull()
+            lastReadIndex = eq(FieldUpdate.Set(5)),
+            lastReadOffset = eq(FieldUpdate.Set(10)),
+            lastReadOffsetFraction = any()
         )
     }
 
@@ -381,15 +382,15 @@ class ReaderViewModelTest {
         runCurrent()
         advanceUntilIdle()
 
-        verify(libraryRepository, times(1)).updateProgress(
+        verify(libraryRepository, times(1)).updateProgressExplicit(
             itemId = eq(itemId),
             currentChapter = any(),
             progress = any(),
-            currentChapterUrl = eq(url),
+            currentChapterUrl = eq(FieldUpdate.Set(url)),
             lastScrollProgress = any(),
-            lastReadIndex = eq(2),
-            lastReadOffset = eq(100),
-            lastReadOffsetFraction = eq(1f)
+            lastReadIndex = eq(FieldUpdate.Set(2)),
+            lastReadOffset = eq(FieldUpdate.Set(100)),
+            lastReadOffsetFraction = eq(FieldUpdate.Set(1f))
         )
     }
 
@@ -467,15 +468,15 @@ class ReaderViewModelTest {
         viewModel.persistLifecycleProgress()
         advanceUntilIdle()
 
-        verify(libraryRepository).updateProgress(
+        verify(libraryRepository).updateProgressExplicit(
             itemId = eq(itemId),
             currentChapter = any(),
-            progress = eq(0),
-            currentChapterUrl = eq(url),
-            lastScrollProgress = eq(0f),
-            lastReadIndex = eq(0),
-            lastReadOffset = eq(0),
-            lastReadOffsetFraction = eq(0f)
+            progress = eq(FieldUpdate.Set(0)),
+            currentChapterUrl = eq(FieldUpdate.Set(url)),
+            lastScrollProgress = eq(FieldUpdate.Set(0f)),
+            lastReadIndex = eq(FieldUpdate.Set(0)),
+            lastReadOffset = eq(FieldUpdate.Set(0)),
+            lastReadOffsetFraction = eq(FieldUpdate.Set(0f))
         )
     }
 
@@ -515,15 +516,15 @@ class ReaderViewModelTest {
         viewModel.persistLifecycleProgress()
         advanceUntilIdle()
 
-        verify(libraryRepository).updateProgress(
+        verify(libraryRepository).updateProgressExplicit(
             itemId = eq(itemId),
             currentChapter = any(),
-            progress = eq(57),
-            currentChapterUrl = eq(url),
-            lastScrollProgress = eq(57f),
-            lastReadIndex = eq(3),
-            lastReadOffset = eq(140),
-            lastReadOffsetFraction = eq(0.35f)
+            progress = eq(FieldUpdate.Set(57)),
+            currentChapterUrl = eq(FieldUpdate.Set(url)),
+            lastScrollProgress = eq(FieldUpdate.Set(57f)),
+            lastReadIndex = eq(FieldUpdate.Set(3)),
+            lastReadOffset = eq(FieldUpdate.Set(140)),
+            lastReadOffsetFraction = eq(FieldUpdate.Set(0.35f))
         )
     }
 
@@ -561,15 +562,15 @@ class ReaderViewModelTest {
         viewModel.persistLifecycleProgress()
         advanceUntilIdle()
 
-        verify(libraryRepository).updateProgress(
+        verify(libraryRepository).updateProgressExplicit(
             itemId = eq(itemId),
             currentChapter = any(),
-            progress = eq(12),
-            currentChapterUrl = eq(url),
-            lastScrollProgress = eq(12f),
-            lastReadIndex = eq(2),
-            lastReadOffset = eq(30),
-            lastReadOffsetFraction = eq(0.25f)
+            progress = eq(FieldUpdate.Set(12)),
+            currentChapterUrl = eq(FieldUpdate.Set(url)),
+            lastScrollProgress = eq(FieldUpdate.Set(12f)),
+            lastReadIndex = eq(FieldUpdate.Set(2)),
+            lastReadOffset = eq(FieldUpdate.Set(30)),
+            lastReadOffsetFraction = eq(FieldUpdate.Set(0.25f))
         )
     }
 
@@ -638,7 +639,7 @@ class ReaderViewModelTest {
         advanceUntilIdle()
 
         // Should NOT have called libraryRepository.updateProgress
-        verify(libraryRepository, never()).updateProgress(any(), any(), any(), any(), any(), any(), any(), any())
+        verify(libraryRepository, never()).updateProgressExplicit(any(), any(), any(), any(), any(), any(), any(), any())
 
         // Now setup item with REAL content
         val realContent = listOf(ContentElement.Text("Real page content"))
@@ -654,7 +655,16 @@ class ReaderViewModelTest {
         advanceUntilIdle()
 
         // Should HAVE called libraryRepository.updateProgress
-        verify(libraryRepository).updateProgress(eq(itemId), any(), eq(60), any(), eq(60f), eq(0), eq(0), anyOrNull())
+        verify(libraryRepository).updateProgressExplicit(
+            itemId = eq(itemId),
+            currentChapter = any(),
+            progress = eq(FieldUpdate.Set(60)),
+            currentChapterUrl = any(),
+            lastScrollProgress = eq(FieldUpdate.Set(60f)),
+            lastReadIndex = eq(FieldUpdate.Set(0)),
+            lastReadOffset = eq(FieldUpdate.Set(0)),
+            lastReadOffsetFraction = any()
+        )
     }
 
     @Test

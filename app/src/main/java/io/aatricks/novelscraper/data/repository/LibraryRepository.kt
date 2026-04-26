@@ -7,6 +7,9 @@ import io.aatricks.novelscraper.data.local.LibraryDao
 import io.aatricks.novelscraper.data.model.LibraryItem
 import io.aatricks.novelscraper.data.model.ContentType
 import io.aatricks.novelscraper.data.model.ReadingMode
+import io.aatricks.novelscraper.util.FieldUpdate
+import io.aatricks.novelscraper.util.resolve
+import io.aatricks.novelscraper.util.resolveNullable
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -158,8 +161,30 @@ class LibraryRepository @Inject constructor(
         lastReadOffset: Int? = null,
         lastReadOffsetFraction: Float? = null
     ): Unit {
+        saveProgressExplicitAsync(
+            itemId = itemId,
+            currentChapter = currentChapter,
+            progress = FieldUpdate.Set(progress),
+            currentChapterUrl = currentChapterUrl?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
+            lastScrollProgress = lastScrollProgress?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
+            lastReadIndex = lastReadIndex?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
+            lastReadOffset = lastReadOffset?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
+            lastReadOffsetFraction = lastReadOffsetFraction?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged
+        )
+    }
+
+    fun saveProgressExplicitAsync(
+        itemId: String,
+        currentChapter: String = "",
+        progress: FieldUpdate<Int> = FieldUpdate.Unchanged,
+        currentChapterUrl: FieldUpdate<String> = FieldUpdate.Unchanged,
+        lastScrollProgress: FieldUpdate<Float> = FieldUpdate.Unchanged,
+        lastReadIndex: FieldUpdate<Int> = FieldUpdate.Unchanged,
+        lastReadOffset: FieldUpdate<Int> = FieldUpdate.Unchanged,
+        lastReadOffsetFraction: FieldUpdate<Float?> = FieldUpdate.Unchanged
+    ): Unit {
         repositoryScope.launch {
-            updateProgress(
+            updateProgressExplicit(
                 itemId,
                 currentChapter,
                 progress,
@@ -181,17 +206,37 @@ class LibraryRepository @Inject constructor(
         lastReadIndex: Int? = null,
         lastReadOffset: Int? = null,
         lastReadOffsetFraction: Float? = null
+    ): Boolean = updateProgressExplicit(
+        itemId = itemId,
+        currentChapter = currentChapter,
+        progress = FieldUpdate.Set(progress),
+        currentChapterUrl = currentChapterUrl?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
+        lastScrollProgress = lastScrollProgress?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
+        lastReadIndex = lastReadIndex?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
+        lastReadOffset = lastReadOffset?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
+        lastReadOffsetFraction = lastReadOffsetFraction?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged
+    )
+
+    suspend fun updateProgressExplicit(
+        itemId: String,
+        currentChapter: String = "",
+        progress: FieldUpdate<Int> = FieldUpdate.Unchanged,
+        currentChapterUrl: FieldUpdate<String> = FieldUpdate.Unchanged,
+        lastScrollProgress: FieldUpdate<Float> = FieldUpdate.Unchanged,
+        lastReadIndex: FieldUpdate<Int> = FieldUpdate.Unchanged,
+        lastReadOffset: FieldUpdate<Int> = FieldUpdate.Unchanged,
+        lastReadOffsetFraction: FieldUpdate<Float?> = FieldUpdate.Unchanged
     ): Boolean = progressMutex.withLock {
         runRepoCatching("Failed to update progress", false) {
             libraryDao.getItemById(itemId)?.let { item ->
                 val updated = item.copy(
                     currentChapter = currentChapter.ifBlank { item.currentChapter },
-                    progress = progress,
-                    currentChapterUrl = currentChapterUrl ?: item.currentChapterUrl,
-                    lastScrollPosition = lastScrollProgress ?: item.lastScrollPosition,
-                    lastReadIndex = lastReadIndex ?: item.lastReadIndex,
-                    lastReadOffset = lastReadOffset ?: item.lastReadOffset,
-                    lastReadOffsetFraction = lastReadOffsetFraction ?: item.lastReadOffsetFraction,
+                    progress = progress.resolve(item.progress, 0),
+                    currentChapterUrl = currentChapterUrl.resolve(item.currentChapterUrl, ""),
+                    lastScrollPosition = lastScrollProgress.resolve(item.lastScrollPosition, 0f),
+                    lastReadIndex = lastReadIndex.resolve(item.lastReadIndex, 0),
+                    lastReadOffset = lastReadOffset.resolve(item.lastReadOffset, 0),
+                    lastReadOffsetFraction = lastReadOffsetFraction.resolveNullable(item.lastReadOffsetFraction),
                     lastRead = System.currentTimeMillis()
                 )
                 libraryDao.insertItem(updated)
