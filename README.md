@@ -87,6 +87,7 @@ Start with the default debug workflow. These commands do not require release sig
 Open the project in Android Studio, sync Gradle, and run the default debug variant if you prefer the IDE.
 
 For CI-style flavor coverage, PR validation uses only `:app:lintStandardDebug`, `:app:testStandardDebugUnitTest`, and `:app:assembleStandardDebug`.
+AI flavor validation runs separately as `ai-validation` on `push` to `main`, `workflow_dispatch`, and scheduled CI runs.
 
 ### Benchmarks
 

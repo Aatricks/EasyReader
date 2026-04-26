@@ -5,10 +5,15 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
 
 jobs:
-  standard_debug:
+  standard-pr-validation:
+    name: standard-pr-validation
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
 
     steps:
     - uses: actions/checkout@v4
@@ -19,16 +24,6 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
         cache: gradle
-
-    - name: Decode Keystore
-      # Skip keystore decoding on pull requests since secrets are unavailable
-      if: github.event_name != 'pull_request'
-      run: |
-        echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 --decode > app/release.jks
-        echo "storeFile=../app/release.jks" > keystore.properties
-        echo "storePassword=${{ secrets.RELEASE_STORE_PASSWORD }}" >> keystore.properties
-        echo "keyAlias=${{ secrets.RELEASE_KEY_ALIAS }}" >> keystore.properties
-        echo "keyPassword=${{ secrets.RELEASE_KEY_PASSWORD }}" >> keystore.properties
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
@@ -43,15 +38,10 @@ jobs:
     - name: Build standardDebug
       run: ./gradlew :app:assembleStandardDebug
 
-    - name: Upload standardDebug APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: standard-debug-apk
-        path: app/build/outputs/apk/standard/debug/*.apk
-
-  ai_validation:
+  ai-validation:
+    name: ai-validation
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request'
 
     steps:
     - uses: actions/checkout@v4
