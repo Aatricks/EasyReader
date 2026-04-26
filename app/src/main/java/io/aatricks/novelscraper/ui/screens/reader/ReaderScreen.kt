@@ -308,12 +308,33 @@ private fun CloudflareDialog(
                 ) {
                     var internalWebView by remember { mutableStateOf<WebView?>(null) }
 
+                    DisposableEffect(Unit) {
+                        onDispose {
+                            internalWebView?.apply {
+                                stopLoading()
+                                loadUrl("about:blank")
+                                clearHistory()
+                                removeAllViews()
+                                destroy()
+                            }
+                            internalWebView = null
+                        }
+                    }
+
                     AndroidView(
                         factory = { ctx ->
                             WebView(ctx).apply {
                                 internalWebView = this
                                 WebViewUtils.configureCloudflareWebView(this)
                                 webViewClient = object : WebViewClient() {
+                                    override fun shouldOverrideUrlLoading(
+                                        view: WebView?,
+                                        request: android.webkit.WebResourceRequest?
+                                    ): Boolean {
+                                        val navUrl = request?.url?.toString()
+                                        return !WebViewUtils.shouldAllowCloudflareNavigation(navUrl)
+                                    }
+
                                     override fun onReceivedError(
                                         view: WebView?,
                                         request: android.webkit.WebResourceRequest?,
