@@ -9,11 +9,20 @@ lifecycleRuntimeKtx = "2.9.4"
 activityCompose = "1.11.0"
 composeBom = "2024.12.01"
 hilt = "2.54"
+# Intentionally kept on the Room alpha line because the app uses the matching
+# Room/KSP/SQLite APIs already resolved by the project and we are not upgrading
+# the persistence stack in this ticket.
 room = "2.7.0-alpha12"
 navigation = "2.8.5"
 coil = "3.0.4"
 kotlinxSerialization = "1.7.3"
+coroutines = "1.9.0"
 ktor = "2.2.4"
+okhttp = "4.12.0"
+jsoup = "1.17.2"
+itext7 = "7.2.5"
+mockitoInline = "5.2.0"
+llmedge = "0.3.9"
 ksp = "2.1.0-1.0.29"
 robolectric = "4.12.1"
 androidxTestCore = "1.5.0"
@@ -59,6 +68,21 @@ coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp"
 
 # Serialization
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+
+# Coroutines
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+
+# HTML/PDF/Networking
+jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
+itext7-core = { group = "com.itextpdf", name = "itext7-core", version.ref = "itext7" }
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+okhttp-logging-interceptor = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
+
+# Tests
+mockito-inline = { group = "org.mockito", name = "mockito-inline", version.ref = "mockitoInline" }
+
+# AI library
+llmedge = { group = "io.github.aatricks", name = "llmedge", version.ref = "llmedge" }
 
 # Ktor
 ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }

@@ -155,7 +155,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     // llmedge AI Library
-    "aiImplementation"("io.github.aatricks:llmedge:0.3.9")
+    "aiImplementation"(libs.llmedge)
     
     // Ktor
     implementation(libs.ktor.client.core)
@@ -164,18 +164,18 @@ dependencies {
     implementation(libs.ktor.serialization.kotlinx.json)
     
     // Web Scraping - JSoup
-    implementation("org.jsoup:jsoup:1.17.2")
+    implementation(libs.jsoup)
     
     // Image Loading - Coil 3
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     
     // PDF Parsing - iText7
-    implementation("com.itextpdf:itext7-core:7.2.5")
+    implementation(libs.itext7.core)
     
     // Networking - OkHttp
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging.interceptor)
     
     // Testing
     testImplementation(libs.junit)
@@ -183,8 +183,8 @@ dependencies {
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.mockito.core)
     testImplementation(libs.mockito.kotlin)
-    testImplementation("org.mockito:mockito-inline:5.2.0")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation(libs.mockito.inline)
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
