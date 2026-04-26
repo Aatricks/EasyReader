@@ -193,8 +193,14 @@ class ImageDownloader @Inject constructor(
             try {
                 body.source().use { source ->
                     val buffer = okio.Buffer()
-                    val read = source.read(buffer, maxBytes + 1)
-                    if (read > maxBytes) {
+                    val sniffLimit = maxBytes + 1
+                    var totalRead = 0L
+                    while (totalRead < sniffLimit) {
+                        val read = source.read(buffer, sniffLimit - totalRead)
+                        if (read == -1L) break
+                        totalRead += read
+                    }
+                    if (totalRead > maxBytes) {
                         ImageFetchResult.TooLarge
                     } else {
                         ImageFetchResult.BoundedSuccess(buffer.readByteArray())
