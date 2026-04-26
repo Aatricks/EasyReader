@@ -71,13 +71,11 @@ class SafeRedirectInterceptorTest {
         // We use check argument matching or just return sequentially.
         whenever(chain.proceed(any())).thenAnswer { invocation ->
             val req = invocation.arguments[0] as Request
-            println("DEBUG: Request URL: ${req.url}")
             if (req.url.toString() == initialUrl) {
                 redirectResponse
             } else if (req.url.toString() == redirectUrl) {
                 successResponse
             } else {
-                println("DEBUG: Mismatch! Expected $initialUrl or $redirectUrl, got ${req.url}")
                 throw IllegalStateException("Unexpected request: ${req.url}")
             }
         }

@@ -24,7 +24,7 @@ import java.nio.ByteBuffer
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
-class ContentRepositoryConcurrencyTest {
+class ContentRepositoryConcurrencyBenchmarkTest {
 
     private val tinyPng = ByteBuffer.allocate(8 + 8 + 13 + 4 + 8 + 4)
         .put(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))

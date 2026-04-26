@@ -45,7 +45,7 @@ class ContentRepositoryEpubTest {
 
     @Before
     fun setup() {
-        tempDir = createTempDir("epub_benchmark")
+        tempDir = createTempDir("epub_large_test")
         epubFile = File(tempDir, "test_book.epub")
         createLargeEpub(epubFile, chapterCount)
 
@@ -135,7 +135,7 @@ class ContentRepositoryEpubTest {
                     <?xml version="1.0"?>
                     <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="bookid" version="2.0">
                         <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-                            <dc:title>Benchmark Book</dc:title>
+                            <dc:title>Large Test Book</dc:title>
                             <dc:identifier id="bookid">urn:uuid:12345</dc:identifier>
                             <dc:language>en</dc:language>
                         </metadata>
@@ -170,7 +170,7 @@ class ContentRepositoryEpubTest {
                     <?xml version="1.0"?>
                     <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
                         <head><meta name="dtb:uid" content="urn:uuid:12345"/></head>
-                        <docTitle><text>Benchmark Book</text></docTitle>
+                        <docTitle><text>Large Test Book</text></docTitle>
                         <navMap>
                             $navPoints
                         </navMap>

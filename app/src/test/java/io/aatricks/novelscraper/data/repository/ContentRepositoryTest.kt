@@ -99,9 +99,7 @@ class ContentRepositoryTest {
         // Apply TextUtils.formatChapterText logic
         val joined = paragraphs.distinct().joinToString("\n\n")
         val formatted = TextUtils.formatChapterText(joined)
-        var formattedParagraphs = formatted.split(Regex("\\n\\s*\\n")).map { it.trim() }.filter { it.isNotBlank() }
-
-        println("Paragraphs: $formattedParagraphs")
+        val formattedParagraphs = formatted.split(Regex("\\n\\s*\\n")).map { it.trim() }.filter { it.isNotBlank() }
 
         // Assertions
         // "This is paragraph two, which is split across two tags." should be merged

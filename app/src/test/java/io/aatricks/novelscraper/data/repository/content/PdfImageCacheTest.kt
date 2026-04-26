@@ -122,15 +122,15 @@ class PdfImageCacheTest {
         // First pass
         loader.processExtractedElements(filePath, pageNum, extracted)
         val imgFile = File(cacheDir, "pdf_images/$docKey/page_1_image_0.webp")
-        val lastModified = imgFile.lastModified()
         
-        // Wait a bit to ensure lastModified would change if overwritten
-        Thread.sleep(10)
+        // Explicitly set last modified to the past to ensure we can detect if it's overwritten
+        val oldTime = System.currentTimeMillis() - 5000
+        imgFile.setLastModified(oldTime)
         
         // Second pass
         loader.processExtractedElements(filePath, pageNum, extracted)
         
-        assertEquals(lastModified, imgFile.lastModified())
+        assertEquals(oldTime, imgFile.lastModified())
     }
 
     @Test

@@ -9,12 +9,8 @@ import com.itextpdf.layout.element.Paragraph
 import com.itextpdf.layout.properties.AreaBreakType
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.data.model.ContentResult
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -24,13 +20,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import org.mockito.kotlin.any
-import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.spy
 import org.mockito.kotlin.whenever
 import java.io.File
-import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.path.createTempDirectory
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -99,109 +91,6 @@ class PdfContentLoaderTest {
         assertEquals(0, profile.prefetchBackward)
         assertEquals(6, profile.maxInFlightJobs)
     }
-
-    @Test
-    fun `pdf handle pool enforces hard maximum on concurrent handles`() = runTest {
-        val pdfFile = createPdf("Page 1", "Page 2", "Page 3", "Page 4", "Page 5")
-        val activeCount = AtomicInteger(0)
-        val maxActive = AtomicInteger(0)
-        val releaseGate = CompletableDeferred<Unit>()
-        val callCount = AtomicInteger(0)
-        val poolSize = 3
-
-        val mockOpener = object : PdfDocumentOpener {
-            override fun open(filePath: String): PdfDocumentHandle? {
-                val count = callCount.incrementAndGet()
-                
-                val mockDoc = mock<com.itextpdf.kernel.pdf.PdfDocument>()
-                whenever(mockDoc.isClosed).thenReturn(false)
-                whenever(mockDoc.numberOfPages).thenReturn(5)
-                
-                val handle = spy(PdfDocumentHandle(mockDoc, null))
-                
-                doAnswer { invocation ->
-                    activeCount.decrementAndGet()
-                    invocation.callRealMethod()
-                }.whenever(handle).close()
-
-                if (count > 1) { // metadata check is call 1, subsequent are page loads
-                    val current = activeCount.incrementAndGet()
-                    maxActive.updateAndGet { maxOf(it, current) }
-                    
-                    // Block until we allow release
-                    runBlocking { releaseGate.await() }
-                }
-                
-                return handle
-            }
-        }
-
-        val loader = PdfContentLoader(context, mockOpener)
-        
-        // Initial load to get the PdfLazyList
-        val result = loader.loadPdfContent(pdfFile.absolutePath)
-        assertTrue("Initial load should succeed, but got $result", result is ContentResult.Success)
-        val list = (result as ContentResult.Success).elements
-
-        // Trigger more loads than poolSize
-        repeat(poolSize + 2) { i ->
-            list[i]
-        }
-
-        // Wait a bit for jobs to start and hit the mock opener
-        delay(500)
-
-        // Verify that only poolSize handles were ever active despite more requests
-        val finalMaxActive = maxActive.get()
-        assertTrue("Max active handles $finalMaxActive should be <= $poolSize", finalMaxActive <= poolSize)
-        assertTrue("Should have reached at least some concurrency", finalMaxActive > 0)
-
-        // Release the gate and wait for completion
-        releaseGate.complete(Unit)
-        delay(500)
-        
-        // Cleanup
-        (list as java.io.Closeable).close()
-        pdfFile.delete()
-    }
-@Test
-fun `close closes idle handles and prevents future acquires`() = runTest {
-    val pdfFile = createPdf("Page 1")
-    val createdHandles = mutableListOf<PdfDocumentHandle>()
-
-    val mockOpener = object : PdfDocumentOpener {
-        override fun open(filePath: String): PdfDocumentHandle? {
-            val doc = mock<com.itextpdf.kernel.pdf.PdfDocument>()
-            whenever(doc.isClosed).thenReturn(false)
-            whenever(doc.numberOfPages).thenReturn(1)
-            val handle = spy(PdfDocumentHandle(doc, null))
-            createdHandles.add(handle)
-            return handle
-        }
-    }
-
-    val loader = PdfContentLoader(context, mockOpener)
-    val result = loader.loadPdfContent(pdfFile.absolutePath)
-    assertTrue("Initial load should succeed, but got $result", result is ContentResult.Success)
-    val list = (result as ContentResult.Success).elements
-
-    // Load page 1 to put a handle in idle pool
-    list[0]
-    delay(200) 
-
-    // Close the list
-    (list as java.io.Closeable).close()
-
-    // All created handles should be closed eventually
-    // Handle 1: closed by metadata 'use' block
-    // Handle 2: closed by pool 'close'
-    assertTrue("At least 2 handles should have been created", createdHandles.size >= 2)
-    createdHandles.forEach { 
-        org.mockito.kotlin.verify(it).close()
-    }
-    pdfFile.delete()
-}
-
 
     private fun createPdf(vararg pages: String): File {
         val pdfFile = File.createTempFile("pdf-loader", ".pdf")

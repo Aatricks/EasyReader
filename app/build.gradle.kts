@@ -82,6 +82,18 @@ android {
     buildFeatures {
         compose = true
     }
+    sourceSets {
+        getByName("standard") {
+            java.srcDirs("src/standard/java")
+        }
+        getByName("ai") {
+            java.srcDirs("src/ai/java")
+        }
+        getByName("test") {
+            java.srcDirs("src/test/java", "src/benchmark/java")
+        }
+    }
+
     testOptions {
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true
@@ -90,7 +102,24 @@ android {
                 events("passed", "skipped", "failed", "standardOut", "standardError")
                 showStandardStreams = true
             }
+            // Exclude benchmarks from normal unit tests
+            it.exclude("**/*BenchmarkTest.class")
         }
+    }
+}
+
+tasks.register<Test>("benchmarkTest") {
+    description = "Runs the benchmark tests."
+    group = "verification"
+
+    testClassesDirs = tasks.getByName<Test>("testStandardDebugUnitTest").testClassesDirs
+    classpath = tasks.getByName<Test>("testStandardDebugUnitTest").classpath
+
+    setTestNameIncludePatterns(listOf("*BenchmarkTest"))
+
+    testLogging {
+        events("passed", "skipped", "failed", "standardOut", "standardError")
+        showStandardStreams = true
     }
 }
 

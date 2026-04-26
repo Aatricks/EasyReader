@@ -16,9 +16,12 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class SummaryViewModelTest {
+@RunWith(RobolectricTestRunner::class)
+class SummaryViewModelBenchmarkTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var summaryEngine: DisabledSummaryEngine
