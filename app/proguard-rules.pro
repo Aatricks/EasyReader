@@ -27,6 +27,7 @@
 # llmedge rules
 -keep class io.aatricks.llmedge.** { *; }
 -keep interface io.aatricks.llmedge.** { *; }
+-dontwarn io.aatricks.llmedge.**
 
 # Suppress warnings for optional dependencies referenced by llmedge / Ktor
 -dontwarn com.google.android.gms.tasks.Task

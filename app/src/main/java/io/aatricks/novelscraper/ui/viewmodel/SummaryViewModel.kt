@@ -115,7 +115,7 @@ class SummaryViewModel @Inject constructor(
     }
 
     fun cancelGeneration(): Unit {
-        runCatching { io.aatricks.llmedge.LLMEdgeManager.cancelGeneration() }
+        summaryService.cancelGeneration()
         updateState { it.copy(isGenerating = false, activeChapterUrl = null) }
     }
     

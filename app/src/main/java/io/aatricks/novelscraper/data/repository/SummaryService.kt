@@ -1,83 +1,31 @@
 package io.aatricks.novelscraper.data.repository
 
-import android.content.Context
 import android.util.Log
-import io.aatricks.llmedge.SmolLM
-import io.aatricks.llmedge.LLMEdgeManager
-import kotlinx.coroutines.CompletableDeferred
+import io.aatricks.novelscraper.data.repository.summary.SummaryEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
 
-import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Service for generating AI summaries of novel chapters using llmedge library
- * Uses LLMEdgeManager (llmedge) for model management and on-device inference
+ * Service for generating AI summaries of novel chapters.
+ * Uses a SummaryEngine for model management and inference.
  */
 @Singleton
 class SummaryService @Inject constructor(
-    @ApplicationContext private val context: Context
+    private val summaryEngine: SummaryEngine
 ) {
     
     companion object {
         private const val TAG = "SummaryService"
         private val WHITESPACE_REGEX = Regex("\\s+")
     }
-
-    private var modelFile: File? = null
-    @Volatile
-    private var isInitialized = false
-    private var initDeferred: CompletableDeferred<Result<Unit>>? = null
-    private val initLock = Any()
     
     /**
-     * Initialize the SmolLM model (lazy loading)
+     * Initialize the summary model (lazy loading)
      */
-    suspend fun initialize(): Result<Unit> = withContext(Dispatchers.IO) {
-        if (isInitialized) return@withContext Result.success(Unit)
-        
-        val deferred = synchronized(initLock) {
-            if (isInitialized) return@synchronized null
-            initDeferred?.let { return@synchronized it }
-            CompletableDeferred<Result<Unit>>().also { initDeferred = it }
-        }
-        
-        // Another coroutine is already initializing — just await
-        if (deferred != null && deferred.isCompleted.not() && initDeferred !== deferred) {
-            return@withContext deferred.await()
-        }
-        if (deferred == null) return@withContext Result.success(Unit)
-        
-        val result = runCatching {
-            Log.d(TAG, "Downloading and ensuring model via LLMEdgeManager for chapter summarization")
-
-            val modelId = "unsloth/Qwen3-0.6B-GGUF"
-            val modelFilename = "Qwen3-0.6B-Q4_K_M.gguf"
-
-            val downloadedFile = LLMEdgeManager.downloadModel(
-                context = context,
-                modelId = modelId,
-                filename = modelFilename,
-                preferSystemDownloader = true
-            )
-
-            Log.d(TAG, "Model ready: ${downloadedFile.name} (path=${downloadedFile.absolutePath})")
-
-            modelFile = downloadedFile
-            LLMEdgeManager.preferPerformanceMode = false
-            isInitialized = true
-            Unit
-        }.onFailure { e ->
-            Log.e(TAG, "Failed to initialize SmolLM", e)
-        }
-        
-        deferred.complete(result)
-        synchronized(initLock) { initDeferred = null }
-        result
-    }
+    suspend fun initialize(): Result<Unit> = summaryEngine.initialize()
     
     /**
      * Generate a summary for the given chapter content
@@ -115,30 +63,14 @@ class SummaryService @Inject constructor(
         onProgress: ((String) -> Unit)?
     ): String {
         return try {
-            generateText(prompt, onProgress)
-        } catch (e: IllegalStateException) {
+            summaryEngine.generateSummary(prompt, onProgress).getOrThrow()
+        } catch (e: Exception) {
             if (e.message?.contains("context size reached") == true) {
                 Log.w(TAG, "Context size reached, retrying with shorter content")
                 val shorterContent = selectKeyContent(fullContent, maxWords = 200)
                 val retryPrompt = "Summarize this excerpt in 2-3 sentences:\n\n$shorterContent\n\nSummary:"
-                generateText(retryPrompt, onProgress)
+                summaryEngine.generateSummary(retryPrompt, onProgress).getOrThrow()
             } else throw e
-        }
-    }
-
-    private suspend fun generateText(prompt: String, onProgress: ((String) -> Unit)?): String {
-        val params = LLMEdgeManager.TextGenerationParams(
-            prompt = prompt,
-            systemPrompt = "You are a concise chapter summarizer.",
-            modelId = "unsloth/Qwen3-0.6B-GGUF",
-            modelFilename = modelFile?.name ?: "Qwen3-0.6B-Q4_K_M.gguf",
-            modelPath = modelFile?.absolutePath,
-            temperature = 0.3f,
-            maxTokens = 256,
-            thinkingMode = SmolLM.ThinkingMode.DISABLED
-        )
-        return withContext(Dispatchers.IO) { 
-            LLMEdgeManager.generateText(context, params, onProgress).trim()
         }
     }
     
@@ -150,12 +82,17 @@ class SummaryService @Inject constructor(
     }
     
     /**
+     * Cancel any ongoing generation
+     */
+    fun cancelGeneration(): Unit {
+        summaryEngine.cancelGeneration()
+    }
+    
+    /**
      * Release resources
      */
     fun release(): Unit {
-        runCatching { LLMEdgeManager.cancelGeneration() }
-        modelFile = null
-        isInitialized = false
+        summaryEngine.release()
         Log.d(TAG, "SummaryService released")
     }
     
@@ -227,5 +164,5 @@ class SummaryService @Inject constructor(
     /**
      * Check if service is ready
      */
-    fun isReady(): Boolean = isInitialized && modelFile != null
+    fun isReady(): Boolean = summaryEngine.isAvailable()
 }

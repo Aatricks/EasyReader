@@ -52,6 +52,18 @@ android {
             isMinifyEnabled = false
         }
     }
+
+    flavorDimensions.add("version")
+    productFlavors {
+        create("standard") {
+            dimension = "version"
+            isDefault = true
+        }
+        create("ai") {
+            dimension = "version"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -104,7 +116,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     // llmedge AI Library
-    implementation(files("libs/llmedge-release.aar"))
+    "aiImplementation"("io.github.aatricks:llmedge:0.3.9")
     
     // Ktor
     implementation(libs.ktor.client.core)

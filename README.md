@@ -41,7 +41,26 @@ EasyReader is a clean, focused environment for consuming digital content. Whethe
 - **Immersive UI**: Full-screen, edge-to-edge display with Material3 dynamic colors.
 - **Smart Navigation**: Fluid swipe gestures to navigate chapters and auto-restore scroll position.
 - **Intelligent Formatting**: Automatic removal of page numbers, ads, and HTML noise.
-- **AI Summaries**: Generate concise summaries of long chapters using on-device [`llmedge`](https://github.com/Aatricks/LLMEdge).
+### Build Variants
+
+The app uses product flavors to manage the AI summarization dependency:
+
+- **standard (default)**: Compiles without the `llmedge` library. AI summarization UI is visible but reports "unavailable".
+- **ai**: Automatically fetches `llmedge` from Maven Central. Enables full on-device AI summarization.
+
+To build the default version:
+```bash
+./gradlew assembleStandardDebug
+```
+
+To build the AI-enabled version:
+```bash
+./gradlew assembleAiDebug
+```
+
+### AI Summarization Setup
+1. Simply select the `aiDebug` or `aiRelease` build variant in Android Studio.
+2. The `llmedge` library will be automatically downloaded from Maven Central.
 
 ### **Library & Management**
 - **Cloud-free Caching**: Store everything locally for privacy and speed.
