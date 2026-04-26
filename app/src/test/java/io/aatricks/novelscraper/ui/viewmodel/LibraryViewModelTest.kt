@@ -81,6 +81,53 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun `selection does not survive a new ViewModel instance`() = runTest {
+        val itemId = "id-1"
+        val libraryItems = MutableStateFlow(
+            listOf(
+                LibraryItem(id = itemId, title = "Novel", url = "https://example.com/novel")
+            )
+        )
+        whenever(libraryRepository.libraryItems).thenReturn(libraryItems)
+
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository)
+        advanceUntilIdle()
+
+        activeViewModel.toggleSelection(itemId)
+        advanceUntilIdle()
+
+        assertEquals(setOf(itemId), activeViewModel.uiState.value.selectedIds)
+
+        val restoredViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository)
+        advanceUntilIdle()
+
+        assertTrue(restoredViewModel.uiState.value.selectedIds.isEmpty())
+        assertFalse(restoredViewModel.uiState.value.isSelectionMode)
+    }
+
+    @Test
+    fun `removeSelectedItems deletes current transient selection`() = runTest {
+        val item1 = LibraryItem(id = "id-1", title = "Novel 1", url = "https://example.com/novel-1")
+        val item2 = LibraryItem(id = "id-2", title = "Novel 2", url = "https://example.com/novel-2")
+        whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(listOf(item1, item2)))
+
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository)
+        advanceUntilIdle()
+
+        activeViewModel.selectItem(item1.id)
+        activeViewModel.selectItem(item2.id)
+        advanceUntilIdle()
+
+        activeViewModel.removeSelectedItems()
+        advanceUntilIdle()
+
+        verify(contentRepository).clearCachesForUrls(listOf(item1.url, item2.url))
+        verify(libraryRepository).removeItems(setOf(item1.id, item2.id))
+        assertTrue(activeViewModel.uiState.value.selectedIds.isEmpty())
+        assertFalse(activeViewModel.uiState.value.isSelectionMode)
+    }
+
+    @Test
     fun `enter selection mode keeps selection affordance visible before choosing items`() = runTest {
         advanceUntilIdle()
 

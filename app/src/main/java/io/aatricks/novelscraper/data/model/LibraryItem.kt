@@ -27,7 +27,6 @@ data class LibraryItem(
     val timestamp: Long = System.currentTimeMillis(),
     val progress: Int = 0,
     val isCurrentlyReading: Boolean = false,
-    val isSelected: Boolean = false,
     val currentChapter: String = "",
     val currentChapterUrl: String = "",
     val totalChapters: Int = 0,
@@ -72,11 +71,6 @@ data class LibraryItem(
      * Creates a copy marking this item as not currently reading.
      */
     fun markAsNotReading(): LibraryItem = copy(isCurrentlyReading = false)
-    
-    /**
-     * Toggles the selection state of this item.
-     */
-    fun toggleSelection(): LibraryItem = copy(isSelected = !isSelected)
     
     /**
      * Checks if the item has been started (progress > 0).
