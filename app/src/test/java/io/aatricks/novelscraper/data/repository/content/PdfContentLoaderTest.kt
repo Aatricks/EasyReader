@@ -64,11 +64,13 @@ class PdfContentLoaderTest {
         val result = loader.loadPdfContent(pdfFile.absolutePath, preloadPageIndex = 1)
 
         assertTrue(result is ContentResult.Success)
-        val loadedPage = (result as ContentResult.Success).elements[1]
+        val list = (result as ContentResult.Success).elements
+        val loadedPage = list[1]
         assertTrue(loadedPage is ContentElement.PageContent)
         val pageContent = loadedPage as ContentElement.PageContent
         assertTrue(pageContent.elements.filterIsInstance<ContentElement.Text>().any { it.content.contains("Second page") })
 
+        (list as java.io.Closeable).close()
         pdfFile.delete()
     }
 
@@ -80,9 +82,11 @@ class PdfContentLoaderTest {
         val result = loader.loadPdfContent(pdfFile.absolutePath, preloadPageIndex = 99)
 
         assertTrue(result is ContentResult.Success)
-        val loadedPage = (result as ContentResult.Success).elements[1]
+        val list = (result as ContentResult.Success).elements
+        val loadedPage = list[1]
         assertTrue(loadedPage is ContentElement.PageContent)
 
+        (list as java.io.Closeable).close()
         pdfFile.delete()
     }
 

@@ -17,6 +17,7 @@ import com.itextpdf.kernel.pdf.canvas.parser.data.ImageRenderInfo
 import com.itextpdf.kernel.pdf.canvas.parser.listener.LocationTextExtractionStrategy
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.data.model.ContentResult
+import io.aatricks.novelscraper.util.CacheKeyUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,7 +32,6 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.ArrayDeque
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -152,7 +152,7 @@ class PdfContentLoader @Inject constructor(
 
         val handle = opener.open(filePath) ?: return emptyMap()
         return try {
-            val pageContent = loadPageElement(handle, targetIndex + 1)
+            val pageContent = loadPageElement(handle, filePath, targetIndex + 1)
             addToGlobalCache(filePath, targetIndex, pageContent)
             mapOf(targetIndex to pageContent)
         } catch (_: Exception) {
@@ -194,15 +194,15 @@ class PdfContentLoader @Inject constructor(
         }
     }
 
-    private suspend fun loadPageElement(handle: PdfDocumentHandle, pageNum: Int): ContentElement {
+    private suspend fun loadPageElement(handle: PdfDocumentHandle, filePath: String, pageNum: Int): ContentElement {
         val extracted = extractPageContent(handle, pageNum)
         val processedElements = withContext(Dispatchers.Default) {
-            processExtractedElements(extracted)
+            processExtractedElements(filePath, pageNum, extracted)
         }
         return ContentElement.PageContent(processedElements)
     }
 
-    private fun processExtractedElements(extracted: ExtractedResult): List<ContentElement> {
+    internal fun processExtractedElements(filePath: String, pageNum: Int, extracted: ExtractedResult): List<ContentElement> {
         val paragraphs = mutableListOf<ContentElement>()
         val rawText = extracted.rawText
 
@@ -234,25 +234,49 @@ class PdfContentLoader @Inject constructor(
             paragraphs.add(ContentElement.Text(sb.toString()))
         }
 
-        val processedImages = extracted.rawImages.mapNotNull { raw ->
+        val docKey = CacheKeyUtils.keyFor(filePath)
+        val imagesDir = File(context.cacheDir, "pdf_images/$docKey")
+
+        val processedImages = extracted.rawImages.mapIndexedNotNull { imageIndex, raw ->
             try {
+                if (!imagesDir.exists()) imagesDir.mkdirs()
+                val fileName = "page_${pageNum}_image_${imageIndex}.webp"
+                val file = File(imagesDir, fileName)
+
+                if (file.exists() && file.length() > 0) {
+                    return@mapIndexedNotNull ContentElement.Image(
+                        url = "file://${file.absolutePath}",
+                        width = raw.width,
+                        height = raw.height
+                    )
+                }
+
                 val options = BitmapFactory.Options().apply {
                     inSampleSize = calculateInSampleSize(raw.width, raw.height, IMAGE_DOWNSAMPLE_THRESHOLD)
                 }
-                val bitmap = BitmapFactory.decodeByteArray(raw.bytes, 0, raw.bytes.size, options) ?: return@mapNotNull null
+                val bitmap = BitmapFactory.decodeByteArray(raw.bytes, 0, raw.bytes.size, options) ?: return@mapIndexedNotNull null
 
-                val fileName = "pdf_img_${UUID.randomUUID()}.webp"
-                val file = File(context.cacheDir, fileName)
-                FileOutputStream(file).use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 80, out)
+                val tmpFile = File(imagesDir, "$fileName.tmp")
+                try {
+                    FileOutputStream(tmpFile).use { out ->
+                        bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 80, out)
+                    }
+                    if (tmpFile.renameTo(file)) {
+                        ContentElement.Image(
+                            url = "file://${file.absolutePath}",
+                            width = raw.width,
+                            height = raw.height
+                        )
+                    } else {
+                        tmpFile.delete()
+                        null
+                    }
+                } catch (e: Exception) {
+                    tmpFile.delete()
+                    null
+                } finally {
+                    bitmap.recycle()
                 }
-                bitmap.recycle()
-
-                ContentElement.Image(
-                    url = "file://${file.absolutePath}",
-                    width = raw.width,
-                    height = raw.height
-                )
             } catch (_: Exception) {
                 null
             }
@@ -314,7 +338,7 @@ class PdfContentLoader @Inject constructor(
         }
 
         private fun triggerLoad(index: Int) {
-            if (pageCache.containsKey(index) || loadingJobs.containsKey(index)) return
+            if (isClosed || pageCache.containsKey(index) || loadingJobs.containsKey(index)) return
 
             val job = loaderScope.launch {
                 val result = loadPageContent(index + 1)
@@ -410,7 +434,7 @@ class PdfContentLoader @Inject constructor(
             )
             
             return try {
-                loadPageElement(handle, pageNum)
+                loadPageElement(handle, filePath, pageNum)
             } finally {
                 releaseHandle(handle)
             }
@@ -422,16 +446,18 @@ class PdfContentLoader @Inject constructor(
                 while (idleHandles.isNotEmpty()) {
                     idleHandles.pollFirst()?.close()
                 }
+                loadingJobs.values.forEach { it.cancel() }
+                loadingJobs.clear()
             }
         }
     }
 
-    private data class ExtractedResult(
+    internal data class ExtractedResult(
         val rawImages: List<RawImage>,
         val rawText: String
     )
 
-    private data class RawImage(
+    internal data class RawImage(
         val bytes: ByteArray,
         val width: Int,
         val height: Int
@@ -469,6 +495,15 @@ class PdfContentLoader @Inject constructor(
             globalContentCache.remove(url)
         }
         pageCountCache.remove(url)
+        clearPdfImageCache(url)
+    }
+
+    private fun clearPdfImageCache(url: String) {
+        val docKey = CacheKeyUtils.keyFor(url)
+        val imagesDir = File(context.cacheDir, "pdf_images/$docKey")
+        if (imagesDir.exists()) {
+            imagesDir.deleteRecursively()
+        }
     }
 
     fun clearAllCache() {
@@ -476,6 +511,14 @@ class PdfContentLoader @Inject constructor(
             globalContentCache.evictAll()
         }
         pageCountCache.clear()
+        clearAllPdfImageCache()
+    }
+
+    private fun clearAllPdfImageCache() {
+        val imagesRoot = File(context.cacheDir, "pdf_images")
+        if (imagesRoot.exists()) {
+            imagesRoot.deleteRecursively()
+        }
     }
 }
 
