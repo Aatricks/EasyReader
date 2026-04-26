@@ -41,26 +41,15 @@ EasyReader is a clean, focused environment for consuming digital content. Whethe
 - **Immersive UI**: Full-screen, edge-to-edge display with Material3 dynamic colors.
 - **Smart Navigation**: Fluid swipe gestures to navigate chapters and auto-restore scroll position.
 - **Intelligent Formatting**: Automatic removal of page numbers, ads, and HTML noise.
+
 ### Build Variants
 
-The app uses product flavors to manage the AI summarization dependency:
+The app uses product flavors to make AI summarization optional:
 
-- **standard (default)**: Compiles without the `llmedge` library. AI summarization UI is visible but reports "unavailable".
-- **ai**: Automatically fetches `llmedge` from Maven Central. Enables full on-device AI summarization.
+- **standard (default)**: Clean-clone debug builds do not require the `llmedge` library. AI summarization UI is visible but reports "unavailable".
+- **ai**: Enables on-device AI summarization and downloads `llmedge` automatically from Maven Central when you build the AI variant.
 
-To build the default version:
-```bash
-./gradlew assembleStandardDebug
-```
-
-To build the AI-enabled version:
-```bash
-./gradlew assembleAiDebug
-```
-
-### AI Summarization Setup
-1. Simply select the `aiDebug` or `aiRelease` build variant in Android Studio.
-2. The `llmedge` library will be automatically downloaded from Maven Central.
+For day-to-day development, use the default debug path below. If you want the AI-enabled flavor, build the `aiDebug` variant in Android Studio or with Gradle.
 
 ### **Library & Management**
 - **Cloud-free Caching**: Store everything locally for privacy and speed.
@@ -73,7 +62,8 @@ To build the AI-enabled version:
 
 ### Prerequisites
 - **JDK 17+**
-- **Android SDK**
+- **Android Studio** with the Android SDK installed
+- **Android SDK Platform 36** to match `compileSdk = 36`
 
 ### Quick Start
 
@@ -84,12 +74,44 @@ cd EasyReader
 ```
 
 **2. Build and run**
-- Open the project in Android Studio.
-- Sync Gradle and click the **Run** button.
-- Alternatively, use CLI:
+
+Start with the default debug workflow. These commands do not require release signing material or any local AAR setup:
+
 ```bash
-./gradlew :app:installStandardDebug
+./gradlew :app:assembleDebug
+./gradlew :app:installDebug
+./gradlew :app:testDebugUnitTest
+./gradlew :app:lintDebug
 ```
+
+Open the project in Android Studio, sync Gradle, and run the default debug variant if you prefer the IDE.
+
+For CI-style flavor coverage, the workflow also runs `:app:lintStandardDebug`, `:app:lintAiDebug`, `:app:testStandardDebugUnitTest`, and `:app:testAiDebugUnitTest`.
+
+### Release Signing
+
+Release builds are separate from the normal debug workflow.
+
+If you need a release build, create a local `keystore.properties` file at the repository root with these keys:
+
+- `storeFile`
+- `storePassword`
+- `keyAlias`
+- `keyPassword`
+
+The `storeFile` value should point to your local keystore file. Do **not** commit `keystore.properties` or the keystore itself; keep them private and machine-local.
+
+### Optional AI Setup
+
+AI summarization is optional and does not affect the default debug path.
+
+To build the AI-enabled flavor:
+
+```bash
+./gradlew :app:assembleAiDebug
+```
+
+Or select the `aiDebug` build variant in Android Studio. Gradle will download `llmedge` from Maven Central automatically; no local AI AAR is required.
 
 ---
 
