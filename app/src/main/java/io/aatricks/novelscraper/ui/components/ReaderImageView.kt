@@ -1,6 +1,5 @@
 package io.aatricks.novelscraper.ui.components
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -12,7 +11,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -31,8 +29,6 @@ import io.aatricks.novelscraper.ui.util.ImageDimensions
 import io.aatricks.novelscraper.ui.util.effectiveImageDimensions
 import io.aatricks.novelscraper.ui.util.imageAspectRatio
 import io.aatricks.novelscraper.ui.viewmodel.ReaderViewModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 internal fun shouldUseLightweightImageContainer(enableZoom: Boolean): Boolean = !enableZoom
 
@@ -41,54 +37,6 @@ internal fun shouldUseAnimatedImageLoadingUi(enableZoom: Boolean, isCached: Bool
 
 internal fun shouldSubsampleReaderImage(enableZoom: Boolean, dynamicHeight: Boolean): Boolean =
     !enableZoom && !dynamicHeight
-
-internal fun calculateReaderInSampleSize(
-    sourceWidth: Int,
-    sourceHeight: Int,
-    targetWidth: Int,
-    targetHeight: Int
-): Int {
-    if (sourceWidth <= 0 || sourceHeight <= 0 || targetWidth <= 0 || targetHeight <= 0) {
-        return 1
-    }
-    var inSampleSize = 1
-    var halfWidth = sourceWidth / 2
-    var halfHeight = sourceHeight / 2
-
-    while (halfWidth / inSampleSize >= targetWidth && halfHeight / inSampleSize >= targetHeight) {
-        inSampleSize *= 2
-    }
-
-    return inSampleSize.coerceAtLeast(1)
-}
-
-internal fun decodeReaderBitmap(
-    bytes: ByteArray,
-    targetWidth: Int,
-    targetHeight: Int,
-    subsample: Boolean
-): android.graphics.Bitmap? {
-    if (!subsample) {
-        return android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-    }
-
-    val boundsOptions = android.graphics.BitmapFactory.Options().apply {
-        inJustDecodeBounds = true
-    }
-    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOptions)
-
-    val decodeOptions = android.graphics.BitmapFactory.Options().apply {
-        inSampleSize = calculateReaderInSampleSize(
-            sourceWidth = boundsOptions.outWidth,
-            sourceHeight = boundsOptions.outHeight,
-            targetWidth = targetWidth,
-            targetHeight = targetHeight
-        )
-        inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
-    }
-
-    return android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
-}
 
 @Composable
 fun ReaderImageView(
@@ -183,204 +131,119 @@ fun ReaderImageView(
         else -> contentScale // Use the passed contentScale (defaulting to Fit)
     }
 
-    if (imageUrl.startsWith("http") || imageUrl.startsWith("file")) {
-        val context = LocalContext.current
+    val context = LocalContext.current
 
-        val cachedFile = remember(imageUrl) {
-            if (imageUrl.startsWith("http")) {
-                readerViewModel.contentRepository.getCachedMediaFile(imageUrl)
-            } else {
-                java.io.File(imageUrl.removePrefix("file://"))
-            }
+    val cachedFile = remember(imageUrl) {
+        if (imageUrl.startsWith("http")) {
+            readerViewModel.contentRepository.getCachedMediaFile(imageUrl)
+        } else if (imageUrl.startsWith("file")) {
+            java.io.File(imageUrl.removePrefix("file://"))
+        } else {
+            null
         }
-        val isCachedImage = imageUrl.startsWith("file") || cachedFile.exists()
-        val showAnimatedLoadingUi = shouldUseAnimatedImageLoadingUi(
-            enableZoom = enableZoom,
-            isCached = isCachedImage
-        )
+    }
+    val isCachedImage = (imageUrl.startsWith("file") || (cachedFile != null && cachedFile.exists()))
+    val showAnimatedLoadingUi = shouldUseAnimatedImageLoadingUi(
+        enableZoom = enableZoom,
+        isCached = isCachedImage
+    )
 
-        val imageRequest = remember(imageUrl, pageUrl, isCachedImage, showAnimatedLoadingUi) {
-            val referer = if (imageUrl.startsWith("http")) readerViewModel.contentRepository.getReferer(pageUrl) else null
-            
-            ImageRequest.Builder(context)
-                .data(if (isCachedImage && imageUrl.startsWith("http")) cachedFile else imageUrl)
-                .apply {
-                    if (shouldSubsampleImage) {
-                        size(screenWidthPx, screenHeightPx)
-                        scale(Scale.FIT)
-                        precision(Precision.INEXACT)
-                    }
-                    if (referer != null) {
-                        httpHeaders(NetworkHeaders.Builder()
-                            .set("Referer", referer)
-                            .set("User-Agent", "Mozilla/5.0")
-                            .build())
-                    }
+    val imageRequest = remember(imageUrl, pageUrl, isCachedImage, showAnimatedLoadingUi) {
+        val referer = if (imageUrl.startsWith("http")) readerViewModel.contentRepository.getReferer(pageUrl) else null
+        
+        ImageRequest.Builder(context)
+            .data(if (isCachedImage && imageUrl.startsWith("http")) cachedFile else imageUrl)
+            .apply {
+                if (shouldSubsampleImage) {
+                    size(screenWidthPx, screenHeightPx)
+                    scale(Scale.FIT)
+                    precision(Precision.INEXACT)
                 }
-                .crossfade(showAnimatedLoadingUi)
-                .build()
-        }
-        var isError by remember(imageRequest) { mutableStateOf(false) }
-
-        Box(
-            modifier = containerModifier
-                .background(if (dynamicHeight) Color.Transparent else effectiveBackground),
-            contentAlignment = Alignment.Center
-        ) {
-            val imageContent: @Composable () -> Unit = {
-                AsyncImage(
-                    model = imageRequest,
-                    contentDescription = altText,
-                    modifier = if (hasResolvedAspectRatio || enableZoom) {
-                        Modifier.fillMaxSize()
-                    } else {
-                        Modifier.fillMaxWidth().wrapContentHeight()
-                    },
-                    alignment = imageAlignment,
-                    contentScale = pagedContentScale,
-                    onSuccess = { state: AsyncImagePainter.State.Success ->
-                        val resolved = ImageDimensions(
-                            width = state.result.image.width,
-                            height = state.result.image.height
-                        )
-                        if (resolved.width > 0 && resolved.height > 0) {
-                            runtimeDimensions = resolved
-                            onDimensionsResolved?.invoke(imageUrl, resolved.width, resolved.height)
-                        }
-                        isLoadingHoisted = false
-                    },
-                    onError = {
-                        isError = true
-                        isLoadingHoisted = false
-                    }
-                )
-            }
-
-            if (shouldUseLightweightImageContainer(enableZoom)) {
-                Box(
-                    modifier = imageModifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { onTap?.invoke() }
-                    ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    imageContent()
-                }
-            } else {
-                ZoomableBox(
-                    modifier = imageModifier,
-                    enableZoom = enableZoom,
-                    dynamicHeight = dynamicHeight,
-                    zoomStateKey = zoomStateKey,
-                    onZoomChanged = onZoomChanged,
-                    lockTapWhileZoomed = lockTapWhileZoomed,
-                    onTap = onTap
-                ) {
-                    imageContent()
+                if (referer != null) {
+                    httpHeaders(NetworkHeaders.Builder()
+                        .set("Referer", referer)
+                        .set("User-Agent", "Mozilla/5.0")
+                        .build())
                 }
             }
+            .crossfade(showAnimatedLoadingUi)
+            .build()
+    }
+    var isError by remember(imageRequest) { mutableStateOf(false) }
 
-            if (isLoadingHoisted && showAnimatedLoadingUi) {
-                CircularProgressIndicator(
-                    color = Color.Gray.copy(alpha = 0.5f),
-                    modifier = Modifier.size(32.dp)
-                )
-            }
-
-            if (isError) {
-                Text(
-                    text = altText ?: "Image unavailable",
-                    color = Color.Gray,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
-        }
-    } else {
-        var imageData by remember(imageUrl) { mutableStateOf<android.graphics.Bitmap?>(null) }
-        var hasError by remember(imageUrl) { mutableStateOf(false) }
-        val showAnimatedLoadingUi = !shouldUseLightweightImageContainer(enableZoom)
-
-        LaunchedEffect(imageUrl) {
-            try {
-                isLoadingHoisted = true
-                hasError = false
-                val bytes = readerViewModel.contentRepository.getEpubImage(imageUrl)
-                if (bytes != null) {
-                    val bitmap = withContext(Dispatchers.IO) {
-                        decodeReaderBitmap(
-                            bytes = bytes,
-                            targetWidth = screenWidthPx,
-                            targetHeight = screenHeightPx,
-                            subsample = shouldSubsampleImage
-                        )
-                    }
-                    imageData = bitmap
+    Box(
+        modifier = containerModifier
+            .background(if (dynamicHeight) Color.Transparent else effectiveBackground),
+        contentAlignment = Alignment.Center
+    ) {
+        val imageContent: @Composable () -> Unit = {
+            AsyncImage(
+                model = imageRequest,
+                contentDescription = altText,
+                modifier = if (hasResolvedAspectRatio || enableZoom) {
+                    Modifier.fillMaxSize()
                 } else {
-                    hasError = true
+                    Modifier.fillMaxWidth().wrapContentHeight()
+                },
+                alignment = imageAlignment,
+                contentScale = pagedContentScale,
+                onSuccess = { state: AsyncImagePainter.State.Success ->
+                    val resolved = ImageDimensions(
+                        width = state.result.image.width,
+                        height = state.result.image.height
+                    )
+                    if (resolved.width > 0 && resolved.height > 0) {
+                        runtimeDimensions = resolved
+                        onDimensionsResolved?.invoke(imageUrl, resolved.width, resolved.height)
+                    }
+                    isLoadingHoisted = false
+                },
+                onError = {
+                    isError = true
+                    isLoadingHoisted = false
                 }
-            } catch (e: Exception) {
-                hasError = true
-            } finally {
-                isLoadingHoisted = false
+            )
+        }
+
+        if (shouldUseLightweightImageContainer(enableZoom)) {
+            Box(
+                modifier = imageModifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { onTap?.invoke() }
+                ),
+                contentAlignment = Alignment.Center
+            ) {
+                imageContent()
+            }
+        } else {
+            ZoomableBox(
+                modifier = imageModifier,
+                enableZoom = enableZoom,
+                dynamicHeight = dynamicHeight,
+                zoomStateKey = zoomStateKey,
+                onZoomChanged = onZoomChanged,
+                lockTapWhileZoomed = lockTapWhileZoomed,
+                onTap = onTap
+            ) {
+                imageContent()
             }
         }
 
-        Box(
-            modifier = containerModifier
-                .background(if (dynamicHeight) Color.Transparent else effectiveBackground),
-            contentAlignment = Alignment.Center
-        ) {
-            val imageContent: @Composable () -> Unit = {
-                if (imageData != null) {
-                    imageData?.let { bitmap ->
-                        Image(
-                            bitmap = bitmap.asImageBitmap(),
-                            contentDescription = altText,
-                            modifier = if (hasResolvedAspectRatio || enableZoom) {
-                                Modifier.fillMaxSize()
-                            } else {
-                                Modifier.fillMaxWidth().wrapContentHeight()
-                            },
-                            alignment = imageAlignment,
-                            contentScale = pagedContentScale
-                        )
-                    }
-                }
-            }
+        if (isLoadingHoisted && showAnimatedLoadingUi) {
+            CircularProgressIndicator(
+                color = Color.Gray.copy(alpha = 0.5f),
+                modifier = Modifier.size(32.dp)
+            )
+        }
 
-            if (shouldUseLightweightImageContainer(enableZoom)) {
-                Box(
-                    modifier = imageModifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { onTap?.invoke() }
-                    ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    imageContent()
-                }
-            } else {
-                ZoomableBox(
-                    modifier = imageModifier,
-                    enableZoom = enableZoom,
-                    dynamicHeight = dynamicHeight,
-                    zoomStateKey = zoomStateKey,
-                    onZoomChanged = onZoomChanged,
-                    lockTapWhileZoomed = lockTapWhileZoomed,
-                    onTap = onTap
-                ) {
-                    imageContent()
-                }
-            }
-
-            if (isLoadingHoisted && showAnimatedLoadingUi) {
-                CircularProgressIndicator(color = Color.Gray, modifier = Modifier.size(32.dp).padding(16.dp))
-            }
-            if (hasError) {
-                Text(text = altText ?: "Image unavailable", color = Color.Gray, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
-            }
+        if (isError) {
+            Text(
+                text = altText ?: "Image unavailable",
+                color = Color.Gray,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(16.dp)
+            )
         }
     }
 }

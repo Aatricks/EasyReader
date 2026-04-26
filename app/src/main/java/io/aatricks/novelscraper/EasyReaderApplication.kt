@@ -8,6 +8,8 @@ import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
+import io.aatricks.novelscraper.data.repository.ContentRepository
+import io.aatricks.novelscraper.data.repository.content.EpubImageFetcher
 import dagger.hilt.android.HiltAndroidApp
 import okhttp3.OkHttpClient
 import okio.Path.Companion.toPath
@@ -17,12 +19,16 @@ import javax.inject.Inject
 class EasyReaderApplication : Application(), SingletonImageLoader.Factory {
 
     @Inject lateinit var okHttpClient: OkHttpClient
+    @Inject lateinit var contentRepository: ContentRepository
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         return ImageLoader.Builder(context)
             .memoryCache { buildMemoryCache(context) }
             .diskCache { buildDiskCache(context) }
-            .components { add(OkHttpNetworkFetcherFactory(okHttpClient)) }
+            .components {
+                add(OkHttpNetworkFetcherFactory(okHttpClient))
+                add(EpubImageFetcher.Factory(contentRepository))
+            }
             .crossfade(false)
             .build()
     }

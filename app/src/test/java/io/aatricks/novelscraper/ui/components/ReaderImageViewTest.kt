@@ -37,28 +37,4 @@ class ReaderImageViewTest {
         assertFalse(shouldSubsampleReaderImage(enableZoom = true, dynamicHeight = false))
         assertFalse(shouldSubsampleReaderImage(enableZoom = false, dynamicHeight = true))
     }
-
-    @Test
-    fun `reader sample size increases for oversized images`() {
-        val sampleSize = calculateReaderInSampleSize(
-            sourceWidth = 4000,
-            sourceHeight = 6000,
-            targetWidth = 1000,
-            targetHeight = 1500
-        )
-
-        assertTrue(sampleSize > 1)
-    }
-
-    @Test
-    fun `reader sample size stays at one for small images`() {
-        val sampleSize = calculateReaderInSampleSize(
-            sourceWidth = 800,
-            sourceHeight = 1200,
-            targetWidth = 1000,
-            targetHeight = 1500
-        )
-
-        assertTrue(sampleSize == 1)
-    }
 }
