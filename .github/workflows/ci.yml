@@ -7,7 +7,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  standard_debug:
     runs-on: ubuntu-latest
 
     steps:
@@ -33,28 +33,64 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Lint with Gradle
-      run: ./gradlew lintStandardDebug lintAiDebug
+    - name: Lint standardDebug
+      # standardDebug is the default PR validation path.
+      run: ./gradlew :app:lintStandardDebug
 
-    - name: Run unit tests
-      run: ./gradlew testStandardDebugUnitTest testAiDebugUnitTest
+    - name: Run standardDebug unit tests
+      run: ./gradlew :app:testStandardDebugUnitTest
 
-    - name: Build with Gradle
-      # PRs use unsigned debug builds to validate changes without requiring signing secrets.
-      # Trusted events (push to main) use signed release builds with decoded secrets.
+    - name: Build standardDebug
+      run: ./gradlew :app:assembleStandardDebug
+
+    - name: Upload standardDebug APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: standard-debug-apk
+        path: app/build/outputs/apk/standard/debug/*.apk
+
+  ai_validation:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Decode Keystore
       run: |
-        if [ "${{ github.event_name }}" == "pull_request" ]; then
-          echo "Building debug APKs for PR..."
-          ./gradlew assembleDebug
-        else
-          echo "Building release APKs for trusted event..."
-          ./gradlew assembleRelease
-        fi
+        echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 --decode > app/release.jks
+        echo "storeFile=../app/release.jks" > keystore.properties
+        echo "storePassword=${{ secrets.RELEASE_STORE_PASSWORD }}" >> keystore.properties
+        echo "keyAlias=${{ secrets.RELEASE_KEY_ALIAS }}" >> keystore.properties
+        echo "keyPassword=${{ secrets.RELEASE_KEY_PASSWORD }}" >> keystore.properties
 
-    - name: Upload APK
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Lint aiDebug
+      # aiDebug is validated separately on trusted pushes to main.
+      run: ./gradlew :app:lintAiDebug
+
+    - name: Run aiDebug unit tests
+      run: ./gradlew :app:testAiDebugUnitTest
+
+    - name: Build aiDebug and releases
+      run: |
+        ./gradlew :app:assembleAiDebug :app:assembleStandardRelease :app:assembleAiRelease
+
+    - name: Upload APKs
       uses: actions/upload-artifact@v4
       with:
         name: app-apks
         path: |
-          app/build/outputs/apk/*/debug/*.apk
-          app/build/outputs/apk/*/release/*.apk
+          app/build/outputs/apk/standard/debug/*.apk
+          app/build/outputs/apk/standard/release/*.apk
+          app/build/outputs/apk/ai/debug/*.apk
+          app/build/outputs/apk/ai/release/*.apk

@@ -75,18 +75,18 @@ cd EasyReader
 
 **2. Build and run**
 
-Start with the default debug workflow. These commands do not require release signing material or any local AAR setup:
+Start with the default debug workflow. These commands do not require release signing material or any local AAR setup, and they validate the default `standardDebug` variant used for PRs:
 
 ```bash
-./gradlew :app:assembleDebug
-./gradlew :app:installDebug
-./gradlew :app:testDebugUnitTest
-./gradlew :app:lintDebug
+./gradlew :app:assembleStandardDebug
+./gradlew :app:installStandardDebug
+./gradlew :app:testStandardDebugUnitTest
+./gradlew :app:lintStandardDebug
 ```
 
 Open the project in Android Studio, sync Gradle, and run the default debug variant if you prefer the IDE.
 
-For CI-style flavor coverage, the workflow also runs `:app:lintStandardDebug`, `:app:lintAiDebug`, `:app:testStandardDebugUnitTest`, and `:app:testAiDebugUnitTest`.
+For CI-style flavor coverage, PR validation uses only `:app:lintStandardDebug`, `:app:testStandardDebugUnitTest`, and `:app:assembleStandardDebug`.
 
 ### Release Signing
 
@@ -107,10 +107,12 @@ The `storeFile` value should point to your local keystore file. Do **not** commi
 
 AI summarization is optional and does not affect the default debug path.
 
-To build the AI-enabled flavor:
+To build the AI-enabled flavor, use the explicit `aiDebug` tasks. These are optional and require the AI dependency path to resolve:
 
 ```bash
 ./gradlew :app:assembleAiDebug
+./gradlew :app:testAiDebugUnitTest
+./gradlew :app:lintAiDebug
 ```
 
 Or select the `aiDebug` build variant in Android Studio. Gradle will download `llmedge` from Maven Central automatically; no local AI AAR is required.
