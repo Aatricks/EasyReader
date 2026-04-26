@@ -23,11 +23,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.Closeable
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.util.ArrayDeque
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -37,7 +40,8 @@ import kotlin.math.abs
 
 @Singleton
 class PdfContentLoader @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val opener: PdfDocumentOpener
 ) {
     data class LoadingProfile(
         val prefetchForward: Int,
@@ -74,7 +78,7 @@ class PdfContentLoader @Inject constructor(
         try {
             var estimatedHeight = ESTIMATED_PAGE_HEIGHT_DP
             
-            val pageCount = openPdfDocument(filePath)?.use { docHandle ->
+            val pageCount = opener.open(filePath)?.use { docHandle ->
                 val doc = docHandle.document
                 val count = doc.numberOfPages
                 if (count > 0) {
@@ -113,21 +117,6 @@ class PdfContentLoader @Inject constructor(
         }
     }
 
-    private fun openPdfDocument(filePath: String): PdfDocumentHandle? {
-        return if (filePath.startsWith("content://")) {
-            val uri = Uri.parse(filePath)
-            val pfd = context.contentResolver.openFileDescriptor(uri, "r") ?: return null
-            val channel = FileInputStream(pfd.fileDescriptor).channel
-            val source = com.itextpdf.io.source.FileChannelRandomAccessSource(channel)
-            val reader = PdfReader(source, ReaderProperties())
-            PdfDocumentHandle(PdfDocument(reader), pfd)
-        } else {
-            val file = File(filePath)
-            if (!file.exists()) return null
-            PdfDocumentHandle(PdfDocument(PdfReader(filePath)), null)
-        }
-    }
-
     private fun getGlobalCacheSnapshot(filePath: String): Map<Int, ContentElement> = synchronized(globalContentCache) {
         globalContentCache.get(filePath)?.toMap().orEmpty()
     }
@@ -161,7 +150,7 @@ class PdfContentLoader @Inject constructor(
             return mapOf(targetIndex to cachedPage)
         }
 
-        val handle = openPdfDocument(filePath) ?: return emptyMap()
+        val handle = opener.open(filePath) ?: return emptyMap()
         return try {
             val pageContent = loadPageElement(handle, targetIndex + 1)
             addToGlobalCache(filePath, targetIndex, pageContent)
@@ -170,26 +159,6 @@ class PdfContentLoader @Inject constructor(
             emptyMap()
         } finally {
             handle.close()
-        }
-    }
-
-    private class PdfDocumentHandle(
-        val document: PdfDocument,
-        val pfd: ParcelFileDescriptor?
-    ) : java.io.Closeable {
-        val numberOfPages: Int get() = document.numberOfPages
-
-        override fun close() {
-            try { document.close() } catch (_: Exception) {}
-            try { pfd?.close() } catch (_: Exception) {}
-        }
-
-        fun use(block: (PdfDocumentHandle) -> Int): Int {
-            return try {
-                block(this)
-            } finally {
-                close()
-            }
         }
     }
 
@@ -296,12 +265,12 @@ class PdfContentLoader @Inject constructor(
         return paragraphs + processedImages
     }
 
-    private inner class PdfLazyList(
+    internal inner class PdfLazyList(
         private val filePath: String,
         private val totalPages: Int,
         private val estimatedHeight: Int,
         preloadedPages: Map<Int, ContentElement> = emptyMap()
-    ) : AbstractList<ContentElement>(), java.io.Closeable {
+    ) : AbstractList<ContentElement>(), Closeable {
         
         private val pageCache = mutableStateMapOf<Int, ContentElement>().apply {
             putAll(getGlobalCacheSnapshot(filePath))
@@ -312,8 +281,9 @@ class PdfContentLoader @Inject constructor(
         
         // Handle pool for parallel loading
         private val poolSize = 3
-        private val handlePool = ConcurrentHashMap.newKeySet<PdfDocumentHandle>()
-        private val poolMutex = Mutex()
+        private val handleSemaphore = Semaphore(poolSize)
+        private val idleHandles = ArrayDeque<PdfDocumentHandle>()
+        private var isClosed = false
 
         override val size: Int get() = totalPages
 
@@ -392,40 +362,46 @@ class PdfContentLoader @Inject constructor(
         }
 
         private suspend fun acquireHandle(): PdfDocumentHandle? {
-            poolMutex.withLock {
-                val handle = handlePool.find { !it.document.isClosed }
-                if (handle != null) {
-                    handlePool.remove(handle)
-                    return handle
-                }
-                if (handlePool.size < poolSize) {
-                    return openPdfDocument(filePath)
-                }
-                // If pool is full, wait and retry or just return null (should not happen with mutex)
-            }
-            // Fallback for full pool: wait a bit
-            for (i in 1..5) {
-                delay(50 * i.toLong())
-                poolMutex.withLock {
-                    val handle = handlePool.find { !it.document.isClosed }
-                    if (handle != null) {
-                        handlePool.remove(handle)
-                        return handle
+            handleSemaphore.acquire()
+            try {
+                val handle = synchronized(idleHandles) {
+                    if (isClosed) {
+                        handleSemaphore.release()
+                        return null
                     }
+                    idleHandles.pollFirst()
                 }
+
+                if (handle == null) {
+                    val newHandle = opener.open(filePath)
+                    if (newHandle == null) {
+                        handleSemaphore.release()
+                    }
+                    return newHandle
+                }
+                return handle
+            } catch (e: Exception) {
+                handleSemaphore.release()
+                throw e
             }
-            return openPdfDocument(filePath) // Last resort
         }
 
         private fun releaseHandle(handle: PdfDocumentHandle?) {
             if (handle == null) return
-            if (handle.document.isClosed) return
-            
-            val added = handlePool.add(handle)
-            if (!added || handlePool.size > poolSize) {
-                handlePool.remove(handle)
+
+            val shouldClose = synchronized(idleHandles) {
+                if (isClosed || handle.document.isClosed) {
+                    true
+                } else {
+                    idleHandles.addLast(handle)
+                    false
+                }
+            }
+
+            if (shouldClose) {
                 handle.close()
             }
+            handleSemaphore.release()
         }
 
         private suspend fun loadPageContent(pageNum: Int): ContentElement {
@@ -441,8 +417,12 @@ class PdfContentLoader @Inject constructor(
         }
 
         override fun close() {
-            handlePool.forEach { it.close() }
-            handlePool.clear()
+            synchronized(idleHandles) {
+                isClosed = true
+                while (idleHandles.isNotEmpty()) {
+                    idleHandles.pollFirst()?.close()
+                }
+            }
         }
     }
 
@@ -496,5 +476,49 @@ class PdfContentLoader @Inject constructor(
             globalContentCache.evictAll()
         }
         pageCountCache.clear()
+    }
+}
+
+class PdfDocumentHandle(
+    val document: PdfDocument,
+    val pfd: ParcelFileDescriptor?
+) : java.io.Closeable {
+    val numberOfPages: Int get() = document.numberOfPages
+
+    override fun close() {
+        try { document.close() } catch (_: Exception) {}
+        try { pfd?.close() } catch (_: Exception) {}
+    }
+
+    fun use(block: (PdfDocumentHandle) -> Int): Int {
+        return try {
+            block(this)
+        } finally {
+            close()
+        }
+    }
+}
+
+interface PdfDocumentOpener {
+    fun open(filePath: String): PdfDocumentHandle?
+}
+
+@Singleton
+class DefaultPdfDocumentOpener @Inject constructor(
+    @ApplicationContext private val context: Context
+) : PdfDocumentOpener {
+    override fun open(filePath: String): PdfDocumentHandle? {
+        return if (filePath.startsWith("content://")) {
+            val uri = Uri.parse(filePath)
+            val pfd = context.contentResolver.openFileDescriptor(uri, "r") ?: return null
+            val channel = FileInputStream(pfd.fileDescriptor).channel
+            val source = com.itextpdf.io.source.FileChannelRandomAccessSource(channel)
+            val reader = PdfReader(source, ReaderProperties())
+            PdfDocumentHandle(PdfDocument(reader), pfd)
+        } else {
+            val file = File(filePath)
+            if (!file.exists()) return null
+            PdfDocumentHandle(PdfDocument(PdfReader(filePath)), null)
+        }
     }
 }

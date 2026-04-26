@@ -5,7 +5,9 @@ import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.data.repository.content.ContentUriTypeResolver
 import io.aatricks.novelscraper.data.repository.content.EpubContentLoader
 import io.aatricks.novelscraper.data.repository.content.LocalContentLoader
+import io.aatricks.novelscraper.data.repository.content.DefaultPdfDocumentOpener
 import io.aatricks.novelscraper.data.repository.content.PdfContentLoader
+import io.aatricks.novelscraper.data.repository.content.PdfDocumentOpener
 import io.aatricks.novelscraper.data.repository.content.WebContentLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -109,7 +111,7 @@ class ContentRepositoryConcurrencyTest {
             .build()
 
         val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, cacheDir, mediaCacheDir)
-        val pdfLoader = PdfContentLoader(mockContext)
+        val pdfLoader = PdfContentLoader(mockContext, DefaultPdfDocumentOpener(mockContext))
         val epubLoader = EpubContentLoader(mockContext, epubCacheDir)
         val localLoader = LocalContentLoader(mockContext, mockHtmlParser, pdfLoader, epubLoader, contentUriTypeResolver)
         

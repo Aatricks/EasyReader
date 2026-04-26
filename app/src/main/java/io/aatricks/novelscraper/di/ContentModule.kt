@@ -6,6 +6,8 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import io.aatricks.novelscraper.data.repository.content.DefaultPdfDocumentOpener
+import io.aatricks.novelscraper.data.repository.content.PdfDocumentOpener
 import java.io.File
 import javax.inject.Qualifier
 import javax.inject.Singleton
@@ -45,5 +47,11 @@ object ContentModule {
     @EpubCacheDir
     fun provideEpubCacheDir(@ApplicationContext context: Context): File {
         return File(context.cacheDir, "epub_cache").apply { if (!exists()) mkdirs() }
+    }
+
+    @Provides
+    @Singleton
+    internal fun providePdfDocumentOpener(@ApplicationContext context: Context): PdfDocumentOpener {
+        return DefaultPdfDocumentOpener(context)
     }
 }
