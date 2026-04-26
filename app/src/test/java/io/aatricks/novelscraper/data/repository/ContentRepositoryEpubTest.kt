@@ -10,6 +10,8 @@ import io.aatricks.novelscraper.data.repository.content.DefaultPdfDocumentOpener
 import io.aatricks.novelscraper.data.repository.content.PdfContentLoader
 import io.aatricks.novelscraper.data.repository.content.PdfDocumentOpener
 import io.aatricks.novelscraper.data.repository.content.WebContentLoader
+import io.aatricks.novelscraper.data.repository.content.ImageCache
+import io.aatricks.novelscraper.data.repository.content.ImageDownloader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -78,7 +80,7 @@ class ContentRepositoryEpubTest {
         // Use anyString() for Uri.parse
         mockedUriStatic.`when`<Uri> { Uri.parse(org.mockito.ArgumentMatchers.anyString()) }.thenReturn(mockUri)
 
-        val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, htmlCache, mediaCache)
+        val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, ImageCache(mediaCache), ImageDownloader(okHttpClient), htmlCache)
         val pdfLoader = PdfContentLoader(mockContext, DefaultPdfDocumentOpener(mockContext))
         val epubLoader = EpubContentLoader(mockContext, epubCache)
         val localLoader = LocalContentLoader(mockContext, mockHtmlParser, pdfLoader, epubLoader, contentUriTypeResolver)

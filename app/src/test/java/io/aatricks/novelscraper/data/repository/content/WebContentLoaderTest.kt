@@ -554,7 +554,9 @@ class WebContentLoaderTest {
         val client = OkHttpClient.Builder()
             .addInterceptor(interceptor)
             .build()
-        return WebContentLoader(htmlParser, client, htmlCacheDir, mediaCacheDir)
+        val imageCache = ImageCache(mediaCacheDir)
+        val imageDownloader = ImageDownloader(client)
+        return WebContentLoader(htmlParser, client, imageCache, imageDownloader, htmlCacheDir)
     }
 
     private fun buildResponse(

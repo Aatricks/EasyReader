@@ -3,6 +3,8 @@ package io.aatricks.novelscraper.data.repository
 import android.content.Context
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.data.repository.content.WebContentLoader
+import io.aatricks.novelscraper.data.repository.content.ImageCache
+import io.aatricks.novelscraper.data.repository.content.ImageDownloader
 import kotlinx.coroutines.runBlocking
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
@@ -51,7 +53,7 @@ class ContentRepositoryBenchmarkTest {
             .addInterceptor(interceptor)
             .build()
 
-        val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, cacheDir, mediaCacheDir)
+        val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, ImageCache(mediaCacheDir), ImageDownloader(okHttpClient), cacheDir)
         
         // Generate images
         val imageUrls = (1..imageCount).map { "http://example.com/img_$it.jpg" }

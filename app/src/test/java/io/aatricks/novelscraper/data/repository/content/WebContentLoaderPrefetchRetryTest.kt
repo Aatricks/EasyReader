@@ -103,7 +103,7 @@ class WebContentLoaderPrefetchRetryTest {
         val client = OkHttpClient.Builder()
             .addInterceptor(interceptor)
             .build()
-        return WebContentLoader(htmlParser, client, htmlCacheDir, mediaCacheDir)
+        return WebContentLoader(htmlParser, client, ImageCache(mediaCacheDir), ImageDownloader(client), htmlCacheDir)
     }
 
     private fun buildResponse(
