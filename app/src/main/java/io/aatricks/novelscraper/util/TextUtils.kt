@@ -1,7 +1,6 @@
 package io.aatricks.novelscraper.util
 
 import java.net.URI
-import java.net.URL
 
 /**
  * Utility functions for text processing and manipulation.
@@ -242,13 +241,6 @@ object TextUtils {
         val wpm = wordsPerMinute.coerceAtLeast(1)
         val words = countWords(text).coerceAtLeast(0)
         return kotlin.math.ceil(words / wpm.toDouble()).toInt().coerceAtLeast(1)
-    }
-
-    fun isValidUrl(url: String): Boolean {
-        return runCatching {
-            URL(url)
-            true
-        }.getOrDefault(false)
     }
 
     /**

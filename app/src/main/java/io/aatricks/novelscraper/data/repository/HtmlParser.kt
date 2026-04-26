@@ -3,12 +3,12 @@ package io.aatricks.novelscraper.data.repository
 import io.aatricks.novelscraper.data.model.ContentElement
 import io.aatricks.novelscraper.util.TextHeuristics
 import io.aatricks.novelscraper.util.TextUtils
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
 import org.jsoup.select.NodeVisitor
-import java.net.URL
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -126,7 +126,8 @@ class HtmlParser @Inject constructor() {
     private fun resolveImageUrl(src: String, pageUrl: String): String {
         if (src.startsWith("http")) return src
         
-        val domain = runCatching { URL(pageUrl).let { "${it.protocol}://${it.host}" } }.getOrDefault("")
+        val httpUrl = pageUrl.toHttpUrlOrNull()
+        val domain = if (httpUrl != null) "${httpUrl.scheme}://${httpUrl.host}" else ""
         return if (src.startsWith("/")) {
             "$domain$src"
         } else {
@@ -141,8 +142,8 @@ class HtmlParser @Inject constructor() {
         }
 
         val lastImg = images.last()
-        val firstHost = runCatching { URL(images.first().url).host }.getOrDefault("")
-        val lastHost = runCatching { URL(lastImg.url).host }.getOrDefault("")
+        val firstHost = images.first().url.toHttpUrlOrNull()?.host.orEmpty()
+        val lastHost = lastImg.url.toHttpUrlOrNull()?.host.orEmpty()
         
         val isSuspect = lastImg.url.contains("recommend") || lastImg.url.contains("banner") || 
                         lastImg.url.contains("next") || lastImg.url.contains("/thumb/") || 

@@ -6,6 +6,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import io.aatricks.novelscraper.util.SafeDns
 import io.aatricks.novelscraper.util.SafeRedirectInterceptor
 import io.ktor.client.*
 import io.ktor.client.engine.okhttp.*
@@ -38,6 +39,7 @@ object NetworkModule {
 
         val builder = OkHttpClient.Builder()
             .cache(cache)
+            .dns(SafeDns())
             .connectionPool(ConnectionPool(10, 5, TimeUnit.MINUTES))
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)

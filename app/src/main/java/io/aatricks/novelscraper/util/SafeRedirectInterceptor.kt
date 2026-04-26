@@ -17,7 +17,7 @@ class SafeRedirectInterceptor : Interceptor {
         var request = chain.request()
 
         // Validate initial request URL
-        if (!UrlSecurity.isSafeUrlSynchronous(request.url.toString())) {
+        if (!UrlSecurity.isSafeUrlSynchronous(request.url)) {
             throw IOException("Unsafe URL blocked: ${request.url}")
         }
 
@@ -31,7 +31,7 @@ class SafeRedirectInterceptor : Interceptor {
             val newUrl = response.request.url.resolve(location) ?: break
 
             // Validate the new URL
-            if (!UrlSecurity.isSafeUrlSynchronous(newUrl.toString())) {
+            if (!UrlSecurity.isSafeUrlSynchronous(newUrl)) {
                 response.close()
                 throw IOException("Unsafe redirect blocked: $newUrl")
             }
