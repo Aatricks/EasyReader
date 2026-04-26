@@ -21,6 +21,7 @@ jobs:
         cache: gradle
 
     - name: Decode Keystore
+      # Skip keystore decoding on pull requests since secrets are unavailable
       if: github.event_name != 'pull_request'
       run: |
         echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 --decode > app/release.jks
@@ -33,16 +34,27 @@ jobs:
       run: chmod +x gradlew
 
     - name: Lint with Gradle
-      run: ./gradlew lintDebug
+      run: ./gradlew lintStandardDebug lintAiDebug
 
     - name: Run unit tests
-      run: ./gradlew testDebugUnitTest
+      run: ./gradlew testStandardDebugUnitTest testAiDebugUnitTest
 
     - name: Build with Gradle
-      run: ./gradlew assembleRelease
+      # PRs use unsigned debug builds to validate changes without requiring signing secrets.
+      # Trusted events (push to main) use signed release builds with decoded secrets.
+      run: |
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          echo "Building debug APKs for PR..."
+          ./gradlew assembleDebug
+        else
+          echo "Building release APKs for trusted event..."
+          ./gradlew assembleRelease
+        fi
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-release
-        path: app/build/outputs/apk/release/app-release.apk
+        name: app-apks
+        path: |
+          app/build/outputs/apk/*/debug/*.apk
+          app/build/outputs/apk/*/release/*.apk

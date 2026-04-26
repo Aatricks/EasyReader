@@ -88,7 +88,7 @@ cd EasyReader
 - Sync Gradle and click the **Run** button.
 - Alternatively, use CLI:
 ```bash
-./gradlew :app:installRelease
+./gradlew :app:installStandardDebug
 ```
 
 ---
