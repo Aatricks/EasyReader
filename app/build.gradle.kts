@@ -37,7 +37,8 @@ android {
                 keyPassword = properties.getProperty("keyPassword")
             } else {
                 // If the file is missing, we don't set the properties.
-                // The build will fail only when assembleRelease is called,
+                // The build will fail only when release flavor tasks are called
+                // (for example, assembleStandardRelease or assembleAiRelease),
                 // which is the desired behavior for PRs that shouldn't build release.
                 println("Warning: keystore.properties not found. Release builds will fail to sign.")
             }
