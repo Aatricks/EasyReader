@@ -383,6 +383,18 @@ class LibraryViewModel @Inject constructor(
             }
         }
     }
+
+    fun retryDownload(url: String): Unit {
+        viewModelScope.launch {
+            setCacheState(
+                (uiState.value.chapterCacheStates[url] ?: PrefetchResult(url, false, 0, 0, false))
+                    .copy(isInProgress = true, isRetryable = false)
+            )
+            runCatching {
+                setCacheState(contentRepository.prefetch(url, PrefetchMode.USER_REQUESTED))
+            }
+        }
+    }
     
     fun removeItem(itemId: String): Unit {
         viewModelScope.launch {

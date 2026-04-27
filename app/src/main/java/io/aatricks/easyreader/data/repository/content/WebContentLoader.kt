@@ -51,7 +51,6 @@ class WebContentLoader @Inject constructor(
         private const val TAG = "WebContentLoader"
         private val DIMENSION_SEMAPHORE = Semaphore(10)
         private const val MAX_CONCURRENT_DOWNLOADS = 3
-        private const val MAX_SPECULATIVE_IMAGES = 3
         private const val NON_ESSENTIAL_TIMEOUT_SECONDS = 5L
         private const val MAX_IMAGES_PER_GROUP = 3
         private const val MAX_GROUPED_STRIP_RATIO = 4.0f
@@ -59,7 +58,7 @@ class WebContentLoader @Inject constructor(
         private const val SHORT_REQUEST_ATTEMPTS = 2
         private const val USER_REQUEST_PREFETCH_PASSES = 3
         private const val MAX_SPECULATIVE_PREFETCH_ATTEMPTS = 1
-        private const val MAX_USER_PREFETCH_ATTEMPTS = 3
+        private const val MAX_USER_PREFETCH_ATTEMPTS = 1
         private const val MAX_DIMENSION_SNIFF_BYTES = 64 * 1024L // 64KB
         private const val FETCH_REMOTE_DIMENSIONS_DURING_INITIAL_LOAD = false
     }
@@ -305,7 +304,6 @@ class WebContentLoader @Inject constructor(
             cacheImages(
                 imageUrls = imageUrls,
                 pageUrl = pageUrl,
-                maxImages = imageUrls.size,
                 priority = ImageRequestPriority.SPECULATIVE,
                 maxConcurrency = MAX_CONCURRENT_DOWNLOADS
             )
@@ -524,6 +522,16 @@ class WebContentLoader @Inject constructor(
         data class Failure(val isRetryable: Boolean) : ImageDownloadResult
     }
 
+    private data class ImageBatchDownloadReport(
+        val total: Int,
+        val succeeded: Int,
+        val retryableFailures: List<String>,
+        val permanentFailures: List<String>
+    ) {
+        val isComplete: Boolean get() = succeeded == total
+        val isRetryable: Boolean get() = retryableFailures.isNotEmpty()
+    }
+
     private suspend fun executePrefetch(url: String, mode: PrefetchMode): PrefetchResult {
         val priority = if (mode == PrefetchMode.SPECULATIVE) ImageRequestPriority.SPECULATIVE else ImageRequestPriority.USER_REQUESTED
         val cachedDocument = try {
@@ -543,66 +551,90 @@ class WebContentLoader @Inject constructor(
 
         when (mode) {
             PrefetchMode.USER_REQUESTED -> {
+                Log.d(TAG, "USER_REQUESTED prefetch start url=$url totalImages=${imageUrls.size}")
                 for (pass in 0 until USER_REQUEST_PREFETCH_PASSES) {
-                    val missingImages = imageUrls.filterNot { imageCache.getCachedMediaFile(it).exists() }
-                    if (missingImages.isEmpty()) break
-                    val result = cacheImages(
+                    val missingImages = imageUrls.filterNot { imageCache.findExistingCachedMediaFile(it) != null }
+                    if (missingImages.isEmpty()) {
+                        Log.d(TAG, "USER_REQUESTED prefetch complete url=$url pass=$pass")
+                        break
+                    }
+                    
+                    Log.d(TAG, "USER_REQUESTED prefetch pass=$pass missingImages=${missingImages.size} url=$url")
+                    val report = cacheImages(
                         imageUrls = missingImages,
                         pageUrl = url,
-                        maxImages = missingImages.size,
                         priority = ImageRequestPriority.USER_REQUESTED,
                         maxConcurrency = MAX_CONCURRENT_DOWNLOADS
                     )
-                    allImagesRetryable = result.second
-                    if (!allImagesRetryable) break
+                    
+                    allImagesRetryable = report.isRetryable
+                    if (report.isComplete) break
+                    if (report.retryableFailures.isEmpty() && report.permanentFailures.isNotEmpty()) {
+                        Log.d(TAG, "USER_REQUESTED prefetch stop url=$url - all remaining failures are permanent")
+                        break
+                    }
+                    
+                    if (pass < USER_REQUEST_PREFETCH_PASSES - 1) {
+                        delay(1000L * (pass + 1))
+                    }
                 }
             }
 
             PrefetchMode.SPECULATIVE -> {
-                val missingImages = imageUrls.filterNot { imageCache.getCachedMediaFile(it).exists() }
-                val requestedImages = missingImages.take(MAX_SPECULATIVE_IMAGES)
-                val result = cacheImages(
-                    imageUrls = requestedImages,
-                    pageUrl = url,
-                    maxImages = requestedImages.size,
-                    priority = ImageRequestPriority.SPECULATIVE,
-                    maxConcurrency = 1
-                )
-                allImagesRetryable = result.second
+                Log.d(TAG, "SPECULATIVE prefetch HTML-only url=$url")
+                // HTML was already cached by getDocumentFromCacheOrNetwork().
+                // Do not download images here. Speculative preload must not create partial offline state.
+                allImagesRetryable = true
             }
         }
 
-        return inspectCacheInternal(url, cachedDocument.document).copy(
+        val finalResult = inspectCacheInternal(url, cachedDocument.document).copy(
             isInProgress = false,
             isRetryable = allImagesRetryable
         )
+        Log.d(TAG, "prefetch final result url=$url complete=${finalResult.isComplete} cached=${finalResult.cachedImages}/${finalResult.totalImages}")
+        return finalResult
     }
 
     private suspend fun cacheImages(
         imageUrls: List<String>,
         pageUrl: String,
-        maxImages: Int,
         priority: ImageRequestPriority,
         maxConcurrency: Int
-    ): Pair<Int, Boolean> = supervisorScope {
-        if (imageUrls.isEmpty() || maxImages <= 0) return@supervisorScope 0 to true
+    ): ImageBatchDownloadReport = supervisorScope {
+        if (imageUrls.isEmpty()) return@supervisorScope ImageBatchDownloadReport(0, 0, emptyList(), emptyList())
 
         val semaphore = Semaphore(maxConcurrency.coerceAtLeast(1))
-        val results = imageUrls
+        val deferreds = imageUrls
             .distinct()
-            .take(maxImages)
             .map { imageUrl ->
-                async {
+                imageUrl to async {
                     semaphore.withPermit {
                         downloadAndCacheImageInternal(imageUrl, pageUrl, priority)
                     }
                 }
             }
-            .awaitAll()
 
-        val cachedCount = results.count { it is ImageDownloadResult.Success }
-        val allRetryable = results.all { it is ImageDownloadResult.Success || (it as ImageDownloadResult.Failure).isRetryable }
-        cachedCount to allRetryable
+        var succeeded = 0
+        val retryableFailures = mutableListOf<String>()
+        val permanentFailures = mutableListOf<String>()
+
+        deferreds.forEach { (url, deferred) ->
+            when (val result = deferred.await()) {
+                is ImageDownloadResult.Success -> succeeded++
+                is ImageDownloadResult.Failure -> {
+                    if (result.isRetryable) retryableFailures.add(url)
+                    else permanentFailures.add(url)
+                }
+            }
+        }
+
+        ImageBatchDownloadReport(
+            total = imageUrls.size,
+            succeeded = succeeded,
+            retryableFailures = retryableFailures,
+            permanentFailures = permanentFailures
+        )
     }
 
     private suspend fun downloadAndCacheImageInternal(
@@ -714,22 +746,40 @@ class WebContentLoader @Inject constructor(
         val htmlCached = findExistingCachedFile(url) != null
         val document = cachedDocument ?: findExistingCachedFile(url)
             ?.let { Jsoup.parse(it, "UTF-8", url) }
+        
         val imageUrls = document?.let { doc ->
-            runCatching { extractImageUrls(htmlParser.parse(doc, url)).distinct() }.getOrDefault(emptyList())
+            runCatching { 
+                extractImageUrls(htmlParser.parse(doc, url))
+                    .distinct()
+                    .filter { it.startsWith("http") }
+            }.getOrDefault(emptyList())
         } ?: emptyList()
+
         val cachedImages = imageUrls.count { imageUrl ->
-            !imageUrl.startsWith("http") || imageCache.getCachedMediaFile(imageUrl).exists()
+            imageCache.findExistingCachedMediaFile(imageUrl) != null
         }
+        
         val isInProgress = chapterPrefetchMutex.withLock { url in inFlightChapterPrefetches }
-        val isComplete = htmlCached && cachedImages == imageUrls.size
+        val isComplete = htmlCached && imageUrls.isNotEmpty() && cachedImages == imageUrls.size
+        
+        // If HTML is cached but we couldn't find images (maybe parsing failed or it truly has no images),
+        // we consider it complete only if it was successfully parsed once.
+        val finalComplete = if (htmlCached && imageUrls.isEmpty()) {
+            // If it's a known non-image content kind, this might be okay.
+            // For manhwa/web content, usually there are images.
+            true 
+        } else {
+            isComplete
+        }
+
         return PrefetchResult(
             url = url,
             htmlCached = htmlCached,
             totalImages = imageUrls.size,
             cachedImages = cachedImages,
-            isComplete = isComplete,
+            isComplete = finalComplete,
             isInProgress = isInProgress,
-            isRetryable = !isComplete
+            isRetryable = !finalComplete
         )
     }
 

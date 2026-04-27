@@ -89,8 +89,8 @@ class WebContentLoaderPrefetchRetryTest {
 
         assertFalse(result.isComplete)
         assertTrue(result.isRetryable)
-        // Expected: MAX_USER_PREFETCH_ATTEMPTS (3) * USER_REQUEST_PREFETCH_PASSES (3) * USER_REQUEST_ATTEMPTS (4) = 36
-        assertEquals(36, imageRequests.get())
+        // Expected: USER_REQUEST_PREFETCH_PASSES (3) * USER_REQUEST_ATTEMPTS (4) = 12
+        assertEquals("Should retry 12 times total (3 passes * 4 image attempts)", 12, imageRequests.get())
     }
 
     private fun createLoader(

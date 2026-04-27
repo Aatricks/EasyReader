@@ -30,6 +30,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -289,6 +290,24 @@ fun ChapterListSheet(
                                     )
                                 }
                             } else null,
+                            trailingContent = {
+                                if (!isSelectionMode && !isCurrent && !isCaching && !isOfflineReady) {
+                                    IconButton(
+                                        onClick = { libraryViewModel.retryDownload(chapter.url) }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Download,
+                                            contentDescription = "Download",
+                                            tint = if (statusText?.contains("partially") == true) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                            },
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            },
                             leadingContent = {
                                 if (isSelectionMode) {
                                     Checkbox(

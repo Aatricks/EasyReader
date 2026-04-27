@@ -308,9 +308,9 @@ class WebContentLoaderTest {
 
         assertTrue(speculative.htmlCached)
         assertEquals(5, speculative.totalImages)
-        assertEquals(3, speculative.cachedImages)
+        assertEquals(0, speculative.cachedImages)
         assertFalse(speculative.isComplete)
-        assertEquals(3, speculativeDownloads.get())
+        assertEquals(0, speculativeDownloads.get())
     }
 
     @Test

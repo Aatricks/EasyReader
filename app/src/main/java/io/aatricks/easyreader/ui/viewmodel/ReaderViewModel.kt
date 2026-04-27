@@ -946,6 +946,14 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    fun downloadVisibleImage(imageUrl: String, pageUrl: String): Unit {
+        if (!imageUrl.startsWith("http")) return
+
+        viewModelScope.launch {
+            runCatching { contentRepository.downloadAndCacheImage(imageUrl, pageUrl) }
+        }
+    }
+
     fun clearCache(url: String): Unit {
         viewModelScope.launch { runCatching { contentRepository.clearCache(url) } }
     }

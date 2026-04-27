@@ -142,13 +142,27 @@ fun ReaderImageView(
             null
         }
     }
-    val isCachedImage = (imageUrl.startsWith("file") || (cachedFile != null && cachedFile.exists()))
+    
+    // We use a derived state for isCachedImage so it can be re-evaluated if needed,
+    // though it primarily depends on the file existing.
+    var isCachedImage by remember(imageUrl, cachedFile) { 
+        mutableStateOf(imageUrl.startsWith("file") || (cachedFile != null && cachedFile.exists()))
+    }
+    
+    // Trigger user-priority app-cache repair for visible missing web images
+    LaunchedEffect(imageUrl, pageUrl, isCachedImage) {
+        if (!isCachedImage && imageUrl.startsWith("http")) {
+            readerViewModel.downloadVisibleImage(imageUrl, pageUrl)
+        }
+    }
+
     val showAnimatedLoadingUi = shouldUseAnimatedImageLoadingUi(
         enableZoom = enableZoom,
         isCached = isCachedImage
     )
 
-    val imageRequest = remember(imageUrl, pageUrl, isCachedImage, showAnimatedLoadingUi) {
+    var retryTrigger by remember { mutableStateOf(0L) }
+    val imageRequest = remember(imageUrl, pageUrl, isCachedImage, showAnimatedLoadingUi, retryTrigger) {
         val referer = if (imageUrl.startsWith("http")) readerViewModel.contentRepository.getReferer(pageUrl) else null
         
         ImageRequest.Builder(context)
@@ -197,6 +211,11 @@ fun ReaderImageView(
                         onDimensionsResolved?.invoke(imageUrl, resolved.width, resolved.height)
                     }
                     isLoadingHoisted = false
+                    isError = false
+                    // If it was loaded from network but now should be in cache, update isCachedImage
+                    if (!isCachedImage && cachedFile?.exists() == true) {
+                        isCachedImage = true
+                    }
                 },
                 onError = {
                     isError = true
@@ -238,12 +257,33 @@ fun ReaderImageView(
         }
 
         if (isError) {
-            Text(
-                text = altText ?: "Image unavailable",
-                color = Color.Gray,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(16.dp)
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .padding(16.dp)
+                    .clickable {
+                        isError = false
+                        isLoadingHoisted = true
+                        retryTrigger = System.currentTimeMillis()
+                        if (imageUrl.startsWith("http")) {
+                            readerViewModel.downloadVisibleImage(imageUrl, pageUrl)
+                        }
+                    }
+            ) {
+                Text(
+                    text = altText ?: "Image unavailable",
+                    color = Color.Gray,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                if (imageUrl.startsWith("http")) {
+                    Text(
+                        text = "Tap to retry",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
         }
     }
 }
