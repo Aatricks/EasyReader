@@ -70,11 +70,10 @@ internal fun buildDrawerNovelSections(items: List<LibraryItem>): DrawerNovelSect
 }
 
 internal fun isNovelFinished(item: LibraryItem, latestKnownChapterCount: Int): Boolean {
+    if (item.progress < FINISHED_PROGRESS_THRESHOLD) return false
+
     val currentChapterNumber = extractLibraryChapterNumber(item) ?: return false
-    if (latestKnownChapterCount <= 0) return false
-    val gap = latestKnownChapterCount.toDouble() - currentChapterNumber
-    if (gap <= 0) return true
-    return item.progress >= FINISHED_PROGRESS_THRESHOLD && gap <= FINISHED_CHAPTER_TOLERANCE
+    return latestKnownChapterCount > 0 && currentChapterNumber >= latestKnownChapterCount.toDouble()
 }
 
 private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
@@ -90,23 +89,21 @@ private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
         ?: fallbackItem
     val latestKnownChapterCount = items.maxOfOrNull { it.totalChapters } ?: 0
     val hasUpdates = items.any { it.hasUpdates }
-    val highestKnownLibraryChapterNumber = items
-        .mapNotNull(::extractLibraryChapterNumber)
-        .maxOrNull()
-    val isFinished = items.any { item ->
-        isNovelFinished(item, latestKnownChapterCount) ||
-            (
-                !hasUpdates &&
-                    highestKnownLibraryChapterNumber != null &&
-                    item.progress >= FINISHED_PROGRESS_THRESHOLD &&
-                    extractLibraryChapterNumber(item)?.let { currentChapterNumber ->
-                        val isAtHighestStoredChapter = currentChapterNumber >= highestKnownLibraryChapterNumber
-                        val isCloseToKnownTotal = latestKnownChapterCount <= 0 ||
-                            latestKnownChapterCount.toDouble() - currentChapterNumber <= FINISHED_CHAPTER_TOLERANCE
-                        isAtHighestStoredChapter && isCloseToKnownTotal
-                    } == true
-                )
-    }
+    val highestChapterItem = items
+        .mapNotNull { item -> extractLibraryChapterNumber(item)?.let { num -> num to item } }
+        .maxByOrNull { (num, _) -> num }
+    val isFinished = highestChapterItem?.let { (highestChapterNumber, highestItem) ->
+        if (highestItem.progress < FINISHED_PROGRESS_THRESHOLD) {
+            false
+        } else if (latestKnownChapterCount > 0 && highestChapterNumber >= latestKnownChapterCount.toDouble()) {
+            true
+        } else if (!hasUpdates) {
+            latestKnownChapterCount <= 0 ||
+                latestKnownChapterCount.toDouble() - highestChapterNumber <= FINISHED_CHAPTER_TOLERANCE
+        } else {
+            false
+        }
+    } ?: false
 
     return DrawerNovelEntry(
         novelKey = libraryNovelKey(fallbackItem),

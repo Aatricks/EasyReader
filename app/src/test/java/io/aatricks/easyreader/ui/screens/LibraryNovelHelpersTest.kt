@@ -249,6 +249,85 @@ class LibraryNovelHelpersTest {
         assertTrue(isNovelFinished(doneEnough, latestKnownChapterCount = 20))
     }
 
+    @Test
+    fun `buildDrawerNovelSections hides novel when latest chapter item itself is at progress threshold`() {
+        // Multi-item web novel: chapter 99 fully read, chapter 100 reached at 90% scroll.
+        // Old items.any check failed because chapter-99 satisfied progress but not chapter-test;
+        // new highest-chapter-item check evaluates chapter 100 directly.
+        val sections = buildDrawerNovelSections(
+            listOf(
+                libraryItem(
+                    id = "current-1",
+                    title = "Chapter 5",
+                    baseTitle = "Current Novel",
+                    currentChapter = "Chapter 5",
+                    totalChapters = 10,
+                    progress = 40,
+                    lastRead = 500,
+                    isCurrentlyReading = true
+                ),
+                libraryItem(
+                    id = "split-99",
+                    title = "Chapter 99",
+                    baseTitle = "Split Progress Novel",
+                    currentChapter = "Chapter 99",
+                    totalChapters = 100,
+                    progress = 100,
+                    lastRead = 400
+                ),
+                libraryItem(
+                    id = "split-100",
+                    title = "Chapter 100",
+                    baseTitle = "Split Progress Novel",
+                    currentChapter = "Chapter 100",
+                    totalChapters = 100,
+                    progress = 92,
+                    lastRead = 410
+                )
+            )
+        )
+
+        assertTrue(sections.recentNovels.none { it.displayTitle == "Split Progress Novel" })
+    }
+
+    @Test
+    fun `buildDrawerNovelSections keeps novel when latest chapter item is below progress threshold`() {
+        val sections = buildDrawerNovelSections(
+            listOf(
+                libraryItem(
+                    id = "current-1",
+                    title = "Chapter 5",
+                    baseTitle = "Current Novel",
+                    currentChapter = "Chapter 5",
+                    totalChapters = 10,
+                    progress = 40,
+                    lastRead = 500,
+                    isCurrentlyReading = true
+                ),
+                libraryItem(
+                    id = "split-99",
+                    title = "Chapter 99",
+                    baseTitle = "Mid Last Chapter Novel",
+                    currentChapter = "Chapter 99",
+                    totalChapters = 100,
+                    progress = 100,
+                    lastRead = 400
+                ),
+                libraryItem(
+                    id = "split-100",
+                    title = "Chapter 100",
+                    baseTitle = "Mid Last Chapter Novel",
+                    currentChapter = "Chapter 100",
+                    totalChapters = 100,
+                    progress = 50,
+                    lastRead = 410
+                )
+            )
+        )
+
+        assertTrue(sections.recentNovels.any { it.displayTitle == "Mid Last Chapter Novel" })
+    }
+
     private fun libraryItem(
         id: String,
         title: String,
