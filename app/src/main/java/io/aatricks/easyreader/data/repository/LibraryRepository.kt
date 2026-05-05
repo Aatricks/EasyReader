@@ -386,11 +386,18 @@ class LibraryRepository @Inject constructor(
                                         )
                                         if (details != null && details.chapters.isNotEmpty()) {
                                             val sourceChapterCount = normalizeChapterList(details.chapters).size
-                                            if (sourceChapterCount > latestInLibrary.totalChapters) {
+                                            val previousTotalChapters = latestInLibrary.totalChapters
+                                            if (sourceChapterCount > previousTotalChapters) {
                                                 val itemToMark = items.find { it.isCurrentlyReading } ?: latestInLibrary
+                                                val markerChapterNumber = TextUtils.extractChapterNumber(itemToMark.currentChapter)
+                                                    ?: itemToMark.currentChapterUrl.takeIf { it.isNotBlank() }?.let(TextUtils::extractChapterNumber)
+                                                    ?: TextUtils.extractChapterNumber(itemToMark.url)
+                                                val wasCaughtUp = previousTotalChapters > 0 &&
+                                                    markerChapterNumber != null &&
+                                                    markerChapterNumber >= previousTotalChapters.toDouble()
                                                 items.map { item ->
                                                     var newItem = item.copy(totalChapters = sourceChapterCount)
-                                                    if (item.id == itemToMark.id && !item.hasUpdates) {
+                                                    if (wasCaughtUp && item.id == itemToMark.id && !item.hasUpdates) {
                                                         newItem = newItem.copy(hasUpdates = true)
                                                     }
                                                     newItem

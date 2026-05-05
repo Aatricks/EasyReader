@@ -70,10 +70,11 @@ internal fun buildDrawerNovelSections(items: List<LibraryItem>): DrawerNovelSect
 }
 
 internal fun isNovelFinished(item: LibraryItem, latestKnownChapterCount: Int): Boolean {
-    if (item.progress < FINISHED_PROGRESS_THRESHOLD) return false
-
     val currentChapterNumber = extractLibraryChapterNumber(item) ?: return false
-    return latestKnownChapterCount > 0 && currentChapterNumber >= latestKnownChapterCount.toDouble()
+    if (latestKnownChapterCount <= 0) return false
+    val gap = latestKnownChapterCount.toDouble() - currentChapterNumber
+    if (gap <= 0) return true
+    return item.progress >= FINISHED_PROGRESS_THRESHOLD && gap <= FINISHED_CHAPTER_TOLERANCE
 }
 
 private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
