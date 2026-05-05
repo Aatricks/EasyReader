@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.aatricks.easyreader.data.model.LibraryItem
+import io.aatricks.easyreader.data.model.hasActionableUpdate
 
 /**
  * Library item card component displaying novel information and progress.
@@ -142,7 +143,7 @@ fun LibraryItemCard(
                             color = MaterialTheme.colorScheme.onPrimary
                         )
                     }
-                } else if (item.hasUpdates) {
+                } else if (item.hasActionableUpdate()) {
                     Badge(
                         containerColor = MaterialTheme.colorScheme.tertiary,
                         modifier = Modifier

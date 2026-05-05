@@ -7,6 +7,7 @@ import io.aatricks.easyreader.data.local.LibraryDao
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.model.ReadingMode
+import io.aatricks.easyreader.data.model.hasFinishedProgress
 import io.aatricks.easyreader.util.FieldUpdate
 import io.aatricks.easyreader.util.resolve
 import io.aatricks.easyreader.util.resolveNullable
@@ -394,7 +395,8 @@ class LibraryRepository @Inject constructor(
                                                     ?: TextUtils.extractChapterNumber(itemToMark.url)
                                                 val wasCaughtUp = previousTotalChapters > 0 &&
                                                     markerChapterNumber != null &&
-                                                    markerChapterNumber >= previousTotalChapters.toDouble()
+                                                    markerChapterNumber >= previousTotalChapters.toDouble() &&
+                                                    itemToMark.hasFinishedProgress()
                                                 items.map { item ->
                                                     var newItem = item.copy(totalChapters = sourceChapterCount)
                                                     if (wasCaughtUp && item.id == itemToMark.id && !item.hasUpdates) {

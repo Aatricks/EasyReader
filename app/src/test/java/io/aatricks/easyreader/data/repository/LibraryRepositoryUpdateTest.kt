@@ -82,17 +82,23 @@ class LibraryRepositoryUpdateTest {
         val item1 = LibraryItem(
             id = "1", title = "Novel 1", url = "url1",
             baseTitle = "Novel 1", baseNovelUrl = "novel1", sourceName = "Source1",
-            totalChapters = 10
+            currentChapter = "Ch 10",
+            totalChapters = 10,
+            progress = 100
         )
         val item2 = LibraryItem(
             id = "2", title = "Novel 2", url = "url2",
             baseTitle = "Novel 2", baseNovelUrl = "novel2", sourceName = "Source1",
-            totalChapters = 20
+            currentChapter = "Ch 20",
+            totalChapters = 20,
+            progress = 100
         )
         val item3 = LibraryItem(
             id = "3", title = "Novel 3", url = "url3",
             baseTitle = "Novel 3", baseNovelUrl = "novel3", sourceName = "Source1",
-            totalChapters = 30
+            currentChapter = "Ch 30",
+            totalChapters = 30,
+            progress = 100
         )
 
         whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(item1, item2, item3)))
@@ -114,6 +120,56 @@ class LibraryRepositoryUpdateTest {
 
         // Verify behavior: Optimized behavior calls insertItems once with all updates.
         verify(libraryDao, times(1)).insertItems(any())
+    }
+
+    @Test
+    fun testRefreshLibraryUpdates_does_not_mark_unfinished_latest_chapter_as_update() = runBlocking {
+        val item = LibraryItem(
+            id = "unfinished",
+            title = "Novel Chapter 10",
+            url = "novel/ch-10",
+            currentChapter = "Ch 10",
+            baseTitle = "Novel",
+            baseNovelUrl = "novel",
+            sourceName = "Source1",
+            totalChapters = 10,
+            progress = 50
+        )
+
+        whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(item)))
+        whenever(exploreRepository.getNovelDetails("novel", "Source1"))
+            .thenReturn(ExploreItem("Novel", "novel", source = "Source1", chapters = chapterList(11, "novel")))
+
+        repository.refreshLibraryUpdates(exploreRepository)
+
+        verify(libraryDao).insertItems(argThat {
+            size == 1 && first().totalChapters == 11 && !first().hasUpdates
+        })
+    }
+
+    @Test
+    fun testRefreshLibraryUpdates_marks_update_when_latest_chapter_is_nearly_complete() = runBlocking {
+        val item = LibraryItem(
+            id = "caught-up",
+            title = "Novel Chapter 10",
+            url = "novel/ch-10",
+            currentChapter = "Ch 10",
+            baseTitle = "Novel",
+            baseNovelUrl = "novel",
+            sourceName = "Source1",
+            totalChapters = 10,
+            progress = 90
+        )
+
+        whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(item)))
+        whenever(exploreRepository.getNovelDetails("novel", "Source1"))
+            .thenReturn(ExploreItem("Novel", "novel", source = "Source1", chapters = chapterList(11, "novel")))
+
+        repository.refreshLibraryUpdates(exploreRepository)
+
+        verify(libraryDao).insertItems(argThat {
+            size == 1 && first().totalChapters == 11 && first().hasUpdates
+        })
     }
 
     @Test

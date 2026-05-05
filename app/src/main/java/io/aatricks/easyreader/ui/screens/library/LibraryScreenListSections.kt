@@ -307,8 +307,7 @@ private fun NovelGroupHeader(
     onOpenNewChapter: (LibraryItem) -> Unit
 ): Unit {
     val resumeItem = items.find { it.isCurrentlyReading } ?: items.maxByOrNull { it.lastRead } ?: items.first()
-    val latestItem = items.lastOrNull()
-    val hasUpdates = items.any { it.hasUpdates }
+    val updateItem = latestLibraryUpdateItem(items)
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -360,9 +359,9 @@ private fun NovelGroupHeader(
             }
         }
 
-        if (!isSelectionMode && hasUpdates && latestItem != null) {
+        if (!isSelectionMode && updateItem != null) {
             AssistChip(
-                onClick = { onOpenNewChapter(latestItem) },
+                onClick = { onOpenNewChapter(updateItem) },
                 label = { Text("Open latest") }
             )
         }

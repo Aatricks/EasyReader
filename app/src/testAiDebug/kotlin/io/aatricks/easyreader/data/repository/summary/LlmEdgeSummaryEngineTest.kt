@@ -7,6 +7,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
@@ -172,12 +173,15 @@ class LlmEdgeSummaryEngineTest {
         }
 
         val owner = async(Dispatchers.Default) { engine.initialize() }
-        val waiter = async(Dispatchers.Default) { engine.initialize() }
-
-        yield()
-
         prepareEntered.await()
-        owner.cancel()
+
+        val waiter = async(Dispatchers.Default) { engine.initialize() }
+        // Give waiter time to enter initialize() and register on initDeferred
+        // before cancelling the owner. Without this, the waiter may not yet have
+        // run, so when the owner cancels and clears initDeferred the waiter would
+        // become a new engine-owner and hang on keepPreparing.
+        delay(200)
+
         owner.cancelAndJoin()
 
         val waiterResult = withTimeout(5_000) { waiter.await() }

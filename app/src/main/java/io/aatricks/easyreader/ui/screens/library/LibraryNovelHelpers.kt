@@ -1,9 +1,10 @@
 package io.aatricks.easyreader.ui.screens
 
 import io.aatricks.easyreader.data.model.LibraryItem
+import io.aatricks.easyreader.data.model.hasActionableUpdate
+import io.aatricks.easyreader.data.model.hasFinishedProgress
 import io.aatricks.easyreader.util.TextUtils
 
-private const val FINISHED_PROGRESS_THRESHOLD = 90
 private const val FINISHED_CHAPTER_TOLERANCE = 2
 
 internal data class DrawerNovelEntry(
@@ -56,6 +57,7 @@ internal fun buildDrawerNovelSections(items: List<LibraryItem>): DrawerNovelSect
     val recentNovels = novels
         .asSequence()
         .filterNot { it.isFinished }
+        .filterNot { it.hasUpdates }
         .filterNot { it.novelKey == continueNovel?.novelKey }
         .filterNot { it.novelKey in recentUpdateKeys }
         .sortedByDescending { it.activityTimestamp }
@@ -70,10 +72,22 @@ internal fun buildDrawerNovelSections(items: List<LibraryItem>): DrawerNovelSect
 }
 
 internal fun isNovelFinished(item: LibraryItem, latestKnownChapterCount: Int): Boolean {
-    if (item.progress < FINISHED_PROGRESS_THRESHOLD) return false
+    if (!item.hasFinishedProgress()) return false
 
     val currentChapterNumber = extractLibraryChapterNumber(item) ?: return false
     return latestKnownChapterCount > 0 && currentChapterNumber >= latestKnownChapterCount.toDouble()
+}
+
+internal fun latestLibraryUpdateItem(items: List<LibraryItem>): LibraryItem? {
+    return items
+        .asSequence()
+        .filter { it.hasActionableUpdate() }
+        .filter { it.baseNovelUrl.isNotBlank() || it.sourceName.isNotBlank() }
+        .maxByOrNull { it.dateAdded }
+        ?: items
+            .asSequence()
+            .filter { it.hasActionableUpdate() }
+            .maxByOrNull { it.dateAdded }
 }
 
 private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
@@ -82,18 +96,19 @@ private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
         ?: items.maxByOrNull { it.lastRead }
         ?: items.maxByOrNull { it.dateAdded }
         ?: fallbackItem
-    val updateItem = items
-        .filter { it.baseNovelUrl.isNotBlank() || it.sourceName.isNotBlank() }
-        .maxByOrNull { it.dateAdded }
+    val updateItem = latestLibraryUpdateItem(items)
+        ?: items
+            .filter { it.baseNovelUrl.isNotBlank() || it.sourceName.isNotBlank() }
+            .maxByOrNull { it.dateAdded }
         ?: items.maxByOrNull { it.dateAdded }
         ?: fallbackItem
     val latestKnownChapterCount = items.maxOfOrNull { it.totalChapters } ?: 0
-    val hasUpdates = items.any { it.hasUpdates }
+    val hasUpdates = latestLibraryUpdateItem(items) != null
     val highestChapterItem = items
         .mapNotNull { item -> extractLibraryChapterNumber(item)?.let { num -> num to item } }
         .maxByOrNull { (num, _) -> num }
     val isFinished = highestChapterItem?.let { (highestChapterNumber, highestItem) ->
-        if (highestItem.progress < FINISHED_PROGRESS_THRESHOLD) {
+        if (!highestItem.hasFinishedProgress()) {
             false
         } else if (latestKnownChapterCount > 0 && highestChapterNumber >= latestKnownChapterCount.toDouble()) {
             true
@@ -113,7 +128,7 @@ private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
         hasUpdates = hasUpdates,
         isFinished = isFinished,
         activityTimestamp = items.maxOfOrNull { maxOf(it.lastRead, it.dateAdded) } ?: 0L,
-        updateTimestamp = items.filter { it.hasUpdates }.maxOfOrNull { it.dateAdded } ?: Long.MIN_VALUE
+        updateTimestamp = items.filter { it.hasActionableUpdate() }.maxOfOrNull { it.dateAdded } ?: Long.MIN_VALUE
     )
 }
 

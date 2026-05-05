@@ -328,6 +328,77 @@ class LibraryNovelHelpersTest {
         assertTrue(sections.recentNovels.any { it.displayTitle == "Mid Last Chapter Novel" })
     }
 
+    @Test
+    fun `buildDrawerNovelSections treats unfinished stale update flag as recent not update`() {
+        val sections = buildDrawerNovelSections(
+            listOf(
+                libraryItem(
+                    id = "current-1",
+                    title = "Chapter 5",
+                    baseTitle = "Current Novel",
+                    currentChapter = "Chapter 5",
+                    totalChapters = 10,
+                    progress = 40,
+                    lastRead = 500,
+                    isCurrentlyReading = true
+                ),
+                libraryItem(
+                    id = "stale-update",
+                    title = "Chapter 10",
+                    baseTitle = "Unfinished Stale Update",
+                    currentChapter = "Chapter 10",
+                    totalChapters = 11,
+                    progress = 50,
+                    lastRead = 450,
+                    dateAdded = 450,
+                    hasUpdates = true,
+                    baseNovelUrl = "https://example.com/stale",
+                    sourceName = "NovelFire"
+                )
+            )
+        )
+
+        assertTrue(sections.recentUpdates.none { it.displayTitle == "Unfinished Stale Update" })
+        assertTrue(sections.recentNovels.any { it.displayTitle == "Unfinished Stale Update" })
+    }
+
+    @Test
+    fun `buildDrawerNovelSections excludes update overflow from recent novels`() {
+        val updateNovels = (1..5).map { index ->
+            libraryItem(
+                id = "update-$index",
+                title = "Chapter 10",
+                baseTitle = "Updated Novel $index",
+                currentChapter = "Chapter 10",
+                totalChapters = 11,
+                progress = 100,
+                lastRead = 400L + index,
+                dateAdded = 400L + index,
+                hasUpdates = true,
+                baseNovelUrl = "https://example.com/update-$index",
+                sourceName = "NovelFire"
+            )
+        }
+
+        val sections = buildDrawerNovelSections(
+            listOf(
+                libraryItem(
+                    id = "current-1",
+                    title = "Chapter 5",
+                    baseTitle = "Current Novel",
+                    currentChapter = "Chapter 5",
+                    totalChapters = 10,
+                    progress = 40,
+                    lastRead = 600,
+                    isCurrentlyReading = true
+                )
+            ) + updateNovels
+        )
+
+        assertEquals(4, sections.recentUpdates.size)
+        assertTrue(sections.recentNovels.none { it.displayTitle.startsWith("Updated Novel") })
+    }
+
     private fun libraryItem(
         id: String,
         title: String,
