@@ -66,12 +66,14 @@ class LlmEdgeSummaryEngine @Inject constructor(
     internal var prepareTextClient: suspend (TextClient) -> Unit = { client ->
         client.prepare(modelSpec, modelOptions)
     }
+    internal var onInitializationWaiterRegistered: (() -> Unit)? = null
 
     override fun isAvailable(): Boolean = isInitialized && textClient != null
 
     override suspend fun initialize(): Result<Unit> = withContext(Dispatchers.IO) {
         var deferred: CompletableDeferred<Result<Unit>>? = null
         var isOwner = false
+        var waiterRegistered: (() -> Unit)? = null
 
         synchronized(initLock) {
             if (isInitialized) {
@@ -88,7 +90,9 @@ class LlmEdgeSummaryEngine @Inject constructor(
                 isOwner = true
             }
             initWaiterCount += 1
+            waiterRegistered = onInitializationWaiterRegistered
         }
+        waiterRegistered?.invoke()
 
         val initWaiter = deferred ?: return@withContext Result.failure(
             IllegalStateException("Initialization deferred was not created")

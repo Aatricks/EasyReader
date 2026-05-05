@@ -90,11 +90,18 @@ class LlmEdgeSummaryEngineTest {
         val createCalls = AtomicInteger(0)
         val prepareCalls = AtomicInteger(0)
         val prepareEntered = CompletableDeferred<Unit>()
+        val registeredWaiters = AtomicInteger(0)
+        val allWaitersRegistered = CompletableDeferred<Unit>()
         val failNow = CompletableDeferred<Unit>()
 
         engine.createTextClient = { _, _ ->
             createCalls.incrementAndGet()
             client
+        }
+        engine.onInitializationWaiterRegistered = {
+            if (registeredWaiters.incrementAndGet() == 10) {
+                allWaitersRegistered.complete(Unit)
+            }
         }
         engine.prepareTextClient = {
             prepareCalls.incrementAndGet()
@@ -107,6 +114,7 @@ class LlmEdgeSummaryEngineTest {
             val jobs = List(10) { async(Dispatchers.Default) { engine.initialize() } }
             yield()
             prepareEntered.await()
+            allWaitersRegistered.await()
             failNow.complete(Unit)
             jobs.awaitAll()
         }
