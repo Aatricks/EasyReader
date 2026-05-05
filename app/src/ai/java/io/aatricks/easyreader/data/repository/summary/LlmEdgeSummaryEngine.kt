@@ -57,6 +57,7 @@ class LlmEdgeSummaryEngine @Inject constructor(
     @Volatile
     private var isInitialized = false
     private var initDeferred: CompletableDeferred<Result<Unit>>? = null
+    private var initWaiterCount = 0
     private val initLock = Any()
     private var activeGenerationJob: Job? = null
     private val generationLock = Any()
@@ -86,6 +87,7 @@ class LlmEdgeSummaryEngine @Inject constructor(
                 initDeferred = deferred
                 isOwner = true
             }
+            initWaiterCount += 1
         }
 
         val initWaiter = deferred ?: return@withContext Result.failure(
@@ -93,55 +95,66 @@ class LlmEdgeSummaryEngine @Inject constructor(
         )
 
         if (!isOwner) {
-            return@withContext initWaiter.await()
+            return@withContext try {
+                initWaiter.await()
+            } finally {
+                finishInitializationWaiter(initWaiter)
+            }
         }
 
-        var client: TextClient? = null
-        var handedOff = false
+        try {
+            var client: TextClient? = null
+            var handedOff = false
 
-        val result = try {
-            Log.d(TAG, "Creating llmedge text client for $MODEL_ID")
+            val result = try {
+                Log.d(TAG, "Creating llmedge text client for $MODEL_ID")
 
-            val createdClient = createTextClient(context, scope)
-            client = createdClient
-            prepareTextClient(createdClient)
+                val createdClient = createTextClient(context, scope)
+                client = createdClient
+                prepareTextClient(createdClient)
 
-            synchronized(initLock) {
-                if (initDeferred === initWaiter) {
-                    textClient = createdClient
-                    isInitialized = true
-                    handedOff = true
+                synchronized(initLock) {
+                    if (initDeferred === initWaiter) {
+                        textClient = createdClient
+                        isInitialized = true
+                        handedOff = true
+                    }
                 }
+
+                if (handedOff) {
+                    Result.success(Unit)
+                } else {
+                    client?.close()
+                    Result.failure(CancellationException("Summary engine initialization was cancelled"))
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "Failed to initialize LLMEdge", t)
+                if (!handedOff) {
+                    client?.close()
+                }
+                synchronized(initLock) {
+                    if (!handedOff && textClient === client) {
+                        textClient = null
+                    }
+                }
+                Result.failure(t)
             }
 
-            if (handedOff) {
-                Result.success(Unit)
-            } else {
-                client?.close()
-                Result.failure(CancellationException("Summary engine initialization was cancelled"))
-            }
-        } catch (t: Throwable) {
-            Log.e(TAG, "Failed to initialize LLMEdge", t)
-            if (!handedOff) {
-                client?.close()
-            }
-            synchronized(initLock) {
-                if (!handedOff && textClient === client) {
-                    textClient = null
-                }
-            }
-            Result.failure(t)
+            initWaiter.complete(result)
+
+            result
+        } finally {
+            finishInitializationWaiter(initWaiter)
         }
+    }
 
-        initWaiter.complete(result)
-
-            synchronized(initLock) {
-                if (initDeferred === initWaiter) {
-                    initDeferred = null
-                }
+    private fun finishInitializationWaiter(initWaiter: CompletableDeferred<Result<Unit>>) {
+        synchronized(initLock) {
+            initWaiterCount -= 1
+            if (initWaiterCount == 0 && initDeferred === initWaiter) {
+                initDeferred = null
             }
-
-        result
+        }
     }
 
     override suspend fun generateSummary(
