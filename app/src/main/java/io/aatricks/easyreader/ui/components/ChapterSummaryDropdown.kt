@@ -25,6 +25,7 @@ fun ChapterSummaryDropdown(
     isGenerating: Boolean,
     onGenerateSummary: () -> Unit,
     onCancel: (() -> Unit)? = null,
+    isAvailable: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -47,6 +48,20 @@ fun ChapterSummaryDropdown(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 when {
+                    !isAvailable -> {
+                        Text(
+                            text = "AI summaries aren't available in this build.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Install the AI variant to enable on-device chapter recaps.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     isGenerating -> {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(
@@ -60,7 +75,7 @@ fun ChapterSummaryDropdown(
                                     color = MaterialTheme.colorScheme.primary
                                 )
                                 Text(
-                                    text = "Generating a quick recap...",
+                                    text = "Generating a quick recap…",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

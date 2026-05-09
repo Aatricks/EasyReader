@@ -364,6 +364,60 @@ internal fun ContentArea(
             isPagedMode = uiState.isPagedMode,
             isRtl = uiState.isRtl
         )
+
+        if (!uiState.isPagedMode && pullAmount == 0f && !uiState.showControls) {
+            val atTop = !listState.canScrollBackward
+            val atBottom = !listState.canScrollForward
+            EdgeNavigationHint(
+                atTop = atTop && uiState.canNavigatePrevious,
+                atBottom = atBottom && uiState.canNavigateNext
+            )
+        }
+    }
+}
+
+@Composable
+private fun EdgeNavigationHint(atTop: Boolean, atBottom: Boolean) {
+    if (atTop) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            EdgeHintChip(text = "Pull down for previous chapter", icon = Icons.Default.ArrowDownward)
+        }
+    }
+    if (atBottom) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+            EdgeHintChip(text = "Pull up for next chapter", icon = Icons.Default.ArrowUpward)
+        }
+    }
+}
+
+@Composable
+private fun EdgeHintChip(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector
+) {
+    androidx.compose.material3.Surface(
+        modifier = Modifier.padding(vertical = 12.dp, horizontal = 16.dp),
+        shape = androidx.compose.material3.MaterialTheme.shapes.extraLarge,
+        color = androidx.compose.material3.MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+    ) {
+        androidx.compose.foundation.layout.Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = text,
+                style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

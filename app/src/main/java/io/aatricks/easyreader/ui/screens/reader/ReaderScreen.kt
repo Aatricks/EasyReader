@@ -118,7 +118,7 @@ fun ReaderScreen(
     val window = (view.context as? Activity)?.window
     val readerTheme = uiState.readerTheme
 
-    LaunchedEffect(uiState.showControls, readerTheme) {
+    LaunchedEffect(uiState.showControls, readerTheme, uiState.content) {
         if (window != null) {
             val windowInsetsController = WindowCompat.getInsetsController(window, view)
             windowInsetsController.systemBarsBehavior =
@@ -126,13 +126,17 @@ fun ReaderScreen(
 
             val isDarkReader = readerTheme == ReaderTheme.DARK ||
                                readerTheme == ReaderTheme.OLED
+            val systemBars = WindowInsetsCompat.Type.systemBars()
+            val isReading = uiState.content != null
 
-            if (!uiState.showControls) {
-                windowInsetsController.hide(WindowInsetsCompat.Type.statusBars())
+            if (isReading && !uiState.showControls) {
+                windowInsetsController.hide(systemBars)
                 windowInsetsController.isAppearanceLightStatusBars = !isDarkReader
+                windowInsetsController.isAppearanceLightNavigationBars = !isDarkReader
             } else {
-                windowInsetsController.show(WindowInsetsCompat.Type.statusBars())
-                windowInsetsController.isAppearanceLightStatusBars = false
+                windowInsetsController.show(systemBars)
+                windowInsetsController.isAppearanceLightStatusBars = !isDarkReader
+                windowInsetsController.isAppearanceLightNavigationBars = !isDarkReader
             }
         }
     }
@@ -140,7 +144,7 @@ fun ReaderScreen(
     DisposableEffect(Unit) {
         onDispose {
             window?.let {
-                WindowCompat.getInsetsController(it, view).show(WindowInsetsCompat.Type.statusBars())
+                WindowCompat.getInsetsController(it, view).show(WindowInsetsCompat.Type.systemBars())
             }
         }
     }

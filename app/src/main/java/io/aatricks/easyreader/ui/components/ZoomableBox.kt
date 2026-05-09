@@ -134,11 +134,15 @@ fun ZoomableBox(
 
                         if (!isSignificantMovement) {
                             if (isDoubleTapCandidate) {
-                                if (scale > 1.05f) {
-                                    scale = 1f; offsetX = 0f; offsetY = 0f
-                                    emitZoomState(scale)
+                                // Cycle: minScale → 2× → maxScale → minScale
+                                val targetScale = when {
+                                    scale > 2.05f -> minScale
+                                    scale > 1.05f -> maxScale.coerceAtMost(4f)
+                                    else -> 2f
+                                }
+                                if (targetScale <= minScale + ZOOM_STATE_EPSILON) {
+                                    scale = minScale; offsetX = 0f; offsetY = 0f
                                 } else {
-                                    val targetScale = 2.5f
                                     val width = size.width.toFloat()
                                     val height = size.height.toFloat()
                                     if (width > 0 && height > 0) {
@@ -150,8 +154,8 @@ fun ZoomableBox(
                                     } else {
                                         scale = targetScale
                                     }
-                                    emitZoomState(scale)
                                 }
+                                emitZoomState(scale)
                                 lastTapTime = 0L
                             } else {
                                 lastTapTime = downTime

@@ -20,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -217,7 +219,8 @@ fun LibraryItemCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(5.dp)
-                    .clip(RoundedCornerShape(999.dp)),
+                    .clip(RoundedCornerShape(999.dp))
+                    .semantics { contentDescription = "${item.progress} percent read" },
                 color = when {
                     item.progress == 100 -> MaterialTheme.colorScheme.primary
                     item.progress > 50 -> MaterialTheme.colorScheme.secondary

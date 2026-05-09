@@ -14,8 +14,10 @@ import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.util.TextUtils
 import io.aatricks.easyreader.util.normalizeChapterList
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
@@ -44,6 +46,14 @@ class LibraryViewModel @Inject constructor(
     private val _selectionModeEnabled = MutableStateFlow(false)
     private val _collapsedSources = MutableStateFlow<Set<String>>(emptySet())
     private val _chapterCacheStates = MutableStateFlow<Map<String, PrefetchResult>>(emptyMap())
+    private val _pendingDeletion = MutableStateFlow<Set<String>>(emptySet())
+    val pendingDeletion: StateFlow<Set<String>> = _pendingDeletion.asStateFlow()
+    private var pendingDeleteJob: Job? = null
+    private var pendingDeleteUrls: List<String> = emptyList()
+
+    companion object {
+        private const val UNDO_DELETE_WINDOW_MS = 5000L
+    }
 
     init {
         _collapsedSources.value = repository.loadCollapsedSources()
@@ -77,16 +87,20 @@ class LibraryViewModel @Inject constructor(
                 Triple(items, selected, collapsed) to selectionModeEnabled
             }
 
+            val cacheAndPending = combine(_chapterCacheStates, _pendingDeletion) { c, p -> c to p }
+
             combine(
                 repoFlow,
-                _chapterCacheStates,
+                cacheAndPending,
                 _searchQuery,
                 _contentTypeFilter,
                 _sortMode
-            ) { repoState, cacheStates, query, filter, sort ->
+            ) { repoState, cachePending, query, filter, sort ->
                 val (repoData, selectionModeEnabled) = repoState
-                val (items, selectedIds, collapsedSources) = repoData
-                
+                val (rawItems, selectedIds, collapsedSources) = repoData
+                val (cacheStates, pendingIds) = cachePending
+
+                val items = if (pendingIds.isEmpty()) rawItems else rawItems.filterNot { it.id in pendingIds }
                 val filteredItems = filterAndSortItems(items, query, filter, sort)
 
                 LibraryUiState(
@@ -106,6 +120,47 @@ class LibraryViewModel @Inject constructor(
                 updateState { newState }
             }
         }
+    }
+
+    private fun scheduleDeletion(ids: Set<String>) {
+        if (ids.isEmpty()) return
+        val items = repository.libraryItems.value
+        val urls = ids.mapNotNull { id -> items.firstOrNull { it.id == id }?.url }
+        pendingDeleteJob?.cancel()
+        pendingDeleteUrls = (pendingDeleteUrls + urls).distinct()
+        _pendingDeletion.update { it + ids }
+        pendingDeleteJob = viewModelScope.launch {
+            delay(UNDO_DELETE_WINDOW_MS)
+            commitPendingDeletion()
+        }
+    }
+
+    fun undoPendingDeletion(): Unit {
+        pendingDeleteJob?.cancel()
+        pendingDeleteJob = null
+        _pendingDeletion.value = emptySet()
+        pendingDeleteUrls = emptyList()
+    }
+
+    private suspend fun commitPendingDeletion() {
+        val ids = _pendingDeletion.value
+        if (ids.isEmpty()) return
+        val urls = pendingDeleteUrls
+        runCatching {
+            contentRepository.clearCachesForUrls(urls)
+            repository.removeItems(ids)
+        }.onFailure { e ->
+            updateState { it.copy(error = "Failed to remove items: ${e.message}") }
+        }
+        _pendingDeletion.value = emptySet()
+        pendingDeleteUrls = emptyList()
+        pendingDeleteJob = null
+    }
+
+    fun flushPendingDeletion(): Unit {
+        pendingDeleteJob?.cancel()
+        pendingDeleteJob = null
+        viewModelScope.launch { commitPendingDeletion() }
     }
 
     private fun filterAndSortItems(
@@ -397,42 +452,17 @@ class LibraryViewModel @Inject constructor(
     }
     
     fun removeItem(itemId: String): Unit {
-        viewModelScope.launch {
-            runCatching {
-                repository.getItemById(itemId)?.let { item ->
-                    contentRepository.clearCachesForUrls(listOf(item.url))
-                }
-                repository.removeItem(itemId)
-            }.onFailure { e ->
-                updateState { it.copy(error = "Failed to remove item: ${e.message}") }
-            }
-        }
+        scheduleDeletion(setOf(itemId))
     }
 
     fun removeItems(itemIds: Set<String>): Unit {
-        viewModelScope.launch {
-            runCatching {
-                val urls = itemIds.mapNotNull { id -> repository.getItemById(id)?.url }
-                contentRepository.clearCachesForUrls(urls)
-                repository.removeItems(itemIds)
-            }.onFailure { e ->
-                updateState { it.copy(error = "Failed to remove items: ${e.message}") }
-            }
-        }
+        scheduleDeletion(itemIds)
     }
 
     fun removeGroup(baseTitle: String): Unit {
-        viewModelScope.launch {
-            runCatching {
-                val groupItems = uiState.value.groupedItems[baseTitle] ?: emptyList()
-                if (groupItems.isNotEmpty()) {
-                    contentRepository.clearCachesForUrls(groupItems.map { it.url })
-                    val ids = groupItems.map { it.id }.toSet()
-                    repository.removeItems(ids)
-                }
-            }.onFailure { e ->
-                updateState { it.copy(error = "Failed to remove group: ${e.message}") }
-            }
+        val groupItems = uiState.value.groupedItems[baseTitle] ?: emptyList()
+        if (groupItems.isNotEmpty()) {
+            scheduleDeletion(groupItems.map { it.id }.toSet())
         }
     }
 
@@ -536,20 +566,11 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun removeSelectedItems(): Unit {
-        viewModelScope.launch {
-            runCatching {
-                val selectedIds = _selectedItems.value
-                val selectedItems = repository.libraryItems.value.filter { it.id in selectedIds }
-                if (selectedItems.isNotEmpty()) {
-                    contentRepository.clearCachesForUrls(selectedItems.map { it.url })
-                    repository.removeItems(selectedIds)
-                    _selectedItems.value = emptySet()
-                    _selectionModeEnabled.value = false
-                }
-            }.onFailure { e ->
-                updateState { it.copy(error = "Failed to remove selected items: ${e.message}") }
-            }
-        }
+        val selectedIds = _selectedItems.value
+        if (selectedIds.isEmpty()) return
+        scheduleDeletion(selectedIds)
+        _selectedItems.value = emptySet()
+        _selectionModeEnabled.value = false
     }
 
     fun clearLibrary(): Unit {

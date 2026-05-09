@@ -89,7 +89,7 @@ internal fun ExploreGrid(
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         SkeletonFeaturedExploreCard()
                     }
-                    items(6) { SkeletonExploreCard() }
+                    items(8) { SkeletonExploreCard() }
                 }
 
                 uiState.items.isEmpty() -> {
@@ -120,6 +120,8 @@ internal fun ExploreGrid(
 
                     if (uiState.isLoading) {
                         items(4) { SkeletonExploreCard() }
+                    } else if (!uiState.canLoadMore && uiState.items.size > 1) {
+                        item(span = { GridItemSpan(maxLineSpan) }) { EndOfResultsMarker() }
                     } else {
                         item(span = { GridItemSpan(maxLineSpan) }) { Spacer(modifier = Modifier.height(1.dp)) }
                     }
@@ -321,6 +323,31 @@ fun ExploreItemCard(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun EndOfResultsMarker(): Unit {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = EasyReaderSpacing.lg),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)
+    ) {
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        )
+        Text(
+            text = "End of results",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        )
     }
 }
 

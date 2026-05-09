@@ -16,6 +16,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -54,8 +56,11 @@ fun LibraryScreen(
     val libraryUiState by libraryViewModel.uiState.collectAsState()
     val readerUiState by readerViewModel.uiState.collectAsState()
     val searchQuery by libraryViewModel.searchQuery.collectAsState()
+    val pendingDeletion by libraryViewModel.pendingDeletion.collectAsState()
     val summaryViewModel: SummaryViewModel = hiltViewModel()
     val summaryUiState by summaryViewModel.uiState.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     var urlInput by remember { mutableStateOf("") }
     var isAddSectionVisible by remember { mutableStateOf(false) }
@@ -70,6 +75,22 @@ fun LibraryScreen(
         summaryViewModel.initializeSummaryService()
     }
 
+    LaunchedEffect(pendingDeletion) {
+        if (pendingDeletion.isNotEmpty()) {
+            val count = pendingDeletion.size
+            val label = if (count == 1) "1 title removed" else "$count titles removed"
+            val result = snackbarHostState.showSnackbar(
+                message = label,
+                actionLabel = "Undo",
+                duration = SnackbarDuration.Short,
+                withDismissAction = true
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                libraryViewModel.undoPendingDeletion()
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -78,7 +99,7 @@ fun LibraryScreen(
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
+                            contentDescription = "Back to reader"
                         )
                     }
                 },
@@ -93,7 +114,8 @@ fun LibraryScreen(
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -162,7 +184,18 @@ fun LibraryScreen(
             Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
 
             if (libraryUiState.items.isEmpty()) {
-                EmptyLibraryState()
+                EmptyLibraryState(
+                    isSearchEmpty = searchQuery.isNotBlank() && libraryUiState.isEmpty.not(),
+                    isFilteredEmpty = searchQuery.isNotBlank(),
+                    onClearSearch = { libraryViewModel.updateSearchQuery("") }
+                )
+            } else if (libraryUiState.filteredItems.isEmpty() && searchQuery.isNotBlank()) {
+                EmptyLibraryState(
+                    isSearchEmpty = true,
+                    isFilteredEmpty = true,
+                    onClearSearch = { libraryViewModel.updateSearchQuery("") },
+                    query = searchQuery
+                )
             } else {
                 LibraryItemList(
                     uiState = libraryUiState,
@@ -185,6 +218,12 @@ private fun AddNovelSection(
     onAddClick: () -> Unit,
     onOpenPdfClick: () -> Unit
 ): Unit {
+    val clipboard = LocalClipboardManager.current
+    val clipboardUrl = remember(clipboard) {
+        val raw = clipboard.getText()?.text?.trim().orEmpty()
+        if (raw.startsWith("http://") || raw.startsWith("https://")) raw else null
+    }
+
     Surface(
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f)
@@ -206,8 +245,8 @@ private fun AddNovelSection(
             OutlinedTextField(
                 value = urlInput,
                 onValueChange = onUrlChange,
-                label = { Text("Novel URL") },
-                placeholder = { Text("Paste a novel URL") },
+                label = { Text("Web URL") },
+                placeholder = { Text("https://...") },
                 modifier = Modifier.fillMaxWidth(),
                 trailingIcon = {
                     if (urlInput.isNotEmpty()) {
@@ -224,6 +263,26 @@ private fun AddNovelSection(
                 ),
                 singleLine = true
             )
+
+            if (clipboardUrl != null && urlInput.isBlank()) {
+                Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
+                AssistChip(
+                    onClick = { onUrlChange(clipboardUrl) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.ContentPaste,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    label = {
+                        Text(
+                            text = "Paste: ${clipboardUrl.take(48)}${if (clipboardUrl.length > 48) "…" else ""}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                )
+            }
 
             Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
 
@@ -242,17 +301,18 @@ private fun AddNovelSection(
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-                    Text("Add from URL", fontWeight = FontWeight.SemiBold)
+                    Text("Add from web", fontWeight = FontWeight.SemiBold)
                 }
 
-                Button(
+                FilledTonalButton(
                     onClick = onOpenPdfClick,
                     modifier = Modifier
                         .weight(1f)
                         .height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
                     shape = MaterialTheme.shapes.large
                 ) {
+                    Icon(Icons.Filled.FileOpen, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
                     Text("Import file", fontWeight = FontWeight.SemiBold)
                 }
             }
@@ -368,7 +428,12 @@ private fun SelectionActions(
 }
 
 @Composable
-private fun EmptyLibraryState() {
+private fun EmptyLibraryState(
+    isSearchEmpty: Boolean = false,
+    isFilteredEmpty: Boolean = false,
+    onClearSearch: () -> Unit = {},
+    query: String = ""
+) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
@@ -382,22 +447,35 @@ private fun EmptyLibraryState() {
                 verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm),
                 modifier = Modifier.padding(EasyReaderSpacing.xl)
             ) {
+                val icon = if (isFilteredEmpty) Icons.Filled.SearchOff else Icons.AutoMirrored.Filled.LibraryBooks
                 Icon(
-                    imageVector = Icons.Filled.Add,
-                    contentDescription = "Empty Library",
+                    imageVector = icon,
+                    contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(40.dp)
                 )
                 Text(
-                    text = "Your library is empty",
+                    text = when {
+                        isFilteredEmpty -> "No matches" + if (query.isNotBlank()) " for \"$query\"" else ""
+                        else -> "Your library is empty"
+                    },
                     style = MaterialTheme.typography.headlineSmall
                 )
                 Text(
-                    text = "Add a title from Explore or import a file to start building your shelf.",
+                    text = if (isFilteredEmpty)
+                        "No titles match your search. Try different words or clear the search to see everything."
+                    else
+                        "Add a title from Discover or import a file to start building your shelf.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
+                if (isFilteredEmpty) {
+                    Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
+                    FilledTonalButton(onClick = onClearSearch) {
+                        Text("Clear search")
+                    }
+                }
             }
         }
     }

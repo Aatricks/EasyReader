@@ -324,14 +324,14 @@ fun ChapterListSheet(
                                 } else if (isCurrent) {
                                     Icon(
                                         imageVector = Icons.Default.Check,
-                                        contentDescription = null,
+                                        contentDescription = "Currently reading",
                                         tint = MaterialTheme.colorScheme.secondary,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 } else if (isOfflineReady) {
                                     Icon(
                                         imageVector = Icons.Default.Check,
-                                        contentDescription = null,
+                                        contentDescription = "Saved offline",
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(18.dp)
                                     )

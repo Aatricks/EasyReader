@@ -15,6 +15,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,11 +50,11 @@ fun TopInfoBar(
         ) {
             FilledTonalIconButton(
                 onClick = onLibraryClick,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Menu,
-                    contentDescription = "Open menu"
+                    contentDescription = "Open library drawer"
                 )
             }
 
@@ -81,8 +83,8 @@ fun TopInfoBar(
 
             FilledTonalButton(
                 onClick = onShowChapterList,
-                modifier = Modifier.height(40.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                modifier = Modifier.height(48.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.List,
@@ -99,8 +101,10 @@ fun TopInfoBar(
 
             OutlinedButton(
                 onClick = onShowSettings,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                modifier = Modifier.height(40.dp)
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                modifier = Modifier
+                    .height(48.dp)
+                    .semantics { contentDescription = "Open reading settings" }
             ) {
                 Text(
                     text = "Aa",
@@ -180,8 +184,7 @@ fun BottomNavigationBar(
                 thumb = {
                     SliderDefaults.Thumb(
                         interactionSource = sliderInteractionSource,
-                        modifier = Modifier.offset(y = 2.dp),
-                        thumbSize = DpSize(10.dp, 10.dp),
+                        thumbSize = DpSize(20.dp, 20.dp),
                         colors = sliderColors,
                         enabled = true
                     )
@@ -230,21 +233,21 @@ private fun ChapterNavButton(
     FilledTonalButton(
         onClick = onClick,
         enabled = enabled,
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-        modifier = Modifier.height(36.dp)
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+        modifier = Modifier.height(48.dp)
     ) {
         if (leading) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = null,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(18.dp)
             )
             Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
         }
 
         Text(
             text = text,
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold
         )
 
@@ -253,7 +256,7 @@ private fun ChapterNavButton(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = null,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(18.dp)
             )
         }
     }

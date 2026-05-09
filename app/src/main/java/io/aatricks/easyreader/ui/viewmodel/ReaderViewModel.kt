@@ -291,12 +291,13 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun updateFontFamily(newFamily: String): Unit {
+        if (preferencesManager.fontFamily == newFamily) return
         preferencesManager.fontFamily = newFamily
-        updateState { it.copy(fontFamily = newFamily) }
+        updateState { it.copy(fontFamily = newFamily, toastMessage = "Font: $newFamily") }
     }
 
     fun updateMargins(newMargins: Int): Unit {
-        val margins = newMargins.coerceIn(0, 64)
+        val margins = newMargins.coerceIn(4, 64)
         preferencesManager.margins = margins
         updateState { it.copy(margins = margins) }
     }
@@ -308,13 +309,16 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun updateReaderTheme(newTheme: ReaderTheme): Unit {
+        if (preferencesManager.readerTheme == newTheme.name) return
         preferencesManager.readerTheme = newTheme.name
-        updateState { it.copy(readerTheme = newTheme) }
+        val label = newTheme.name.lowercase().replaceFirstChar { it.uppercase() }
+        updateState { it.copy(readerTheme = newTheme, toastMessage = "Theme: $label") }
     }
 
     fun updateAccentTheme(newAccentTheme: AccentTheme): Unit {
+        if (preferencesManager.accentTheme == newAccentTheme.name) return
         preferencesManager.accentTheme = newAccentTheme.name
-        updateState { it.copy(accentTheme = newAccentTheme) }
+        updateState { it.copy(accentTheme = newAccentTheme, toastMessage = "Accent: ${newAccentTheme.displayName}") }
     }
 
     fun clearToast(): Unit {
@@ -1070,7 +1074,15 @@ class ReaderViewModel @Inject constructor(
 
     fun setPagedMode(isPagedMode: Boolean): Unit {
         val newMode = isPagedMode
-        updateState { it.copy(isPagedMode = newMode) }
+        val current = uiState.value.isPagedMode
+        updateState {
+            it.copy(
+                isPagedMode = newMode,
+                toastMessage = if (current != newMode)
+                    if (newMode) "Layout: Paged" else "Layout: Scroll"
+                else it.toastMessage
+            )
+        }
         currentLibraryItemId?.let { id ->
             viewModelScope.launch {
                 libraryRepository.updateReadingMode(id, if (newMode) ReadingMode.PAGED else ReadingMode.VERTICAL)
@@ -1080,7 +1092,10 @@ class ReaderViewModel @Inject constructor(
 
     fun toggleRtl(): Unit = setRtl(!uiState.value.isRtl)
 
-    fun setRtl(isRtl: Boolean): Unit = updateState { it.copy(isRtl = isRtl) }
+    fun setRtl(isRtl: Boolean): Unit = updateState {
+        if (it.isRtl == isRtl) it
+        else it.copy(isRtl = isRtl, toastMessage = if (isRtl) "Direction: RTL" else "Direction: LTR")
+    }
 
     fun navigateToChapter(url: String, title: String): Unit {
         loadJob?.cancel()

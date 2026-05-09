@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -34,8 +35,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import io.aatricks.easyreader.data.model.ReaderTheme
 import io.aatricks.easyreader.ui.theme.AccentTheme
@@ -65,26 +68,41 @@ private fun ReaderThemeOption(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val isLightSurface = theme == ReaderTheme.LIGHT || theme == ReaderTheme.SEPIA
+    val checkColor = if (isLightSurface) Color.Black else Color.White
+    val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+    val borderWidth = if (isSelected) 3.dp else 1.dp
     Box(
         modifier = Modifier
             .size(48.dp)
             .clip(CircleShape)
             .background(theme.backgroundColor)
-            .then(
-                if (isSelected) {
-                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                } else {
-                    Modifier
-                }
-            )
-            .clickable(onClick = onClick),
+            .border(borderWidth, borderColor, CircleShape)
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = "Theme ${theme.name.lowercase()}" },
         contentAlignment = Alignment.Center
     ) {
         if (isSelected) {
-            Icon(
-                imageVector = Icons.Default.Check,
-                contentDescription = null,
-                tint = if (theme == ReaderTheme.LIGHT || theme == ReaderTheme.SEPIA) Color.Black else Color.White
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        } else {
+            // Show subtle Aa preview text in unselected swatches so users see how it'll look
+            Text(
+                text = "Aa",
+                color = checkColor.copy(alpha = 0.55f),
+                style = MaterialTheme.typography.labelSmall
             )
         }
     }
@@ -118,10 +136,20 @@ private fun FontFamilyChip(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val fontFamily = when (font) {
+        "Serif" -> FontFamily.Serif
+        "Monospace" -> FontFamily.Monospace
+        else -> FontFamily.Default
+    }
     FilterChip(
         selected = isSelected,
         onClick = onClick,
-        label = { Text(font) },
+        label = {
+            Text(
+                text = font,
+                fontFamily = fontFamily
+            )
+        },
         colors = settingsChipColors()
     )
 }
@@ -182,6 +210,14 @@ fun ReaderSettingsSheet(
                         colors = settingsChipColors()
                     )
                 }
+                Text(
+                    text = if (uiState.isPagedMode)
+                        "Swipe horizontally to turn pages."
+                    else
+                        "Scroll vertically to read.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
@@ -209,7 +245,7 @@ fun ReaderSettingsSheet(
                 }
                 if (!uiState.isPagedMode) {
                     Text(
-                        text = "Direction applies to paged reading only.",
+                        text = "Switch Layout to Paged to change reading direction.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -256,7 +292,7 @@ fun ReaderSettingsSheet(
                 onValueChange = onUpdateFontSize,
                 valueRange = 12f..32f,
                 steps = 19,
-                displayValue = uiState.fontSize.toInt().toString()
+                displayValue = "${uiState.fontSize.toInt()} sp"
             )
 
             SettingSlider(
@@ -265,16 +301,16 @@ fun ReaderSettingsSheet(
                 onValueChange = onUpdateLineHeight,
                 valueRange = 1.0f..2.5f,
                 steps = 14,
-                displayValue = String.format("%.1f", uiState.lineHeight)
+                displayValue = "${String.format("%.1f", uiState.lineHeight)}×"
             )
 
             SettingSlider(
                 label = "Margins",
                 value = uiState.margins.toFloat(),
                 onValueChange = { onUpdateMargins(it.toInt()) },
-                valueRange = 0f..64f,
-                steps = 15,
-                displayValue = uiState.margins.toString()
+                valueRange = 4f..64f,
+                steps = 14,
+                displayValue = "${uiState.margins} dp"
             )
 
             SettingSlider(
@@ -283,7 +319,7 @@ fun ReaderSettingsSheet(
                 onValueChange = onUpdateParagraphSpacing,
                 valueRange = 0.0f..3.0f,
                 steps = 29,
-                displayValue = String.format("%.1f", uiState.paragraphSpacing)
+                displayValue = "${String.format("%.1f", uiState.paragraphSpacing)}×"
             )
 
             Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
@@ -301,6 +337,23 @@ fun ReaderSettingsSheet(
                             onClick = { onUpdateFontFamily(font) }
                         )
                     }
+                }
+                val previewFont = when (uiState.fontFamily) {
+                    "Serif" -> FontFamily.Serif
+                    "Monospace" -> FontFamily.Monospace
+                    else -> FontFamily.Default
+                }
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                ) {
+                    Text(
+                        text = "The quick brown fox jumps over the lazy dog.",
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontFamily = previewFont
+                    )
                 }
             }
 
@@ -349,7 +402,10 @@ fun SettingSlider(
                 onValueChange = onValueChange,
                 valueRange = valueRange,
                 steps = steps,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+                    .semantics { contentDescription = "$label, $displayValue" },
                 colors = SliderDefaults.colors(
                     thumbColor = MaterialTheme.colorScheme.primary,
                     activeTrackColor = MaterialTheme.colorScheme.primary,

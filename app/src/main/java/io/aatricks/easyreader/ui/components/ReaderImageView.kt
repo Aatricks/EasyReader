@@ -250,10 +250,18 @@ fun ReaderImageView(
         }
 
         if (isLoadingHoisted && showAnimatedLoadingUi) {
-            CircularProgressIndicator(
-                color = Color.Gray.copy(alpha = 0.5f),
-                modifier = Modifier.size(32.dp)
-            )
+            var showSpinner by remember(imageRequest) { mutableStateOf(false) }
+            LaunchedEffect(imageRequest) {
+                kotlinx.coroutines.delay(200)
+                showSpinner = true
+            }
+            if (showSpinner) {
+                CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = 2.5.dp,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
         }
 
         if (isError) {
@@ -272,17 +280,15 @@ fun ReaderImageView(
             ) {
                 Text(
                     text = altText ?: "Image unavailable",
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
-                if (imageUrl.startsWith("http")) {
-                    Text(
-                        text = "Tap to retry",
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
+                Text(
+                    text = if (imageUrl.startsWith("http")) "Tap to retry" else "Tap to reload",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
         }
     }

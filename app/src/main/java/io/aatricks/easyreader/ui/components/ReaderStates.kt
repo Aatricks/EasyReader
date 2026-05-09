@@ -12,13 +12,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.util.ErrorMessages
 
 @Composable
 fun LoadingState() {
     ReaderStatePanel(
         icon = Icons.Default.AutoStories,
         iconTint = MaterialTheme.colorScheme.primary,
+        iconDescription = "Loading",
         title = "Loading chapter",
         body = "Preparing your chapter. If you've read it before, we'll restore your place.",
         action = {
@@ -33,16 +37,20 @@ fun LoadingState() {
 
 @Composable
 fun ErrorState(error: String, onRetry: () -> Unit) {
+    val friendly = ErrorMessages.fromRaw(error)
     ReaderStatePanel(
         icon = Icons.Default.WarningAmber,
         iconTint = MaterialTheme.colorScheme.error,
-        title = "Reader couldn’t load this chapter",
-        body = error,
-        action = {
-            FilledTonalButton(onClick = onRetry) {
-                Text("Retry")
+        iconDescription = "Error",
+        title = friendly.title,
+        body = friendly.body,
+        action = if (friendly.isRetryable) {
+            {
+                FilledTonalButton(onClick = onRetry) {
+                    Text("Retry")
+                }
             }
-        }
+        } else null
     )
 }
 
@@ -51,6 +59,7 @@ fun EmptyState(onOpenLibrary: () -> Unit) {
     ReaderStatePanel(
         icon = Icons.AutoMirrored.Filled.MenuBook,
         iconTint = MaterialTheme.colorScheme.primary,
+        iconDescription = "Library",
         title = "Pick something to read",
         body = "Open your library to resume where you left off, open the latest chapter, or start something new.",
         action = {
@@ -65,6 +74,7 @@ fun EmptyState(onOpenLibrary: () -> Unit) {
 private fun ReaderStatePanel(
     icon: ImageVector,
     iconTint: androidx.compose.ui.graphics.Color,
+    iconDescription: String,
     title: String,
     body: String,
     action: @Composable (() -> Unit)? = null
@@ -88,20 +98,22 @@ private fun ReaderStatePanel(
             ) {
                 Icon(
                     imageVector = icon,
-                    contentDescription = null,
+                    contentDescription = iconDescription,
                     tint = iconTint,
                     modifier = Modifier.size(34.dp)
                 )
                 Text(
                     text = title,
                     style = MaterialTheme.typography.headlineSmall,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    fontWeight = FontWeight.SemiBold
                 )
                 Text(
                     text = body,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.semantics { contentDescription = body }
                 )
                 if (action != null) {
                     Spacer(modifier = Modifier.height(4.dp))

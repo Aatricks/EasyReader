@@ -3,7 +3,11 @@ package io.aatricks.easyreader.ui.components
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -19,18 +23,32 @@ fun ExternalUrlConfirmationDialog(
 ) {
     AlertDialog(
         onDismissRequest = onCancel,
-        title = { Text("Open External Link?") },
+        icon = {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        title = { Text("Open this link?") },
         text = {
             Column {
-                Text("This link was opened from another application:")
+                Text("Another app sent this URL to Reader:")
                 Spacer(Modifier.height(8.dp))
-                Text(url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = url,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(Modifier.height(16.dp))
-                Text("Do you want to open it in Reader? This will not be automatically saved to your library.", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    text = "Reader will open it once. It won't be saved to your library unless you add it.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
+            FilledTonalButton(onClick = onConfirm) {
                 Text("Open")
             }
         },
