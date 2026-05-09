@@ -69,12 +69,10 @@ import io.aatricks.easyreader.ui.components.TopInfoBar
 import io.aatricks.easyreader.ui.util.resolveRestoreOffset
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.sample
 import kotlin.math.abs
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class, FlowPreview::class)
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 internal fun ContentArea(
     uiState: ReaderViewModel.ReaderUiState,
@@ -245,7 +243,6 @@ internal fun ContentArea(
                 )
             }
                 .conflate()
-                .sample(120)
                 .collect {
                     if (content.paragraphs.isEmpty()) return@collect
 

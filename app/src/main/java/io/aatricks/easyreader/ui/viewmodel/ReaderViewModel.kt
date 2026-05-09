@@ -339,7 +339,7 @@ class ReaderViewModel @Inject constructor(
         libraryItemId: String? = null,
         fromBottom: Boolean = false,
         isSilent: Boolean = false,
-        isExplicitNavigation: Boolean = this.isExplicitNavigation,
+        isExplicitNavigation: Boolean = false,
         resetWebStateBeforeLoad: Boolean = false
     ): Unit {
         loadJob?.cancel()
@@ -657,6 +657,7 @@ class ReaderViewModel @Inject constructor(
                 }
 
                 is ContentResult.Error -> {
+                    isExplicitNavigation = false
                     updateState {
                         it.copy(
                             isNavigating = false,
@@ -845,6 +846,21 @@ class ReaderViewModel @Inject constructor(
         progressController.cancelProgressUpdate()
         val latest = currentPersistedSnapshot()
         val shouldSnapToTop = !hasUserInteractedSinceLoad && latest.scrollProgress == 0
+
+        if (shouldSnapToTop) {
+            val itemId = currentLibraryItemId
+            val existing = itemId?.let { libraryRepository.getItemById(it) }
+            val sameChapter = existing != null &&
+                existing.currentChapterUrl.ifBlank { existing.url } == currentChapterUrl
+            if (existing != null && sameChapter && existing.progress > 0) {
+                Log.d(
+                    TAG,
+                    "persistLifecycleProgress skip snap-to-top url=$currentChapterUrl dbProgress=${existing.progress}"
+                )
+                return
+            }
+        }
+
         Log.d(
             TAG,
             "persistLifecycleProgress url=$currentChapterUrl index=${latest.scrollIndex} offset=${latest.scrollOffset} offsetFraction=${latest.scrollOffsetFraction} firstVisibleItemSize=${latest.firstVisibleItemSize}"
