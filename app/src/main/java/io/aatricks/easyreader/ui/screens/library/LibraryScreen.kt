@@ -259,15 +259,13 @@ fun LibraryScreen(
 }
 
 private fun computeStatusCounts(items: List<LibraryItem>): Map<LibraryViewModel.ReadingStatusFilter, Int> {
-    val all = items.size
-    val reading = items.count { it.progress in 1..99 }
-    val finished = items.count { it.progress == 100 }
-    val unread = items.count { it.progress == 0 }
+    val series = items.groupBy { it.baseTitle.ifBlank { it.title } }
+    val perSeriesStatus = series.values.map { LibraryViewModel.seriesStatus(it) }
     return mapOf(
-        LibraryViewModel.ReadingStatusFilter.ALL to all,
-        LibraryViewModel.ReadingStatusFilter.READING to reading,
-        LibraryViewModel.ReadingStatusFilter.FINISHED to finished,
-        LibraryViewModel.ReadingStatusFilter.UNREAD to unread
+        LibraryViewModel.ReadingStatusFilter.ALL to series.size,
+        LibraryViewModel.ReadingStatusFilter.READING to perSeriesStatus.count { it == LibraryViewModel.ReadingStatusFilter.READING },
+        LibraryViewModel.ReadingStatusFilter.FINISHED to perSeriesStatus.count { it == LibraryViewModel.ReadingStatusFilter.FINISHED },
+        LibraryViewModel.ReadingStatusFilter.UNREAD to perSeriesStatus.count { it == LibraryViewModel.ReadingStatusFilter.UNREAD }
     )
 }
 

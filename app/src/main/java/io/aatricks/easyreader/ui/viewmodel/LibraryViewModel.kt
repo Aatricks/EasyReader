@@ -67,6 +67,46 @@ class LibraryViewModel @Inject constructor(
 
     companion object {
         private const val UNDO_DELETE_WINDOW_MS = 5000L
+
+        const val FINISHED_PROGRESS_THRESHOLD = 95
+
+        /**
+         * Determine series-level reading status from its chapter items.
+         *
+         * - FINISHED: at least one chapter has progress >= FINISHED_PROGRESS_THRESHOLD and matches/exceeds
+         *   totalChapters (or ties the highest known chapter number when totalChapters unknown).
+         *   Threshold is loose because scroll position rarely reaches a perfect 100%.
+         * - READING: any chapter has progress > 0 (interaction beyond merely caching).
+         * - UNREAD: no chapter has any read progress yet (cached-but-unopened items count here).
+         */
+        fun seriesStatus(items: List<LibraryItem>): ReadingStatusFilter {
+            if (items.isEmpty()) return ReadingStatusFilter.UNREAD
+
+            val knownTotal = items.maxOf { it.totalChapters }
+            val chapterNumbers = items.map { item ->
+                item to (TextUtils.extractChapterNumber(item.currentChapter)
+                    ?: TextUtils.extractChapterNumber(item.url))
+            }
+            val highestKnownNumber = chapterNumbers.mapNotNull { it.second }.maxOrNull() ?: 0.0
+            val effectiveTotal = if (knownTotal > 0) knownTotal.toDouble() else highestKnownNumber
+
+            val isAtLastChapter = chapterNumbers.any { (item, num) ->
+                item.progress >= FINISHED_PROGRESS_THRESHOLD &&
+                    num != null && effectiveTotal > 0 && num >= effectiveTotal
+            }
+            if (isAtLastChapter) return ReadingStatusFilter.FINISHED
+
+            // No total known and only one chapter exists at near-100% → treat as finished (e.g., one-shots).
+            if (effectiveTotal == 0.0 &&
+                items.any { it.progress >= FINISHED_PROGRESS_THRESHOLD } &&
+                items.size == 1
+            ) {
+                return ReadingStatusFilter.FINISHED
+            }
+
+            val anyStarted = items.any { it.progress > 0 }
+            return if (anyStarted) ReadingStatusFilter.READING else ReadingStatusFilter.UNREAD
+        }
     }
 
     init {
@@ -192,11 +232,12 @@ class LibraryViewModel @Inject constructor(
             filtered = filtered.filter { it.contentType == filter }
         }
 
-        filtered = when (statusFilter) {
-            ReadingStatusFilter.ALL -> filtered
-            ReadingStatusFilter.READING -> filtered.filter { it.progress in 1..99 }
-            ReadingStatusFilter.FINISHED -> filtered.filter { it.progress == 100 }
-            ReadingStatusFilter.UNREAD -> filtered.filter { it.progress == 0 }
+        if (statusFilter != ReadingStatusFilter.ALL) {
+            val seriesGroups = filtered.groupBy { it.baseTitle.ifBlank { it.title } }
+            val matchingSeries = seriesGroups
+                .filterValues { groupItems -> seriesStatus(groupItems) == statusFilter }
+                .keys
+            filtered = filtered.filter { (it.baseTitle.ifBlank { it.title }) in matchingSeries }
         }
 
         if (query.isNotBlank()) {
