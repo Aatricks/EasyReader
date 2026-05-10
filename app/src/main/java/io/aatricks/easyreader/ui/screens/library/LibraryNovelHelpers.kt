@@ -1,11 +1,10 @@
 package io.aatricks.easyreader.ui.screens
 
+import io.aatricks.easyreader.data.model.LIBRARY_FINISHED_CHAPTER_TOLERANCE
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.hasActionableUpdate
 import io.aatricks.easyreader.data.model.hasFinishedProgress
-import io.aatricks.easyreader.util.TextUtils
-
-private const val FINISHED_CHAPTER_TOLERANCE = 2
+import io.aatricks.easyreader.data.model.resolvedChapterNumber
 
 internal data class DrawerNovelEntry(
     val novelKey: String,
@@ -74,7 +73,7 @@ internal fun buildDrawerNovelSections(items: List<LibraryItem>): DrawerNovelSect
 internal fun isNovelFinished(item: LibraryItem, latestKnownChapterCount: Int): Boolean {
     if (!item.hasFinishedProgress()) return false
 
-    val currentChapterNumber = extractLibraryChapterNumber(item) ?: return false
+    val currentChapterNumber = item.resolvedChapterNumber() ?: return false
     return latestKnownChapterCount > 0 && currentChapterNumber >= latestKnownChapterCount.toDouble()
 }
 
@@ -105,7 +104,7 @@ private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
     val latestKnownChapterCount = items.maxOfOrNull { it.totalChapters } ?: 0
     val hasUpdates = latestLibraryUpdateItem(items) != null
     val highestChapterItem = items
-        .mapNotNull { item -> extractLibraryChapterNumber(item)?.let { num -> num to item } }
+        .mapNotNull { item -> item.resolvedChapterNumber()?.let { num -> num to item } }
         .maxByOrNull { (num, _) -> num }
     val isFinished = highestChapterItem?.let { (highestChapterNumber, highestItem) ->
         if (!highestItem.hasFinishedProgress()) {
@@ -114,7 +113,7 @@ private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
             true
         } else if (!hasUpdates) {
             latestKnownChapterCount <= 0 ||
-                latestKnownChapterCount.toDouble() - highestChapterNumber <= FINISHED_CHAPTER_TOLERANCE
+                latestKnownChapterCount.toDouble() - highestChapterNumber <= LIBRARY_FINISHED_CHAPTER_TOLERANCE
         } else {
             false
         }
@@ -133,9 +132,3 @@ private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
 }
 
 private fun libraryNovelDisplayTitle(item: LibraryItem): String = item.baseTitle.ifBlank { item.title }
-
-private fun extractLibraryChapterNumber(item: LibraryItem): Double? {
-    return TextUtils.extractChapterNumber(item.currentChapter.ifBlank { item.title })
-        ?: item.currentChapterUrl.takeIf { it.isNotBlank() }?.let(TextUtils::extractChapterNumber)
-        ?: TextUtils.extractChapterNumber(item.url)
-}
