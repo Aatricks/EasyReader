@@ -109,13 +109,17 @@ fun LibraryScreen(
                     }
                 },
                 actions = {
-                    TextButton(onClick = { navController.navigate(ExploreRoute) }) {
-                        Text("Discover")
+                    IconButton(onClick = { navController.navigate(ExploreRoute) }) {
+                        Icon(
+                            imageVector = Icons.Default.TravelExplore,
+                            contentDescription = "Discover sources"
+                        )
                     }
-                    FilledTonalButton(
-                        onClick = { isAddSectionVisible = !isAddSectionVisible }
-                    ) {
-                        Text(if (isAddSectionVisible) "Hide tools" else "Add / import")
+                    IconButton(onClick = { isAddSectionVisible = !isAddSectionVisible }) {
+                        Icon(
+                            imageVector = if (isAddSectionVisible) Icons.Default.Close else Icons.Default.Add,
+                            contentDescription = if (isAddSectionVisible) "Hide add tools" else "Add or import"
+                        )
                     }
                     IconButton(onClick = { navController.navigate(SettingsRoute) }) {
                         Icon(
