@@ -13,6 +13,7 @@ import io.aatricks.easyreader.data.model.SortMode
 import io.aatricks.easyreader.data.model.hasActionableUpdate
 import io.aatricks.easyreader.data.model.hasFinishedProgress
 import io.aatricks.easyreader.data.model.resolvedChapterNumber
+import io.aatricks.easyreader.data.model.titleChapterNumber
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
@@ -75,38 +76,54 @@ class LibraryViewModel @Inject constructor(
         /**
          * Determine series-level reading status from its chapter items.
          *
-         * Mirrors the canonical `isFinished` semantics used by the drawer (`buildDrawerNovelSections`)
-         * so that the library status filter agrees with the rest of the app.
+         * Algorithm:
+         * 1. Collect every chapter row whose `progress >= 90` (`hasFinishedProgress`).
+         * 2. Find the highest chapter number among those finished rows.
+         * 3. Reject FINISHED if any UNREAD row in the library has a strictly higher *title-derived* chapter
+         *    number — that means newer chapters exist that the user has downloaded but not read.
+         *    Use `titleChapterNumber()` (not `resolvedChapterNumber()`) for the comparison so URL noise
+         *    (numeric book-ID slugs in epilogue/prologue URLs) cannot fake a higher chapter number.
+         * 4. If a known `totalChapters` exists, require the highest finished number to land within
+         *    LIBRARY_FINISHED_CHAPTER_TOLERANCE of it (sources often miscount specials/extras).
+         * 5. Otherwise — total unknown, no higher unread — trust the user's library state.
          *
-         * - FINISHED: highest-numbered chapter in the series has finished progress (>= 90%, see
-         *   LIBRARY_FINISHED_PROGRESS_THRESHOLD), AND either it reaches the known totalChapters or — when
-         *   total is unknown and the source has not flagged updates — within LIBRARY_FINISHED_CHAPTER_TOLERANCE.
-         * - READING: any chapter has progress > 0 (cached-but-untouched chapters do not count).
-         * - UNREAD: nothing started.
-         *
-         * Why not just `progress == 100`? Scroll progress rarely reaches a clean 100, the canonical
-         * threshold is 90. Why use `resolvedChapterNumber()` rather than `currentChapter` alone?
-         * Reading-progress writes from `ReaderProgressController` can leave `currentChapter` blank while
-         * still updating `currentChapterUrl`; the helper falls through both fields plus `url`.
+         * Drawer-style `hasUpdates` rejection was intentionally dropped: a finished series can keep
+         * `hasUpdates = true` indefinitely if a new chapter the user already read is flagged.
          */
         fun seriesStatus(items: List<LibraryItem>): ReadingStatusFilter {
             if (items.isEmpty()) return ReadingStatusFilter.UNREAD
 
-            val latestKnownChapterCount = items.maxOf { it.totalChapters }
-            val hasUpdates = items.any { it.hasActionableUpdate() }
-            val highestChapterItem = items
-                .mapNotNull { item -> item.resolvedChapterNumber()?.let { num -> num to item } }
-                .maxByOrNull { (num, _) -> num }
+            val finishedItems = items.filter { it.hasFinishedProgress() }
 
-            val isFinished = highestChapterItem?.let { (highestChapterNumber, highestItem) ->
-                when {
-                    !highestItem.hasFinishedProgress() -> false
-                    latestKnownChapterCount > 0 && highestChapterNumber >= latestKnownChapterCount.toDouble() -> true
-                    hasUpdates -> false
-                    latestKnownChapterCount <= 0 -> true
-                    else -> latestKnownChapterCount.toDouble() - highestChapterNumber <= LIBRARY_FINISHED_CHAPTER_TOLERANCE
+            if (finishedItems.isEmpty()) {
+                return if (items.any { it.progress > 0 }) ReadingStatusFilter.READING
+                else ReadingStatusFilter.UNREAD
+            }
+
+            val highestFinishedNumber = finishedItems
+                .mapNotNull { it.resolvedChapterNumber() }
+                .maxOrNull()
+
+            val isFinished: Boolean = if (highestFinishedNumber == null) {
+                // No parseable chapter numbers anywhere — trust finished only for one-shots.
+                items.size == 1
+            } else {
+                val hasHigherUnread = items.any { item ->
+                    !item.hasFinishedProgress() &&
+                        item.titleChapterNumber()?.let { it > highestFinishedNumber } == true
                 }
-            } ?: items.singleOrNull()?.hasFinishedProgress() == true
+                when {
+                    hasHigherUnread -> false
+                    else -> {
+                        val sourceTotal = items.maxOf { it.totalChapters }
+                        if (sourceTotal <= 0) {
+                            true
+                        } else {
+                            sourceTotal.toDouble() - highestFinishedNumber <= LIBRARY_FINISHED_CHAPTER_TOLERANCE
+                        }
+                    }
+                }
+            }
 
             if (isFinished) return ReadingStatusFilter.FINISHED
 
