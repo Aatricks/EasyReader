@@ -37,6 +37,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import io.aatricks.easyreader.data.model.*
 import io.aatricks.easyreader.data.model.LibraryItem
+import io.aatricks.easyreader.data.model.SeriesReadingStatus
+import io.aatricks.easyreader.data.model.libraryNovelKey
+import io.aatricks.easyreader.data.model.seriesReadingStatus
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.ui.ExploreRoute
 import io.aatricks.easyreader.ui.SettingsRoute
@@ -214,14 +217,14 @@ fun LibraryScreen(
                     onClearSearch = { libraryViewModel.updateSearchQuery("") }
                 )
             } else if (libraryUiState.filteredItems.isEmpty() &&
-                (searchQuery.isNotBlank() || statusFilter != LibraryViewModel.ReadingStatusFilter.ALL)
+                (searchQuery.isNotBlank() || statusFilter != SeriesReadingStatus.ALL)
             ) {
                 EmptyLibraryState(
                     isSearchEmpty = true,
                     isFilteredEmpty = true,
                     onClearSearch = {
                         libraryViewModel.updateSearchQuery("")
-                        libraryViewModel.setStatusFilter(LibraryViewModel.ReadingStatusFilter.ALL)
+                        libraryViewModel.setStatusFilter(SeriesReadingStatus.ALL)
                     },
                     query = searchQuery
                 )
@@ -258,22 +261,22 @@ fun LibraryScreen(
     }
 }
 
-private fun computeStatusCounts(items: List<LibraryItem>): Map<LibraryViewModel.ReadingStatusFilter, Int> {
-    val series = items.groupBy { it.baseTitle.ifBlank { it.title } }
-    val perSeriesStatus = series.values.map { LibraryViewModel.seriesStatus(it) }
+private fun computeStatusCounts(items: List<LibraryItem>): Map<SeriesReadingStatus, Int> {
+    val series = items.groupBy { it.libraryNovelKey() }
+    val perSeriesStatus = series.values.map { seriesReadingStatus(it) }
     return mapOf(
-        LibraryViewModel.ReadingStatusFilter.ALL to series.size,
-        LibraryViewModel.ReadingStatusFilter.READING to perSeriesStatus.count { it == LibraryViewModel.ReadingStatusFilter.READING },
-        LibraryViewModel.ReadingStatusFilter.FINISHED to perSeriesStatus.count { it == LibraryViewModel.ReadingStatusFilter.FINISHED },
-        LibraryViewModel.ReadingStatusFilter.UNREAD to perSeriesStatus.count { it == LibraryViewModel.ReadingStatusFilter.UNREAD }
+        SeriesReadingStatus.ALL to series.size,
+        SeriesReadingStatus.READING to perSeriesStatus.count { it == SeriesReadingStatus.READING },
+        SeriesReadingStatus.FINISHED to perSeriesStatus.count { it == SeriesReadingStatus.FINISHED },
+        SeriesReadingStatus.UNREAD to perSeriesStatus.count { it == SeriesReadingStatus.UNREAD }
     )
 }
 
 @Composable
 private fun ReadingStatusFilterRow(
-    selected: LibraryViewModel.ReadingStatusFilter,
-    counts: Map<LibraryViewModel.ReadingStatusFilter, Int>,
-    onSelect: (LibraryViewModel.ReadingStatusFilter) -> Unit
+    selected: SeriesReadingStatus,
+    counts: Map<SeriesReadingStatus, Int>,
+    onSelect: (SeriesReadingStatus) -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -281,14 +284,14 @@ private fun ReadingStatusFilterRow(
             .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
     ) {
-        LibraryViewModel.ReadingStatusFilter.entries.forEach { filter ->
+        SeriesReadingStatus.entries.forEach { filter ->
             val count = counts[filter] ?: 0
             FilterChip(
                 selected = selected == filter,
                 onClick = { onSelect(filter) },
                 label = {
                     Text(
-                        text = if (count > 0 || filter == LibraryViewModel.ReadingStatusFilter.ALL)
+                        text = if (count > 0 || filter == SeriesReadingStatus.ALL)
                             "${filter.label} ($count)" else filter.label
                     )
                 }

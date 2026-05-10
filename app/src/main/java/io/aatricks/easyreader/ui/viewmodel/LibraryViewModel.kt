@@ -4,16 +4,14 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.model.ChapterInfo
-import io.aatricks.easyreader.data.model.LIBRARY_FINISHED_CHAPTER_TOLERANCE
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.ExploreItem
 import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.model.SortMode
-import io.aatricks.easyreader.data.model.hasActionableUpdate
-import io.aatricks.easyreader.data.model.hasFinishedProgress
-import io.aatricks.easyreader.data.model.resolvedChapterNumber
-import io.aatricks.easyreader.data.model.titleChapterNumber
+import io.aatricks.easyreader.data.model.SeriesReadingStatus
+import io.aatricks.easyreader.data.model.libraryNovelKey
+import io.aatricks.easyreader.data.model.seriesReadingStatus
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
@@ -47,17 +45,10 @@ class LibraryViewModel @Inject constructor(
     private val _sortMode = MutableStateFlow(SortMode.LAST_READ)
     val sortMode: StateFlow<SortMode> = _sortMode.asStateFlow()
 
-    private val _statusFilter = MutableStateFlow(ReadingStatusFilter.ALL)
-    val statusFilter: StateFlow<ReadingStatusFilter> = _statusFilter.asStateFlow()
+    private val _statusFilter = MutableStateFlow(SeriesReadingStatus.ALL)
+    val statusFilter: StateFlow<SeriesReadingStatus> = _statusFilter.asStateFlow()
 
-    enum class ReadingStatusFilter(val label: String) {
-        ALL("All"),
-        READING("Reading"),
-        FINISHED("Finished"),
-        UNREAD("Not started")
-    }
-
-    fun setStatusFilter(filter: ReadingStatusFilter): Unit {
+    fun setStatusFilter(filter: SeriesReadingStatus): Unit {
         _statusFilter.value = filter
     }
 
@@ -72,64 +63,6 @@ class LibraryViewModel @Inject constructor(
 
     companion object {
         private const val UNDO_DELETE_WINDOW_MS = 5000L
-
-        /**
-         * Determine series-level reading status from its chapter items.
-         *
-         * Algorithm:
-         * 1. Collect every chapter row whose `progress >= 90` (`hasFinishedProgress`).
-         * 2. Find the highest chapter number among those finished rows.
-         * 3. Reject FINISHED if any UNREAD row in the library has a strictly higher *title-derived* chapter
-         *    number — that means newer chapters exist that the user has downloaded but not read.
-         *    Use `titleChapterNumber()` (not `resolvedChapterNumber()`) for the comparison so URL noise
-         *    (numeric book-ID slugs in epilogue/prologue URLs) cannot fake a higher chapter number.
-         * 4. If a known `totalChapters` exists, require the highest finished number to land within
-         *    LIBRARY_FINISHED_CHAPTER_TOLERANCE of it (sources often miscount specials/extras).
-         * 5. Otherwise — total unknown, no higher unread — trust the user's library state.
-         *
-         * Drawer-style `hasUpdates` rejection was intentionally dropped: a finished series can keep
-         * `hasUpdates = true` indefinitely if a new chapter the user already read is flagged.
-         */
-        fun seriesStatus(items: List<LibraryItem>): ReadingStatusFilter {
-            if (items.isEmpty()) return ReadingStatusFilter.UNREAD
-
-            val finishedItems = items.filter { it.hasFinishedProgress() }
-
-            if (finishedItems.isEmpty()) {
-                return if (items.any { it.progress > 0 }) ReadingStatusFilter.READING
-                else ReadingStatusFilter.UNREAD
-            }
-
-            val highestFinishedNumber = finishedItems
-                .mapNotNull { it.resolvedChapterNumber() }
-                .maxOrNull()
-
-            val isFinished: Boolean = if (highestFinishedNumber == null) {
-                // No parseable chapter numbers anywhere — trust finished only for one-shots.
-                items.size == 1
-            } else {
-                val hasHigherUnread = items.any { item ->
-                    !item.hasFinishedProgress() &&
-                        item.titleChapterNumber()?.let { it > highestFinishedNumber } == true
-                }
-                when {
-                    hasHigherUnread -> false
-                    else -> {
-                        val sourceTotal = items.maxOf { it.totalChapters }
-                        if (sourceTotal <= 0) {
-                            true
-                        } else {
-                            sourceTotal.toDouble() - highestFinishedNumber <= LIBRARY_FINISHED_CHAPTER_TOLERANCE
-                        }
-                    }
-                }
-            }
-
-            if (isFinished) return ReadingStatusFilter.FINISHED
-
-            val anyStarted = items.any { it.progress > 0 }
-            return if (anyStarted) ReadingStatusFilter.READING else ReadingStatusFilter.UNREAD
-        }
     }
 
     init {
@@ -247,7 +180,7 @@ class LibraryViewModel @Inject constructor(
         query: String,
         filter: ContentType?,
         sort: SortMode,
-        statusFilter: ReadingStatusFilter = ReadingStatusFilter.ALL
+        statusFilter: SeriesReadingStatus = SeriesReadingStatus.ALL
     ): List<LibraryItem> {
         var filtered = items
 
@@ -255,12 +188,12 @@ class LibraryViewModel @Inject constructor(
             filtered = filtered.filter { it.contentType == filter }
         }
 
-        if (statusFilter != ReadingStatusFilter.ALL) {
-            val seriesGroups = filtered.groupBy { it.baseTitle.ifBlank { it.title } }
-            val matchingSeries = seriesGroups
-                .filterValues { groupItems -> seriesStatus(groupItems) == statusFilter }
+        if (statusFilter != SeriesReadingStatus.ALL) {
+            val seriesGroups = filtered.groupBy { it.libraryNovelKey() }
+            val matchingKeys = seriesGroups
+                .filterValues { groupItems -> seriesReadingStatus(groupItems) == statusFilter }
                 .keys
-            filtered = filtered.filter { (it.baseTitle.ifBlank { it.title }) in matchingSeries }
+            filtered = filtered.filter { it.libraryNovelKey() in matchingKeys }
         }
 
         if (query.isNotBlank()) {

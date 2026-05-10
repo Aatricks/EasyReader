@@ -1,10 +1,13 @@
 package io.aatricks.easyreader.ui.screens
 
-import io.aatricks.easyreader.data.model.LIBRARY_FINISHED_CHAPTER_TOLERANCE
 import io.aatricks.easyreader.data.model.LibraryItem
+import io.aatricks.easyreader.data.model.SeriesReadingStatus
 import io.aatricks.easyreader.data.model.hasActionableUpdate
 import io.aatricks.easyreader.data.model.hasFinishedProgress
+import io.aatricks.easyreader.data.model.libraryDisplayTitle
+import io.aatricks.easyreader.data.model.libraryNovelKey
 import io.aatricks.easyreader.data.model.resolvedChapterNumber
+import io.aatricks.easyreader.data.model.seriesReadingStatus
 
 internal data class DrawerNovelEntry(
     val novelKey: String,
@@ -23,20 +26,15 @@ internal data class DrawerNovelSections(
     val recentNovels: List<DrawerNovelEntry>
 )
 
-internal fun libraryNovelKey(item: LibraryItem): String {
-    val sourceKey = item.sourceName.ifBlank { item.contentType.name }
-    return "$sourceKey::${libraryNovelDisplayTitle(item)}"
-}
-
 internal fun countDistinctNovelTitles(items: List<LibraryItem>): Int {
     return items.asSequence()
-        .map(::libraryNovelKey)
+        .map { it.libraryNovelKey() }
         .distinct()
         .count()
 }
 
 internal fun buildDrawerNovelSections(items: List<LibraryItem>): DrawerNovelSections {
-    val novels = items.groupBy(::libraryNovelKey)
+    val novels = items.groupBy { it.libraryNovelKey() }
         .values
         .map(::buildDrawerNovelEntry)
 
@@ -70,9 +68,12 @@ internal fun buildDrawerNovelSections(items: List<LibraryItem>): DrawerNovelSect
     )
 }
 
+/**
+ * Convenience wrapper: a single-item view of "is this series finished" used by legacy callers.
+ * Now delegates to the unified [seriesReadingStatus].
+ */
 internal fun isNovelFinished(item: LibraryItem, latestKnownChapterCount: Int): Boolean {
     if (!item.hasFinishedProgress()) return false
-
     val currentChapterNumber = item.resolvedChapterNumber() ?: return false
     return latestKnownChapterCount > 0 && currentChapterNumber >= latestKnownChapterCount.toDouble()
 }
@@ -101,27 +102,12 @@ private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
             .maxByOrNull { it.dateAdded }
         ?: items.maxByOrNull { it.dateAdded }
         ?: fallbackItem
-    val latestKnownChapterCount = items.maxOfOrNull { it.totalChapters } ?: 0
     val hasUpdates = latestLibraryUpdateItem(items) != null
-    val highestChapterItem = items
-        .mapNotNull { item -> item.resolvedChapterNumber()?.let { num -> num to item } }
-        .maxByOrNull { (num, _) -> num }
-    val isFinished = highestChapterItem?.let { (highestChapterNumber, highestItem) ->
-        if (!highestItem.hasFinishedProgress()) {
-            false
-        } else if (latestKnownChapterCount > 0 && highestChapterNumber >= latestKnownChapterCount.toDouble()) {
-            true
-        } else if (!hasUpdates) {
-            latestKnownChapterCount <= 0 ||
-                latestKnownChapterCount.toDouble() - highestChapterNumber <= LIBRARY_FINISHED_CHAPTER_TOLERANCE
-        } else {
-            false
-        }
-    } ?: false
+    val isFinished = seriesReadingStatus(items) == SeriesReadingStatus.FINISHED
 
     return DrawerNovelEntry(
-        novelKey = libraryNovelKey(fallbackItem),
-        displayTitle = libraryNovelDisplayTitle(fallbackItem),
+        novelKey = fallbackItem.libraryNovelKey(),
+        displayTitle = fallbackItem.libraryDisplayTitle(),
         resumeItem = resumeItem,
         updateItem = updateItem,
         hasUpdates = hasUpdates,
@@ -130,5 +116,3 @@ private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
         updateTimestamp = items.filter { it.hasActionableUpdate() }.maxOfOrNull { it.dateAdded } ?: Long.MIN_VALUE
     )
 }
-
-private fun libraryNovelDisplayTitle(item: LibraryItem): String = item.baseTitle.ifBlank { item.title }
