@@ -4,6 +4,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.aatricks.easyreader.data.model.ExploreItem
 import io.aatricks.easyreader.data.repository.ExploreRepository
+import io.aatricks.easyreader.data.repository.source.BrowseMode
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -28,7 +29,8 @@ class ExploreViewModel @Inject constructor(
         val selectedItemDetails: ExploreItem? = null,
         val isFetchingDetails: Boolean = false,
         val sources: List<String> = emptyList(),
-        val canLoadMore: Boolean = true
+        val canLoadMore: Boolean = true,
+        val browseMode: BrowseMode = BrowseMode.POPULAR
     )
 
     private val _searchQueryFlow = MutableStateFlow("")
@@ -70,7 +72,7 @@ class ExploreViewModel @Inject constructor(
                         availableTags = tags,
                     )
                 }
-                val novels = exploreRepository.getPopularNovels(1, _uiState.value.selectedSource, _uiState.value.selectedTags.toList())
+                val novels = exploreRepository.getNovels(_uiState.value.browseMode, 1, _uiState.value.selectedSource, _uiState.value.selectedTags.toList())
                 updateState {
                     it.copy(
                         items = novels,
@@ -123,7 +125,7 @@ class ExploreViewModel @Inject constructor(
                 val novels = if (searchQuery.isNotBlank()) {
                     exploreRepository.searchNovels(searchQuery, 1, sourceName)
                 } else {
-                    exploreRepository.getPopularNovels(1, sourceName, emptyList())
+                    exploreRepository.getNovels(_uiState.value.browseMode, 1, sourceName, emptyList())
                 }
                 updateState {
                     it.copy(
@@ -151,7 +153,7 @@ class ExploreViewModel @Inject constructor(
                     _uiState.value.selectedTags + tag
                 }
                 updateState { it.copy(selectedTags = newTags, isLoading = true, page = 1, canLoadMore = true) }
-                val novels = exploreRepository.getPopularNovels(1, _uiState.value.selectedSource, newTags.toList())
+                val novels = exploreRepository.getNovels(_uiState.value.browseMode, 1, _uiState.value.selectedSource, newTags.toList())
                 updateState { it.copy(items = novels, isLoading = false, canLoadMore = novels.isNotEmpty()) }
             }.onFailure {
                 if (it is kotlinx.coroutines.CancellationException) throw it
@@ -165,12 +167,20 @@ class ExploreViewModel @Inject constructor(
         currentJob = viewModelScope.launch {
             runCatching {
                 updateState { it.copy(selectedTags = emptySet(), isLoading = true, page = 1, canLoadMore = true) }
-                val novels = exploreRepository.getPopularNovels(1, _uiState.value.selectedSource, emptyList())
+                val novels = exploreRepository.getNovels(_uiState.value.browseMode, 1, _uiState.value.selectedSource, emptyList())
                 updateState { it.copy(items = novels, isLoading = false, canLoadMore = novels.isNotEmpty()) }
             }.onFailure {
                 if (it is kotlinx.coroutines.CancellationException) throw it
                 updateState { it.copy(isLoading = false, canLoadMore = false) }
             }
+        }
+    }
+
+    fun setBrowseMode(mode: BrowseMode): Unit {
+        if (_uiState.value.browseMode == mode) return
+        updateState { it.copy(browseMode = mode) }
+        if (_uiState.value.searchQuery.isBlank()) {
+            loadInitialData()
         }
     }
 
@@ -220,7 +230,7 @@ class ExploreViewModel @Inject constructor(
         return if (_uiState.value.isSearching && _uiState.value.searchQuery.isNotBlank()) {
             exploreRepository.searchNovels(_uiState.value.searchQuery, page, _uiState.value.selectedSource)
         } else {
-            exploreRepository.getPopularNovels(page, _uiState.value.selectedSource, _uiState.value.selectedTags.toList())
+            exploreRepository.getNovels(_uiState.value.browseMode, page, _uiState.value.selectedSource, _uiState.value.selectedTags.toList())
         }
     }
 

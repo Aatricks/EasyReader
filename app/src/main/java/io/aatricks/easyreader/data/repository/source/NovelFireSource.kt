@@ -43,14 +43,22 @@ class NovelFireSource @Inject constructor(
         return clean.trim()
     }
     
-    override suspend fun getPopularNovels(page: Int, tags: List<String>): List<ExploreItem> = io {
+    override suspend fun getPopularNovels(page: Int, tags: List<String>): List<ExploreItem> =
+        getNovels(BrowseMode.POPULAR, page, tags)
+
+    override suspend fun getNovels(mode: BrowseMode, page: Int, tags: List<String>): List<ExploreItem> = io {
+        val sortSlug = when (mode) {
+            BrowseMode.POPULAR -> "sort-popular"
+            BrowseMode.LATEST -> "sort-updated"
+            BrowseMode.NEW -> "sort-new"
+        }
         val normalizedTags = tags.map { it.trim() }.filter { it.isNotBlank() }.distinct()
         val url = if (normalizedTags.isNotEmpty()) {
             val tag = normalizedTags.first()
             val tagSlug = tag.lowercase().replace(" ", "-")
-            "$baseUrl/genre-$tagSlug/sort-popular/status-all/all-novel?page=$page"
+            "$baseUrl/genre-$tagSlug/$sortSlug/status-all/all-novel?page=$page"
         } else {
-            "$baseUrl/genre-all/sort-popular/status-all/all-novel?page=$page"
+            "$baseUrl/genre-all/$sortSlug/status-all/all-novel?page=$page"
         }
         val document = getDocument(url)
 

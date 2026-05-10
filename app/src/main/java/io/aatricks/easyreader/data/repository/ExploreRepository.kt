@@ -1,6 +1,7 @@
 package io.aatricks.easyreader.data.repository
 
 import io.aatricks.easyreader.data.model.ExploreItem
+import io.aatricks.easyreader.data.repository.source.BrowseMode
 import io.aatricks.easyreader.data.repository.source.NovelSource
 import io.aatricks.easyreader.util.normalizeExploreItemDetails
 import kotlinx.coroutines.async
@@ -26,17 +27,24 @@ class ExploreRepository @Inject constructor(
         page: Int = 1,
         sourceName: String? = null,
         tags: List<String> = emptyList()
+    ): List<ExploreItem> = getNovels(BrowseMode.POPULAR, page, sourceName, tags)
+
+    suspend fun getNovels(
+        mode: BrowseMode = BrowseMode.POPULAR,
+        page: Int = 1,
+        sourceName: String? = null,
+        tags: List<String> = emptyList()
     ): List<ExploreItem> = coroutineScope {
         val activeSources = filterSources(sourceName)
 
         val normalizedTags = tags.map { it.trim() }.filter { it.isNotBlank() }.distinct()
         val results = if (normalizedTags.size <= 1) {
             activeSources.map { source ->
-                async { runCatching { source.getPopularNovels(page, normalizedTags) }.getOrDefault(emptyList()) }
+                async { runCatching { source.getNovels(mode, page, normalizedTags) }.getOrDefault(emptyList()) }
             }.awaitAll().flatten()
         } else {
             activeSources.map { source ->
-                async { loadPopularNovelsWithTagIntersection(source, page, normalizedTags) }
+                async { loadNovelsWithTagIntersection(source, mode, page, normalizedTags) }
             }.awaitAll().flatten()
         }
 
@@ -76,13 +84,14 @@ class ExploreRepository @Inject constructor(
         return if (sourceName == null) sources.toList() else sources.filter { it.name == sourceName }
     }
 
-    private suspend fun loadPopularNovelsWithTagIntersection(
+    private suspend fun loadNovelsWithTagIntersection(
         source: NovelSource,
+        mode: BrowseMode,
         page: Int,
         tags: List<String>
     ): List<ExploreItem> = coroutineScope {
         val perTagResults = tags.map { tag ->
-            async { runCatching { source.getPopularNovels(page, listOf(tag)) }.getOrDefault(emptyList()) }
+            async { runCatching { source.getNovels(mode, page, listOf(tag)) }.getOrDefault(emptyList()) }
         }.awaitAll()
 
         intersectByUrl(perTagResults)
