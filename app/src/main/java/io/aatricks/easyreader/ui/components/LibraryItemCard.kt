@@ -12,9 +12,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,8 +58,12 @@ fun LibraryItemCard(
     isCurrent: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onNewTagClick: (() -> Unit)? = null
+    onNewTagClick: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
+    onResetProgress: (() -> Unit)? = null,
+    onMarkFinished: (() -> Unit)? = null
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
     val targetBackgroundColor = when {
         isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
         isCurrent -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.16f)
@@ -174,6 +182,51 @@ fun LibraryItemCard(
                             .padding(start = 8.dp)
                             .size(22.dp)
                     )
+                } else if (onDelete != null || onResetProgress != null || onMarkFinished != null) {
+                    Box {
+                        IconButton(
+                            onClick = { menuExpanded = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.MoreVert,
+                                contentDescription = "More actions",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false }
+                        ) {
+                            if (onMarkFinished != null && item.progress < 100) {
+                                DropdownMenuItem(
+                                    text = { Text("Mark as finished") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onMarkFinished()
+                                    }
+                                )
+                            }
+                            if (onResetProgress != null && item.progress > 0) {
+                                DropdownMenuItem(
+                                    text = { Text("Reset progress") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onResetProgress()
+                                    }
+                                )
+                            }
+                            if (onDelete != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Remove from library") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onDelete()
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
             

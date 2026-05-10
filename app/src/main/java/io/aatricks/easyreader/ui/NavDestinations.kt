@@ -12,6 +12,9 @@ object ExploreRoute
 object LibraryRoute
 
 @Serializable
+object SettingsRoute
+
+@Serializable
 data class NovelDetailsRoute(
     val url: String,
     val source: String

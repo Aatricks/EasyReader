@@ -42,6 +42,20 @@ class LibraryViewModel @Inject constructor(
     private val _sortMode = MutableStateFlow(SortMode.LAST_READ)
     val sortMode: StateFlow<SortMode> = _sortMode.asStateFlow()
 
+    private val _statusFilter = MutableStateFlow(ReadingStatusFilter.ALL)
+    val statusFilter: StateFlow<ReadingStatusFilter> = _statusFilter.asStateFlow()
+
+    enum class ReadingStatusFilter(val label: String) {
+        ALL("All"),
+        READING("Reading"),
+        FINISHED("Finished"),
+        UNREAD("Not started")
+    }
+
+    fun setStatusFilter(filter: ReadingStatusFilter): Unit {
+        _statusFilter.value = filter
+    }
+
     private val _selectedItems = MutableStateFlow<Set<String>>(emptySet())
     private val _selectionModeEnabled = MutableStateFlow(false)
     private val _collapsedSources = MutableStateFlow<Set<String>>(emptySet())
@@ -87,7 +101,9 @@ class LibraryViewModel @Inject constructor(
                 Triple(items, selected, collapsed) to selectionModeEnabled
             }
 
-            val cacheAndPending = combine(_chapterCacheStates, _pendingDeletion) { c, p -> c to p }
+            val cacheAndPending = combine(_chapterCacheStates, _pendingDeletion, _statusFilter) { c, p, s ->
+                Triple(c, p, s)
+            }
 
             combine(
                 repoFlow,
@@ -98,10 +114,10 @@ class LibraryViewModel @Inject constructor(
             ) { repoState, cachePending, query, filter, sort ->
                 val (repoData, selectionModeEnabled) = repoState
                 val (rawItems, selectedIds, collapsedSources) = repoData
-                val (cacheStates, pendingIds) = cachePending
+                val (cacheStates, pendingIds, statusFilter) = cachePending
 
                 val items = if (pendingIds.isEmpty()) rawItems else rawItems.filterNot { it.id in pendingIds }
-                val filteredItems = filterAndSortItems(items, query, filter, sort)
+                val filteredItems = filterAndSortItems(items, query, filter, sort, statusFilter)
 
                 LibraryUiState(
                     items = items,
@@ -167,12 +183,20 @@ class LibraryViewModel @Inject constructor(
         items: List<LibraryItem>,
         query: String,
         filter: ContentType?,
-        sort: SortMode
+        sort: SortMode,
+        statusFilter: ReadingStatusFilter = ReadingStatusFilter.ALL
     ): List<LibraryItem> {
         var filtered = items
 
         if (filter != null) {
             filtered = filtered.filter { it.contentType == filter }
+        }
+
+        filtered = when (statusFilter) {
+            ReadingStatusFilter.ALL -> filtered
+            ReadingStatusFilter.READING -> filtered.filter { it.progress in 1..99 }
+            ReadingStatusFilter.FINISHED -> filtered.filter { it.progress == 100 }
+            ReadingStatusFilter.UNREAD -> filtered.filter { it.progress == 0 }
         }
 
         if (query.isNotBlank()) {

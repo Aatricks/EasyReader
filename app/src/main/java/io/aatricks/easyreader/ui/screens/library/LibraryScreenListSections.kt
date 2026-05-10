@@ -29,7 +29,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -232,7 +235,9 @@ private fun NovelGroupCard(
                         libraryViewModel.markAsCurrentlyReading(id)
                         onCloseLibrary()
                     }
-                }
+                },
+                onResetProgress = { libraryViewModel.resetNovelProgress(title) },
+                onRemoveGroup = { libraryViewModel.removeGroup(title) }
             )
 
             if (isExpanded) {
@@ -304,8 +309,12 @@ private fun NovelGroupHeader(
     onToggleExpand: () -> Unit,
     onToggleSelection: () -> Unit,
     onOpenItem: (LibraryItem) -> Unit,
-    onOpenNewChapter: (LibraryItem) -> Unit
+    onOpenNewChapter: (LibraryItem) -> Unit,
+    onResetProgress: () -> Unit,
+    onRemoveGroup: () -> Unit
 ): Unit {
+    var menuExpanded by remember { mutableStateOf(false) }
+    val hasProgress = items.any { it.progress > 0 }
     val resumeItem = items.find { it.isCurrentlyReading } ?: items.maxByOrNull { it.lastRead } ?: items.first()
     val updateItem = latestLibraryUpdateItem(items)
 
@@ -371,6 +380,38 @@ private fun NovelGroupHeader(
                 imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = if (isExpanded) "Hide chapters" else "Browse chapters"
             )
+        }
+
+        if (!isSelectionMode) {
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "More actions"
+                    )
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false }
+                ) {
+                    if (hasProgress) {
+                        DropdownMenuItem(
+                            text = { Text("Reset reading progress") },
+                            onClick = {
+                                menuExpanded = false
+                                onResetProgress()
+                            }
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text("Remove from library") },
+                        onClick = {
+                            menuExpanded = false
+                            onRemoveGroup()
+                        }
+                    )
+                }
+            }
         }
     }
 }

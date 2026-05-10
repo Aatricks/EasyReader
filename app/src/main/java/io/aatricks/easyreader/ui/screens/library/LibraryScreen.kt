@@ -19,6 +19,8 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,8 +36,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import io.aatricks.easyreader.data.model.*
+import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.ui.ExploreRoute
+import io.aatricks.easyreader.ui.SettingsRoute
 import io.aatricks.easyreader.ui.components.ChapterSummaryDropdown
 import io.aatricks.easyreader.ui.theme.EasyReaderMotion
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
@@ -57,6 +61,7 @@ fun LibraryScreen(
     val readerUiState by readerViewModel.uiState.collectAsState()
     val searchQuery by libraryViewModel.searchQuery.collectAsState()
     val pendingDeletion by libraryViewModel.pendingDeletion.collectAsState()
+    val statusFilter by libraryViewModel.statusFilter.collectAsState()
     val summaryViewModel: SummaryViewModel = hiltViewModel()
     val summaryUiState by summaryViewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -111,6 +116,12 @@ fun LibraryScreen(
                         onClick = { isAddSectionVisible = !isAddSectionVisible }
                     ) {
                         Text(if (isAddSectionVisible) "Hide tools" else "Add / import")
+                    }
+                    IconButton(onClick = { navController.navigate(SettingsRoute) }) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Settings"
+                        )
                     }
                 }
             )
@@ -181,6 +192,15 @@ fun LibraryScreen(
                 )
             }
 
+            if (libraryUiState.items.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
+                ReadingStatusFilterRow(
+                    selected = statusFilter,
+                    counts = remember(libraryUiState.items) { computeStatusCounts(libraryUiState.items) },
+                    onSelect = { libraryViewModel.setStatusFilter(it) }
+                )
+            }
+
             Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
 
             if (libraryUiState.items.isEmpty()) {
@@ -189,24 +209,88 @@ fun LibraryScreen(
                     isFilteredEmpty = searchQuery.isNotBlank(),
                     onClearSearch = { libraryViewModel.updateSearchQuery("") }
                 )
-            } else if (libraryUiState.filteredItems.isEmpty() && searchQuery.isNotBlank()) {
+            } else if (libraryUiState.filteredItems.isEmpty() &&
+                (searchQuery.isNotBlank() || statusFilter != LibraryViewModel.ReadingStatusFilter.ALL)
+            ) {
                 EmptyLibraryState(
                     isSearchEmpty = true,
                     isFilteredEmpty = true,
-                    onClearSearch = { libraryViewModel.updateSearchQuery("") },
+                    onClearSearch = {
+                        libraryViewModel.updateSearchQuery("")
+                        libraryViewModel.setStatusFilter(LibraryViewModel.ReadingStatusFilter.ALL)
+                    },
                     query = searchQuery
                 )
             } else {
-                LibraryItemList(
-                    uiState = libraryUiState,
-                    readerUiState = readerUiState,
-                    summaryUiState = summaryUiState,
-                    libraryViewModel = libraryViewModel,
-                    readerViewModel = readerViewModel,
-                    summaryViewModel = summaryViewModel,
-                    onCloseLibrary = onNavigateBack
-                )
+                var isRefreshing by remember { mutableStateOf(false) }
+                val pullState = rememberPullToRefreshState()
+
+                LaunchedEffect(libraryUiState.isLoading) {
+                    if (!libraryUiState.isLoading) isRefreshing = false
+                }
+
+                PullToRefreshBox(
+                    isRefreshing = isRefreshing,
+                    state = pullState,
+                    onRefresh = {
+                        isRefreshing = true
+                        libraryViewModel.prefetchLibrary()
+                        scope.launch { snackbarHostState.showSnackbar("Refreshing offline cache…") }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    LibraryItemList(
+                        uiState = libraryUiState,
+                        readerUiState = readerUiState,
+                        summaryUiState = summaryUiState,
+                        libraryViewModel = libraryViewModel,
+                        readerViewModel = readerViewModel,
+                        summaryViewModel = summaryViewModel,
+                        onCloseLibrary = onNavigateBack
+                    )
+                }
             }
+        }
+    }
+}
+
+private fun computeStatusCounts(items: List<LibraryItem>): Map<LibraryViewModel.ReadingStatusFilter, Int> {
+    val all = items.size
+    val reading = items.count { it.progress in 1..99 }
+    val finished = items.count { it.progress == 100 }
+    val unread = items.count { it.progress == 0 }
+    return mapOf(
+        LibraryViewModel.ReadingStatusFilter.ALL to all,
+        LibraryViewModel.ReadingStatusFilter.READING to reading,
+        LibraryViewModel.ReadingStatusFilter.FINISHED to finished,
+        LibraryViewModel.ReadingStatusFilter.UNREAD to unread
+    )
+}
+
+@Composable
+private fun ReadingStatusFilterRow(
+    selected: LibraryViewModel.ReadingStatusFilter,
+    counts: Map<LibraryViewModel.ReadingStatusFilter, Int>,
+    onSelect: (LibraryViewModel.ReadingStatusFilter) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
+    ) {
+        LibraryViewModel.ReadingStatusFilter.entries.forEach { filter ->
+            val count = counts[filter] ?: 0
+            FilterChip(
+                selected = selected == filter,
+                onClick = { onSelect(filter) },
+                label = {
+                    Text(
+                        text = if (count > 0 || filter == LibraryViewModel.ReadingStatusFilter.ALL)
+                            "${filter.label} ($count)" else filter.label
+                    )
+                }
+            )
         }
     }
 }
