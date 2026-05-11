@@ -1,6 +1,7 @@
 package io.aatricks.easyreader.data.repository.content
 
 import io.aatricks.easyreader.util.CacheKeyUtils
+import io.aatricks.easyreader.util.FileSizeUtils
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -11,6 +12,12 @@ class ImageCache @Inject constructor(
     @MediaCacheDir private val mediaCacheDir: File
 ) {
     fun getCachedMediaFile(url: String): File = findExistingCachedMediaFile(url) ?: primaryCachedMediaFile(url)
+
+    fun getRootDir(): File = mediaCacheDir
+
+    fun getCacheSize(): Long = FileSizeUtils.calculateDirectorySize(mediaCacheDir)
+
+    fun trimToSize(maxBytes: Long): Long = FileSizeUtils.trimDirectoryToSize(mediaCacheDir, maxBytes)
 
     fun findExistingCachedMediaFile(url: String): File? =
         cacheFileVariants(primaryCachedMediaFile(url), legacyCachedMediaFile(url))

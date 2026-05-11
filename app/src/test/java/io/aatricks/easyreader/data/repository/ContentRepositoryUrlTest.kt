@@ -16,7 +16,6 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.TimeoutCancellationException
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -130,30 +129,23 @@ class ContentRepositoryUrlTest {
     }
 
     @Test
-    fun getCacheSize_includes_http_and_image_cache() = runTest {
-        val imageCacheDir = File(tempCacheDir, "image_cache").apply { mkdirs() }
-        File(imageCacheDir, "chapter.bin").writeBytes(ByteArray(7))
-
+    fun getCacheSize_includes_loader_and_http_caches() = runTest {
         whenever(webLoader.getCacheSize()).thenReturn(11L)
         whenever(epubLoader.getCacheSize()).thenReturn(13L)
+        whenever(pdfLoader.getCacheSize()).thenReturn(0L)
         whenever(okHttpCache.size()).thenReturn(17L)
 
-        assertEquals(48L, repository.getCacheSize())
+        assertEquals(41L, repository.getCacheSize())
     }
 
     @Test
-    fun clearAllCache_clears_external_disk_caches() = runTest {
-        val imageCacheDir = File(tempCacheDir, "image_cache").apply { mkdirs() }
-        File(imageCacheDir, "chapter.bin").writeBytes(ByteArray(5))
-
+    fun clearAllCache_clears_loader_and_http_caches() = runTest {
         assertTrue(repository.clearAllCache())
 
         verify(webLoader).clearAllCache()
         verify(epubLoader).clearAllCache()
         verify(pdfLoader).clearAllCache()
         verify(okHttpCache).evictAll()
-        assertTrue(imageCacheDir.exists())
-        assertFalse(imageCacheDir.listFiles()?.isNotEmpty() == true)
     }
 
     @Test

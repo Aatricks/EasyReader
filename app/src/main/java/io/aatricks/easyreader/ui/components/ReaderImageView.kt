@@ -148,13 +148,6 @@ fun ReaderImageView(
     var isCachedImage by remember(imageUrl, cachedFile) { 
         mutableStateOf(imageUrl.startsWith("file") || (cachedFile != null && cachedFile.exists()))
     }
-    
-    // Trigger user-priority app-cache repair for visible missing web images
-    LaunchedEffect(imageUrl, pageUrl, isCachedImage) {
-        if (!isCachedImage && imageUrl.startsWith("http")) {
-            readerViewModel.downloadVisibleImage(imageUrl, pageUrl)
-        }
-    }
 
     val showAnimatedLoadingUi = shouldUseAnimatedImageLoadingUi(
         enableZoom = enableZoom,
@@ -166,7 +159,7 @@ fun ReaderImageView(
         val referer = if (imageUrl.startsWith("http")) readerViewModel.contentRepository.getReferer(pageUrl) else null
         
         ImageRequest.Builder(context)
-            .data(if (isCachedImage && imageUrl.startsWith("http")) cachedFile else imageUrl)
+            .data(imageUrl)
             .apply {
                 if (shouldSubsampleImage) {
                     size(screenWidthPx, screenHeightPx)
@@ -273,9 +266,6 @@ fun ReaderImageView(
                         isError = false
                         isLoadingHoisted = true
                         retryTrigger = System.currentTimeMillis()
-                        if (imageUrl.startsWith("http")) {
-                            readerViewModel.downloadVisibleImage(imageUrl, pageUrl)
-                        }
                     }
             ) {
                 Text(

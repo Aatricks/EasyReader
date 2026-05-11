@@ -18,6 +18,8 @@ import com.itextpdf.kernel.pdf.canvas.parser.listener.LocationTextExtractionStra
 import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.ContentResult
 import io.aatricks.easyreader.util.CacheKeyUtils
+import io.aatricks.easyreader.util.FileSizeUtils
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,6 +34,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.ArrayDeque
+import java.util.LinkedHashMap
 import java.util.concurrent.ConcurrentHashMap
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -66,7 +69,7 @@ class PdfContentLoader @Inject constructor(
     private val loaderScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     
     private val pageCountCache = ConcurrentHashMap<String, Int>()
-    private val globalContentCache = LruCache<String, MutableMap<Int, ContentElement>>(MAX_GLOBAL_PDF_CACHE_SIZE)
+    private val globalContentCache = LruCache<String, LinkedHashMap<Int, ContentElement>>(MAX_GLOBAL_PDF_CACHE_SIZE)
 
     internal fun loadingProfileForTests(): LoadingProfile = LoadingProfile(
         prefetchForward = PREFETCH_FORWARD,
@@ -121,18 +124,22 @@ class PdfContentLoader @Inject constructor(
         globalContentCache.get(filePath)?.toMap().orEmpty()
     }
 
+    private fun getGlobalCachedPage(filePath: String, index: Int): ContentElement? = synchronized(globalContentCache) {
+        globalContentCache.get(filePath)?.get(index)
+    }
+
     private fun addToGlobalCache(filePath: String, index: Int, content: ContentElement) {
         synchronized(globalContentCache) {
             var docCache = globalContentCache.get(filePath)
             if (docCache == null) {
-                docCache = mutableMapOf()
+                docCache = LinkedHashMap<Int, ContentElement>(MAX_GLOBAL_PAGE_CACHE_PER_PDF + 1, 0.75f, true)
                 globalContentCache.put(filePath, docCache)
             }
             docCache[index] = content
 
             if (docCache.size > MAX_GLOBAL_PAGE_CACHE_PER_PDF) {
-                val firstKey = docCache.keys.firstOrNull()
-                if (firstKey != null) docCache.remove(firstKey)
+                val eldestKey = docCache.entries.firstOrNull()?.key
+                if (eldestKey != null) docCache.remove(eldestKey)
             }
         }
     }
@@ -145,7 +152,7 @@ class PdfContentLoader @Inject constructor(
         if (preloadPageIndex == null || pageCount <= 0) return emptyMap()
 
         val targetIndex = preloadPageIndex.coerceIn(0, pageCount - 1)
-        val cachedPage = getGlobalCacheSnapshot(filePath)[targetIndex]
+        val cachedPage = getGlobalCachedPage(filePath, targetIndex)
         if (cachedPage != null) {
             return mapOf(targetIndex to cachedPage)
         }
@@ -308,11 +315,13 @@ class PdfContentLoader @Inject constructor(
         private val handleSemaphore = Semaphore(poolSize)
         private val idleHandles = ArrayDeque<PdfDocumentHandle>()
         private var isClosed = false
+        @Volatile private var lastAccessedIndex = preloadedPages.keys.firstOrNull() ?: 0
 
         override val size: Int get() = totalPages
 
         override fun get(index: Int): ContentElement {
             if (index < 0 || index >= size) throw IndexOutOfBoundsException("Index: $index, Size: $size")
+            lastAccessedIndex = index
 
             pageCache[index]?.let { return it }
 
@@ -340,16 +349,21 @@ class PdfContentLoader @Inject constructor(
         private fun triggerLoad(index: Int) {
             if (isClosed || pageCache.containsKey(index) || loadingJobs.containsKey(index)) return
 
-            val job = loaderScope.launch {
-                val result = loadPageContent(index + 1)
-
-                withContext(Dispatchers.Main) {
+            val job = loaderScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    val result = loadPageContent(index + 1)
                     addToCache(index, result)
+                } finally {
                     loadingJobs.remove(index)
                 }
             }
-            
-            loadingJobs[index] = job
+
+            val existing = loadingJobs.putIfAbsent(index, job)
+            if (existing != null) {
+                job.cancel()
+                return
+            }
+            job.start()
 
             if (loadingJobs.size > MAX_IN_FLIGHT_JOBS) {
                 val furthestCandidates = loadingJobs.keys
@@ -380,7 +394,8 @@ class PdfContentLoader @Inject constructor(
 
             // Distance-based eviction: remove pages far from current position
             if (pageCache.size > MAX_LOCAL_CACHE_SIZE) {
-                val toEvict = pageCache.keys.filter { abs(it - index) > EVICTION_DISTANCE }
+                val anchorIndex = lastAccessedIndex
+                val toEvict = pageCache.keys.filter { abs(it - anchorIndex) > EVICTION_DISTANCE }
                 toEvict.forEach { pageCache.remove(it) }
             }
         }
@@ -512,6 +527,10 @@ class PdfContentLoader @Inject constructor(
         }
         pageCountCache.clear()
         clearAllPdfImageCache()
+    }
+
+    fun getCacheSize(): Long {
+        return FileSizeUtils.calculateDirectorySize(File(context.cacheDir, "pdf_images"))
     }
 
     private fun clearAllPdfImageCache() {

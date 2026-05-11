@@ -1,7 +1,12 @@
 package io.aatricks.easyreader.data.repository.content
 
 import io.aatricks.easyreader.data.model.ImageRequestPriority
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -17,6 +22,8 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.nio.ByteBuffer
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import okio.Buffer
@@ -110,7 +117,7 @@ class ImageDownloaderTest {
     }
 
     @Test
-    fun `executeImageRequest respects host throttling`() = runBlocking {
+    fun `executeImageRequest lightly spaces successful same-host requests`() = runBlocking {
         val imageUrl = "https://example.com/image.jpg"
         val requests = AtomicInteger(0)
         val timestamps = mutableListOf<Long>()
@@ -127,7 +134,67 @@ class ImageDownloaderTest {
         downloader.executeImageRequest(imageUrl, "page", ImageRequestPriority.USER_REQUESTED)
         
         assertEquals(2, requests.get())
-        assertTrue(timestamps[1] - timestamps[0] >= 400) // HOST_REQUEST_SPACING_MS is 450L
+        assertTrue(timestamps[1] - timestamps[0] < 250)
+    }
+
+    @Test
+    fun `same host requests can overlap within concurrency limit`() = runBlocking {
+        val started = AtomicInteger(0)
+        val inFlight = AtomicInteger(0)
+        val maxInFlight = AtomicInteger(0)
+        val release = CountDownLatch(1)
+        val client = createClient { chain ->
+            started.incrementAndGet()
+            val current = inFlight.incrementAndGet()
+            maxInFlight.updateAndGet { previous -> maxOf(previous, current) }
+            release.await(3, TimeUnit.SECONDS)
+            inFlight.decrementAndGet()
+            buildResponse(chain.request(), "data", "image/jpeg")
+        }
+        val downloader = ImageDownloader(client)
+
+        val requests = (1..4).map { index ->
+            async {
+                withContext(Dispatchers.IO) {
+                    downloader.executeImageRequest(
+                        imageUrl = "https://example.com/image-$index.jpg",
+                        pageUrl = "https://example.com/page",
+                        priority = ImageRequestPriority.USER_REQUESTED
+                    )
+                }
+            }
+        }
+
+        repeat(20) {
+            if (started.get() >= 2) return@repeat
+            delay(25)
+        }
+        release.countDown()
+        requests.awaitAll()
+
+        assertTrue(maxInFlight.get() in 2..4)
+    }
+
+    @Test
+    fun `host throttle state is capped`() = runBlocking {
+        val client = createClient { chain ->
+            buildResponse(chain.request(), "data", "image/jpeg")
+        }
+        val downloader = ImageDownloader(client)
+
+        repeat(300) { index ->
+            downloader.executeImageRequest(
+                imageUrl = "https://host-$index.example/image.jpg",
+                pageUrl = "https://host-$index.example/page",
+                priority = ImageRequestPriority.SPECULATIVE
+            )
+        }
+
+        val field = ImageDownloader::class.java.getDeclaredField("hostThrottleStates").apply {
+            isAccessible = true
+        }
+        val states = field.get(downloader) as Map<*, *>
+        assertTrue(states.size <= 256)
     }
 
     @Test

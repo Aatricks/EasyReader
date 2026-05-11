@@ -1,10 +1,10 @@
 package io.aatricks.easyreader.data.repository
 
 import android.content.Context
-import android.net.Uri
 import coil3.SingletonImageLoader
 import io.aatricks.easyreader.data.model.*
 import io.aatricks.easyreader.data.repository.content.*
+import io.aatricks.easyreader.util.FileSizeUtils
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.CancellationException
@@ -36,6 +36,8 @@ class ContentRepository @Inject constructor(
 
     companion object {
         private const val WEB_CHAPTER_LOAD_TIMEOUT_MS = 25_000L
+        private const val MAX_MEDIA_CACHE_BYTES = 512L * 1024L * 1024L
+        private const val MAX_HTML_CACHE_BYTES = 64L * 1024L * 1024L
         private val CHAPTER_URL_PATTERNS = listOf(
             Regex("(chapter[-_/])(\\d+)", RegexOption.IGNORE_CASE),
             Regex("(ch[-_/]?)(\\d+)", RegexOption.IGNORE_CASE)
@@ -55,7 +57,7 @@ class ContentRepository @Inject constructor(
 
     suspend fun loadContent(url: String, pdfResumeIndex: Int?): ContentResult = withContext(Dispatchers.IO) {
         try {
-            when (resolveContentKind(url)) {
+            val result = when (resolveContentKind(url)) {
                 ContentKind.WEB -> withTimeout(WEB_CHAPTER_LOAD_TIMEOUT_MS) {
                     webLoader.loadWebContent(url)
                 }
@@ -63,6 +65,10 @@ class ContentRepository @Inject constructor(
                     localLoader.loadLocalContent(url, pdfResumeIndex)
                 ContentKind.UNKNOWN -> ContentResult.Error("Unsupported file type")
             }
+            if (resolveContentKind(url) == ContentKind.WEB) {
+                trimCachesInternal()
+            }
+            result
         } catch (e: TimeoutCancellationException) {
             ContentResult.Error("Timed out loading chapter")
         } catch (e: CancellationException) {
@@ -80,11 +86,17 @@ class ContentRepository @Inject constructor(
         }
     }
 
-    suspend fun downloadAndCacheImage(imageUrl: String, pageUrl: String): File? = 
-        webLoader.downloadAndCacheImage(imageUrl, pageUrl)
+    suspend fun downloadAndCacheImage(imageUrl: String, pageUrl: String): File? = withContext(Dispatchers.IO) {
+        webLoader.downloadAndCacheImage(imageUrl, pageUrl).also {
+            trimCachesInternal()
+        }
+    }
 
-    suspend fun warmImage(imageUrl: String, pageUrl: String): Boolean =
-        webLoader.warmImage(imageUrl, pageUrl) != null
+    suspend fun warmImage(imageUrl: String, pageUrl: String): Boolean = withContext(Dispatchers.IO) {
+        (webLoader.warmImage(imageUrl, pageUrl) != null).also {
+            trimCachesInternal()
+        }
+    }
 
     fun getCachedMediaFile(url: String): File = webLoader.getCachedMediaFile(url)
 
@@ -123,7 +135,7 @@ class ContentRepository @Inject constructor(
     }
 
     suspend fun prefetch(url: String, mode: PrefetchMode): PrefetchResult = withContext(Dispatchers.IO) {
-        runCatching {
+        val result = runCatching {
             when (resolveContentKind(url)) {
                 ContentKind.WEB -> webLoader.prefetch(url, mode)
                 ContentKind.EPUB ->
@@ -138,6 +150,8 @@ class ContentRepository @Inject constructor(
         }.getOrElse {
             PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = true)
         }
+        trimCachesInternal()
+        result
     }
 
     suspend fun inspectCache(url: String): PrefetchResult = withContext(Dispatchers.IO) {
@@ -228,8 +242,12 @@ class ContentRepository @Inject constructor(
     suspend fun getCacheSize(): Long = withContext(Dispatchers.IO) {
         webLoader.getCacheSize() +
             epubLoader.getCacheSize() +
-            getHttpCacheSize() +
-            calculateDirectorySize(File(context.cacheDir, "image_cache"))
+            pdfLoader.getCacheSize() +
+            getHttpCacheSize()
+    }
+
+    suspend fun trimCaches(): Unit = withContext(Dispatchers.IO) {
+        trimCachesInternal()
     }
 
     private fun localContentResult(url: String): PrefetchResult {
@@ -271,24 +289,19 @@ class ContentRepository @Inject constructor(
             imageLoader.memoryCache?.clear()
             imageLoader.diskCache?.clear()
         }
-
-        File(context.cacheDir, "image_cache").apply {
-            deleteRecursively()
-            mkdirs()
-        }
     }
 
     private fun getHttpCacheSize(): Long {
         val httpCacheDir = File(context.cacheDir, "http_cache")
-        return runCatching { okHttpClient.cache?.size() ?: calculateDirectorySize(httpCacheDir) }
-            .getOrElse { calculateDirectorySize(httpCacheDir) }
+        return runCatching { okHttpClient.cache?.size() ?: FileSizeUtils.calculateDirectorySize(httpCacheDir) }
+            .getOrElse { FileSizeUtils.calculateDirectorySize(httpCacheDir) }
     }
 
-    private fun calculateDirectorySize(dir: File): Long {
-        if (!dir.exists()) return 0L
-        return dir.walkTopDown()
-            .filter(File::isFile)
-            .sumOf(File::length)
+    private fun trimCachesInternal() {
+        webLoader.trimCaches(
+            maxHtmlBytes = MAX_HTML_CACHE_BYTES,
+            maxMediaBytes = MAX_MEDIA_CACHE_BYTES
+        )
     }
 
     private fun isRemoteWebUrl(url: String): Boolean =

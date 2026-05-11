@@ -8,6 +8,8 @@ import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.repository.HtmlParser
 import io.aatricks.easyreader.util.CacheKeyUtils
+import io.aatricks.easyreader.util.FileSizeUtils
+import io.aatricks.easyreader.util.HttpRetry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,20 +26,14 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.Response
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.io.File
 import java.io.IOException
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.SimpleFileVisitor
-import java.nio.file.attribute.BasicFileAttributes
 import io.aatricks.easyreader.di.HtmlCacheDir
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.absoluteValue
 
 @Singleton
 class WebContentLoader @Inject constructor(
@@ -77,9 +73,14 @@ class WebContentLoader @Inject constructor(
         val deferred: Deferred<ImageDownloadResult>
     )
 
+    private data class InFlightHtmlFetch(
+        val priority: ImageRequestPriority,
+        val deferred: Deferred<CachedDocument>
+    )
+
     private val inFlightImageDownloads = mutableMapOf<String, InFlightImageDownload>()
     private val inFlightChapterPrefetches = mutableMapOf<String, Deferred<PrefetchResult>>()
-    private val inFlightChapterPrefetchModes = mutableMapOf<String, PrefetchMode>()
+    private val inFlightHtmlFetches = mutableMapOf<String, InFlightHtmlFetch>()
 
     private data class CachedDocument(
         val document: Document,
@@ -172,7 +173,6 @@ class WebContentLoader @Inject constructor(
                         chapterPrefetchMutex.withLock {
                             if (inFlightChapterPrefetches[url] === created) {
                                 inFlightChapterPrefetches.remove(url)
-                                inFlightChapterPrefetchModes.remove(url)
                             }
                         }
                     }
@@ -186,7 +186,6 @@ class WebContentLoader @Inject constructor(
                     current
                 } else {
                     inFlightChapterPrefetches[url] = deferred
-                    inFlightChapterPrefetchModes[url] = mode
                     deferred
                 }
             }
@@ -200,14 +199,7 @@ class WebContentLoader @Inject constructor(
 
     suspend fun fetchTitle(url: String): String? = withContext(Dispatchers.IO) {
         runCatching {
-            val cached = getCachedFile(url)
-            val doc = if (cached.exists()) {
-                Jsoup.parse(cached, "UTF-8", url)
-            } else {
-                val html = downloadHtml(url)
-                cached.writeText(html)
-                Jsoup.parse(html, url)
-            }
+            val doc = getDocumentFromCacheOrNetwork(url).document
             doc.title().takeIf { it.isNotBlank() }
         }.getOrNull()
     }
@@ -248,7 +240,7 @@ class WebContentLoader @Inject constructor(
     suspend fun resetInFlightState(url: String) {
         chapterPrefetchMutex.withLock {
             inFlightChapterPrefetches.remove(url)
-            inFlightChapterPrefetchModes.remove(url)
+            inFlightHtmlFetches.remove(url)
         }
     }
 
@@ -263,24 +255,69 @@ class WebContentLoader @Inject constructor(
     }
 
     fun getCacheSize(): Long {
-        return calculateDirectorySize(cacheDir) + calculateDirectorySize(imageCache.getCachedMediaFile("").parentFile!!)
+        return FileSizeUtils.calculateDirectorySize(cacheDir) + imageCache.getCacheSize()
+    }
+
+    fun trimCaches(maxHtmlBytes: Long, maxMediaBytes: Long) {
+        FileSizeUtils.trimDirectoryToSize(cacheDir, maxHtmlBytes)
+        imageCache.trimToSize(maxMediaBytes)
     }
 
     private suspend fun getDocumentFromCacheOrNetwork(url: String, priority: ImageRequestPriority = ImageRequestPriority.USER_REQUESTED): CachedDocument {
-        val cachedFile = findExistingCachedFile(url)
-        return if (cachedFile != null) {
-            CachedDocument(
+        findExistingCachedFile(url)?.let { cachedFile ->
+            return CachedDocument(
                 document = Jsoup.parse(cachedFile, "UTF-8", url),
                 fromCache = true
             )
-        } else {
-            val html = downloadHtml(url, priority = priority)
-            primaryCachedFile(url).writeText(html)
-            CachedDocument(
-                document = Jsoup.parse(html, url),
-                fromCache = false
+        }
+
+        val inFlight = chapterPrefetchMutex.withLock { inFlightHtmlFetches[url] }
+        if (priority == ImageRequestPriority.USER_REQUESTED &&
+            inFlight != null &&
+            inFlight.priority == ImageRequestPriority.SPECULATIVE
+        ) {
+            runCatching { inFlight.deferred.await() }.getOrNull()?.let { return it }
+            chapterPrefetchMutex.withLock {
+                if (inFlightHtmlFetches[url] === inFlight) {
+                    inFlightHtmlFetches.remove(url)
+                }
+            }
+        }
+
+        val deferred = chapterPrefetchMutex.withLock {
+            inFlightHtmlFetches[url]?.deferred ?: repositoryScope.async {
+                fetchAndCacheDocument(url, priority)
+            }.also { created ->
+                created.invokeOnCompletion {
+                    repositoryScope.launch {
+                        chapterPrefetchMutex.withLock {
+                            if (inFlightHtmlFetches[url]?.deferred === created) {
+                                inFlightHtmlFetches.remove(url)
+                            }
+                        }
+                    }
+                }
+                inFlightHtmlFetches[url] = InFlightHtmlFetch(priority, created)
+            }
+        }
+
+        return deferred.await()
+    }
+
+    private suspend fun fetchAndCacheDocument(url: String, priority: ImageRequestPriority): CachedDocument {
+        findExistingCachedFile(url)?.let { cachedFile ->
+            return CachedDocument(
+                document = Jsoup.parse(cachedFile, "UTF-8", url),
+                fromCache = true
             )
         }
+
+        val html = downloadHtml(url, priority = priority)
+        writeTextAtomically(primaryCachedFile(url), html)
+        return CachedDocument(
+            document = Jsoup.parse(html, url),
+            fromCache = false
+        )
     }
 
     private fun extractImageUrls(elements: List<ContentElement>): List<String> {
@@ -329,11 +366,11 @@ class WebContentLoader @Inject constructor(
                     if (response.isSuccessful) {
                         return response.body?.string() ?: throw Exception("Empty body")
                     } else {
-                        val retryAfter = response.header("Retry-After")?.let(::parseRetryAfterMs)
-                        if (!shouldRetryResponseCode(response.code) || attempt == attempts - 1) {
+                        val retryAfter = HttpRetry.parseRetryAfterMs(response.header("Retry-After"))
+                        if (!HttpRetry.shouldRetryResponseCode(response.code) || attempt == attempts - 1) {
                             throw Exception("HTTP ${response.code}")
                         }
-                        delay(nextRetryDelayMs(retryAfter, url, attempt))
+                        delay(HttpRetry.nextRetryDelayMs(retryAfter, url, attempt))
                     }
                 }
             } catch (e: Exception) {
@@ -341,7 +378,7 @@ class WebContentLoader @Inject constructor(
                 if (attempt == attempts - 1 || (e is Exception && e.message?.startsWith("HTTP") == true && !shouldRetryException(e))) {
                     throw e
                 }
-                delay(nextRetryDelayMs(null, url, attempt))
+                delay(HttpRetry.nextRetryDelayMs(null, url, attempt))
             }
         }
         throw lastException ?: Exception("Failed to download HTML")
@@ -351,7 +388,7 @@ class WebContentLoader @Inject constructor(
         val msg = e.message ?: return true
         if (msg.startsWith("HTTP ")) {
             val code = msg.removePrefix("HTTP ").toIntOrNull() ?: return true
-            return shouldRetryResponseCode(code)
+            return HttpRetry.shouldRetryResponseCode(code)
         }
         return true
     }
@@ -726,17 +763,7 @@ class WebContentLoader @Inject constructor(
             }
         }
 
-        try {
-            return@withContext deferred.await()
-        } finally {
-            if (deferred.isCompleted) {
-                imageDownloadMutex.withLock {
-                    if (inFlightImageDownloads[imageUrl]?.deferred === deferred) {
-                        inFlightImageDownloads.remove(imageUrl)
-                    }
-                }
-            }
-        }
+        return@withContext deferred.await()
     }
 
     private suspend fun inspectCacheInternal(
@@ -760,16 +787,14 @@ class WebContentLoader @Inject constructor(
         }
         
         val isInProgress = chapterPrefetchMutex.withLock { url in inFlightChapterPrefetches }
-        val isComplete = htmlCached && imageUrls.isNotEmpty() && cachedImages == imageUrls.size
-        
-        // If HTML is cached but we couldn't find images (maybe parsing failed or it truly has no images),
-        // we consider it complete only if it was successfully parsed once.
-        val finalComplete = if (htmlCached && imageUrls.isEmpty()) {
-            // If it's a known non-image content kind, this might be okay.
-            // For manhwa/web content, usually there are images.
-            true 
-        } else {
-            isComplete
+        val documentHasImageTags = document?.select("img[src], image[href], image[xlink|href], source[srcset]")
+            ?.isNotEmpty() == true
+        val documentHasNonEmptyBody = document?.body()?.html()?.isNotBlank() == true
+        val finalComplete = when {
+            !htmlCached -> false
+            imageUrls.isNotEmpty() -> cachedImages == imageUrls.size
+            documentHasImageTags -> false
+            else -> documentHasNonEmptyBody
         }
 
         return PrefetchResult(
@@ -781,27 +806,6 @@ class WebContentLoader @Inject constructor(
             isInProgress = isInProgress,
             isRetryable = !finalComplete
         )
-    }
-
-    private fun parseRetryAfterMs(value: String): Long? {
-        val seconds = value.trim().toLongOrNull() ?: return null
-        return (seconds.coerceAtLeast(1L) * 1000L)
-            .coerceAtMost(ImageDownloader.MAX_HOST_THROTTLE_MS)
-    }
-
-    private fun shouldRetryResponseCode(code: Int): Boolean {
-        return code == 408 || code == 429 || code in listOf(500, 502, 503, 504)
-    }
-
-    private fun nextRetryDelayMs(
-        retryAfterMs: Long?,
-        key: String,
-        attempt: Int
-    ): Long {
-        if (retryAfterMs != null) return retryAfterMs
-        val baseDelay = 400L * (1L shl attempt.coerceAtMost(3))
-        val jitter = (key.hashCode().toLong().absoluteValue % 180L)
-        return baseDelay + jitter
     }
 
     private fun groupSimilarElements(elements: List<ContentElement>): List<ContentElement> {
@@ -870,25 +874,6 @@ class WebContentLoader @Inject constructor(
         return currentRatio < 1.2f && groupRatio + currentRatio < MAX_GROUPED_STRIP_RATIO
     }
 
-    private fun calculateDirectorySize(dir: File): Long {
-        if (!dir.exists()) return 0L
-        var size = 0L
-        try {
-            Files.walkFileTree(dir.toPath(), object : SimpleFileVisitor<Path>() {
-                override fun visitFile(file: Path, attrs: BasicFileAttributes): java.nio.file.FileVisitResult {
-                    size += attrs.size()
-                    return java.nio.file.FileVisitResult.CONTINUE
-                }
-                override fun visitFileFailed(file: Path, exc: IOException?): java.nio.file.FileVisitResult {
-                    return java.nio.file.FileVisitResult.CONTINUE
-                }
-            })
-        } catch (e: Exception) {
-            // Ignore
-        }
-        return size
-    }
-
     private fun primaryCachedFile(url: String): File =
         File(cacheDir, "${CacheKeyUtils.keyFor(url)}.html")
 
@@ -902,6 +887,19 @@ class WebContentLoader @Inject constructor(
     private fun deleteCachedHtmlFiles(url: String) {
         cacheFileVariants(primaryCachedFile(url), legacyCachedFile(url))
             .forEach { it.delete() }
+    }
+
+    private fun writeTextAtomically(target: File, text: String) {
+        target.parentFile?.mkdirs()
+        val tempFile = File.createTempFile("${target.name}.", ".tmp", target.parentFile)
+        try {
+            tempFile.writeText(text)
+            if (!tempFile.renameTo(target) && !target.exists()) {
+                throw IOException("Failed to cache HTML")
+            }
+        } finally {
+            tempFile.delete()
+        }
     }
 
     private fun cacheFileVariants(primary: File, legacy: File): List<File> =

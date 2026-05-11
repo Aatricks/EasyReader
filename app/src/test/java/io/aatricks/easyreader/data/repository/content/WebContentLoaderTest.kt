@@ -124,7 +124,7 @@ class WebContentLoaderTest {
                             rangeRequests.incrementAndGet()
                             buildByteResponse(request, tinyPng(width = 1000, height = 600), "image/png")
                         } else {
-                            buildByteResponse(request, tinyPng(width = 1000, height = 600), "image/png")
+                            buildByteResponse(request, "not-an-image".toByteArray(), "image/png")
                         }
                     }
 
@@ -362,6 +362,63 @@ class WebContentLoaderTest {
         assertEquals(0, image.width)
         assertEquals(0, image.height)
         assertTrue(fullRequests.get() >= 0)
+    }
+
+    @Test
+    fun `concurrent loadWebContent shares one html fetch for same url`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-single-flight"
+        val htmlRequests = AtomicInteger(0)
+        val htmlParser = mock<HtmlParser>()
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                when (request.url.toString()) {
+                    chapterUrl -> {
+                        htmlRequests.incrementAndGet()
+                        Thread.sleep(150)
+                        buildResponse(
+                            request,
+                            "<html><head><title>Single Flight</title></head><body><p>Loaded</p></body></html>",
+                            "text/html"
+                        )
+                    }
+                    else -> buildResponse(request, "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Text("Loaded")))
+
+        val results = listOf(
+            async { loader.loadWebContent(chapterUrl) },
+            async { loader.loadWebContent(chapterUrl) }
+        ).awaitAll()
+
+        assertTrue(results.all { it is ContentResult.Success })
+        assertEquals(1, htmlRequests.get())
+    }
+
+    @Test
+    fun `cached empty html with no parsed images is not complete`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-empty"
+        val htmlParser = mock<HtmlParser>()
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                buildResponse(chain.request(), "", "text/plain", code = 404)
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(emptyList())
+        loader.getCachedFile(chapterUrl).writeText("<html><head><title>Empty</title></head><body></body></html>")
+
+        val result = loader.inspectCache(chapterUrl)
+
+        assertTrue(result.htmlCached)
+        assertEquals(0, result.totalImages)
+        assertFalse(result.isComplete)
+        assertTrue(result.isRetryable)
     }
 
     @Test

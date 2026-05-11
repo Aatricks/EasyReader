@@ -5,12 +5,13 @@ import android.net.Uri
 import android.util.LruCache
 import io.aatricks.easyreader.data.model.*
 import io.aatricks.easyreader.util.CacheKeyUtils
+import io.aatricks.easyreader.util.FileSizeUtils
 import io.aatricks.easyreader.util.ZipUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import java.io.File
-import java.nio.file.Files
+import java.util.UUID
 import java.util.zip.ZipFile
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.aatricks.easyreader.di.EpubCacheDir
@@ -50,23 +51,7 @@ class EpubContentLoader @Inject constructor(
 
     suspend fun prefetchEpub(path: String): Boolean = withContext(Dispatchers.IO) {
         runCatching {
-            val book = getEpubBook(path) ?: throw Exception("Failed to load EPUB")
-            val dir = primaryPrefetchedImageDir(path).apply { mkdirs() }
-            
-            val file = resolveEpubFile(path)
-            ZipFile(file).use { zip ->
-                val entries = zip.entries()
-                while (entries.hasMoreElements()) {
-                    val e = entries.nextElement()
-                    if (!e.isDirectory && isImageFile(e.name)) {
-                        val outFile = File(dir, e.name.replace("/", "_"))
-                        zip.getInputStream(e).use { input ->
-                            outFile.outputStream().use { output -> input.copyTo(output) }
-                        }
-                    }
-                }
-            }
-            true
+            resolveEpubFile(path).exists() && getEpubBook(path) != null
         }.getOrDefault(false)
     }
 
@@ -112,7 +97,7 @@ class EpubContentLoader @Inject constructor(
     }
 
     fun getCacheSize(): Long {
-        return calculateDirectorySize(epubCacheDir)
+        return FileSizeUtils.calculateDirectorySize(epubCacheDir)
     }
 
     fun isCached(path: String): Boolean {
@@ -282,7 +267,7 @@ class EpubContentLoader @Inject constructor(
 
             val finalFile = primaryCachedEpubFile(path)
             if (!finalFile.exists()) {
-                val tmpFile = File(epubCacheDir, "${CacheKeyUtils.keyFor(path)}.tmp")
+                val tmpFile = File(epubCacheDir, "${CacheKeyUtils.keyFor(path)}.${UUID.randomUUID()}.tmp")
                 try {
                     context.contentResolver.openInputStream(Uri.parse(path))?.use { input ->
                         tmpFile.outputStream().use { output -> input.copyTo(output) }
@@ -300,27 +285,6 @@ class EpubContentLoader @Inject constructor(
         } else {
             File(path).also { if (!it.exists()) throw Exception("File not found") }
         }
-    }
-
-    private fun isImageFile(f: String): Boolean = f.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "webp")
-
-    private fun calculateDirectorySize(dir: File): Long {
-        if (!dir.exists()) return 0L
-        var size = 0L
-        try {
-            Files.walkFileTree(dir.toPath(), object : java.nio.file.SimpleFileVisitor<java.nio.file.Path>() {
-                override fun visitFile(file: java.nio.file.Path, attrs: java.nio.file.attribute.BasicFileAttributes): java.nio.file.FileVisitResult {
-                    size += attrs.size()
-                    return java.nio.file.FileVisitResult.CONTINUE
-                }
-                override fun visitFileFailed(file: java.nio.file.Path, exc: java.io.IOException?): java.nio.file.FileVisitResult {
-                    return java.nio.file.FileVisitResult.CONTINUE
-                }
-            })
-        } catch (e: Exception) {
-            // Ignore
-        }
-        return size
     }
 
     private fun primaryCachedEpubFile(path: String): File =
