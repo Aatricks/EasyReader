@@ -50,7 +50,6 @@ class WebContentLoader @Inject constructor(
         private const val TAG = "WebContentLoader"
         private val DIMENSION_SEMAPHORE = Semaphore(20)
         private const val MAX_CONCURRENT_DOWNLOADS = 8
-        private const val SPECULATIVE_NEXT_CHAPTER_IMAGE_WARMUP = 3
         private const val NON_ESSENTIAL_TIMEOUT_SECONDS = 5L
         private const val MAX_IMAGES_PER_GROUP = 3
         private const val MAX_GROUPED_STRIP_RATIO = 4.0f
@@ -147,8 +146,6 @@ class WebContentLoader @Inject constructor(
                 TAG,
                 "dimension enrichment end url=$url elapsedMs=${System.currentTimeMillis() - startedAtMs}"
             )
-
-            backgroundCacheImages(extractImageUrls(finalElements), url)
 
             val success = ContentResult.Success(
                 elements = finalElements,
@@ -365,17 +362,6 @@ class WebContentLoader @Inject constructor(
         return extractImageUrls(elements)
             .filter { it.startsWith("http") }
             .all { imageCache.getCachedMediaFile(it).exists() }
-    }
-
-    private fun backgroundCacheImages(imageUrls: List<String>, pageUrl: String): Unit {
-        repositoryScope.launch {
-            cacheImages(
-                imageUrls = imageUrls,
-                pageUrl = pageUrl,
-                priority = ImageRequestPriority.SPECULATIVE,
-                maxConcurrency = MAX_CONCURRENT_DOWNLOADS
-            )
-        }
     }
 
     private suspend fun downloadHtml(url: String, priority: ImageRequestPriority = ImageRequestPriority.USER_REQUESTED): String {
@@ -691,21 +677,7 @@ class WebContentLoader @Inject constructor(
             }
 
             PrefetchMode.SPECULATIVE -> {
-                Log.d(TAG, "SPECULATIVE prefetch HTML+warmup url=$url")
-                val warmupTargets = imageUrls
-                    .asSequence()
-                    .filterNot { imageCache.findExistingCachedMediaFile(it) != null }
-                    .take(SPECULATIVE_NEXT_CHAPTER_IMAGE_WARMUP)
-                    .toList()
-                if (warmupTargets.isNotEmpty()) {
-                    cacheImages(
-                        imageUrls = warmupTargets,
-                        pageUrl = url,
-                        priority = ImageRequestPriority.SPECULATIVE,
-                        maxConcurrency = warmupTargets.size.coerceAtMost(MAX_CONCURRENT_DOWNLOADS),
-                        onImageCached = null
-                    )
-                }
+                Log.d(TAG, "SPECULATIVE prefetch HTML-only url=$url")
                 allImagesRetryable = true
             }
         }

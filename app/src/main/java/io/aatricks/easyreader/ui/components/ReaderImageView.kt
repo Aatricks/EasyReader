@@ -105,9 +105,13 @@ fun ReaderImageView(
         }
     }
 
-    // In scroll mode (no enableZoom), use a transparent background so short panels don't show
-    // coloured bars. In paged manga mode, the dark background fills the letterbox area intentionally.
-    val effectiveBackground = if (enableZoom) backgroundColor.copy(alpha = 0.5f) else Color.Transparent
+    // Paged manga: dim letterbox. Scroll mode: surface while loading to hide the dark theme bleeding
+    // through the reserved aspect-ratio space, then transparent once decoded.
+    val effectiveBackground = when {
+        enableZoom -> backgroundColor.copy(alpha = 0.5f)
+        isLoadingHoisted -> MaterialTheme.colorScheme.surface
+        else -> Color.Transparent
+    }
 
     // Use FillHeight + alignment for split images to avoid stretching.
     // The container (ZoomableBox) has the half-image aspect ratio, and FillHeight + alignment
