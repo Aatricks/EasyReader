@@ -41,7 +41,7 @@ class ImageDownloader @Inject constructor(
 ) {
     companion object {
         private const val NON_ESSENTIAL_TIMEOUT_SECONDS = 5L
-        private const val HOST_SUCCESS_SPACING_MS = 50L
+        private const val HOST_SUCCESS_SPACING_MS = 25L
         private const val HOST_RATE_LIMIT_SPACING_MS = 1200L
         private const val PER_HOST_CONCURRENCY = 4
         private const val MAX_HOST_THROTTLE_STATES = 256

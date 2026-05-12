@@ -40,7 +40,7 @@ object NetworkModule {
         val builder = OkHttpClient.Builder()
             .cache(cache)
             .dns(SafeDns())
-            .connectionPool(ConnectionPool(10, 5, TimeUnit.MINUTES))
+            .connectionPool(ConnectionPool(20, 5, TimeUnit.MINUTES))
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .followSslRedirects(false)

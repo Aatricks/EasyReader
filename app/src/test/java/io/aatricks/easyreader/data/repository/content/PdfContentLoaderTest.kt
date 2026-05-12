@@ -87,7 +87,7 @@ class PdfContentLoaderTest {
         val loader = PdfContentLoader(context, opener)
         val profile = loader.loadingProfileForTests()
 
-        assertEquals(1, profile.prefetchForward)
+        assertEquals(3, profile.prefetchForward)
         assertEquals(0, profile.prefetchBackward)
         assertEquals(6, profile.maxInFlightJobs)
     }

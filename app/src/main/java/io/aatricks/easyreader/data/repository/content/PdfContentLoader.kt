@@ -57,7 +57,7 @@ class PdfContentLoader @Inject constructor(
         private const val MAX_LOCAL_CACHE_SIZE = 100
         private const val MAX_GLOBAL_PDF_CACHE_SIZE = 5
         private const val MAX_GLOBAL_PAGE_CACHE_PER_PDF = 50
-        private const val PREFETCH_FORWARD = 1
+        private const val PREFETCH_FORWARD = 3
         private const val PREFETCH_BACKWARD = 0
         private const val MAX_IN_FLIGHT_JOBS = 6
         private const val MAX_JOB_DISTANCE = 6

@@ -45,8 +45,9 @@ class WebContentLoader @Inject constructor(
 ) {
     companion object {
         private const val TAG = "WebContentLoader"
-        private val DIMENSION_SEMAPHORE = Semaphore(10)
-        private const val MAX_CONCURRENT_DOWNLOADS = 3
+        private val DIMENSION_SEMAPHORE = Semaphore(20)
+        private const val MAX_CONCURRENT_DOWNLOADS = 8
+        private const val SPECULATIVE_NEXT_CHAPTER_IMAGE_WARMUP = 3
         private const val NON_ESSENTIAL_TIMEOUT_SECONDS = 5L
         private const val MAX_IMAGES_PER_GROUP = 3
         private const val MAX_GROUPED_STRIP_RATIO = 4.0f
@@ -81,6 +82,16 @@ class WebContentLoader @Inject constructor(
     private val inFlightImageDownloads = mutableMapOf<String, InFlightImageDownload>()
     private val inFlightChapterPrefetches = mutableMapOf<String, Deferred<PrefetchResult>>()
     private val inFlightHtmlFetches = mutableMapOf<String, InFlightHtmlFetch>()
+
+    private data class ParsedImageMemo(
+        val mtime: Long,
+        val length: Long,
+        val imageUrls: List<String>,
+        val hasImageTags: Boolean,
+        val bodyNonEmpty: Boolean
+    )
+
+    private val parsedImageMemo = java.util.concurrent.ConcurrentHashMap<String, ParsedImageMemo>()
 
     private data class CachedDocument(
         val document: Document,
@@ -235,6 +246,7 @@ class WebContentLoader @Inject constructor(
             }
         }
         deleteCachedHtmlFiles(url)
+        parsedImageMemo.remove(url)
     }
 
     suspend fun resetInFlightState(url: String) {
@@ -246,12 +258,14 @@ class WebContentLoader @Inject constructor(
 
     fun clearCachedHtml(url: String) {
         deleteCachedHtmlFiles(url)
+        parsedImageMemo.remove(url)
     }
 
     fun clearAllCache() {
         cacheDir.deleteRecursively()
         imageCache.clearAll()
         cacheDir.mkdirs()
+        parsedImageMemo.clear()
     }
 
     fun getCacheSize(): Long {
@@ -612,15 +626,26 @@ class WebContentLoader @Inject constructor(
                     }
                     
                     if (pass < USER_REQUEST_PREFETCH_PASSES - 1) {
-                        delay(1000L * (pass + 1))
+                        delay(250L * (pass + 1))
                     }
                 }
             }
 
             PrefetchMode.SPECULATIVE -> {
-                Log.d(TAG, "SPECULATIVE prefetch HTML-only url=$url")
-                // HTML was already cached by getDocumentFromCacheOrNetwork().
-                // Do not download images here. Speculative preload must not create partial offline state.
+                Log.d(TAG, "SPECULATIVE prefetch HTML+warmup url=$url")
+                val warmupTargets = imageUrls
+                    .asSequence()
+                    .filterNot { imageCache.findExistingCachedMediaFile(it) != null }
+                    .take(SPECULATIVE_NEXT_CHAPTER_IMAGE_WARMUP)
+                    .toList()
+                if (warmupTargets.isNotEmpty()) {
+                    cacheImages(
+                        imageUrls = warmupTargets,
+                        pageUrl = url,
+                        priority = ImageRequestPriority.SPECULATIVE,
+                        maxConcurrency = warmupTargets.size.coerceAtMost(MAX_CONCURRENT_DOWNLOADS)
+                    )
+                }
                 allImagesRetryable = true
             }
         }
@@ -770,31 +795,40 @@ class WebContentLoader @Inject constructor(
         url: String,
         cachedDocument: Document? = null
     ): PrefetchResult {
-        val htmlCached = findExistingCachedFile(url) != null
-        val document = cachedDocument ?: findExistingCachedFile(url)
-            ?.let { Jsoup.parse(it, "UTF-8", url) }
-        
-        val imageUrls = document?.let { doc ->
-            runCatching { 
-                extractImageUrls(htmlParser.parse(doc, url))
-                    .distinct()
-                    .filter { it.startsWith("http") }
-            }.getOrDefault(emptyList())
-        } ?: emptyList()
+        val htmlFile = findExistingCachedFile(url)
+        val htmlCached = htmlFile != null
 
+        val memo: ParsedImageMemo? = if (cachedDocument != null) {
+            val parsed = computeParsedImageMemo(cachedDocument, url, htmlFile)
+            if (htmlFile != null) parsedImageMemo[url] = parsed
+            parsed
+        } else if (htmlFile != null) {
+            val cached = parsedImageMemo[url]
+            val mtime = htmlFile.lastModified()
+            val length = htmlFile.length()
+            if (cached != null && cached.mtime == mtime && cached.length == length) {
+                cached
+            } else {
+                val doc = runCatching { Jsoup.parse(htmlFile, "UTF-8", url) }.getOrNull()
+                if (doc != null) {
+                    val parsed = computeParsedImageMemo(doc, url, htmlFile)
+                    parsedImageMemo[url] = parsed
+                    parsed
+                } else null
+            }
+        } else null
+
+        val imageUrls = memo?.imageUrls.orEmpty()
         val cachedImages = imageUrls.count { imageUrl ->
             imageCache.findExistingCachedMediaFile(imageUrl) != null
         }
-        
+
         val isInProgress = chapterPrefetchMutex.withLock { url in inFlightChapterPrefetches }
-        val documentHasImageTags = document?.select("img[src], image[href], image[xlink|href], source[srcset]")
-            ?.isNotEmpty() == true
-        val documentHasNonEmptyBody = document?.body()?.html()?.isNotBlank() == true
         val finalComplete = when {
             !htmlCached -> false
             imageUrls.isNotEmpty() -> cachedImages == imageUrls.size
-            documentHasImageTags -> false
-            else -> documentHasNonEmptyBody
+            memo?.hasImageTags == true -> false
+            else -> memo?.bodyNonEmpty == true
         }
 
         return PrefetchResult(
@@ -805,6 +839,23 @@ class WebContentLoader @Inject constructor(
             isComplete = finalComplete,
             isInProgress = isInProgress,
             isRetryable = !finalComplete
+        )
+    }
+
+    private fun computeParsedImageMemo(document: Document, url: String, htmlFile: File?): ParsedImageMemo {
+        val urls = runCatching {
+            extractImageUrls(htmlParser.parse(document, url))
+                .distinct()
+                .filter { it.startsWith("http") }
+        }.getOrDefault(emptyList())
+        val hasImageTags = document.select("img[src], image[href], image[xlink|href], source[srcset]").isNotEmpty()
+        val bodyNonEmpty = document.body()?.html()?.isNotBlank() == true
+        return ParsedImageMemo(
+            mtime = htmlFile?.lastModified() ?: 0L,
+            length = htmlFile?.length() ?: 0L,
+            imageUrls = urls,
+            hasImageTags = hasImageTags,
+            bodyNonEmpty = bodyNonEmpty
         )
     }
 

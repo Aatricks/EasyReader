@@ -24,6 +24,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 import android.util.Log
 
@@ -63,6 +65,7 @@ class LibraryViewModel @Inject constructor(
 
     companion object {
         private const val UNDO_DELETE_WINDOW_MS = 5000L
+        private const val LIBRARY_PREFETCH_CONCURRENCY = 4
     }
 
     init {
@@ -438,20 +441,27 @@ class LibraryViewModel @Inject constructor(
                 } else {
                     repository.libraryItems.value
                 }
-                items.forEach { item ->
-                    setCacheState(
-                        PrefetchResult(
-                            url = item.url,
-                            htmlCached = false,
-                            totalImages = 0,
-                            cachedImages = 0,
-                            isComplete = false,
-                            isInProgress = true
-                        )
-                    )
-                    runCatching {
-                        setCacheState(contentRepository.prefetch(item.url, PrefetchMode.USER_REQUESTED))
-                    }
+                val gate = Semaphore(LIBRARY_PREFETCH_CONCURRENCY)
+                supervisorScope {
+                    items.map { item ->
+                        async {
+                            setCacheState(
+                                PrefetchResult(
+                                    url = item.url,
+                                    htmlCached = false,
+                                    totalImages = 0,
+                                    cachedImages = 0,
+                                    isComplete = false,
+                                    isInProgress = true
+                                )
+                            )
+                            gate.withPermit {
+                                runCatching {
+                                    setCacheState(contentRepository.prefetch(item.url, PrefetchMode.USER_REQUESTED))
+                                }
+                            }
+                        }
+                    }.awaitAll()
                 }
                 updateState { it.copy(isLoading = false) }
             }.onFailure { e ->
