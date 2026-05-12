@@ -10,7 +10,10 @@ import io.aatricks.easyreader.data.repository.HtmlParser
 import io.aatricks.easyreader.util.CacheKeyUtils
 import io.aatricks.easyreader.util.FileSizeUtils
 import io.aatricks.easyreader.util.HttpRetry
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Deferred
@@ -53,11 +56,13 @@ class WebContentLoader @Inject constructor(
         private const val MAX_GROUPED_STRIP_RATIO = 4.0f
         private const val USER_REQUEST_ATTEMPTS = 4
         private const val SHORT_REQUEST_ATTEMPTS = 2
-        private const val USER_REQUEST_PREFETCH_PASSES = 3
+        private const val USER_REQUEST_PREFETCH_PASSES = 2
+        private const val FAST_PATH_USER_IMAGE_COUNT = 8
         private const val MAX_SPECULATIVE_PREFETCH_ATTEMPTS = 1
         private const val MAX_USER_PREFETCH_ATTEMPTS = 1
         private const val MAX_DIMENSION_SNIFF_BYTES = 64 * 1024L // 64KB
         private const val FETCH_REMOTE_DIMENSIONS_DURING_INITIAL_LOAD = false
+        private const val USER_HTML_TIMEOUT_SECONDS = 15L
     }
 
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -65,6 +70,11 @@ class WebContentLoader @Inject constructor(
         .callTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .connectTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .build()
+    private val userHtmlClient = okHttpClient.newBuilder()
+        .callTimeout(USER_HTML_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .connectTimeout(USER_HTML_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(USER_HTML_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
     private val imageDownloadMutex = Mutex()
     private val chapterPrefetchMutex = Mutex()
@@ -160,7 +170,14 @@ class WebContentLoader @Inject constructor(
         }
     }
 
-    suspend fun prefetch(url: String, mode: PrefetchMode): PrefetchResult {
+    suspend fun prefetch(url: String, mode: PrefetchMode): PrefetchResult =
+        prefetch(url, mode, onProgress = null)
+
+    suspend fun prefetch(
+        url: String,
+        mode: PrefetchMode,
+        onProgress: (suspend (PrefetchResult) -> Unit)?
+    ): PrefetchResult {
         val maxAttempts = if (mode == PrefetchMode.USER_REQUESTED) MAX_USER_PREFETCH_ATTEMPTS else MAX_SPECULATIVE_PREFETCH_ATTEMPTS
         var lastResult: PrefetchResult? = null
 
@@ -170,14 +187,14 @@ class WebContentLoader @Inject constructor(
                 val result = runCatching { existing.await() }
                     .getOrElse { inspectCache(url) }
                     .copy(isInProgress = chapterPrefetchMutex.withLock { url in inFlightChapterPrefetches })
-                
+
                 if (result.isComplete || !result.isRetryable || mode == PrefetchMode.SPECULATIVE) return result
                 lastResult = result
                 return@repeat
             }
 
             val deferred = repositoryScope.async {
-                executePrefetch(url, mode)
+                executePrefetch(url, mode, onProgress)
             }.also { created ->
                 created.invokeOnCompletion {
                     repositoryScope.launch {
@@ -364,7 +381,7 @@ class WebContentLoader @Inject constructor(
     private suspend fun downloadHtml(url: String, priority: ImageRequestPriority = ImageRequestPriority.USER_REQUESTED): String {
         val useShortTimeout = priority == ImageRequestPriority.SPECULATIVE
         val attempts = if (useShortTimeout) SHORT_REQUEST_ATTEMPTS else USER_REQUEST_ATTEMPTS
-        val client = if (useShortTimeout) shortTimeoutClient else okHttpClient
+        val client = if (useShortTimeout) shortTimeoutClient else userHtmlClient
 
         var lastException: Exception? = null
 
@@ -583,7 +600,11 @@ class WebContentLoader @Inject constructor(
         val isRetryable: Boolean get() = retryableFailures.isNotEmpty()
     }
 
-    private suspend fun executePrefetch(url: String, mode: PrefetchMode): PrefetchResult {
+    private suspend fun executePrefetch(
+        url: String,
+        mode: PrefetchMode,
+        onProgress: (suspend (PrefetchResult) -> Unit)? = null
+    ): PrefetchResult {
         val priority = if (mode == PrefetchMode.SPECULATIVE) ImageRequestPriority.SPECULATIVE else ImageRequestPriority.USER_REQUESTED
         val cachedDocument = try {
             getDocumentFromCacheOrNetwork(
@@ -600,31 +621,69 @@ class WebContentLoader @Inject constructor(
 
         var allImagesRetryable = true
 
+        val emitProgress: (suspend () -> Unit)? = if (onProgress != null) {
+            {
+                val cached = imageUrls.count { imageCache.findExistingCachedMediaFile(it) != null }
+                onProgress(
+                    PrefetchResult(
+                        url = url,
+                        htmlCached = true,
+                        totalImages = imageUrls.size,
+                        cachedImages = cached,
+                        isComplete = cached == imageUrls.size && imageUrls.isNotEmpty(),
+                        isInProgress = cached < imageUrls.size,
+                        isRetryable = true
+                    )
+                )
+            }
+        } else null
+
         when (mode) {
             PrefetchMode.USER_REQUESTED -> {
                 Log.d(TAG, "USER_REQUESTED prefetch start url=$url totalImages=${imageUrls.size}")
+                emitProgress?.invoke()
                 for (pass in 0 until USER_REQUEST_PREFETCH_PASSES) {
                     val missingImages = imageUrls.filterNot { imageCache.findExistingCachedMediaFile(it) != null }
                     if (missingImages.isEmpty()) {
                         Log.d(TAG, "USER_REQUESTED prefetch complete url=$url pass=$pass")
                         break
                     }
-                    
-                    Log.d(TAG, "USER_REQUESTED prefetch pass=$pass missingImages=${missingImages.size} url=$url")
+
+                    val isFirstPass = pass == 0
+                    val fastPath = if (isFirstPass) missingImages.take(FAST_PATH_USER_IMAGE_COUNT) else missingImages
+                    val backgroundRest = if (isFirstPass) missingImages.drop(FAST_PATH_USER_IMAGE_COUNT) else emptyList()
+
+                    Log.d(
+                        TAG,
+                        "USER_REQUESTED prefetch pass=$pass fastPath=${fastPath.size} bgRest=${backgroundRest.size} url=$url"
+                    )
                     val report = cacheImages(
-                        imageUrls = missingImages,
+                        imageUrls = fastPath,
                         pageUrl = url,
                         priority = ImageRequestPriority.USER_REQUESTED,
-                        maxConcurrency = MAX_CONCURRENT_DOWNLOADS
+                        maxConcurrency = MAX_CONCURRENT_DOWNLOADS,
+                        onImageCached = emitProgress
                     )
-                    
+
+                    if (backgroundRest.isNotEmpty()) {
+                        repositoryScope.launch {
+                            cacheImages(
+                                imageUrls = backgroundRest,
+                                pageUrl = url,
+                                priority = ImageRequestPriority.SPECULATIVE,
+                                maxConcurrency = MAX_CONCURRENT_DOWNLOADS,
+                                onImageCached = emitProgress
+                            )
+                        }
+                    }
+
                     allImagesRetryable = report.isRetryable
-                    if (report.isComplete) break
                     if (report.retryableFailures.isEmpty() && report.permanentFailures.isNotEmpty()) {
                         Log.d(TAG, "USER_REQUESTED prefetch stop url=$url - all remaining failures are permanent")
                         break
                     }
-                    
+                    if (report.isComplete && backgroundRest.isEmpty()) break
+
                     if (pass < USER_REQUEST_PREFETCH_PASSES - 1) {
                         delay(250L * (pass + 1))
                     }
@@ -643,7 +702,8 @@ class WebContentLoader @Inject constructor(
                         imageUrls = warmupTargets,
                         pageUrl = url,
                         priority = ImageRequestPriority.SPECULATIVE,
-                        maxConcurrency = warmupTargets.size.coerceAtMost(MAX_CONCURRENT_DOWNLOADS)
+                        maxConcurrency = warmupTargets.size.coerceAtMost(MAX_CONCURRENT_DOWNLOADS),
+                        onImageCached = null
                     )
                 }
                 allImagesRetryable = true
@@ -662,7 +722,8 @@ class WebContentLoader @Inject constructor(
         imageUrls: List<String>,
         pageUrl: String,
         priority: ImageRequestPriority,
-        maxConcurrency: Int
+        maxConcurrency: Int,
+        onImageCached: (suspend () -> Unit)? = null
     ): ImageBatchDownloadReport = supervisorScope {
         if (imageUrls.isEmpty()) return@supervisorScope ImageBatchDownloadReport(0, 0, emptyList(), emptyList())
 
@@ -672,7 +733,11 @@ class WebContentLoader @Inject constructor(
             .map { imageUrl ->
                 imageUrl to async {
                     semaphore.withPermit {
-                        downloadAndCacheImageInternal(imageUrl, pageUrl, priority)
+                        val result = downloadAndCacheImageInternal(imageUrl, pageUrl, priority)
+                        if (result is ImageDownloadResult.Success) {
+                            onImageCached?.invoke()
+                        }
+                        result
                     }
                 }
             }
@@ -713,21 +778,15 @@ class WebContentLoader @Inject constructor(
         val cachedFile = imageCache.getCachedMediaFile(imageUrl)
         val tempFile = File(cachedFile.parent, "${cachedFile.name}.tmp")
 
-        var inFlight = imageDownloadMutex.withLock { inFlightImageDownloads[imageUrl] }
-
-        if (priority == ImageRequestPriority.USER_REQUESTED &&
-            inFlight != null &&
-            inFlight.priority == ImageRequestPriority.SPECULATIVE
-        ) {
-            val result = inFlight.deferred.await()
-            if (result is ImageDownloadResult.Success) return@withContext result
-
-            imageDownloadMutex.withLock {
-                if (inFlightImageDownloads[imageUrl] === inFlight) {
+        if (priority == ImageRequestPriority.USER_REQUESTED) {
+            val toCancel = imageDownloadMutex.withLock {
+                val existing = inFlightImageDownloads[imageUrl]
+                if (existing != null && existing.priority == ImageRequestPriority.SPECULATIVE) {
                     inFlightImageDownloads.remove(imageUrl)
-                }
+                    existing
+                } else null
             }
-            inFlight = null
+            toCancel?.deferred?.cancel()
         }
 
         val deferred = imageDownloadMutex.withLock {
@@ -788,7 +847,15 @@ class WebContentLoader @Inject constructor(
             }
         }
 
-        return@withContext deferred.await()
+        return@withContext try {
+            deferred.await()
+        } catch (e: CancellationException) {
+            if (currentCoroutineContext().isActive) {
+                ImageDownloadResult.Failure(true)
+            } else {
+                throw e
+            }
+        }
     }
 
     private suspend fun inspectCacheInternal(

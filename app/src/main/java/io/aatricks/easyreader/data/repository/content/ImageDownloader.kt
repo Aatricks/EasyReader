@@ -41,12 +41,14 @@ class ImageDownloader @Inject constructor(
 ) {
     companion object {
         private const val NON_ESSENTIAL_TIMEOUT_SECONDS = 5L
+        private const val USER_TIMEOUT_SECONDS = 15L
         private const val HOST_SUCCESS_SPACING_MS = 25L
         private const val HOST_RATE_LIMIT_SPACING_MS = 1200L
-        private const val PER_HOST_CONCURRENCY = 4
+        private const val HOST_NETWORK_ERROR_SPACING_MS = 300L
+        private const val PER_HOST_CONCURRENCY = 6
         private const val MAX_HOST_THROTTLE_STATES = 256
         const val MAX_HOST_THROTTLE_MS = 10_000L
-        private const val USER_REQUEST_ATTEMPTS = 4
+        private const val USER_REQUEST_ATTEMPTS = 3
         private const val SHORT_REQUEST_ATTEMPTS = 2
         private const val MAX_IMAGE_BYTES = 20 * 1024 * 1024L // 20MB
         private const val MAX_DIMENSION_SNIFF_BYTES = 64 * 1024L // 64KB
@@ -56,6 +58,12 @@ class ImageDownloader @Inject constructor(
         .callTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .connectTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .build()
+
+    private val userTimeoutClient = okHttpClient.newBuilder()
+        .callTimeout(USER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .connectTimeout(USER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(USER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
 
     private val hostThrottleMutex = Mutex()
@@ -80,7 +88,7 @@ class ImageDownloader @Inject constructor(
     ): ImageFetchResult {
         val useShortTimeout = priority == ImageRequestPriority.SPECULATIVE
         val attempts = if (useShortTimeout) SHORT_REQUEST_ATTEMPTS else USER_REQUEST_ATTEMPTS
-        val client = if (useShortTimeout) shortTimeoutClient else okHttpClient
+        val client = if (useShortTimeout) shortTimeoutClient else userTimeoutClient
 
         repeat(attempts) { attempt ->
             when (
@@ -152,7 +160,7 @@ class ImageDownloader @Inject constructor(
                     else -> HOST_SUCCESS_SPACING_MS
                 }
             }
-            is ImageFetchResult.NetworkError -> HOST_RATE_LIMIT_SPACING_MS
+            is ImageFetchResult.NetworkError -> HOST_NETWORK_ERROR_SPACING_MS
             is ImageFetchResult.Success,
             is ImageFetchResult.BoundedSuccess,
             is ImageFetchResult.TooLarge -> HOST_SUCCESS_SPACING_MS

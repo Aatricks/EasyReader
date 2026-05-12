@@ -457,7 +457,7 @@ class LibraryViewModel @Inject constructor(
                             )
                             gate.withPermit {
                                 runCatching {
-                                    setCacheState(contentRepository.prefetch(item.url, PrefetchMode.USER_REQUESTED))
+                                    setCacheState(contentRepository.prefetchWithProgress(item.url, PrefetchMode.USER_REQUESTED) { setCacheState(it) })
                                 }
                             }
                         }
@@ -477,11 +477,11 @@ class LibraryViewModel @Inject constructor(
                     .copy(isInProgress = true, isRetryable = false)
             )
             runCatching {
-                setCacheState(contentRepository.prefetch(url, PrefetchMode.USER_REQUESTED))
+                setCacheState(contentRepository.prefetchWithProgress(url, PrefetchMode.USER_REQUESTED) { setCacheState(it) })
             }
         }
     }
-    
+
     fun removeItem(itemId: String): Unit {
         scheduleDeletion(setOf(itemId))
     }

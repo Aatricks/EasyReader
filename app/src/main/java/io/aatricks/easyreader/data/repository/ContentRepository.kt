@@ -134,10 +134,17 @@ class ContentRepository @Inject constructor(
         }
     }
 
-    suspend fun prefetch(url: String, mode: PrefetchMode): PrefetchResult = withContext(Dispatchers.IO) {
+    suspend fun prefetch(url: String, mode: PrefetchMode): PrefetchResult =
+        prefetchWithProgress(url, mode, onProgress = null)
+
+    suspend fun prefetchWithProgress(
+        url: String,
+        mode: PrefetchMode,
+        onProgress: (suspend (PrefetchResult) -> Unit)?
+    ): PrefetchResult = withContext(Dispatchers.IO) {
         val result = runCatching {
             when (resolveContentKind(url)) {
-                ContentKind.WEB -> webLoader.prefetch(url, mode)
+                ContentKind.WEB -> webLoader.prefetch(url, mode, onProgress)
                 ContentKind.EPUB ->
                     if (epubLoader.prefetchEpub(url)) {
                         PrefetchResult(url, htmlCached = true, totalImages = 0, cachedImages = 0, isComplete = true, isRetryable = false)
