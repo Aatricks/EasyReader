@@ -962,7 +962,7 @@ class ReaderViewModel @Inject constructor(
         if (!imageUrl.startsWith("http")) return
 
         viewModelScope.launch {
-            runCatching { contentRepository.warmImage(imageUrl, pageUrl) }
+            runCatching { contentRepository.downloadAndCacheImage(imageUrl, pageUrl) }
         }
     }
 

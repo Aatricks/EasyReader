@@ -45,7 +45,7 @@ class ImageDownloader @Inject constructor(
         private const val HOST_SUCCESS_SPACING_MS = 25L
         private const val HOST_RATE_LIMIT_SPACING_MS = 1200L
         private const val HOST_NETWORK_ERROR_SPACING_MS = 300L
-        private const val PER_HOST_CONCURRENCY = 6
+        private const val PER_HOST_CONCURRENCY = 8
         private const val MAX_HOST_THROTTLE_STATES = 256
         const val MAX_HOST_THROTTLE_MS = 10_000L
         private const val USER_REQUEST_ATTEMPTS = 3

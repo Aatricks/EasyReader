@@ -247,10 +247,10 @@ class WebContentLoaderTest {
             }
         )
 
-        val results = listOf(
-            async { loader.downloadAndCacheImage(imageUrl, pageUrl) },
-            async { loader.warmImage(imageUrl, pageUrl) }
-        ).awaitAll()
+        val userJob = async { loader.downloadAndCacheImage(imageUrl, pageUrl) }
+        kotlinx.coroutines.delay(20)
+        val warmJob = async { loader.warmImage(imageUrl, pageUrl) }
+        val results = listOf(userJob.await(), warmJob.await())
 
         assertEquals(1, imageRequests.get())
         assertTrue(results.all { it != null })
@@ -627,10 +627,10 @@ class WebContentLoaderTest {
         )
 
         // Case 1: User-requested in flight, speculative joins
-        val results1 = listOf(
-            async { loader.downloadAndCacheImage(imageUrl, "https://example.com") },
-            async { loader.warmImage(imageUrl, "https://example.com") }
-        ).awaitAll()
+        val userJob = async { loader.downloadAndCacheImage(imageUrl, "https://example.com") }
+        kotlinx.coroutines.delay(20)
+        val warmJob = async { loader.warmImage(imageUrl, "https://example.com") }
+        val results1 = listOf(userJob.await(), warmJob.await())
 
         assertEquals(1, imageRequests.get())
         assertTrue(results1.all { it != null })
