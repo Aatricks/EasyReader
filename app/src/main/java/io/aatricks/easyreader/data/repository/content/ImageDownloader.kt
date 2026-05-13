@@ -243,11 +243,13 @@ class ImageDownloader @Inject constructor(
     }
 
     fun getReferer(url: String): String = try {
-        if (url.contains("mangabat") || url.contains("manganato")) {
-            "https://manganato.com/"
-        } else {
-            val uri = URI(url)
-            "${uri.scheme}://${uri.host}/"
+        when {
+            url.contains("mangabat") || url.contains("manganato") -> "https://manganato.com/"
+            url.contains("asurascans") || url.contains("asuracomic") -> "https://asurascans.com/"
+            else -> {
+                val uri = URI(url)
+                "${uri.scheme}://${uri.host}/"
+            }
         }
     } catch (e: Exception) {
         url

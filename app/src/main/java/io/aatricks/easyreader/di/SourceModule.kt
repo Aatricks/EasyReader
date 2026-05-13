@@ -6,6 +6,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
 import io.aatricks.easyreader.data.local.PreferencesManager
+import io.aatricks.easyreader.data.repository.source.AsuraScansSource
 import io.aatricks.easyreader.data.repository.source.MangaBatSource
 import io.aatricks.easyreader.data.repository.source.NovelFireSource
 import io.aatricks.easyreader.data.repository.source.NovelSource
@@ -29,4 +30,12 @@ object SourceModule {
         preferencesManager: PreferencesManager,
         okHttpClient: okhttp3.OkHttpClient
     ): NovelSource = MangaBatSource(preferencesManager, okHttpClient)
+
+    @Provides
+    @Singleton
+    @IntoSet
+    fun provideAsuraScansSource(
+        preferencesManager: PreferencesManager,
+        okHttpClient: okhttp3.OkHttpClient
+    ): NovelSource = AsuraScansSource(preferencesManager, okHttpClient)
 }
