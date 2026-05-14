@@ -763,8 +763,14 @@ class WebContentLoader @Inject constructor(
 
         val deferred = imageDownloadMutex.withLock {
             val current = inFlightImageDownloads[imageUrl]
-            if (current != null) {
-                current.deferred
+            // Async cleanup (invokeOnCompletion → launch) can lag behind sequential calls,
+            // leaving a completed deferred in the map. Drop it so the retry path runs.
+            if (current != null && current.deferred.isCompleted) {
+                inFlightImageDownloads.remove(imageUrl)
+            }
+            val active = inFlightImageDownloads[imageUrl]
+            if (active != null) {
+                active.deferred
             } else {
                 repositoryScope.async {
                     runCatching {
