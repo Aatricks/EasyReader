@@ -22,8 +22,10 @@ import coil3.network.NetworkHeaders
 import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import coil3.size.Dimension
 import coil3.size.Precision
 import coil3.size.Scale
+import coil3.size.Size as CoilSize
 import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.ui.util.ImageDimensions
 import io.aatricks.easyreader.ui.util.effectiveImageDimensions
@@ -63,7 +65,6 @@ fun ReaderImageView(
     val density = LocalDensity.current
     val screenHeight = configuration.screenHeightDp.dp
     val screenWidthPx = with(density) { configuration.screenWidthDp.dp.roundToPx() }
-    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.roundToPx() }
     val shouldSubsampleImage = shouldSubsampleReaderImage(
         enableZoom = enableZoom,
         dynamicHeight = dynamicHeight
@@ -166,7 +167,12 @@ fun ReaderImageView(
             .data(imageUrl)
             .apply {
                 if (shouldSubsampleImage) {
-                    size(screenWidthPx, screenHeightPx)
+                    // Width-only constraint. Long-strip manhwa pages can be 15000+ px tall;
+                    // a `size(screenW, screenH)` FIT picks sampleSize by max(w-ratio, h-ratio),
+                    // so a 900x15000 page becomes ~112x1875 → 9× upscale at display = pixelated.
+                    // Width-only samples by width ratio alone, preserving native resolution
+                    // along the scroll axis.
+                    size(CoilSize(Dimension.Pixels(screenWidthPx), Dimension.Undefined))
                     scale(Scale.FIT)
                     precision(Precision.INEXACT)
                 }
