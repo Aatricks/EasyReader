@@ -48,7 +48,7 @@ class AppDatabaseMigrationTest {
         val dbName = migrationDbName("1-to-current")
         createVersion1Database(dbName)
 
-        migrationTestHelper.runMigrationsAndValidate(dbName, CURRENT_VERSION, true, *ALL_MIGRATIONS)
+        migrationTestHelper.runMigrationsAndValidate(dbName, CURRENT_VERSION, true, *ALL_MIGRATIONS).close()
         assertMigratedCurrentData(dbName, expectsLastReadOffsetFraction = false)
     }
 
@@ -57,7 +57,7 @@ class AppDatabaseMigrationTest {
         val dbName = migrationDbName("2-to-current")
         createVersion2Database(dbName)
 
-        migrationTestHelper.runMigrationsAndValidate(dbName, CURRENT_VERSION, true, *ALL_MIGRATIONS)
+        migrationTestHelper.runMigrationsAndValidate(dbName, CURRENT_VERSION, true, *ALL_MIGRATIONS).close()
         assertMigratedCurrentData(dbName, expectsLastReadOffsetFraction = false)
     }
 
@@ -66,7 +66,7 @@ class AppDatabaseMigrationTest {
         val dbName = migrationDbName("3-to-current")
         createVersion3Database(dbName)
 
-        migrationTestHelper.runMigrationsAndValidate(dbName, CURRENT_VERSION, true, *ALL_MIGRATIONS)
+        migrationTestHelper.runMigrationsAndValidate(dbName, CURRENT_VERSION, true, *ALL_MIGRATIONS).close()
         assertMigratedCurrentData(dbName, expectsLastReadOffsetFraction = true)
     }
 
@@ -75,7 +75,7 @@ class AppDatabaseMigrationTest {
         val dbName = migrationDbName("4-to-current")
         createVersion4Database(dbName)
 
-        migrationTestHelper.runMigrationsAndValidate(dbName, CURRENT_VERSION, true, *ALL_MIGRATIONS)
+        migrationTestHelper.runMigrationsAndValidate(dbName, CURRENT_VERSION, true, *ALL_MIGRATIONS).close()
         assertMigratedCurrentData(dbName, expectsLastReadOffsetFraction = true)
     }
 
