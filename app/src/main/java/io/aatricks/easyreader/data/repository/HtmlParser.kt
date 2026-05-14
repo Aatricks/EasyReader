@@ -31,7 +31,9 @@ class HtmlParser @Inject constructor() {
             ".chapter-img img",
             ".read-content img",
             ".container-reading img",
-            "div.page-break img"
+            "div.page-break img",
+            "img[data-page-index]",
+            "div[data-page] img"
         ).joinToString(", ")
 
         private val NOVEL_CONTENT_SELECTOR = listOf(

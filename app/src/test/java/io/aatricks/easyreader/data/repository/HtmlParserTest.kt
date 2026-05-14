@@ -1,0 +1,60 @@
+package io.aatricks.easyreader.data.repository
+
+import io.aatricks.easyreader.data.model.ContentElement
+import org.jsoup.Jsoup
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class HtmlParserTest {
+
+    private val parser = HtmlParser()
+
+    @Test
+    fun `extracts chapter page images from Asura reader markup`() {
+        val html = """
+            <html><body>
+              <div class="select-none">
+                <div class="max-w-full mx-auto">
+                  <div data-page="0" class="w-full">
+                    <img src="https://cdn.asurascans.com/asura-images/chapters/x/1/a.webp"
+                         alt="Page 1 - Chapter 1 - X" data-page-index="0"/>
+                  </div>
+                  <div data-page="1" class="w-full">
+                    <img src="https://cdn.asurascans.com/asura-images/chapters/x/1/b.webp"
+                         alt="Page 2 - Chapter 1 - X" data-page-index="1"/>
+                  </div>
+                  <div data-page="2" class="w-full">
+                    <img src="https://cdn.asurascans.com/asura-images/chapters/x/1/c.webp"
+                         alt="Page 3 - Chapter 1 - X" data-page-index="2"/>
+                  </div>
+                </div>
+              </div>
+            </body></html>
+        """.trimIndent()
+
+        val document = Jsoup.parse(html, "https://asurascans.com/comics/x/chapter/1")
+        val elements = parser.parse(document, "https://asurascans.com/comics/x/chapter/1")
+        val images = elements.filterIsInstance<ContentElement.Image>()
+
+        assertEquals(3, images.size)
+        assertEquals("https://cdn.asurascans.com/asura-images/chapters/x/1/a.webp", images[0].url)
+        assertEquals("https://cdn.asurascans.com/asura-images/chapters/x/1/c.webp", images[2].url)
+    }
+
+    @Test
+    fun `real Asura chapter html yields many CDN images`() {
+        val html = javaClass.classLoader!!.getResourceAsStream("asura_chapter_real.html")!!
+            .bufferedReader().readText()
+        val pageUrl = "https://asurascans.com/comics/breakers-030ff47a/chapter/82"
+        val document = Jsoup.parse(html, pageUrl)
+        val elements = parser.parse(document, pageUrl)
+        val images = elements.filterIsInstance<ContentElement.Image>()
+
+        assertTrue("expected many chapter images, got ${images.size}", images.size >= 8)
+        images.forEach { img ->
+            assertTrue("non-CDN image leaked: ${img.url}",
+                img.url.startsWith("https://cdn.asurascans.com/asura-images/chapters/"))
+        }
+    }
+}

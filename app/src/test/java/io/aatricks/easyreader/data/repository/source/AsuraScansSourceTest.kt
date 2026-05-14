@@ -152,6 +152,47 @@ class AsuraScansSourceTest {
     }
 
     @Test
+    fun `real browse html yields covers for every card`() {
+        val html = javaClass.classLoader!!.getResourceAsStream("asura_browse_real.html")!!
+            .bufferedReader().readText()
+        mockResponse("https://asurascans.com/browse", html)
+
+        val items = runBlocking { source.getPopularNovels(page = 1) }
+        assertTrue("expected at least 10 items, got ${items.size}", items.size >= 10)
+        items.forEach { item ->
+            assertTrue("missing cover for ${item.title}: ${item.coverUrl}",
+                !item.coverUrl.isNullOrBlank() && item.coverUrl!!.startsWith("https://"))
+        }
+    }
+
+    @Test
+    fun `real series detail yields cover and many chapters`() {
+        val html = javaClass.classLoader!!.getResourceAsStream("asura_series_real.html")!!
+            .bufferedReader().readText()
+        val seriesUrl = "https://asurascans.com/comics/breakers-030ff47a"
+        mockResponse(seriesUrl, html)
+
+        val item = runBlocking { source.getNovelDetails(seriesUrl) }
+        assertTrue("cover missing: ${item.coverUrl}",
+            !item.coverUrl.isNullOrBlank() && item.coverUrl!!.startsWith("https://"))
+        assertTrue("expected many chapters, got ${item.chapterCount}", item.chapterCount >= 50)
+    }
+
+    @Test
+    fun `popular browse mode yields covers for every card`() {
+        val html = javaClass.classLoader!!.getResourceAsStream("asura_browse_popular_real.html")!!
+            .bufferedReader().readText()
+        mockResponse("https://asurascans.com/browse?order=popular", html)
+
+        val items = runBlocking { source.getNovels(BrowseMode.POPULAR, page = 1) }
+        assertTrue("expected at least 10 items, got ${items.size}", items.size >= 10)
+        items.forEach { item ->
+            assertTrue("missing cover for ${item.title}: ${item.coverUrl}",
+                !item.coverUrl.isNullOrBlank() && item.coverUrl!!.startsWith("https://"))
+        }
+    }
+
+    @Test
     fun `falls back to og title when h1 missing`() {
         val html = """
             <html><head>
