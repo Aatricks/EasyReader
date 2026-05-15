@@ -15,13 +15,15 @@ import java.util.UUID
 import java.util.zip.ZipFile
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.aatricks.easyreader.di.EpubCacheDir
+import io.aatricks.easyreader.di.EpubDownloadsDir
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class EpubContentLoader @Inject constructor(
     @ApplicationContext private val context: Context,
-    @EpubCacheDir private val epubCacheDir: File
+    @EpubCacheDir private val epubCacheDir: File,
+    @EpubDownloadsDir private val epubDownloadsDir: File
 ) {
     private val epubBookCache = object : LruCache<String, EpubBook>(5) {}
 
@@ -49,9 +51,13 @@ class EpubContentLoader @Inject constructor(
         }.getOrNull()
     }
 
-    suspend fun prefetchEpub(path: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun prefetchEpub(path: String, tier: StorageTier = StorageTier.CACHE): Boolean = withContext(Dispatchers.IO) {
         runCatching {
-            resolveEpubFile(path).exists() && getEpubBook(path) != null
+            val file = resolveEpubFile(path, tier)
+            if (tier == StorageTier.DOWNLOADS) {
+                promoteEpubToDownloads(path)
+            }
+            file.exists() && getEpubBook(path) != null
         }.getOrDefault(false)
     }
 
@@ -60,7 +66,7 @@ class EpubContentLoader @Inject constructor(
             val parts = url.split("#img:", limit = 2).takeIf { it.size == 2 } ?: return@withContext null
             val epubPath = parts[0]
             val imgHref = parts[1].replace("\\", "/").removePrefix("/")
-            
+
             val fileToRead = resolveEpubFile(epubPath)
             if (!fileToRead.exists()) return@withContext null
 
@@ -84,10 +90,8 @@ class EpubContentLoader @Inject constructor(
 
     fun clearCache(url: String) {
         epubBookCache.remove(url)
-        cacheFileVariants(primaryPrefetchedImageDir(url), legacyPrefetchedImageDir(url))
-            .forEach { it.deleteRecursively() }
-        cacheFileVariants(primaryCachedEpubFile(url), legacyCachedEpubFile(url))
-            .forEach { it.delete() }
+        prefetchedImageDirVariants(url).forEach { it.deleteRecursively() }
+        cachedEpubFileVariants(url).forEach { it.delete() }
     }
 
     fun clearAllCache() {
@@ -96,8 +100,18 @@ class EpubContentLoader @Inject constructor(
         epubCacheDir.mkdirs()
     }
 
+    fun clearAllDownloads() {
+        epubDownloadsDir.deleteRecursively()
+        epubBookCache.evictAll()
+        epubDownloadsDir.mkdirs()
+    }
+
     fun getCacheSize(): Long {
         return FileSizeUtils.calculateDirectorySize(epubCacheDir)
+    }
+
+    fun getDownloadsSize(): Long {
+        return FileSizeUtils.calculateDirectorySize(epubDownloadsDir)
     }
 
     fun isCached(path: String): Boolean {
@@ -108,9 +122,17 @@ class EpubContentLoader @Inject constructor(
         }
     }
 
+    fun isDownloaded(path: String): Boolean {
+        return if (path.startsWith("content://")) {
+            primaryEpubFile(path, StorageTier.DOWNLOADS).exists()
+        } else {
+            File(path).exists()
+        }
+    }
+
     private fun parseEpubFile(filePath: String): EpubBook {
         val file = resolveEpubFile(filePath)
-        
+
         ZipFile(file).use { zip ->
             val cont = ZipUtils.readZipEntrySafely(zip, "META-INF/container.xml") ?: throw Exception("No container.xml")
             val opfPath = Jsoup.parse(String(cont), "", org.jsoup.parser.Parser.xmlParser()).select("rootfile").attr("full-path")
@@ -146,7 +168,7 @@ class EpubContentLoader @Inject constructor(
     private fun parseTocNcx(ncxBytes: ByteArray?, manifest: Map<String, String>, base: String): List<EpubTocItem>? {
         if (ncxBytes == null) return null
         val doc = Jsoup.parse(String(ncxBytes), "", org.jsoup.parser.Parser.xmlParser())
-        
+
         fun parsePoint(e: org.jsoup.nodes.Element): EpubTocItem {
             val src = e.select("content").attr("src").let { if (it.startsWith("/")) it.drop(1) else it }
             val resolvedSrc = (if (base.isNotBlank() && !src.contains("/")) "$base/$src" else src).substringBefore("#")
@@ -157,13 +179,13 @@ class EpubContentLoader @Inject constructor(
                 children = e.select("> navPoint").map { parsePoint(it) }
             )
         }
-        
+
         return doc.select("navMap > navPoint").map { parsePoint(it) }
     }
 
     private fun loadEpubChapter(filePath: String, book: EpubBook, href: String): EpubChapter {
         val file = resolveEpubFile(filePath)
-        
+
         var bytes: ByteArray? = null
         try {
             ZipFile(file).use { zip ->
@@ -187,10 +209,10 @@ class EpubContentLoader @Inject constructor(
             if (filePath.startsWith("content://")) file.delete()
             throw e
         }
-        
+
         val doc = Jsoup.parse(String(bytes ?: throw Exception("No chapter bytes")))
         val els = mutableListOf<ContentElement>()
-        
+
         fun traverse(element: org.jsoup.nodes.Element) {
             val tagName = element.tagName().lowercase()
             when {
@@ -209,7 +231,6 @@ class EpubContentLoader @Inject constructor(
                     if (text.length > 1) {
                         els.add(ContentElement.Text(text))
                     }
-                    // Also check for images nested inside this block element
                     element.select("img, image").forEach { img ->
                         val iTagName = img.tagName().lowercase()
                         val src = if (iTagName == "img") {
@@ -224,7 +245,6 @@ class EpubContentLoader @Inject constructor(
                 }
                 else -> {
                     element.children().forEach { traverse(it) }
-                    // If an element like <div> contains direct text, handle it
                     val ownText = element.ownText().trim()
                     if (ownText.length > 1 && element.children().none { it.tagName().lowercase() in setOf("p", "div", "h1", "h2", "h3", "h4", "li") }) {
                         els.add(ContentElement.Text(ownText))
@@ -234,7 +254,7 @@ class EpubContentLoader @Inject constructor(
         }
 
         doc.body()?.let { traverse(it) }
-        
+
         return EpubChapter(
             href = href,
             title = book.findTocItemByHref(href)?.title,
@@ -248,7 +268,7 @@ class EpubContentLoader @Inject constructor(
         if (rel.startsWith("/")) return rel.drop(1)
         val parent = base.substringBeforeLast("/", "")
         val combined = if (parent.isNotBlank()) "$parent/$rel" else rel
-        
+
         val parts = combined.split("/")
         val result = mutableListOf<String>()
         for (part in parts) {
@@ -261,19 +281,19 @@ class EpubContentLoader @Inject constructor(
         return result.joinToString("/")
     }
 
-    private fun resolveEpubFile(path: String): File {
+    private fun resolveEpubFile(path: String, writeTier: StorageTier = StorageTier.CACHE): File {
         return if (path.startsWith("content://")) {
             findExistingCachedEpubFile(path)?.let { return it }
 
-            val finalFile = primaryCachedEpubFile(path)
+            val finalFile = primaryEpubFile(path, writeTier)
             if (!finalFile.exists()) {
-                val tmpFile = File(epubCacheDir, "${CacheKeyUtils.keyFor(path)}.${UUID.randomUUID()}.tmp")
+                finalFile.parentFile?.mkdirs()
+                val tmpFile = File(finalFile.parentFile, "${CacheKeyUtils.keyFor(path)}.${UUID.randomUUID()}.tmp")
                 try {
                     context.contentResolver.openInputStream(Uri.parse(path))?.use { input ->
                         tmpFile.outputStream().use { output -> input.copyTo(output) }
                     } ?: throw Exception("Failed to open content URI")
 
-                    // Atomic rename.
                     if (!tmpFile.renameTo(finalFile) && !finalFile.exists()) {
                          throw Exception("Failed to cache EPUB")
                     }
@@ -287,22 +307,49 @@ class EpubContentLoader @Inject constructor(
         }
     }
 
-    private fun primaryCachedEpubFile(path: String): File =
-        File(epubCacheDir, "${CacheKeyUtils.keyFor(path)}.epub")
+    private fun promoteEpubToDownloads(path: String): File? {
+        if (!path.startsWith("content://")) return null
+        val target = primaryEpubFile(path, StorageTier.DOWNLOADS)
+        if (target.exists()) return target
+        val src = primaryEpubFile(path, StorageTier.CACHE).takeIf(File::exists)
+            ?: legacyCachedEpubFile(path).takeIf(File::exists)
+            ?: return null
+        target.parentFile?.mkdirs()
+        if (src.renameTo(target)) return target
+        return runCatching {
+            src.copyTo(target, overwrite = true)
+            src.delete()
+            target
+        }.getOrNull()
+    }
+
+    private fun primaryEpubFile(path: String, tier: StorageTier): File {
+        val dir = when (tier) {
+            StorageTier.DOWNLOADS -> epubDownloadsDir
+            StorageTier.CACHE -> epubCacheDir
+        }
+        return File(dir, "${CacheKeyUtils.keyFor(path)}.epub")
+    }
 
     private fun legacyCachedEpubFile(path: String): File =
         File(epubCacheDir, "${path.hashCode()}.epub")
 
     private fun findExistingCachedEpubFile(path: String): File? =
-        cacheFileVariants(primaryCachedEpubFile(path), legacyCachedEpubFile(path))
-            .firstOrNull(File::exists)
+        cachedEpubFileVariants(path).firstOrNull(File::exists)
 
-    private fun primaryPrefetchedImageDir(path: String): File =
-        File(epubCacheDir, CacheKeyUtils.keyFor(path))
+    private fun cachedEpubFileVariants(path: String): List<File> = listOf(
+        primaryEpubFile(path, StorageTier.DOWNLOADS),
+        primaryEpubFile(path, StorageTier.CACHE),
+        legacyCachedEpubFile(path)
+    ).distinctBy(File::getAbsolutePath)
 
-    private fun legacyPrefetchedImageDir(path: String): File =
-        File(epubCacheDir, path.hashCode().toString())
-
-    private fun cacheFileVariants(primary: File, legacy: File): List<File> =
-        listOf(primary, legacy).distinctBy(File::getAbsolutePath)
+    private fun prefetchedImageDirVariants(path: String): List<File> {
+        val key = CacheKeyUtils.keyFor(path)
+        val legacyKey = path.hashCode().toString()
+        return listOf(
+            File(epubDownloadsDir, key),
+            File(epubCacheDir, key),
+            File(epubCacheDir, legacyKey)
+        ).distinctBy(File::getAbsolutePath)
+    }
 }

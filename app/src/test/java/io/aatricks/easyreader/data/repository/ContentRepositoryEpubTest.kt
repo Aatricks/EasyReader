@@ -62,6 +62,10 @@ class ContentRepositoryEpubTest {
         val htmlCache = File(cacheDir, "html_cache").apply { mkdirs() }
         val mediaCache = File(cacheDir, "media_cache").apply { mkdirs() }
         val epubCache = File(cacheDir, "epub_cache").apply { mkdirs() }
+        val filesDir = File(tempDir, "files").apply { mkdirs() }
+        val htmlDownloads = File(filesDir, "downloads/html").apply { mkdirs() }
+        val mediaDownloads = File(filesDir, "downloads/media").apply { mkdirs() }
+        val epubDownloads = File(filesDir, "downloads/epub").apply { mkdirs() }
 
         whenever(mockContext.cacheDir).thenReturn(cacheDir)
         whenever(mockContext.contentResolver).thenReturn(mockContentResolver)
@@ -80,9 +84,9 @@ class ContentRepositoryEpubTest {
         // Use anyString() for Uri.parse
         mockedUriStatic.`when`<Uri> { Uri.parse(org.mockito.ArgumentMatchers.anyString()) }.thenReturn(mockUri)
 
-        val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, ImageCache(mediaCache), ImageDownloader(okHttpClient), htmlCache)
+        val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, ImageCache(mediaCache, mediaDownloads), ImageDownloader(okHttpClient), htmlCache, htmlDownloads)
         val pdfLoader = PdfContentLoader(mockContext, DefaultPdfDocumentOpener(mockContext))
-        val epubLoader = EpubContentLoader(mockContext, epubCache)
+        val epubLoader = EpubContentLoader(mockContext, epubCache, epubDownloads)
         val localLoader = LocalContentLoader(mockContext, mockHtmlParser, pdfLoader, epubLoader, contentUriTypeResolver)
 
         repository = ContentRepository(webLoader, pdfLoader, epubLoader, localLoader, contentUriTypeResolver, mockContext, okHttpClient)

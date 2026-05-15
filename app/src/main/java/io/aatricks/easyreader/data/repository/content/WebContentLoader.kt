@@ -34,6 +34,7 @@ import org.jsoup.nodes.Document
 import java.io.File
 import java.io.IOException
 import io.aatricks.easyreader.di.HtmlCacheDir
+import io.aatricks.easyreader.di.HtmlDownloadsDir
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -44,7 +45,8 @@ class WebContentLoader @Inject constructor(
     private val okHttpClient: OkHttpClient,
     private val imageCache: ImageCache,
     private val imageDownloader: ImageDownloader,
-    @HtmlCacheDir private val cacheDir: File
+    @HtmlCacheDir private val cacheDir: File,
+    @HtmlDownloadsDir private val downloadsDir: File
 ) {
     companion object {
         private const val TAG = "WebContentLoader"
@@ -230,12 +232,12 @@ class WebContentLoader @Inject constructor(
     }
 
     suspend fun downloadAndCacheImage(imageUrl: String, pageUrl: String): File? = withContext(Dispatchers.IO) {
-        val result = downloadAndCacheImageInternal(imageUrl, pageUrl, ImageRequestPriority.USER_REQUESTED)
+        val result = downloadAndCacheImageInternal(imageUrl, pageUrl, ImageRequestPriority.USER_REQUESTED, StorageTier.CACHE)
         (result as? ImageDownloadResult.Success)?.file
     }
 
     suspend fun warmImage(imageUrl: String, pageUrl: String): File? = withContext(Dispatchers.IO) {
-        val result = downloadAndCacheImageInternal(imageUrl, pageUrl, ImageRequestPriority.SPECULATIVE)
+        val result = downloadAndCacheImageInternal(imageUrl, pageUrl, ImageRequestPriority.SPECULATIVE, StorageTier.CACHE)
         (result as? ImageDownloadResult.Success)?.file
     }
 
@@ -245,9 +247,11 @@ class WebContentLoader @Inject constructor(
 
     fun getCachedMediaFile(url: String): File = imageCache.getCachedMediaFile(url)
 
-    fun getCachedFile(url: String): File = findExistingCachedFile(url) ?: primaryCachedFile(url)
+    fun getCachedFile(url: String): File = findExistingCachedFile(url) ?: primaryCachedFile(url, StorageTier.CACHE)
 
     fun isCached(url: String): Boolean = findExistingCachedFile(url) != null
+
+    fun isDownloaded(url: String): Boolean = primaryCachedFile(url, StorageTier.DOWNLOADS).exists()
 
     fun clearCache(url: String) {
         val cachedFile = findExistingCachedFile(url)
@@ -261,6 +265,10 @@ class WebContentLoader @Inject constructor(
         }
         deleteCachedHtmlFiles(url)
         parsedImageMemo.remove(url)
+    }
+
+    fun clearDownload(url: String) {
+        clearCache(url)
     }
 
     suspend fun resetInFlightState(url: String) {
@@ -282,14 +290,31 @@ class WebContentLoader @Inject constructor(
         parsedImageMemo.clear()
     }
 
+    fun clearAllDownloads() {
+        downloadsDir.deleteRecursively()
+        imageCache.clearAllDownloads()
+        downloadsDir.mkdirs()
+        parsedImageMemo.clear()
+    }
+
     fun getCacheSize(): Long {
         return FileSizeUtils.calculateDirectorySize(cacheDir) + imageCache.getCacheSize()
+    }
+
+    fun getDownloadsSize(): Long {
+        return FileSizeUtils.calculateDirectorySize(downloadsDir) + imageCache.getDownloadsSize()
     }
 
     fun trimCaches(maxHtmlBytes: Long, maxMediaBytes: Long) {
         FileSizeUtils.trimDirectoryToSize(cacheDir, maxHtmlBytes)
         imageCache.trimToSize(maxMediaBytes)
     }
+
+    private fun tierForPriority(priority: ImageRequestPriority): StorageTier =
+        if (priority == ImageRequestPriority.USER_REQUESTED) StorageTier.DOWNLOADS else StorageTier.CACHE
+
+    private fun tierForMode(mode: PrefetchMode): StorageTier =
+        if (mode == PrefetchMode.USER_REQUESTED) StorageTier.DOWNLOADS else StorageTier.CACHE
 
     private suspend fun getDocumentFromCacheOrNetwork(url: String, priority: ImageRequestPriority = ImageRequestPriority.USER_REQUESTED): CachedDocument {
         findExistingCachedFile(url)?.let { cachedFile ->
@@ -341,11 +366,27 @@ class WebContentLoader @Inject constructor(
         }
 
         val html = downloadHtml(url, priority = priority)
-        writeTextAtomically(primaryCachedFile(url), html)
+        val target = primaryCachedFile(url, tierForPriority(priority))
+        writeTextAtomically(target, html)
         return CachedDocument(
             document = Jsoup.parse(html, url),
             fromCache = false
         )
+    }
+
+    private fun promoteHtmlToDownloads(url: String): File? {
+        val target = primaryCachedFile(url, StorageTier.DOWNLOADS)
+        if (target.exists()) return target
+        val src = legacyCachedFile(url).takeIf(File::exists)
+            ?: primaryCachedFile(url, StorageTier.CACHE).takeIf(File::exists)
+            ?: return null
+        target.parentFile?.mkdirs()
+        if (src.renameTo(target)) return target
+        return runCatching {
+            src.copyTo(target, overwrite = true)
+            src.delete()
+            target
+        }.getOrNull()
     }
 
     private fun extractImageUrls(elements: List<ContentElement>): List<String> {
@@ -361,7 +402,7 @@ class WebContentLoader @Inject constructor(
     private fun hasCachedMediaForAllRemoteImages(elements: List<ContentElement>): Boolean {
         return extractImageUrls(elements)
             .filter { it.startsWith("http") }
-            .all { imageCache.getCachedMediaFile(it).exists() }
+            .all { imageCache.findExistingCachedMediaFile(it) != null }
     }
 
     private suspend fun downloadHtml(url: String, priority: ImageRequestPriority = ImageRequestPriority.USER_REQUESTED): String {
@@ -535,9 +576,6 @@ class WebContentLoader @Inject constructor(
     }
 
     private fun isWideImage(img: ContentElement.Image, url: String): Boolean {
-        // Double-page spreads are typically twice as wide as their height (ratio ~1.4-1.7 depending on scan)
-        // We use 1.6 to be safe, as single high-res pages can sometimes have slightly different ratios.
-        // Also check absolute width to ensure we only split large high-res images that are likely spreads.
         return img.width > img.height * 1.6 && img.width > 1600 && img.height > 0
     }
 
@@ -547,14 +585,13 @@ class WebContentLoader @Inject constructor(
         diskOnly: Boolean = false
     ): Pair<Int, Int>? = withContext(Dispatchers.IO) {
         if (!imageUrl.startsWith("http")) return@withContext null
-        
+
         runCatching {
             val cached = imageCache.getCachedMediaFile(imageUrl)
             ImageBoundsParser.parse(cached)?.let { bounds ->
                 return@runCatching bounds
             }
 
-            // If disk-only mode (manhwa, large chapters), don't perform any network request.
             if (diskOnly) return@withContext null
 
             when (
@@ -601,11 +638,16 @@ class WebContentLoader @Inject constructor(
             return inspectCacheInternal(url).copy(isRetryable = shouldRetryException(e))
         }
 
+        if (mode == PrefetchMode.USER_REQUESTED) {
+            promoteHtmlToDownloads(url)
+        }
+
         val imageUrls = extractImageUrls(htmlParser.parse(cachedDocument.document, url))
             .distinct()
             .filter { it.startsWith("http") }
 
         var allImagesRetryable = true
+        val permanentFailuresAccumulated = mutableListOf<String>()
 
         val emitProgress: (suspend () -> Unit)? = if (onProgress != null) {
             {
@@ -629,7 +671,10 @@ class WebContentLoader @Inject constructor(
                 Log.d(TAG, "USER_REQUESTED prefetch start url=$url totalImages=${imageUrls.size}")
                 emitProgress?.invoke()
                 for (pass in 0 until USER_REQUEST_PREFETCH_PASSES) {
-                    val missingImages = imageUrls.filterNot { imageCache.findExistingCachedMediaFile(it) != null }
+                    val knownPermanent = loadPermanentFailures(url)
+                    val missingImages = imageUrls.filterNot {
+                        imageCache.findExistingCachedMediaFile(it) != null || it in knownPermanent
+                    }
                     if (missingImages.isEmpty()) {
                         Log.d(TAG, "USER_REQUESTED prefetch complete url=$url pass=$pass")
                         break
@@ -647,19 +692,25 @@ class WebContentLoader @Inject constructor(
                         imageUrls = fastPath,
                         pageUrl = url,
                         priority = ImageRequestPriority.USER_REQUESTED,
+                        writeTier = StorageTier.DOWNLOADS,
                         maxConcurrency = MAX_CONCURRENT_DOWNLOADS,
                         onImageCached = emitProgress
                     )
+                    permanentFailuresAccumulated.addAll(report.permanentFailures)
 
                     if (backgroundRest.isNotEmpty()) {
                         repositoryScope.launch {
-                            cacheImages(
+                            val bgReport = cacheImages(
                                 imageUrls = backgroundRest,
                                 pageUrl = url,
                                 priority = ImageRequestPriority.SPECULATIVE,
+                                writeTier = StorageTier.DOWNLOADS,
                                 maxConcurrency = MAX_CONCURRENT_DOWNLOADS,
                                 onImageCached = emitProgress
                             )
+                            if (bgReport.permanentFailures.isNotEmpty()) {
+                                recordPermanentFailures(url, bgReport.permanentFailures)
+                            }
                         }
                     }
 
@@ -682,9 +733,14 @@ class WebContentLoader @Inject constructor(
             }
         }
 
-        val finalResult = inspectCacheInternal(url, cachedDocument.document).copy(
+        if (permanentFailuresAccumulated.isNotEmpty()) {
+            recordPermanentFailures(url, permanentFailuresAccumulated)
+        }
+
+        val inspected = inspectCacheInternal(url, cachedDocument.document)
+        val finalResult = inspected.copy(
             isInProgress = false,
-            isRetryable = allImagesRetryable
+            isRetryable = allImagesRetryable && !inspected.isComplete
         )
         Log.d(TAG, "prefetch final result url=$url complete=${finalResult.isComplete} cached=${finalResult.cachedImages}/${finalResult.totalImages}")
         return finalResult
@@ -694,6 +750,7 @@ class WebContentLoader @Inject constructor(
         imageUrls: List<String>,
         pageUrl: String,
         priority: ImageRequestPriority,
+        writeTier: StorageTier,
         maxConcurrency: Int,
         onImageCached: (suspend () -> Unit)? = null
     ): ImageBatchDownloadReport = supervisorScope {
@@ -705,7 +762,7 @@ class WebContentLoader @Inject constructor(
             .map { imageUrl ->
                 imageUrl to async {
                     semaphore.withPermit {
-                        val result = downloadAndCacheImageInternal(imageUrl, pageUrl, priority)
+                        val result = downloadAndCacheImageInternal(imageUrl, pageUrl, priority, writeTier)
                         if (result is ImageDownloadResult.Success) {
                             onImageCached?.invoke()
                         }
@@ -739,15 +796,20 @@ class WebContentLoader @Inject constructor(
     private suspend fun downloadAndCacheImageInternal(
         imageUrl: String,
         pageUrl: String,
-        priority: ImageRequestPriority
+        priority: ImageRequestPriority,
+        writeTier: StorageTier = tierForPriority(priority)
     ): ImageDownloadResult = withContext(Dispatchers.IO) {
         if (!imageUrl.startsWith("http")) return@withContext ImageDownloadResult.Failure(false)
 
         imageCache.findExistingCachedMediaFile(imageUrl)?.let { existingFile ->
+            if (writeTier == StorageTier.DOWNLOADS && !imageCache.isDownloaded(imageUrl)) {
+                val promoted = imageCache.promoteToDownloads(imageUrl)
+                return@withContext ImageDownloadResult.Success(promoted ?: existingFile)
+            }
             return@withContext ImageDownloadResult.Success(existingFile)
         }
 
-        val cachedFile = imageCache.getCachedMediaFile(imageUrl)
+        val cachedFile = imageCache.destinationFile(imageUrl, writeTier)
         val tempFile = File(cachedFile.parent, "${cachedFile.name}.tmp")
 
         if (priority == ImageRequestPriority.USER_REQUESTED) {
@@ -774,6 +836,7 @@ class WebContentLoader @Inject constructor(
             } else {
                 repositoryScope.async {
                     runCatching {
+                        cachedFile.parentFile?.mkdirs()
                         val result = imageDownloader.executeImageRequest(
                             imageUrl = imageUrl,
                             pageUrl = pageUrl,
@@ -864,14 +927,18 @@ class WebContentLoader @Inject constructor(
         } else null
 
         val imageUrls = memo?.imageUrls.orEmpty()
+        val permanentFailures = loadPermanentFailures(url)
         val cachedImages = imageUrls.count { imageUrl ->
             imageCache.findExistingCachedMediaFile(imageUrl) != null
+        }
+        val accountedFor = imageUrls.count { imageUrl ->
+            imageCache.findExistingCachedMediaFile(imageUrl) != null || imageUrl in permanentFailures
         }
 
         val isInProgress = chapterPrefetchMutex.withLock { url in inFlightChapterPrefetches }
         val finalComplete = when {
             !htmlCached -> false
-            imageUrls.isNotEmpty() -> cachedImages == imageUrls.size
+            imageUrls.isNotEmpty() -> accountedFor == imageUrls.size
             memo?.hasImageTags == true -> false
             else -> memo?.bodyNonEmpty == true
         }
@@ -907,13 +974,13 @@ class WebContentLoader @Inject constructor(
     private fun groupSimilarElements(elements: List<ContentElement>): List<ContentElement> {
         if (elements.isEmpty()) return emptyList()
         val processed = mutableListOf<ContentElement>()
-        
+
         for (element in elements) {
             if (processed.isEmpty()) {
                 processed.add(element)
                 continue
             }
-            
+
             val last = processed.last()
             when (element) {
                 is ContentElement.Image -> {
@@ -945,15 +1012,12 @@ class WebContentLoader @Inject constructor(
 
     private fun shouldGroupWithLastImage(last: ContentElement, current: ContentElement.Image): Boolean {
         if (last !is ContentElement.Image || last.width <= 0 || current.width <= 0) return false
-        // Allow widths within 5% to handle scanning / source inconsistencies
         if (kotlin.math.abs(last.width - current.width).toFloat() / last.width > 0.05f) return false
         if (last.side != ContentElement.Image.Side.FULL || current.side != ContentElement.Image.Side.FULL) {
             return false
         }
         val lastRatio = last.height.toFloat() / last.width
         val currentRatio = current.height.toFloat() / current.width
-        // Keep short-strip continuity, but cap group height so scroll mode retains
-        // enough recycling granularity for smooth movement through downloaded chapters.
         return (currentRatio < 1.2f || lastRatio < 1.2f) &&
             lastRatio + currentRatio < MAX_GROUPED_STRIP_RATIO
     }
@@ -970,19 +1034,24 @@ class WebContentLoader @Inject constructor(
         return currentRatio < 1.2f && groupRatio + currentRatio < MAX_GROUPED_STRIP_RATIO
     }
 
-    private fun primaryCachedFile(url: String): File =
-        File(cacheDir, "${CacheKeyUtils.keyFor(url)}.html")
+    private fun primaryCachedFile(url: String, tier: StorageTier): File {
+        val dir = when (tier) {
+            StorageTier.DOWNLOADS -> downloadsDir
+            StorageTier.CACHE -> cacheDir
+        }
+        return File(dir, "${CacheKeyUtils.keyFor(url)}.html")
+    }
 
     private fun legacyCachedFile(url: String): File =
         File(cacheDir, "${url.hashCode()}.html")
 
     private fun findExistingCachedFile(url: String): File? =
-        cacheFileVariants(primaryCachedFile(url), legacyCachedFile(url))
-            .firstOrNull(File::exists)
+        cacheFileVariants(url).firstOrNull(File::exists)
 
     private fun deleteCachedHtmlFiles(url: String) {
-        cacheFileVariants(primaryCachedFile(url), legacyCachedFile(url))
-            .forEach { it.delete() }
+        cacheFileVariants(url).forEach { it.delete() }
+        // also drop the permanent-failure sidecar
+        sidecarFileVariants(url).forEach { it.delete() }
     }
 
     private fun writeTextAtomically(target: File, text: String) {
@@ -998,6 +1067,33 @@ class WebContentLoader @Inject constructor(
         }
     }
 
-    private fun cacheFileVariants(primary: File, legacy: File): List<File> =
-        listOf(primary, legacy).distinctBy(File::getAbsolutePath)
+    private fun cacheFileVariants(url: String): List<File> {
+        val downloads = primaryCachedFile(url, StorageTier.DOWNLOADS)
+        val cache = primaryCachedFile(url, StorageTier.CACHE)
+        val legacy = legacyCachedFile(url)
+        return listOf(downloads, cache, legacy).distinctBy(File::getAbsolutePath)
+    }
+
+    private fun sidecarFileVariants(url: String): List<File> =
+        cacheFileVariants(url).map { File(it.parent, "${it.name}.failed") }
+
+    private fun loadPermanentFailures(url: String): Set<String> {
+        val files = sidecarFileVariants(url).filter(File::exists)
+        if (files.isEmpty()) return emptySet()
+        return files.flatMap { f ->
+            runCatching { f.readLines().filter { it.isNotBlank() } }.getOrDefault(emptyList())
+        }.toSet()
+    }
+
+    private fun recordPermanentFailures(url: String, failures: List<String>) {
+        if (failures.isEmpty()) return
+        val htmlFile = findExistingCachedFile(url) ?: return
+        val sidecar = File(htmlFile.parent, "${htmlFile.name}.failed")
+        val existing = loadPermanentFailures(url)
+        val combined = (existing + failures).distinct()
+        runCatching {
+            sidecar.parentFile?.mkdirs()
+            sidecar.writeText(combined.joinToString("\n"))
+        }
+    }
 }

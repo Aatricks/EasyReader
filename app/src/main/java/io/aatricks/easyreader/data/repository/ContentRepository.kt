@@ -4,6 +4,7 @@ import android.content.Context
 import coil3.SingletonImageLoader
 import io.aatricks.easyreader.data.model.*
 import io.aatricks.easyreader.data.repository.content.*
+import io.aatricks.easyreader.data.repository.content.StorageTier
 import io.aatricks.easyreader.util.FileSizeUtils
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -145,12 +146,14 @@ class ContentRepository @Inject constructor(
         val result = runCatching {
             when (resolveContentKind(url)) {
                 ContentKind.WEB -> webLoader.prefetch(url, mode, onProgress)
-                ContentKind.EPUB ->
-                    if (epubLoader.prefetchEpub(url)) {
+                ContentKind.EPUB -> {
+                    val tier = if (mode == PrefetchMode.USER_REQUESTED) StorageTier.DOWNLOADS else StorageTier.CACHE
+                    if (epubLoader.prefetchEpub(url, tier)) {
                         PrefetchResult(url, htmlCached = true, totalImages = 0, cachedImages = 0, isComplete = true, isRetryable = false)
                     } else {
                         PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = true)
                     }
+                }
                 ContentKind.PDF, ContentKind.HTML, ContentKind.LOCAL -> localContentResult(url)
                 ContentKind.UNKNOWN -> PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = false)
             }
@@ -246,11 +249,23 @@ class ContentRepository @Inject constructor(
         }.getOrDefault(false)
     }
 
+    suspend fun clearAllDownloads(): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            webLoader.clearAllDownloads()
+            epubLoader.clearAllDownloads()
+            true
+        }.getOrDefault(false)
+    }
+
     suspend fun getCacheSize(): Long = withContext(Dispatchers.IO) {
         webLoader.getCacheSize() +
             epubLoader.getCacheSize() +
             pdfLoader.getCacheSize() +
             getHttpCacheSize()
+    }
+
+    suspend fun getDownloadsSize(): Long = withContext(Dispatchers.IO) {
+        webLoader.getDownloadsSize() + epubLoader.getDownloadsSize()
     }
 
     suspend fun trimCaches(): Unit = withContext(Dispatchers.IO) {

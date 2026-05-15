@@ -49,6 +49,12 @@ interface LibraryDao {
     @Query("UPDATE library_items SET readingMode = :readingMode WHERE baseTitle = :baseTitle")
     suspend fun updateReadingModeByBaseTitle(baseTitle: String, readingMode: ReadingMode)
 
+    @Query("UPDATE library_items SET isDownloaded = :downloaded, downloadedAt = :timestamp WHERE id = :id")
+    suspend fun setDownloaded(id: String, downloaded: Boolean, timestamp: Long?)
+
+    @Query("SELECT * FROM library_items WHERE isDownloaded = 1")
+    suspend fun getDownloadedItems(): List<LibraryItem>
+
     @Query("DELETE FROM library_items")
     suspend fun deleteAllItems()
 

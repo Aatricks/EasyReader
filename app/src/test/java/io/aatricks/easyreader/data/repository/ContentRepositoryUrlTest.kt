@@ -10,6 +10,7 @@ import io.aatricks.easyreader.data.repository.content.EpubContentLoader
 import io.aatricks.easyreader.data.repository.content.LocalContentLoader
 import io.aatricks.easyreader.data.repository.content.PdfContentLoader
 import io.aatricks.easyreader.data.repository.content.ContentUriTypeResolver
+import io.aatricks.easyreader.data.repository.content.StorageTier
 import io.aatricks.easyreader.data.repository.content.WebContentLoader
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
@@ -114,7 +115,7 @@ class ContentRepositoryUrlTest {
     fun contentUriEpubUsesMimeForPrefetchInspectAndContentType() = runTest {
         val contentUri = "content://com.example.provider/document/42"
         whenever(contentUriTypeResolver.resolveMimeType(any())).thenReturn("application/epub+zip")
-        whenever(epubLoader.prefetchEpub(contentUri)).thenReturn(true)
+        whenever(epubLoader.prefetchEpub(contentUri, StorageTier.DOWNLOADS)).thenReturn(true)
         whenever(epubLoader.isCached(contentUri)).thenReturn(true)
 
         val prefetch = repository.prefetch(contentUri, PrefetchMode.USER_REQUESTED)
@@ -123,7 +124,7 @@ class ContentRepositoryUrlTest {
         assertEquals(ContentType.EPUB, repository.inferContentType(contentUri))
         assertTrue(prefetch.isComplete)
         assertTrue(inspect.isComplete)
-        verify(epubLoader).prefetchEpub(contentUri)
+        verify(epubLoader).prefetchEpub(contentUri, StorageTier.DOWNLOADS)
         verify(epubLoader).isCached(contentUri)
         verify(pdfLoader, never()).clearCache(any())
     }

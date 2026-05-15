@@ -528,12 +528,14 @@ class WebContentLoaderTest {
         val root = Files.createTempDirectory("web-loader-test").toFile()
         val htmlCacheDir = File(root, "html_cache").apply { mkdirs() }
         val mediaCacheDir = File(root, "media_cache").apply { mkdirs() }
+        val htmlDownloadsDir = File(root, "html_downloads").apply { mkdirs() }
+        val mediaDownloadsDir = File(root, "media_downloads").apply { mkdirs() }
         val client = OkHttpClient.Builder()
             .addInterceptor(interceptor)
             .build()
-        val imageCache = ImageCache(mediaCacheDir)
+        val imageCache = ImageCache(mediaCacheDir, mediaDownloadsDir)
         val imageDownloader = ImageDownloader(client)
-        return WebContentLoader(htmlParser, client, imageCache, imageDownloader, htmlCacheDir)
+        return WebContentLoader(htmlParser, client, imageCache, imageDownloader, htmlCacheDir, htmlDownloadsDir)
     }
 
     private fun buildResponse(

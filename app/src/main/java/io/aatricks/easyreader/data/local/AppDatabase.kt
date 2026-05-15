@@ -7,7 +7,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import io.aatricks.easyreader.data.model.LibraryItem
 
-@Database(entities = [LibraryItem::class], version = 5, exportSchema = true)
+@Database(entities = [LibraryItem::class], version = 6, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
@@ -184,6 +184,13 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX index_library_items_baseTitle ON library_items (baseTitle)")
                 db.execSQL("CREATE INDEX index_library_items_isCurrentlyReading ON library_items (isCurrentlyReading)")
                 db.execSQL("CREATE INDEX index_library_items_lastRead ON library_items (lastRead)")
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE library_items ADD COLUMN isDownloaded INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE library_items ADD COLUMN downloadedAt INTEGER")
             }
         }
     }

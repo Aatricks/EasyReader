@@ -514,12 +514,13 @@ class AppDatabaseMigrationTest {
     }
 
     companion object {
-        private const val CURRENT_VERSION = 5
+        private const val CURRENT_VERSION = 6
         private val ALL_MIGRATIONS = arrayOf(
             AppDatabase.MIGRATION_1_2,
             AppDatabase.MIGRATION_2_3,
             AppDatabase.MIGRATION_3_4,
-            AppDatabase.MIGRATION_4_5
+            AppDatabase.MIGRATION_4_5,
+            AppDatabase.MIGRATION_5_6
         )
         private val CURRENT_INDEX_SQL = listOf(
             "CREATE UNIQUE INDEX index_library_items_url ON library_items (url)",

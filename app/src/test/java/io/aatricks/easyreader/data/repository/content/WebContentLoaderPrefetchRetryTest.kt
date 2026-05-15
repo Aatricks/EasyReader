@@ -53,7 +53,9 @@ class WebContentLoaderPrefetchRetryTest {
             loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
         }
 
-        assertFalse(result.isComplete)
+        // Permanent failures are recorded in the sidecar and count as "accounted for"
+        // so the chapter is considered complete-enough and won't re-trigger network on future opens.
+        assertTrue(result.isComplete)
         assertFalse(result.isRetryable)
         // Should make exactly 1 request because 404 is permanent and we break early.
         assertEquals(1, imageRequests.get())
@@ -100,10 +102,12 @@ class WebContentLoaderPrefetchRetryTest {
         val root = Files.createTempDirectory("prefetch-retry-test").toFile()
         val htmlCacheDir = File(root, "html_cache").apply { mkdirs() }
         val mediaCacheDir = File(root, "media_cache").apply { mkdirs() }
+        val htmlDownloadsDir = File(root, "html_downloads").apply { mkdirs() }
+        val mediaDownloadsDir = File(root, "media_downloads").apply { mkdirs() }
         val client = OkHttpClient.Builder()
             .addInterceptor(interceptor)
             .build()
-        return WebContentLoader(htmlParser, client, ImageCache(mediaCacheDir), ImageDownloader(client), htmlCacheDir)
+        return WebContentLoader(htmlParser, client, ImageCache(mediaCacheDir, mediaDownloadsDir), ImageDownloader(client), htmlCacheDir, htmlDownloadsDir)
     }
 
     private fun buildResponse(

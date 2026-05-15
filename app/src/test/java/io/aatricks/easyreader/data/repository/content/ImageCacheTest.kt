@@ -17,12 +17,14 @@ class ImageCacheTest {
     val tempFolder = TemporaryFolder()
 
     private lateinit var cacheDir: File
+    private lateinit var downloadsDir: File
     private lateinit var imageCache: ImageCache
 
     @Before
     fun setup() {
         cacheDir = tempFolder.newFolder("media_cache")
-        imageCache = ImageCache(cacheDir)
+        downloadsDir = tempFolder.newFolder("media_downloads")
+        imageCache = ImageCache(cacheDir, downloadsDir)
     }
 
     @Test

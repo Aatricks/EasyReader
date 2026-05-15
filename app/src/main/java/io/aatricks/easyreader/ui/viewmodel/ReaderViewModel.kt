@@ -582,6 +582,9 @@ class ReaderViewModel @Inject constructor(
         if (nextChapterUrl.isNullOrBlank() || !nextChapterUrl.startsWith("http")) return
 
         viewModelScope.launch {
+            // Skip speculative prefetch for items the user explicitly downloaded — the persistent
+            // copy is the source of truth and shouldn't trigger network calls on every open.
+            if (libraryRepository.getItemByUrl(nextChapterUrl)?.isDownloaded == true) return@launch
             val cacheState = contentRepository.inspectCache(nextChapterUrl)
             if (!cacheState.isComplete) {
                 contentRepository.prefetch(nextChapterUrl, PrefetchMode.SPECULATIVE)
@@ -1202,7 +1205,8 @@ internal fun computeAutoDeleteCandidates(
             item.baseTitle == baseTitle &&
                 item.contentType == ContentType.WEB &&
                 item.url != currentUrl &&
-                item.progress == 100
+                item.progress == 100 &&
+                !item.isDownloaded
         }
         .filter { item ->
             val otherNumber = TextUtils.extractChapterNumber(item.currentChapter)

@@ -427,6 +427,16 @@ class LibraryRepository @Inject constructor(
         }
     }
 
+    suspend fun markDownloaded(itemId: String, downloaded: Boolean): Boolean = runRepoCatching("Failed to update download flag", false) {
+        val ts = if (downloaded) System.currentTimeMillis() else null
+        libraryDao.setDownloaded(itemId, downloaded, ts)
+        true
+    } ?: false
+
+    suspend fun getDownloadedItems(): List<LibraryItem> = runRepoCatching("Failed to fetch downloaded items", emptyList<LibraryItem>()) {
+        libraryDao.getDownloadedItems()
+    } ?: emptyList()
+
     suspend fun clearUpdateIndicator(itemId: String): Boolean = runRepoCatching("Failed to clear update indicator", false) {
         libraryDao.getItemById(itemId)?.let { item ->
             if (item.hasUpdates) {

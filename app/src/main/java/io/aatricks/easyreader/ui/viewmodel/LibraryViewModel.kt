@@ -338,10 +338,20 @@ class LibraryViewModel @Inject constructor(
                                 isInProgress = true
                             )
                         )
-                        setCacheState(contentRepository.prefetch(chapter.url, PrefetchMode.USER_REQUESTED))
+                        val result = contentRepository.prefetch(chapter.url, PrefetchMode.USER_REQUESTED)
+                        setCacheState(result)
+                        markDownloadedIfComplete(chapter.url, result)
                     }
                 }
             }
+        }
+    }
+
+    private suspend fun markDownloadedIfComplete(url: String, result: PrefetchResult) {
+        if (!result.isComplete) return
+        val item = repository.getItemByUrl(url) ?: return
+        if (!item.isDownloaded) {
+            repository.markDownloaded(item.id, true)
         }
     }
 
@@ -457,7 +467,9 @@ class LibraryViewModel @Inject constructor(
                             )
                             gate.withPermit {
                                 runCatching {
-                                    setCacheState(contentRepository.prefetchWithProgress(item.url, PrefetchMode.USER_REQUESTED) { setCacheState(it) })
+                                    val result = contentRepository.prefetchWithProgress(item.url, PrefetchMode.USER_REQUESTED) { setCacheState(it) }
+                                    setCacheState(result)
+                                    markDownloadedIfComplete(item.url, result)
                                 }
                             }
                         }
@@ -477,13 +489,25 @@ class LibraryViewModel @Inject constructor(
                     .copy(isInProgress = true, isRetryable = false)
             )
             runCatching {
-                setCacheState(contentRepository.prefetchWithProgress(url, PrefetchMode.USER_REQUESTED) { setCacheState(it) })
+                val result = contentRepository.prefetchWithProgress(url, PrefetchMode.USER_REQUESTED) { setCacheState(it) }
+                setCacheState(result)
+                markDownloadedIfComplete(url, result)
             }
         }
     }
 
     fun removeItem(itemId: String): Unit {
         scheduleDeletion(setOf(itemId))
+    }
+
+    fun removeDownload(itemId: String): Unit {
+        viewModelScope.launch {
+            val item = repository.getItemById(itemId) ?: return@launch
+            runCatching {
+                contentRepository.clearCachesForUrls(listOf(item.url))
+                repository.markDownloaded(itemId, false)
+            }
+        }
     }
 
     fun removeItems(itemIds: Set<String>): Unit {
