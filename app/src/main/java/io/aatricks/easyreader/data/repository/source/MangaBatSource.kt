@@ -18,6 +18,7 @@ class MangaBatSource @Inject constructor(
 ) : BaseJsoupSource(preferencesManager, okHttpClient) {
     override val name = "MangaBat"
     override val baseUrl = "https://www.mangabats.com"
+    override val version = "1.0.0"
 
     companion object {
         private val SUMMARY_REGEX = Regex(".*summary: ", RegexOption.IGNORE_CASE)

@@ -13,7 +13,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.R
 
 @Composable
 fun ExternalUrlConfirmationDialog(
@@ -30,10 +32,10 @@ fun ExternalUrlConfirmationDialog(
                 tint = MaterialTheme.colorScheme.primary
             )
         },
-        title = { Text("Open this link?") },
+        title = { Text(stringResource(R.string.url_confirm_title)) },
         text = {
             Column {
-                Text("Another app sent this URL to Reader:")
+                Text(stringResource(R.string.url_confirm_intro))
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = url,
@@ -42,19 +44,19 @@ fun ExternalUrlConfirmationDialog(
                 )
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    text = "Reader will open it once. It won't be saved to your library unless you add it.",
+                    text = stringResource(R.string.url_confirm_transient),
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
         },
         confirmButton = {
             FilledTonalButton(onClick = onConfirm) {
-                Text("Open")
+                Text(stringResource(R.string.common_open))
             }
         },
         dismissButton = {
             TextButton(onClick = onCancel) {
-                Text("Cancel")
+                Text(stringResource(R.string.common_cancel))
             }
         }
     )

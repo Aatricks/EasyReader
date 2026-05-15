@@ -21,6 +21,7 @@ class SmartSource @Inject constructor(
 ) : BaseJsoupSource(preferencesManager, okHttpClient) {
     override val name = "Smart Scrape"
     override val baseUrl = ""
+    override val version = "1.0.0"
 
     companion object {
         private val URL_PREFIX = Regex("^https?://", RegexOption.IGNORE_CASE)

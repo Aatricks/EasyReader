@@ -69,6 +69,7 @@ class ExploreRepositoryTest {
         val popularRequests = mutableListOf<Pair<Int, List<String>>>()
 
         override val baseUrl: String = "https://example.com"
+        override val version: String = "test"
 
         override suspend fun getPopularNovels(page: Int, tags: List<String>): List<io.aatricks.easyreader.data.model.ExploreItem> {
             popularRequests += page to tags

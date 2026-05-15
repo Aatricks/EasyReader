@@ -52,9 +52,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.ChapterInfo
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
@@ -126,7 +129,7 @@ fun ChapterListSheet(
         ) {
             if (isSelectionMode) {
                 Text(
-                    text = "${selectedChapterUrls.size} selected",
+                    text = stringResource(R.string.chapter_selection_count, selectedChapterUrls.size),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -153,7 +156,7 @@ fun ChapterListSheet(
                                 )
                             )
                         },
-                        label = { Text("Unread") },
+                        label = { Text(stringResource(R.string.chapter_filter_unread)) },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.PlaylistAddCheck,
@@ -170,7 +173,7 @@ fun ChapterListSheet(
                             selectedChapterUrls.clear()
                             selectedChapterUrls.addAll(libraryUrls)
                         },
-                        label = { Text("In library") },
+                        label = { Text(stringResource(R.string.chapter_filter_in_library)) },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.LibraryAddCheck,
@@ -221,7 +224,7 @@ fun ChapterListSheet(
                         )
                         Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
                         Text(
-                            text = if (isDeleteMode) "Delete" else "Download",
+                            text = if (isDeleteMode) stringResource(R.string.common_delete) else stringResource(R.string.download_button),
                             fontWeight = FontWeight.SemiBold
                         )
                     }
@@ -237,7 +240,7 @@ fun ChapterListSheet(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
-                        Text("Cancel")
+                        Text(stringResource(R.string.common_cancel))
                     }
                 }
             }
@@ -268,12 +271,13 @@ fun ChapterListSheet(
                         val isInLibrary = chapter.url in libraryUrls
                         val isSelected = chapter.url in selectedChapterUrls
                         val isCurrent = chapter.url == uiState.content?.url
-                        val statusText = chapterCacheStatusText(
+                        val statusKind = chapterCacheStatusKind(
                             isCurrent = isCurrent,
                             cacheState = cacheState,
                             isInLibrary = isInLibrary,
                             isDownloaded = isDownloaded
                         )
+                        val statusText = chapterCacheStatusLabel(statusKind)
 
                         ListItem(
                             headlineContent = {
@@ -305,7 +309,7 @@ fun ChapterListSheet(
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.DownloadDone,
-                                                contentDescription = "Remove download",
+                                                contentDescription = stringResource(R.string.chapter_action_remove_download),
                                                 tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(20.dp)
                                             )
@@ -316,8 +320,8 @@ fun ChapterListSheet(
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Download,
-                                                contentDescription = "Download",
-                                                tint = if (statusText?.contains("partially") == true) {
+                                                contentDescription = stringResource(R.string.download_button),
+                                                tint = if (statusKind is ChapterStatus.SavedPartial) {
                                                     MaterialTheme.colorScheme.primary
                                                 } else {
                                                     MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
@@ -344,14 +348,14 @@ fun ChapterListSheet(
                                 } else if (isCurrent) {
                                     Icon(
                                         imageVector = Icons.Default.Check,
-                                        contentDescription = "Currently reading",
+                                        contentDescription = stringResource(R.string.chapter_status_currently_reading),
                                         tint = MaterialTheme.colorScheme.secondary,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 } else if (isOfflineReady) {
                                     Icon(
                                         imageVector = Icons.Default.Check,
-                                        contentDescription = "Saved offline",
+                                        contentDescription = stringResource(R.string.chapter_status_saved_offline),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(18.dp)
                                     )
@@ -409,9 +413,11 @@ fun ChapterListSheet(
                     tint = MaterialTheme.colorScheme.error
                 )
             },
-            title = { Text("Delete ${ids.size} chapter${if (ids.size == 1) "" else "s"}?") },
+            title = {
+                Text(pluralStringResource(R.plurals.bulk_delete_title, ids.size, ids.size))
+            },
             text = {
-                Text("Removes the selected chapters from your library. Reading progress is preserved.")
+                Text(stringResource(R.string.bulk_delete_body))
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -420,33 +426,77 @@ fun ChapterListSheet(
                     isSelectionMode = false
                     selectedChapterUrls.clear()
                 }) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingBulkDelete = null }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
     }
 }
 
+/**
+ * Status kind for a chapter row. Plain data so this function stays unit-testable;
+ * callers translate to user strings via [ChapterStatus.label].
+ */
+internal sealed class ChapterStatus {
+    data object CurrentlyReading : ChapterStatus()
+    data object Downloaded : ChapterStatus()
+    data object Caching : ChapterStatus()
+    data object SavedLocally : ChapterStatus()
+    data class SavedPartial(val cached: Int, val total: Int) : ChapterStatus()
+    data object InLibrary : ChapterStatus()
+}
+
+internal fun chapterCacheStatusKind(
+    isCurrent: Boolean,
+    cacheState: PrefetchResult?,
+    isInLibrary: Boolean,
+    isDownloaded: Boolean = false
+): ChapterStatus? {
+    if (isCurrent) return ChapterStatus.CurrentlyReading
+    if (isDownloaded) return ChapterStatus.Downloaded
+    if (cacheState?.isInProgress == true) return ChapterStatus.Caching
+    if (cacheState?.isComplete == true) return ChapterStatus.SavedLocally
+    if (cacheState != null && cacheState.totalImages > 0 && cacheState.cachedImages in 1 until cacheState.totalImages) {
+        return ChapterStatus.SavedPartial(cacheState.cachedImages, cacheState.totalImages)
+    }
+    if (isInLibrary) return ChapterStatus.InLibrary
+    return null
+}
+
+/**
+ * Back-compat helper used by existing tests. Returns the English label for the resolved
+ * status kind. New UI code should call [chapterCacheStatusKind] and resolve via
+ * [stringResource] so translations apply.
+ */
 internal fun chapterCacheStatusText(
     isCurrent: Boolean,
     cacheState: PrefetchResult?,
     isInLibrary: Boolean,
     isDownloaded: Boolean = false
-): String? {
-    if (isCurrent) return "Currently reading"
-    if (isDownloaded) return "Downloaded"
-    if (cacheState?.isInProgress == true) return "Caching..."
-    if (cacheState?.isComplete == true) return "Saved locally"
-    if (cacheState != null && cacheState.totalImages > 0 && cacheState.cachedImages in 1 until cacheState.totalImages) {
-        return "Saved partially: ${cacheState.cachedImages}/${cacheState.totalImages} images"
-    }
-    if (isInLibrary) return "In library"
-    return null
+): String? = when (val kind = chapterCacheStatusKind(isCurrent, cacheState, isInLibrary, isDownloaded)) {
+    ChapterStatus.CurrentlyReading -> "Currently reading"
+    ChapterStatus.Downloaded -> "Downloaded"
+    ChapterStatus.Caching -> "Caching..."
+    ChapterStatus.SavedLocally -> "Saved locally"
+    is ChapterStatus.SavedPartial -> "Saved partially: ${kind.cached}/${kind.total} images"
+    ChapterStatus.InLibrary -> "In library"
+    null -> null
+}
+
+@Composable
+internal fun chapterCacheStatusLabel(status: ChapterStatus?): String? = when (status) {
+    ChapterStatus.CurrentlyReading -> stringResource(R.string.chapter_status_currently_reading)
+    ChapterStatus.Downloaded -> stringResource(R.string.chapter_status_downloaded)
+    ChapterStatus.Caching -> stringResource(R.string.chapter_status_caching)
+    ChapterStatus.SavedLocally -> stringResource(R.string.chapter_status_saved_locally)
+    is ChapterStatus.SavedPartial -> stringResource(R.string.chapter_status_saved_partial, status.cached, status.total)
+    ChapterStatus.InLibrary -> stringResource(R.string.chapter_status_in_library)
+    null -> null
 }
 
 internal fun computeUnreadChapterSelection(

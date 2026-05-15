@@ -519,6 +519,39 @@
     </issue>
 
     <issue
+        id="ModifierParameter"
+        message="Modifier parameter should be the first optional parameter"
+        errorLine1="    modifier: Modifier = Modifier"
+        errorLine2="    ~~~~~~~~">
+        <location
+            file="src/main/java/io/aatricks/easyreader/ui/components/GridStateTiles.kt"
+            line="73"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="PluralsCandidate"
+        message="Formatting %d followed by words (&quot;images&quot;): This should probably be a plural rather than a string"
+        errorLine1="    &lt;string name=&quot;chapter_status_saved_partial&quot;>Saved partially: %1$d/%2$d images&lt;/string>"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="79"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="PluralsCandidate"
+        message="Formatting %d followed by words (&quot;selected&quot;): This should probably be a plural rather than a string"
+        errorLine1="    &lt;string name=&quot;chapter_selection_count&quot;>%1$d selected&lt;/string>"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="80"
+            column="5"/>
+    </issue>
+
+    <issue
         id="SetJavaScriptEnabled"
         message="Using `setJavaScriptEnabled` can introduce XSS vulnerabilities into your application, review carefully"
         errorLine1="            javaScriptEnabled = true"
@@ -822,17 +855,6 @@
         <location
             file="src/main/res/values/strings.xml"
             line="28"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="UnusedResources"
-        message="The resource `R.string.download_button` appears to be unused"
-        errorLine1="    &lt;string name=&quot;download_button&quot;>Download&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="29"
             column="13"/>
     </issue>
 

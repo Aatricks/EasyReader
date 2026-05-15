@@ -33,6 +33,7 @@ class BaseJsoupSourceTest {
     ) : BaseJsoupSource(preferencesManager, okHttpClient) {
         override val name = "Test"
         override val baseUrl = "https://example.com"
+        override val version = "test"
         override suspend fun getPopularNovels(page: Int, tags: List<String>) = emptyList<ExploreItem>()
         override suspend fun searchNovels(query: String, page: Int) = emptyList<ExploreItem>()
         override suspend fun getNovelDetails(url: String) = ExploreItem(title = "", url = "", source = "Test")

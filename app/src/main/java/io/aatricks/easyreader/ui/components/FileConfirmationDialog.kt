@@ -13,7 +13,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.R
 
 @Composable
 fun FileConfirmationDialog(
@@ -30,10 +32,10 @@ fun FileConfirmationDialog(
                 tint = MaterialTheme.colorScheme.primary
             )
         },
-        title = { Text("Open this file?") },
+        title = { Text(stringResource(R.string.file_confirm_title)) },
         text = {
             Column {
-                Text("Another app sent this file to Reader:")
+                Text(stringResource(R.string.file_confirm_intro))
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = fileUri,
@@ -42,19 +44,19 @@ fun FileConfirmationDialog(
                 )
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    text = "Only open files you trust. Reader will read its contents in the app sandbox.",
+                    text = stringResource(R.string.file_confirm_trust),
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
         },
         confirmButton = {
             FilledTonalButton(onClick = onConfirm) {
-                Text("Open")
+                Text(stringResource(R.string.common_open))
             }
         },
         dismissButton = {
             TextButton(onClick = onCancel) {
-                Text("Cancel")
+                Text(stringResource(R.string.common_cancel))
             }
         }
     )

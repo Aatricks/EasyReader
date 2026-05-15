@@ -12,6 +12,14 @@ interface NovelSource {
     val name: String
     val baseUrl: String
 
+    /**
+     * Parser version. Bump whenever the source's HTML structure changes in a way that
+     * required code changes here. Surfaced in logs so a deployed app can be cross-checked
+     * against the version reporters expect, and reserved as the hook for a future remote
+     * kill-switch ("only enable v >= X").
+     */
+    val version: String
+
     suspend fun getPopularNovels(page: Int = 1, tags: List<String> = emptyList()): List<ExploreItem>
 
     /**

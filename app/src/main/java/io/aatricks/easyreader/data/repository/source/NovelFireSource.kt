@@ -20,6 +20,7 @@ class NovelFireSource @Inject constructor(
 ) : BaseJsoupSource(preferencesManager, okHttpClient) {
     override val name = "NovelFire"
     override val baseUrl = "https://novelfire.net"
+    override val version = "1.0.0"
 
     companion object {
         private val BRACKET_NUMBER_REGEX = Regex("^\\[\\d+\\]\\s*")

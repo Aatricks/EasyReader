@@ -14,6 +14,7 @@ class AsuraScansSource @Inject constructor(
 ) : BaseJsoupSource(preferencesManager, okHttpClient) {
     override val name = "Asura Scans"
     override val baseUrl = "https://asurascans.com"
+    override val version = "1.0.0"
 
     companion object {
         private val CHAPTER_LABEL_REGEX = Regex("^(First|Latest)\\s+Chapter$", RegexOption.IGNORE_CASE)
