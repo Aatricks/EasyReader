@@ -1,11 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-        Launcher theme. windowBackground is overridden per qualifier (values vs
-        values-night) so cold start does not flash a light slab over the Compose UI
-        on dark devices. Compose handles the rest via NovelScraperTheme.
+        Post-splash theme used by NovelScraperTheme once Compose is mounted.
+        windowBackground stays mode-aware via values-night/colors.xml.
     -->
     <style name="Theme.EasyReader" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/launcher_background</item>
+    </style>
+
+    <!--
+        Launcher theme. Implements the Android 12+ SplashScreen API via the AndroidX
+        compat library so it also works on API 30/31. Hands off to Theme.EasyReader
+        as soon as MainActivity is ready.
+    -->
+    <style name="Theme.EasyReader.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/launcher_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.EasyReader</item>
     </style>
 </resources>

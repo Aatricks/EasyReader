@@ -64,6 +64,7 @@ class WebContentLoader @Inject constructor(
         private const val MAX_DIMENSION_SNIFF_BYTES = 64 * 1024L // 64KB
         private const val FETCH_REMOTE_DIMENSIONS_DURING_INITIAL_LOAD = false
         private const val USER_HTML_TIMEOUT_SECONDS = 15L
+        private const val MAX_PARSED_IMAGE_MEMO = 128
     }
 
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -102,7 +103,22 @@ class WebContentLoader @Inject constructor(
         val bodyNonEmpty: Boolean
     )
 
-    private val parsedImageMemo = java.util.concurrent.ConcurrentHashMap<String, ParsedImageMemo>()
+    // Bounded LRU so chapter-load memos do not grow unboundedly across long sessions.
+    // accessOrder=true + removeEldestEntry keeps the MAX_PARSED_IMAGE_MEMO most recently
+    // touched entries. Wrapped in synchronizedMap because WebContentLoader is reentered
+    // from multiple IO coroutines.
+    private val parsedImageMemo: MutableMap<String, ParsedImageMemo> =
+        java.util.Collections.synchronizedMap(
+            object : java.util.LinkedHashMap<String, ParsedImageMemo>(
+                MAX_PARSED_IMAGE_MEMO,
+                0.75f,
+                true
+            ) {
+                override fun removeEldestEntry(
+                    eldest: MutableMap.MutableEntry<String, ParsedImageMemo>
+                ): Boolean = size > MAX_PARSED_IMAGE_MEMO
+            }
+        )
 
     private data class CachedDocument(
         val document: Document,

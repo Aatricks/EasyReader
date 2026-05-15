@@ -53,6 +53,20 @@ class ContentRepository @Inject constructor(
         inspectMemo.remove(url)
     }
 
+    /**
+     * Drop entries older than the TTL. Cheap iteration over a Concurrent map; called on
+     * insert to keep the map from growing unboundedly across long sessions.
+     */
+    private fun pruneInspectMemo(now: Long) {
+        val iterator = inspectMemo.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            if (now - entry.value.storedAt >= INSPECT_MEMO_TTL_MS) {
+                iterator.remove()
+            }
+        }
+    }
+
     private enum class ContentKind {
         WEB,
         EPUB,
@@ -192,6 +206,7 @@ class ContentRepository @Inject constructor(
         }
 
         if (!result.isInProgress) {
+            pruneInspectMemo(now)
             inspectMemo[url] = InspectMemo(result, now)
         }
         result

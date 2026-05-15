@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
@@ -79,6 +80,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // installSplashScreen() must run before super.onCreate so the splash window
+        // is composited correctly. It also swaps the activity theme to the post-splash
+        // Theme.EasyReader so Compose inherits the right windowBackground.
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 

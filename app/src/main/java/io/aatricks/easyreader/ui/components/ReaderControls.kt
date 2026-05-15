@@ -178,7 +178,9 @@ fun BottomNavigationBar(
                 onValueChange = { sliderValue = it },
                 onValueChangeFinished = { onProgressChange(sliderValue) },
                 valueRange = 0f..100f,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = "Reading progress, ${sliderValue.toInt()} percent" },
                 colors = sliderColors,
                 interactionSource = sliderInteractionSource,
                 thumb = {

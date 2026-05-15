@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Night variant: same parent, dark windowBackground via values-night/colors.xml. -->
     <style name="Theme.EasyReader" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/launcher_background</item>
+    </style>
+
+    <style name="Theme.EasyReader.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/launcher_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.EasyReader</item>
     </style>
 </resources>
