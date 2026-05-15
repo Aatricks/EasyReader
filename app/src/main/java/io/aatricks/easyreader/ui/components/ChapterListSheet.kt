@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.LibraryAddCheck
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
@@ -39,6 +40,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -74,6 +76,7 @@ fun ChapterListSheet(
     val selectedChapterUrls = remember { mutableStateListOf<String>() }
     val chaptersListState = rememberLazyListState()
     val libraryUiState by libraryViewModel.uiState.collectAsState()
+    var pendingBulkDelete by remember { mutableStateOf<Set<String>?>(null) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -191,7 +194,7 @@ fun ChapterListSheet(
                                     libraryItemsInGroup.find { it.url == url }?.id
                                 }.toSet()
                                 if (idsToRemove.isNotEmpty()) {
-                                    libraryViewModel.removeItems(idsToRemove)
+                                    pendingBulkDelete = idsToRemove
                                 }
                             } else {
                                 val chaptersToDownload = selectedChapterUrls.mapNotNull { url ->
@@ -205,9 +208,9 @@ fun ChapterListSheet(
                                         sourceName = uiState.sourceName
                                     )
                                 }
+                                isSelectionMode = false
+                                selectedChapterUrls.clear()
                             }
-                            isSelectionMode = false
-                            selectedChapterUrls.clear()
                         },
                         modifier = Modifier.weight(1f)
                     ) {
@@ -394,6 +397,38 @@ fun ChapterListSheet(
 
             Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
         }
+    }
+
+    pendingBulkDelete?.let { ids ->
+        AlertDialog(
+            onDismissRequest = { pendingBulkDelete = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("Delete ${ids.size} chapter${if (ids.size == 1) "" else "s"}?") },
+            text = {
+                Text("Removes the selected chapters from your library. Reading progress is preserved.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    libraryViewModel.removeItems(ids)
+                    pendingBulkDelete = null
+                    isSelectionMode = false
+                    selectedChapterUrls.clear()
+                }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingBulkDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

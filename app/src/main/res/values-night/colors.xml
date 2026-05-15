@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches Compose darkColorScheme.background (PineNight) so cold start does not flash white. -->
+    <color name="launcher_background">#FF0E1210</color>
+</resources>

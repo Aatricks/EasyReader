@@ -21,6 +21,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.sync.Semaphore
@@ -53,6 +54,7 @@ class LibraryRepository @Inject constructor(
     companion object {
         private const val TAG = "LibraryRepository"
         private const val UPDATE_CHECK_THRESHOLD_DAYS = 7L
+        private const val REFRESH_PER_SOURCE_TIMEOUT_MS = 10_000L
     }
 
     init {
@@ -381,10 +383,12 @@ class LibraryRepository @Inject constructor(
                                 val latestInLibrary = items.last()
                                 if (latestInLibrary.baseNovelUrl.isNotBlank() && latestInLibrary.sourceName.isNotBlank()) {
                                     val newUpdates = runRepoCatching("Failed to refresh updates for $baseTitle", emptyList<LibraryItem>()) {
-                                        val details = exploreRepository.getNovelDetails(
-                                            latestInLibrary.baseNovelUrl,
-                                            latestInLibrary.sourceName
-                                        )
+                                        val details = withTimeoutOrNull(REFRESH_PER_SOURCE_TIMEOUT_MS) {
+                                            exploreRepository.getNovelDetails(
+                                                latestInLibrary.baseNovelUrl,
+                                                latestInLibrary.sourceName
+                                            )
+                                        }
                                         if (details != null && details.chapters.isNotEmpty()) {
                                             val sourceChapterCount = normalizeChapterList(details.chapters).size
                                             val previousTotalChapters = latestInLibrary.totalChapters

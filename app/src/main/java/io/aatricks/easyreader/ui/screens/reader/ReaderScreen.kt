@@ -61,6 +61,7 @@ import io.aatricks.easyreader.util.WebViewUtils
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import kotlinx.coroutines.launch
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -336,7 +337,8 @@ private fun CloudflareDialog(
                                         request: android.webkit.WebResourceRequest?
                                     ): Boolean {
                                         val navUrl = request?.url?.toString()
-                                        return !WebViewUtils.shouldAllowCloudflareNavigation(navUrl)
+                                        val expectedHost = url.toHttpUrlOrNull()?.host
+                                        return !WebViewUtils.shouldAllowCloudflareNavigation(navUrl, expectedHost)
                                     }
 
                                     override fun onReceivedError(

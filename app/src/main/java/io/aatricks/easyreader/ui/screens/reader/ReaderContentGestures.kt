@@ -41,7 +41,10 @@ import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import kotlin.math.abs
 
-private const val USER_SCROLL_START_THRESHOLD_PX = 5f
+// Slop for "user actually started scrolling/pulling" detection. 5px was too aggressive and
+// produced false-positive chapter pulls during deliberate scrolls; ~10px matches platform
+// ViewConfiguration touchSlop without going so high that intentional pulls feel sluggish.
+private const val USER_SCROLL_START_THRESHOLD_PX = 10f
 
 internal fun shouldDispatchReaderScrollStart(
     available: Offset,

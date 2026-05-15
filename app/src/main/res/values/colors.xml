@@ -2,4 +2,6 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- Matches Compose lightColorScheme.surface so cold start blends into UI. -->
+    <color name="launcher_background">#FFFCFAF5</color>
 </resources>

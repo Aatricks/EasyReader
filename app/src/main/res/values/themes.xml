@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.EasyReader" parent="android:Theme.Material.Light.NoActionBar" />
+    <!--
+        Launcher theme. windowBackground is overridden per qualifier (values vs
+        values-night) so cold start does not flash a light slab over the Compose UI
+        on dark devices. Compose handles the rest via NovelScraperTheme.
+    -->
+    <style name="Theme.EasyReader" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/launcher_background</item>
+    </style>
 </resources>

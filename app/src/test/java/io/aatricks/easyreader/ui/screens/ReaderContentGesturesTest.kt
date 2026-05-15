@@ -15,19 +15,26 @@ class ReaderContentGesturesTest {
                 hasHandledCurrentGesture = false
             )
         )
+        // 6px used to cross the old 5px threshold; new slop is 10px so this stays below.
+        assertFalse(
+            shouldDispatchReaderScrollStart(
+                available = Offset(x = 0f, y = 6f),
+                hasHandledCurrentGesture = false
+            )
+        )
     }
 
     @Test
     fun `large vertical deltas dispatch reader scroll start once`() {
         assertTrue(
             shouldDispatchReaderScrollStart(
-                available = Offset(x = 0f, y = 6f),
+                available = Offset(x = 0f, y = 12f),
                 hasHandledCurrentGesture = false
             )
         )
         assertFalse(
             shouldDispatchReaderScrollStart(
-                available = Offset(x = 0f, y = 6f),
+                available = Offset(x = 0f, y = 12f),
                 hasHandledCurrentGesture = true
             )
         )
@@ -37,7 +44,7 @@ class ReaderContentGesturesTest {
     fun `large horizontal deltas also dispatch reader scroll start`() {
         assertTrue(
             shouldDispatchReaderScrollStart(
-                available = Offset(x = -7f, y = 0f),
+                available = Offset(x = -14f, y = 0f),
                 hasHandledCurrentGesture = false
             )
         )

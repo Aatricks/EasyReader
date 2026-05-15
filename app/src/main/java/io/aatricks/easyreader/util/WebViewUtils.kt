@@ -49,8 +49,11 @@ object WebViewUtils {
     /**
      * Determines if a navigation request within the Cloudflare WebView should be allowed.
      * Validation is based on parsed URL scheme/host, not substring matching in path/query.
+     *
+     * When [expectedHost] is non-null, the navigation host must match it (or be a sub/super
+     * domain of it) so a Cloudflare challenge cannot wander off to a third-party origin.
      */
-    fun shouldAllowCloudflareNavigation(url: String?): Boolean {
+    fun shouldAllowCloudflareNavigation(url: String?, expectedHost: String? = null): Boolean {
         if (url == null) return false
 
         // Parse first so only the actual URL scheme is validated.
@@ -58,6 +61,13 @@ object WebViewUtils {
         if (parsedUrl.scheme != "http" && parsedUrl.scheme != "https") return false
 
         // Keep host/IP safety checks centralized in UrlSecurity.
-        return UrlSecurity.isSafeUrlSynchronous(parsedUrl)
+        if (!UrlSecurity.isSafeUrlSynchronous(parsedUrl)) return false
+
+        if (expectedHost.isNullOrBlank()) return true
+        val navHost = parsedUrl.host.lowercase()
+        val expected = expectedHost.lowercase()
+        return navHost == expected ||
+            navHost.endsWith(".$expected") ||
+            expected.endsWith(".$navHost")
     }
 }

@@ -37,6 +37,7 @@ import io.aatricks.easyreader.ui.theme.NovelScraperTheme
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import io.aatricks.easyreader.util.FileUtils
+import io.aatricks.easyreader.util.UrlSecurity
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import javax.inject.Inject
@@ -193,12 +194,14 @@ class MainActivity : ComponentActivity() {
         when (intent.action) {
             Intent.ACTION_VIEW -> {
                 intent.data?.let { uri ->
-                    if (uri.scheme == "http" || uri.scheme == "https") {
-                        handleWebUrl(uri.toString())
-                    } else if (uri.scheme == "file") {
-                        readerViewModel.requestOpenFile(uri.toString())
-                    } else {
-                        handleFilePicked(uri)
+                    when (uri.scheme) {
+                        "http", "https" -> handleWebUrl(uri.toString())
+                        "file" -> readerViewModel.requestOpenFile(uri.toString())
+                        "content" -> handleFilePicked(uri)
+                        else -> {
+                            android.util.Log.w(TAG, "Rejected VIEW intent with scheme=${uri.scheme}")
+                            Toast.makeText(this, "Unsupported link", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             }
@@ -213,6 +216,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleWebUrl(url: String): Unit {
+        if (!UrlSecurity.isSafeUrlSynchronous(url)) {
+            android.util.Log.w(TAG, "Rejected unsafe URL intent")
+            Toast.makeText(this, "Link blocked for safety", Toast.LENGTH_SHORT).show()
+            return
+        }
         readerViewModel.requestOpenUrl(url)
     }
 

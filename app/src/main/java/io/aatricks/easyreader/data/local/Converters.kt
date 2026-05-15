@@ -1,5 +1,6 @@
 package io.aatricks.easyreader.data.local
 
+import android.util.Log
 import androidx.room.TypeConverter
 import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.model.ReadingMode
@@ -16,7 +17,8 @@ class Converters {
     fun toStringMap(value: String): Map<String, String> {
         return try {
             Json.decodeFromString(value)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "toStringMap parse failed; returning empty map", e)
             emptyMap()
         }
     }
@@ -30,7 +32,8 @@ class Converters {
     fun toContentType(value: String): ContentType {
         return try {
             ContentType.valueOf(value)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "toContentType parse failed for '$value'; defaulting to WEB", e)
             ContentType.WEB
         }
     }
@@ -44,8 +47,13 @@ class Converters {
     fun toReadingMode(value: String): ReadingMode {
         return try {
             ReadingMode.valueOf(value)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "toReadingMode parse failed for '$value'; defaulting to VERTICAL", e)
             ReadingMode.VERTICAL
         }
+    }
+
+    private companion object {
+        private const val TAG = "Converters"
     }
 }
