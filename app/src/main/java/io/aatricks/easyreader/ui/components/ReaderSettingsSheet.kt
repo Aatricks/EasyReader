@@ -36,11 +36,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import io.aatricks.easyreader.ui.util.toFontFamily
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.ReaderTheme
 import io.aatricks.easyreader.ui.theme.AccentTheme
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
@@ -181,13 +183,13 @@ fun ReaderSettingsSheet(
             verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.lg)
         ) {
             Text(
-                "Reading Settings",
+                stringResource(R.string.reader_settings_title),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
             )
 
             Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
-                SettingsSectionLabel("Layout")
+                SettingsSectionLabel(stringResource(R.string.reader_settings_section_layout))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
@@ -195,14 +197,14 @@ fun ReaderSettingsSheet(
                     FilterChip(
                         selected = !uiState.isPagedMode,
                         onClick = { onUpdatePagedMode(false) },
-                        label = { Text("Scroll") },
+                        label = { Text(stringResource(R.string.reader_layout_scroll)) },
                         modifier = Modifier.weight(1f),
                         colors = settingsChipColors()
                     )
                     FilterChip(
                         selected = uiState.isPagedMode,
                         onClick = { onUpdatePagedMode(true) },
-                        label = { Text("Paged") },
+                        label = { Text(stringResource(R.string.reader_layout_paged)) },
                         modifier = Modifier.weight(1f),
                         colors = settingsChipColors()
                     )
@@ -218,7 +220,7 @@ fun ReaderSettingsSheet(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
-                SettingsSectionLabel("Direction")
+                SettingsSectionLabel(stringResource(R.string.reader_settings_section_direction))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
@@ -227,7 +229,7 @@ fun ReaderSettingsSheet(
                         selected = !uiState.isRtl,
                         onClick = { onUpdateRtl(false) },
                         enabled = uiState.isPagedMode,
-                        label = { Text("LTR") },
+                        label = { Text(stringResource(R.string.reader_direction_ltr)) },
                         modifier = Modifier.weight(1f),
                         colors = settingsChipColors()
                     )
@@ -235,14 +237,14 @@ fun ReaderSettingsSheet(
                         selected = uiState.isRtl,
                         onClick = { onUpdateRtl(true) },
                         enabled = uiState.isPagedMode,
-                        label = { Text("RTL") },
+                        label = { Text(stringResource(R.string.reader_direction_rtl)) },
                         modifier = Modifier.weight(1f),
                         colors = settingsChipColors()
                     )
                 }
                 if (!uiState.isPagedMode) {
                     Text(
-                        text = "Switch Layout to Paged to change reading direction.",
+                        text = stringResource(R.string.reader_direction_disabled_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -250,7 +252,7 @@ fun ReaderSettingsSheet(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
-                SettingsSectionLabel("Theme")
+                SettingsSectionLabel(stringResource(R.string.reader_settings_section_theme))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
@@ -266,7 +268,7 @@ fun ReaderSettingsSheet(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
-                SettingsSectionLabel("Accent")
+                SettingsSectionLabel(stringResource(R.string.reader_settings_section_accent))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -284,7 +286,7 @@ fun ReaderSettingsSheet(
             }
 
             SettingSlider(
-                label = "Font size",
+                label = stringResource(R.string.reader_slider_font_size),
                 value = uiState.fontSize,
                 onValueChange = onUpdateFontSize,
                 valueRange = 12f..32f,
@@ -293,7 +295,7 @@ fun ReaderSettingsSheet(
             )
 
             SettingSlider(
-                label = "Line height",
+                label = stringResource(R.string.reader_slider_line_height),
                 value = uiState.lineHeight,
                 onValueChange = onUpdateLineHeight,
                 valueRange = 1.0f..2.5f,
@@ -302,7 +304,7 @@ fun ReaderSettingsSheet(
             )
 
             SettingSlider(
-                label = "Margins",
+                label = stringResource(R.string.reader_slider_margins),
                 value = uiState.margins.toFloat(),
                 onValueChange = { onUpdateMargins(it.toInt()) },
                 valueRange = 4f..64f,
@@ -311,7 +313,7 @@ fun ReaderSettingsSheet(
             )
 
             SettingSlider(
-                label = "Paragraph spacing",
+                label = stringResource(R.string.reader_slider_paragraph_spacing),
                 value = uiState.paragraphSpacing,
                 onValueChange = onUpdateParagraphSpacing,
                 valueRange = 0.0f..3.0f,
@@ -320,7 +322,7 @@ fun ReaderSettingsSheet(
             )
 
             Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
-                SettingsSectionLabel("Font")
+                SettingsSectionLabel(stringResource(R.string.reader_settings_section_font))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -342,7 +344,7 @@ fun ReaderSettingsSheet(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                 ) {
                     Text(
-                        text = "The quick brown fox jumps over the lazy dog.",
+                        text = stringResource(R.string.reader_preview_pangram),
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         fontFamily = previewFont

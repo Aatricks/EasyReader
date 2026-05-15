@@ -86,7 +86,8 @@ fun ExploreScreen(
             onSourceSelect = { exploreViewModel.selectSource(it) },
             onTagToggle = { exploreViewModel.toggleTag(it) },
             onItemSelect = { exploreViewModel.selectItem(it) },
-            onLoadMore = { exploreViewModel.loadMore() }
+            onLoadMore = { exploreViewModel.loadMore() },
+            onRetryFailedSource = { exploreViewModel.retryFailedSearchSource(it) }
         )
     }
 
@@ -182,7 +183,8 @@ private fun ExploreContent(
     onSourceSelect: (String?) -> Unit,
     onTagToggle: (String) -> Unit,
     onItemSelect: (ExploreItem) -> Unit,
-    onLoadMore: () -> Unit
+    onLoadMore: () -> Unit,
+    onRetryFailedSource: (String) -> Unit
 ): Unit {
     val gridState = rememberLazyGridState()
 
@@ -221,7 +223,8 @@ private fun ExploreContent(
             hasActiveFilters = hasActiveFilters,
             onItemSelect = onItemSelect,
             onLoadMore = onLoadMore,
-            onClearFilters = onClearFilters
+            onClearFilters = onClearFilters,
+            onRetryFailedSource = onRetryFailedSource
         )
     }
 }

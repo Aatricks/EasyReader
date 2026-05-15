@@ -84,6 +84,27 @@
     </plurals>
     <string name="bulk_delete_body">Removes the selected chapters from your library. Reading progress is preserved.</string>
 
+    <!-- Reader Settings Sheet -->
+    <string name="reader_settings_title">Reading Settings</string>
+    <string name="reader_settings_section_layout">Layout</string>
+    <string name="reader_settings_section_direction">Direction</string>
+    <string name="reader_settings_section_theme">Theme</string>
+    <string name="reader_settings_section_accent">Accent</string>
+    <string name="reader_settings_section_font">Font</string>
+    <string name="reader_layout_scroll">Scroll</string>
+    <string name="reader_layout_paged">Paged</string>
+    <string name="reader_direction_ltr">LTR</string>
+    <string name="reader_direction_rtl">RTL</string>
+    <string name="reader_direction_disabled_hint">Switch Layout to Paged to change reading direction.</string>
+    <string name="reader_slider_font_size">Font size</string>
+    <string name="reader_slider_line_height">Line height</string>
+    <string name="reader_slider_margins">Margins</string>
+    <string name="reader_slider_paragraph_spacing">Paragraph spacing</string>
+    <string name="reader_font_default">Default</string>
+    <string name="reader_font_serif">Serif</string>
+    <string name="reader_font_monospace">Monospace</string>
+    <string name="reader_preview_pangram">The quick brown fox jumps over the lazy dog.</string>
+
     <!-- File / URL Confirmation Dialogs -->
     <string name="file_confirm_title">Open this file?</string>
     <string name="file_confirm_intro">Another app sent this file to Reader:</string>

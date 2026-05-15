@@ -8,7 +8,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/aatricks/easyreader/ui/components/ReaderSettingsSheet.kt"
-            line="301"
+            line="303"
             column="35"/>
     </issue>
 
@@ -19,7 +19,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/aatricks/easyreader/ui/components/ReaderSettingsSheet.kt"
-            line="319"
+            line="321"
             column="35"/>
     </issue>
 
@@ -1086,6 +1086,39 @@
         <location
             file="src/main/res/values/strings.xml"
             line="62"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.reader_font_default` appears to be unused"
+        errorLine1="    &lt;string name=&quot;reader_font_default&quot;>Default&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="103"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.reader_font_serif` appears to be unused"
+        errorLine1="    &lt;string name=&quot;reader_font_serif&quot;>Serif&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="104"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.reader_font_monospace` appears to be unused"
+        errorLine1="    &lt;string name=&quot;reader_font_monospace&quot;>Monospace&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="105"
             column="13"/>
     </issue>
 

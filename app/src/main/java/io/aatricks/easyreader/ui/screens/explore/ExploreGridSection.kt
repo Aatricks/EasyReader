@@ -59,6 +59,7 @@ import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import io.aatricks.easyreader.data.model.ExploreItem
+import io.aatricks.easyreader.ui.components.ErrorTile
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.ExploreViewModel
 import kotlinx.coroutines.flow.collectLatest
@@ -73,7 +74,8 @@ internal fun ExploreGrid(
     hasActiveFilters: Boolean,
     onItemSelect: (ExploreItem) -> Unit,
     onLoadMore: () -> Unit,
-    onClearFilters: () -> Unit
+    onClearFilters: () -> Unit,
+    onRetryFailedSource: (String) -> Unit
 ): Unit {
     Box(modifier = modifier.fillMaxWidth()) {
         LazyVerticalGrid(
@@ -84,6 +86,15 @@ internal fun ExploreGrid(
             horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm),
             verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.md)
         ) {
+            if (uiState.searchFailures.isNotEmpty()) {
+                items(uiState.searchFailures, span = { GridItemSpan(maxLineSpan) }) { failure ->
+                    ErrorTile(
+                        message = "${failure.sourceName} is unavailable" +
+                            (failure.reason?.let { ": $it" } ?: ""),
+                        onRetry = { onRetryFailedSource(failure.sourceName) }
+                    )
+                }
+            }
             when {
                 uiState.isLoading && uiState.items.isEmpty() -> {
                     item(span = { GridItemSpan(maxLineSpan) }) {

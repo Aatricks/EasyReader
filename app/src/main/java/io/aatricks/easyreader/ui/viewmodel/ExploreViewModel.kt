@@ -4,6 +4,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.aatricks.easyreader.data.model.ExploreItem
 import io.aatricks.easyreader.data.repository.ExploreRepository
+import io.aatricks.easyreader.data.repository.SourceFailure
 import io.aatricks.easyreader.data.repository.source.BrowseMode
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.Job
@@ -30,7 +31,8 @@ class ExploreViewModel @Inject constructor(
         val isFetchingDetails: Boolean = false,
         val sources: List<String> = emptyList(),
         val canLoadMore: Boolean = true,
-        val browseMode: BrowseMode = BrowseMode.POPULAR
+        val browseMode: BrowseMode = BrowseMode.POPULAR,
+        val searchFailures: List<SourceFailure> = emptyList()
     )
 
     private val _searchQueryFlow = MutableStateFlow("")
@@ -122,10 +124,15 @@ class ExploreViewModel @Inject constructor(
                     )
                 }
                 val tags = exploreRepository.getTags(sourceName)
-                val novels = if (searchQuery.isNotBlank()) {
-                    exploreRepository.searchNovels(searchQuery, 1, sourceName)
+                val novels: List<ExploreItem>
+                val failures: List<SourceFailure>
+                if (searchQuery.isNotBlank()) {
+                    val outcome = exploreRepository.searchNovelsDetailed(searchQuery, 1, sourceName)
+                    novels = outcome.items
+                    failures = outcome.failures
                 } else {
-                    exploreRepository.getNovels(_uiState.value.browseMode, 1, sourceName, emptyList())
+                    novels = exploreRepository.getNovels(_uiState.value.browseMode, 1, sourceName, emptyList())
+                    failures = emptyList()
                 }
                 updateState {
                     it.copy(
@@ -133,7 +140,8 @@ class ExploreViewModel @Inject constructor(
                         isLoading = false,
                         availableTags = tags,
                         isSearching = searchQuery.isNotBlank(),
-                        canLoadMore = novels.isNotEmpty()
+                        canLoadMore = novels.isNotEmpty(),
+                        searchFailures = failures
                     )
                 }
             }.onFailure {
@@ -189,12 +197,55 @@ class ExploreViewModel @Inject constructor(
         currentJob?.cancel()
         currentJob = viewModelScope.launch {
             runCatching {
-                updateState { it.copy(isLoading = true, page = 1, canLoadMore = true) }
-                val novels = exploreRepository.searchNovels(_uiState.value.searchQuery, 1, _uiState.value.selectedSource)
-                updateState { it.copy(items = novels, isLoading = false, canLoadMore = novels.isNotEmpty()) }
+                updateState {
+                    it.copy(
+                        isLoading = true,
+                        page = 1,
+                        canLoadMore = true,
+                        searchFailures = emptyList()
+                    )
+                }
+                val outcome = exploreRepository.searchNovelsDetailed(
+                    _uiState.value.searchQuery,
+                    1,
+                    _uiState.value.selectedSource
+                )
+                updateState {
+                    it.copy(
+                        items = outcome.items,
+                        isLoading = false,
+                        canLoadMore = outcome.items.isNotEmpty(),
+                        searchFailures = outcome.failures
+                    )
+                }
             }.onFailure {
                 if (it is kotlinx.coroutines.CancellationException) throw it
                 updateState { it.copy(isLoading = false, canLoadMore = false) }
+            }
+        }
+    }
+
+    fun retryFailedSearchSource(sourceName: String): Unit {
+        if (_uiState.value.searchQuery.isBlank()) return
+        viewModelScope.launch {
+            runCatching {
+                val outcome = exploreRepository.searchNovelsDetailed(
+                    _uiState.value.searchQuery,
+                    _uiState.value.page,
+                    sourceName
+                )
+                val existingUrls = _uiState.value.items.map { it.url }.toSet()
+                val newItems = outcome.items.filter { it.url !in existingUrls }
+                val remainingFailures = _uiState.value.searchFailures.filter { it.sourceName != sourceName } +
+                    outcome.failures
+                updateState {
+                    it.copy(
+                        items = it.items + newItems,
+                        searchFailures = remainingFailures
+                    )
+                }
+            }.onFailure {
+                if (it is kotlinx.coroutines.CancellationException) throw it
             }
         }
     }

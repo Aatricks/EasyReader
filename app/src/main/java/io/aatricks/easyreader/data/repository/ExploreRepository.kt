@@ -67,12 +67,40 @@ class ExploreRepository @Inject constructor(
         query: String,
         page: Int = 1,
         sourceName: String? = null
-    ): List<ExploreItem> = coroutineScope {
+    ): List<ExploreItem> = searchNovelsDetailed(query, page, sourceName).items
+
+    /**
+     * Search variant that returns per-source failure information alongside the
+     * merged items. Use this when the UI should surface "MangaBat unavailable"
+     * instead of letting a broken source disappear into an empty result list.
+     */
+    suspend fun searchNovelsDetailed(
+        query: String,
+        page: Int = 1,
+        sourceName: String? = null
+    ): SearchOutcome = coroutineScope {
         val activeSources = filterSources(sourceName)
 
-        activeSources.map { source ->
-            async { runCatching { source.searchNovels(query, page) }.getOrDefault(emptyList()) }
-        }.awaitAll().flatten()
+        val outcomes = activeSources.map { source ->
+            async {
+                runCatching { source.searchNovels(query, page) }.fold(
+                    onSuccess = { items -> source to Result.success(items) },
+                    onFailure = { e -> source to Result.failure(e) }
+                )
+            }
+        }.awaitAll()
+
+        val items = outcomes.flatMap { (_, result) -> result.getOrDefault(emptyList()) }
+        val failures = outcomes.mapNotNull { (source, result) ->
+            result.exceptionOrNull()?.let { e ->
+                SourceFailure(
+                    sourceName = source.name,
+                    reason = e.message?.takeIf { it.isNotBlank() } ?: e::class.simpleName,
+                    cause = e
+                )
+            }
+        }
+        SearchOutcome(items, failures)
     }
 
     suspend fun getNovelDetails(url: String, sourceName: String): ExploreItem? {
