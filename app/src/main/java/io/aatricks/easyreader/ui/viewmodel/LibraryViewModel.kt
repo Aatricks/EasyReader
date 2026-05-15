@@ -65,7 +65,7 @@ class LibraryViewModel @Inject constructor(
 
     companion object {
         private const val UNDO_DELETE_WINDOW_MS = 5000L
-        private const val LIBRARY_PREFETCH_CONCURRENCY = 4
+        private const val LIBRARY_PREFETCH_CONCURRENCY = 2
     }
 
     init {

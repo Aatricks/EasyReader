@@ -128,12 +128,8 @@ class AsuraScansSource @Inject constructor(
         return resolveUrl(img?.findImage().orEmpty())
     }
 
-    private fun extractSummary(document: Document): String? {
-        document.selectFirst("meta[property=og:description]")?.attr("content")?.takeIf { it.isNotBlank() }?.let {
-            return it.trim()
-        }
-        return document.selectFirst("meta[name=description]")?.attr("content")?.trim()
-    }
+    private fun extractSummary(document: Document): String? =
+        document.metaContent(property = "og:description", name = "description")
 
     private fun extractAuthor(document: Document): String? {
         val byAuthor = document.selectFirst("a[href*=\"/browse?author=\"]")?.text()?.trim()

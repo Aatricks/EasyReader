@@ -16,6 +16,7 @@ import io.aatricks.easyreader.ui.util.normalizeRestoreOffset
 import io.aatricks.easyreader.util.TextUtils
 import io.aatricks.easyreader.util.UrlSecurity
 import io.aatricks.easyreader.util.FieldUpdate
+import io.aatricks.easyreader.util.computeAutoDeleteCandidates
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -475,8 +476,9 @@ class ReaderViewModel @Inject constructor(
         closeContent(_uiState.value.content)
         var effectiveId = libraryItemId ?: libraryRepository.getItemByUrl(result.url)?.id
 
-        if (isExplicitNavigation && currentLibraryItemId != null) {
-            val currentItem = libraryRepository.getItemById(currentLibraryItemId!!)
+        val pinnedLibraryItemId = currentLibraryItemId
+        if (isExplicitNavigation && pinnedLibraryItemId != null) {
+            val currentItem = libraryRepository.getItemById(pinnedLibraryItemId)
             if (currentItem != null && currentItem.url != result.url && currentItem.contentType == ContentType.WEB) {
                 // We are navigating to a new chapter. Ensure it's in the library.
                 val existing = libraryRepository.getItemByUrl(result.url)
@@ -605,8 +607,9 @@ class ReaderViewModel @Inject constructor(
                 ?: TextUtils.extractChapterNumber(currentUrl)
                 ?: return@launch
 
+            val libraryItems = libraryRepository.libraryItems.value
             val toDelete = computeAutoDeleteCandidates(
-                allItems = libraryRepository.libraryItems.value,
+                allItems = libraryItems,
                 baseTitle = baseTitle,
                 currentUrl = currentUrl,
                 currentChapterNumber = currentChapterNumber
@@ -616,6 +619,37 @@ class ReaderViewModel @Inject constructor(
                 contentRepository.clearCachesForUrls(toDelete.map { it.url })
                 val ids = toDelete.map { it.id }.toSet()
                 libraryRepository.removeItems(ids)
+            }
+
+            // Also evict speculative/partial caches for chapters that are NOT in the library
+            // but live in the current novel's chapter list and sit >1 behind the current one.
+            // Those entries never get an auto-delete candidate (no LibraryItem) so their cache
+            // files accumulate forever otherwise.
+            val downloadedUrls = libraryItems.asSequence()
+                .filter { it.isDownloaded }
+                .map { it.url }
+                .toSet()
+            val inLibraryUrls = libraryItems.map { it.url }.toSet()
+            val staleSpeculativeUrls = _uiState.value.fullChapterList
+                .asSequence()
+                .filter { chapter ->
+                    chapter.url.isNotBlank() &&
+                        chapter.url != currentUrl &&
+                        chapter.url !in inLibraryUrls &&
+                        chapter.url !in downloadedUrls
+                }
+                .filter { chapter ->
+                    val otherNum = chapter.number
+                        ?: TextUtils.extractChapterNumber(chapter.title)
+                        ?: TextUtils.extractChapterNumber(chapter.url)
+                        ?: return@filter false
+                    (currentChapterNumber - otherNum) > 1
+                }
+                .map { it.url }
+                .toList()
+
+            if (staleSpeculativeUrls.isNotEmpty()) {
+                contentRepository.clearCachesForUrls(staleSpeculativeUrls)
             }
         }
     }
@@ -986,7 +1020,11 @@ class ReaderViewModel @Inject constructor(
     fun clearAllCache(): Unit {
         viewModelScope.launch {
             runCatching { contentRepository.clearAllCache() }
-                .onFailure { e -> updateState { it.copy(error = "Failed to clear cache: ${e.message}") } }
+                .onFailure { e ->
+                    Log.w(TAG, "clearAllCache failed", e)
+                    val friendly = io.aatricks.easyreader.util.ErrorMessages.fromRaw(e.message)
+                    updateState { it.copy(error = "${friendly.title}: ${friendly.body}") }
+                }
         }
     }
 
@@ -1211,28 +1249,3 @@ class ReaderViewModel @Inject constructor(
     }
 }
 
-internal fun computeAutoDeleteCandidates(
-    allItems: List<LibraryItem>,
-    baseTitle: String,
-    currentUrl: String,
-    currentChapterNumber: Double
-): List<LibraryItem> {
-    return allItems
-        .asSequence()
-        .filter { item ->
-            item.baseTitle == baseTitle &&
-                item.contentType == ContentType.WEB &&
-                item.url != currentUrl &&
-                item.progress == 100 &&
-                !item.isDownloaded
-        }
-        .filter { item ->
-            val otherNumber = TextUtils.extractChapterNumber(item.currentChapter)
-                ?: TextUtils.extractChapterNumber(item.url)
-                ?: return@filter false
-
-            // Keep the immediately previous chapter; only prune chapters 2+ behind the current one.
-            (currentChapterNumber - otherNumber) > 1
-        }
-        .toList()
-}

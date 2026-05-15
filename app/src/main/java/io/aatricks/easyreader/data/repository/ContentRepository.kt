@@ -256,25 +256,19 @@ class ContentRepository @Inject constructor(
         }
     }
 
-    suspend fun clearAllCache(): Boolean = withContext(Dispatchers.IO) {
-        runCatching {
-            inspectMemo.clear()
-            webLoader.clearAllCache()
-            epubLoader.clearAllCache()
-            pdfLoader.clearAllCache()
-            clearHttpCache()
-            clearImageCache()
-            true
-        }.getOrDefault(false)
+    suspend fun clearAllCache(): Unit = withContext(Dispatchers.IO) {
+        inspectMemo.clear()
+        webLoader.clearAllCache()
+        epubLoader.clearAllCache()
+        pdfLoader.clearAllCache()
+        clearHttpCache()
+        clearImageCache()
     }
 
-    suspend fun clearAllDownloads(): Boolean = withContext(Dispatchers.IO) {
-        runCatching {
-            inspectMemo.clear()
-            webLoader.clearAllDownloads()
-            epubLoader.clearAllDownloads()
-            true
-        }.getOrDefault(false)
+    suspend fun clearAllDownloads(): Unit = withContext(Dispatchers.IO) {
+        inspectMemo.clear()
+        webLoader.clearAllDownloads()
+        epubLoader.clearAllDownloads()
     }
 
     suspend fun getCacheSize(): Long = withContext(Dispatchers.IO) {

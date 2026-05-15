@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import io.aatricks.easyreader.ui.util.toFontFamily
 import androidx.compose.ui.unit.dp
 import io.aatricks.easyreader.data.model.ReaderTheme
 import io.aatricks.easyreader.ui.theme.AccentTheme
@@ -136,11 +137,7 @@ private fun FontFamilyChip(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    val fontFamily = when (font) {
-        "Serif" -> FontFamily.Serif
-        "Monospace" -> FontFamily.Monospace
-        else -> FontFamily.Default
-    }
+    val fontFamily = font.toFontFamily()
     FilterChip(
         selected = isSelected,
         onClick = onClick,
@@ -338,11 +335,7 @@ fun ReaderSettingsSheet(
                         )
                     }
                 }
-                val previewFont = when (uiState.fontFamily) {
-                    "Serif" -> FontFamily.Serif
-                    "Monospace" -> FontFamily.Monospace
-                    else -> FontFamily.Default
-                }
+                val previewFont = uiState.fontFamily.toFontFamily()
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),

@@ -106,8 +106,8 @@ fun ExploreScreen(
         }
     }
 
-    if (uiState.selectedItem != null) {
-        val activeItem = uiState.selectedItemDetails ?: uiState.selectedItem!!
+    val activeItem = uiState.selectedItemDetails ?: uiState.selectedItem
+    if (activeItem != null) {
         ModalBottomSheet(
             onDismissRequest = { exploreViewModel.dismissItem() },
             containerColor = MaterialTheme.colorScheme.surface,

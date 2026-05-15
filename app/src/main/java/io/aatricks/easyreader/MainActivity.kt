@@ -47,6 +47,12 @@ import io.aatricks.easyreader.ui.viewmodel.ExploreViewModel
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    private companion object {
+        private const val TAG = "MainActivity"
+        private val URL_REGEX = Regex("https?://[^\\s]+")
+        private const val UPDATE_CHECK_INTERVAL_MS: Long = 6L * 60L * 60L * 1000L
+    }
+
     private val readerViewModel: ReaderViewModel by viewModels()
     private val libraryViewModel: LibraryViewModel by viewModels()
     
@@ -87,34 +93,37 @@ class MainActivity : ComponentActivity() {
             ) {
                 val navController = rememberNavController()
 
-                if (readerUiState.showExternalUrlConfirmation && readerUiState.pendingExternalUrl != null) {
-                    io.aatricks.easyreader.ui.components.ExternalUrlConfirmationDialog(
-                        url = readerUiState.pendingExternalUrl!!,
-                        onConfirm = {
-                            readerViewModel.confirmExternalUrl()
-                            navController.navigate(ReaderRoute) {
-                                popUpTo(navController.graph.startDestinationId) {
-                                    saveState = true
+                readerUiState.pendingExternalUrl
+                    ?.takeIf { readerUiState.showExternalUrlConfirmation }
+                    ?.let { externalUrl ->
+                        io.aatricks.easyreader.ui.components.ExternalUrlConfirmationDialog(
+                            url = externalUrl,
+                            onConfirm = {
+                                readerViewModel.confirmExternalUrl()
+                                navController.navigate(ReaderRoute) {
+                                    popUpTo(navController.graph.startDestinationId) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        onCancel = { readerViewModel.cancelExternalUrl() }
-                    )
-                }
+                            },
+                            onCancel = { readerViewModel.cancelExternalUrl() }
+                        )
+                    }
 
-                if (readerUiState.showFileConfirmationDialog && readerUiState.pendingFileConfirmationUri != null) {
-                    io.aatricks.easyreader.ui.components.FileConfirmationDialog(
-                        fileUri = readerUiState.pendingFileConfirmationUri!!,
-                        onConfirm = {
-                            val uriString = readerUiState.pendingFileConfirmationUri
-                            readerViewModel.dismissFileConfirmation()
-                            uriString?.let { handleFilePicked(Uri.parse(it)) }
-                        },
-                        onCancel = { readerViewModel.dismissFileConfirmation() }
-                    )
-                }
+                readerUiState.pendingFileConfirmationUri
+                    ?.takeIf { readerUiState.showFileConfirmationDialog }
+                    ?.let { fileUri ->
+                        io.aatricks.easyreader.ui.components.FileConfirmationDialog(
+                            fileUri = fileUri,
+                            onConfirm = {
+                                readerViewModel.dismissFileConfirmation()
+                                handleFilePicked(Uri.parse(fileUri))
+                            },
+                            onCancel = { readerViewModel.dismissFileConfirmation() }
+                        )
+                    }
 
                 NavHost(navController = navController, startDestination = ReaderRoute) {
                     composable<ReaderRoute> {
@@ -170,11 +179,12 @@ class MainActivity : ComponentActivity() {
 
     private fun checkForLibraryUpdates(): Unit {
         val prefs = io.aatricks.easyreader.data.local.PreferencesManager(applicationContext)
+        if (System.currentTimeMillis() - prefs.lastUpdateCheckTime < UPDATE_CHECK_INTERVAL_MS) return
         lifecycleScope.launch {
             runCatching {
                 libraryRepository.refreshLibraryUpdates(exploreRepository)
                 prefs.lastUpdateCheckTime = System.currentTimeMillis()
-            }
+            }.onFailure { android.util.Log.w(TAG, "library refresh failed", it) }
         }
     }
 
@@ -195,8 +205,7 @@ class MainActivity : ComponentActivity() {
             Intent.ACTION_SEND -> {
                 if (intent.type == "text/plain") {
                     intent.getStringExtra(Intent.EXTRA_TEXT)?.let { sharedText ->
-                        val urlPattern = Regex("https?://[^\\s]+")
-                        urlPattern.find(sharedText)?.value?.let { handleWebUrl(it) }
+                        URL_REGEX.find(sharedText)?.value?.let { handleWebUrl(it) }
                     }
                 }
             }

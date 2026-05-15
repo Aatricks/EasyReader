@@ -141,7 +141,7 @@ class ContentRepositoryUrlTest {
 
     @Test
     fun clearAllCache_clears_loader_and_http_caches() = runTest {
-        assertTrue(repository.clearAllCache())
+        repository.clearAllCache()
 
         verify(webLoader).clearAllCache()
         verify(epubLoader).clearAllCache()

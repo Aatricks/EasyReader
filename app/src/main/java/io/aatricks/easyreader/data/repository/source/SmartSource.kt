@@ -105,27 +105,23 @@ class SmartSource @Inject constructor(
     }
 
     private fun extractSummary(document: Document): String? {
-        document.selectFirst(
-            ".description-summary .summary__content, .summary__content, .manga-summary, " +
-                "#description, .description, .post-content_item:has(h5:contains(Summary)) p"
-        )?.text()?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
-
-        document.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
-            ?.takeIf { it.isNotBlank() }?.let { return it }
-
-        return document.selectFirst("meta[name=description]")?.attr("content")?.trim()
+        document.firstNonBlankText(
+            listOf(
+                ".description-summary .summary__content, .summary__content, .manga-summary, " +
+                    "#description, .description, .post-content_item:has(h5:contains(Summary)) p"
+            )
+        )?.let { return it }
+        return document.metaContent(property = "og:description", name = "description")
     }
 
     private fun extractAuthor(document: Document): String? {
-        document.selectFirst(".author-content a, .author-content")?.text()?.trim()
-            ?.takeIf { it.isNotBlank() }?.let { return it }
-
-        document.selectFirst(".artist-content a, .artist-content")?.text()?.trim()
-            ?.takeIf { it.isNotBlank() }?.let { return it }
-
-        document.selectFirst("meta[name=author]")?.attr("content")?.trim()
-            ?.takeIf { it.isNotBlank() }?.let { return it }
-
+        document.firstNonBlankText(
+            listOf(
+                ".author-content a, .author-content",
+                ".artist-content a, .artist-content"
+            )
+        )?.let { return it }
+        document.metaContent(name = "author")?.let { return it }
         return document.selectFirst("a[href*=author], a[href*=artist]")?.text()?.trim()
     }
 

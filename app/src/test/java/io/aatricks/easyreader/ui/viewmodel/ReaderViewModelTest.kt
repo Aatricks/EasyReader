@@ -8,6 +8,7 @@ import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.util.FieldUpdate
+import io.aatricks.easyreader.util.computeAutoDeleteCandidates
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -800,6 +801,27 @@ class ReaderViewModelTest {
         )
 
         assertEquals(emptyList<LibraryItem>(), toDelete)
+    }
+
+    @Test
+    fun `computeAutoDeleteCandidates skips downloaded chapters`() {
+        val chapters = listOf(
+            LibraryItem(id = "1", title = "Chapter 1", url = "url-1", currentChapter = "Chapter 1", baseTitle = "Novel", progress = 100, isDownloaded = true),
+            LibraryItem(id = "2", title = "Chapter 2", url = "url-2", currentChapter = "Chapter 2", baseTitle = "Novel", progress = 100, isDownloaded = false),
+            LibraryItem(id = "3", title = "Chapter 3", url = "url-3", currentChapter = "Chapter 3", baseTitle = "Novel", progress = 100, isDownloaded = false)
+        )
+
+        val toDelete = computeAutoDeleteCandidates(
+            allItems = chapters,
+            baseTitle = "Novel",
+            currentUrl = "url-5",
+            currentChapterNumber = 5.0
+        )
+
+        // Chapter 1 downloaded → kept. Chapter 2 + 3 both >1 behind → only 2 is 2-behind from 5? wait
+        // Distances from 5: c1=4, c2=3, c3=2. All > 1, so all candidates by distance.
+        // But isDownloaded filter removes chapter 1. Result: c2 and c3.
+        assertEquals(listOf("2", "3"), toDelete.map { it.id }.sorted())
     }
 
     @Test

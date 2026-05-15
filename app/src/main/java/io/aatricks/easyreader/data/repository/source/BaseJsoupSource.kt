@@ -47,6 +47,24 @@ abstract class BaseJsoupSource(
         return candidates.firstNotNullOfOrNull { attr(it).takeIf { v -> v.isNotBlank() } } ?: ""
     }
 
+    protected fun org.jsoup.nodes.Document.metaContent(
+        property: String? = null,
+        name: String? = null
+    ): String? {
+        val selectors = buildList {
+            property?.let { add("meta[property=$it]") }
+            name?.let { add("meta[name=$it]") }
+        }
+        return selectors.firstNotNullOfOrNull { sel ->
+            selectFirst(sel)?.attr("content")?.trim()?.takeIf { it.isNotBlank() }
+        }
+    }
+
+    protected fun org.jsoup.nodes.Document.firstNonBlankText(selectors: List<String>): String? =
+        selectors.firstNotNullOfOrNull { sel ->
+            selectFirst(sel)?.text()?.trim()?.takeIf { it.isNotBlank() }
+        }
+
     protected fun resolveUrl(path: String): String {
         return when {
             path.isBlank() -> ""

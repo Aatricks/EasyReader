@@ -55,6 +55,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
+import io.aatricks.easyreader.ui.util.toFontFamily
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -82,12 +83,7 @@ internal fun ContentArea(
     onShowChapterList: () -> Unit,
     onShowSettings: () -> Unit
 ): Unit {
-    val fontFamily = when (uiState.fontFamily) {
-        "Serif" -> FontFamily.Serif
-        "Monospace" -> FontFamily.Monospace
-        "Cursive" -> FontFamily.Cursive
-        else -> FontFamily.SansSerif
-    }
+    val fontFamily = uiState.fontFamily.toFontFamily()
 
     val isManhwa = remember(content) {
         val isManhwaByUrl = content.url.contains("manhwa", ignoreCase = true) ||

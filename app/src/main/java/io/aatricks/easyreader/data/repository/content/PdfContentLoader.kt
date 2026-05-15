@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import android.util.LruCache
 import androidx.compose.runtime.mutableStateMapOf
 import com.itextpdf.kernel.pdf.PdfDocument
@@ -53,6 +54,7 @@ class PdfContentLoader @Inject constructor(
     )
 
     companion object {
+        private const val TAG = "PdfContentLoader"
         private val PAGE_NUMBER_REGEX = Regex("^\\d+$")
         private const val MAX_LOCAL_CACHE_SIZE = 100
         private const val MAX_GLOBAL_PDF_CACHE_SIZE = 5
@@ -91,7 +93,9 @@ class PdfContentLoader @Inject constructor(
                         // 1 point = 1/72 inch, 1 DP = 1/160 inch. 
                         // DP = points * 160 / 72 = points * 2.222
                         estimatedHeight = (pageSize.height * 2.222f).toInt().coerceIn(400, 3000)
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        Log.w(TAG, "page size sniff failed", e)
+                    }
                 }
                 count
             } ?: throw Exception("PDF not found")
@@ -162,7 +166,8 @@ class PdfContentLoader @Inject constructor(
             val pageContent = loadPageElement(handle, filePath, targetIndex + 1)
             addToGlobalCache(filePath, targetIndex, pageContent)
             mapOf(targetIndex to pageContent)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "pdf page load failed at $targetIndex", e)
             emptyMap()
         } finally {
             handle.close()
@@ -284,7 +289,8 @@ class PdfContentLoader @Inject constructor(
                 } finally {
                     bitmap.recycle()
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.w(TAG, "pdf image processing failed", e)
                 null
             }
         }
@@ -498,7 +504,9 @@ class PdfContentLoader @Inject constructor(
                     if (width > 0 && height > 0) {
                         rawImages.add(RawImage(imageBytes, width, height))
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    Log.w(TAG, "pdf image extract event failed", e)
+                }
             }
         }
 
@@ -548,8 +556,8 @@ class PdfDocumentHandle(
     val numberOfPages: Int get() = document.numberOfPages
 
     override fun close() {
-        try { document.close() } catch (_: Exception) {}
-        try { pfd?.close() } catch (_: Exception) {}
+        runCatching { document.close() }.onFailure { android.util.Log.d("PdfDocumentHandle", "document close", it) }
+        runCatching { pfd?.close() }.onFailure { android.util.Log.d("PdfDocumentHandle", "pfd close", it) }
     }
 
     fun use(block: (PdfDocumentHandle) -> Int): Int {

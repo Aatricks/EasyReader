@@ -106,9 +106,9 @@ internal fun EpubItemCard(
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    if (epubBook != null) {
+                    epubBook?.let { book ->
                         Text(
-                            text = epubBook!!.metadata.author ?: "Unknown Author",
+                            text = book.metadata.author ?: "Unknown Author",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -124,13 +124,13 @@ internal fun EpubItemCard(
                 }
             }
 
-            if (isExpanded && epubBook != null) {
+            if (isExpanded) epubBook?.let { book ->
                 Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
                 androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
 
                 Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)) {
-                    epubBook!!.toc.forEach { tocItem ->
+                    book.toc.forEach { tocItem ->
                         EpubTocItemView(
                             tocItem = tocItem,
                             epubPath = item.url,
