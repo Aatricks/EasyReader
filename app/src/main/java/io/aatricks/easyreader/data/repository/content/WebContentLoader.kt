@@ -35,6 +35,7 @@ import java.io.File
 import java.io.IOException
 import io.aatricks.easyreader.di.HtmlCacheDir
 import io.aatricks.easyreader.di.HtmlDownloadsDir
+import io.aatricks.easyreader.util.UrlSanitizer
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -67,6 +68,10 @@ class WebContentLoader @Inject constructor(
         private const val MAX_PARSED_IMAGE_MEMO = 128
     }
 
+    // Process-lifetime scope for background image prefetches that intentionally
+    // outlive a single screen (e.g., speculative caching after navigating away).
+    // SupervisorJob keeps one failed prefetch from cancelling the others. Per-job
+    // cleanup happens in the finally blocks of the inFlight* maps.
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val shortTimeoutClient = okHttpClient.newBuilder()
         .callTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -127,25 +132,26 @@ class WebContentLoader @Inject constructor(
 
     suspend fun loadWebContent(url: String): ContentResult = withContext(Dispatchers.IO) {
         val startedAtMs = System.currentTimeMillis()
-        Log.d(TAG, "start load url=$url")
+        val safeUrl = UrlSanitizer.sanitize(url)
+        Log.d(TAG, "start load url=$safeUrl")
         try {
             val cachedDocument = getDocumentFromCacheOrNetwork(url)
             val document = cachedDocument.document
             Log.d(
                 TAG,
-                "cache/html fetch complete url=$url fromCache=${cachedDocument.fromCache} elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+                "cache/html fetch complete url=$safeUrl fromCache=${cachedDocument.fromCache} elapsedMs=${System.currentTimeMillis() - startedAtMs}"
             )
 
             val elements = htmlParser.parse(document, url)
             Log.d(
                 TAG,
-                "HTML parse complete url=$url elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+                "HTML parse complete url=$safeUrl elapsedMs=${System.currentTimeMillis() - startedAtMs}"
             )
 
             val imageCount = extractImageUrls(elements).size
             Log.d(
                 TAG,
-                "image extraction count url=$url imageCount=$imageCount elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+                "image extraction count url=$safeUrl imageCount=$imageCount elapsedMs=${System.currentTimeMillis() - startedAtMs}"
             )
 
             val canUseDiskOnlyDimensions = cachedDocument.fromCache && hasCachedMediaForAllRemoteImages(elements)
@@ -153,7 +159,7 @@ class WebContentLoader @Inject constructor(
 
             Log.d(
                 TAG,
-                "dimension enrichment start url=$url diskOnly=$useDiskOnlyDimensions elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+                "dimension enrichment start url=$safeUrl diskOnly=$useDiskOnlyDimensions elapsedMs=${System.currentTimeMillis() - startedAtMs}"
             )
             val finalElements = processChapterElements(
                 elements = elements,
@@ -162,7 +168,7 @@ class WebContentLoader @Inject constructor(
             )
             Log.d(
                 TAG,
-                "dimension enrichment end url=$url elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+                "dimension enrichment end url=$safeUrl elapsedMs=${System.currentTimeMillis() - startedAtMs}"
             )
 
             val success = ContentResult.Success(
@@ -172,13 +178,13 @@ class WebContentLoader @Inject constructor(
             )
             Log.d(
                 TAG,
-                "success url=$url elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+                "success url=$safeUrl elapsedMs=${System.currentTimeMillis() - startedAtMs}"
             )
             success
         } catch (e: Exception) {
             Log.e(
                 TAG,
-                "error url=$url elapsedMs=${System.currentTimeMillis() - startedAtMs} message=${e.message}",
+                "error url=$safeUrl elapsedMs=${System.currentTimeMillis() - startedAtMs} message=${e.message}",
                 e
             )
             throw e
@@ -682,9 +688,10 @@ class WebContentLoader @Inject constructor(
             }
         } else null
 
+        val safeUrl = UrlSanitizer.sanitize(url)
         when (mode) {
             PrefetchMode.USER_REQUESTED -> {
-                Log.d(TAG, "USER_REQUESTED prefetch start url=$url totalImages=${imageUrls.size}")
+                Log.d(TAG, "USER_REQUESTED prefetch start url=$safeUrl totalImages=${imageUrls.size}")
                 emitProgress?.invoke()
                 for (pass in 0 until USER_REQUEST_PREFETCH_PASSES) {
                     val knownPermanent = loadPermanentFailures(url)
@@ -692,7 +699,7 @@ class WebContentLoader @Inject constructor(
                         imageCache.findExistingCachedMediaFile(it) != null || it in knownPermanent
                     }
                     if (missingImages.isEmpty()) {
-                        Log.d(TAG, "USER_REQUESTED prefetch complete url=$url pass=$pass")
+                        Log.d(TAG, "USER_REQUESTED prefetch complete url=$safeUrl pass=$pass")
                         break
                     }
 
@@ -702,7 +709,7 @@ class WebContentLoader @Inject constructor(
 
                     Log.d(
                         TAG,
-                        "USER_REQUESTED prefetch pass=$pass fastPath=${fastPath.size} bgRest=${backgroundRest.size} url=$url"
+                        "USER_REQUESTED prefetch pass=$pass fastPath=${fastPath.size} bgRest=${backgroundRest.size} url=$safeUrl"
                     )
                     val report = cacheImages(
                         imageUrls = fastPath,
@@ -732,7 +739,7 @@ class WebContentLoader @Inject constructor(
 
                     allImagesRetryable = report.isRetryable
                     if (report.retryableFailures.isEmpty() && report.permanentFailures.isNotEmpty()) {
-                        Log.d(TAG, "USER_REQUESTED prefetch stop url=$url - all remaining failures are permanent")
+                        Log.d(TAG, "USER_REQUESTED prefetch stop url=$safeUrl - all remaining failures are permanent")
                         break
                     }
                     if (report.isComplete && backgroundRest.isEmpty()) break
@@ -744,7 +751,7 @@ class WebContentLoader @Inject constructor(
             }
 
             PrefetchMode.SPECULATIVE -> {
-                Log.d(TAG, "SPECULATIVE prefetch HTML-only url=$url")
+                Log.d(TAG, "SPECULATIVE prefetch HTML-only url=$safeUrl")
                 allImagesRetryable = true
             }
         }
@@ -758,7 +765,7 @@ class WebContentLoader @Inject constructor(
             isInProgress = false,
             isRetryable = allImagesRetryable && !inspected.isComplete
         )
-        Log.d(TAG, "prefetch final result url=$url complete=${finalResult.isComplete} cached=${finalResult.cachedImages}/${finalResult.totalImages}")
+        Log.d(TAG, "prefetch final result url=$safeUrl complete=${finalResult.isComplete} cached=${finalResult.cachedImages}/${finalResult.totalImages}")
         return finalResult
     }
 

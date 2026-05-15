@@ -284,7 +284,7 @@ class ReaderProgressController(
             }
             Log.d(
                 TAG,
-                "saveProgress url=$resolvedChapterUrl index=$lastIndex offset=$lastOffset offsetFraction=$lastOffsetFraction firstVisibleItemSize=${latest.firstVisibleItemSize} anchor=$elementAnchor"
+                "saveProgress url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(resolvedChapterUrl)} index=$lastIndex offset=$lastOffset offsetFraction=$lastOffsetFraction firstVisibleItemSize=${latest.firstVisibleItemSize} anchor=${if (elementAnchor != null) "<elt>" else "null"}"
             )
 
             libraryRepository.updateProgressExplicit(

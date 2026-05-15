@@ -898,7 +898,7 @@ class ReaderViewModel @Inject constructor(
             if (existing != null && sameChapter && existing.progress > 0) {
                 Log.d(
                     TAG,
-                    "persistLifecycleProgress skip snap-to-top url=$currentChapterUrl dbProgress=${existing.progress}"
+                    "persistLifecycleProgress skip snap-to-top url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(currentChapterUrl)} dbProgress=${existing.progress}"
                 )
                 return
             }
@@ -906,7 +906,7 @@ class ReaderViewModel @Inject constructor(
 
         Log.d(
             TAG,
-            "persistLifecycleProgress url=$currentChapterUrl index=${latest.scrollIndex} offset=${latest.scrollOffset} offsetFraction=${latest.scrollOffsetFraction} firstVisibleItemSize=${latest.firstVisibleItemSize}"
+            "persistLifecycleProgress url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(currentChapterUrl)} index=${latest.scrollIndex} offset=${latest.scrollOffset} offsetFraction=${latest.scrollOffsetFraction} firstVisibleItemSize=${latest.firstVisibleItemSize}"
         )
 
         updateReadingProgress(

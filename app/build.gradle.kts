@@ -109,6 +109,15 @@ android {
             }
         }
     }
+
+    lint {
+        // Pin the current set of lint findings so new regressions are visible in CI.
+        // Regenerate with: ./gradlew :app:updateLintBaseline
+        baseline = file("lint-baseline.xml")
+        // Keep the build green when only existing baselined findings remain.
+        checkReleaseBuilds = true
+        abortOnError = true
+    }
 }
 
 dependencies {

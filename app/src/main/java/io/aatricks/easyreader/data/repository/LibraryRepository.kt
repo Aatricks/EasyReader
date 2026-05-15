@@ -41,6 +41,11 @@ class LibraryRepository @Inject constructor(
     private val preferencesManager: PreferencesManager
 ) {
 
+    // Intentionally process-lifetime: this repository is a @Singleton and owns a
+    // StateFlow shared across the entire app via stateIn. Cancelling the scope at
+    // any earlier boundary (e.g., ViewModel destruction) would tear down the
+    // library StateFlow that other ViewModels still observe. SupervisorJob keeps
+    // a single failed background task from cancelling its siblings.
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val progressMutex = Mutex()
 
