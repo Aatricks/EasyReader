@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.LibraryAddCheck
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Checkbox
@@ -257,7 +258,9 @@ fun ChapterListSheet(
                 ) {
                     itemsIndexed(filteredChapters, key = { _, chapter -> chapter.url }) { index, chapter ->
                         val cacheState = cacheStates[chapter.url]
-                        val isOfflineReady = cacheState?.isComplete == true
+                        val libraryItem = libraryItemsInGroup.firstOrNull { it.url == chapter.url }
+                        val isDownloaded = libraryItem?.isDownloaded == true
+                        val isOfflineReady = isDownloaded || cacheState?.isComplete == true
                         val isCaching = cacheState?.isInProgress == true
                         val isInLibrary = chapter.url in libraryUrls
                         val isSelected = chapter.url in selectedChapterUrls
@@ -265,7 +268,8 @@ fun ChapterListSheet(
                         val statusText = chapterCacheStatusText(
                             isCurrent = isCurrent,
                             cacheState = cacheState,
-                            isInLibrary = isInLibrary
+                            isInLibrary = isInLibrary,
+                            isDownloaded = isDownloaded
                         )
 
                         ListItem(
@@ -291,20 +295,33 @@ fun ChapterListSheet(
                                 }
                             } else null,
                             trailingContent = {
-                                if (!isSelectionMode && !isCurrent && !isCaching && !isOfflineReady) {
-                                    IconButton(
-                                        onClick = { libraryViewModel.retryDownload(chapter.url) }
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Download,
-                                            contentDescription = "Download",
-                                            tint = if (statusText?.contains("partially") == true) {
-                                                MaterialTheme.colorScheme.primary
-                                            } else {
-                                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                            },
-                                            modifier = Modifier.size(20.dp)
-                                        )
+                                if (!isSelectionMode && !isCurrent && !isCaching) {
+                                    if (isDownloaded && libraryItem != null) {
+                                        IconButton(
+                                            onClick = { libraryViewModel.removeDownload(libraryItem.id) }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.DownloadDone,
+                                                contentDescription = "Remove download",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    } else if (!isOfflineReady) {
+                                        IconButton(
+                                            onClick = { libraryViewModel.retryDownload(chapter.url) }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Download,
+                                                contentDescription = "Download",
+                                                tint = if (statusText?.contains("partially") == true) {
+                                                    MaterialTheme.colorScheme.primary
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                                },
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
                                     }
                                 }
                             },
@@ -383,9 +400,11 @@ fun ChapterListSheet(
 internal fun chapterCacheStatusText(
     isCurrent: Boolean,
     cacheState: PrefetchResult?,
-    isInLibrary: Boolean
+    isInLibrary: Boolean,
+    isDownloaded: Boolean = false
 ): String? {
     if (isCurrent) return "Currently reading"
+    if (isDownloaded) return "Downloaded"
     if (cacheState?.isInProgress == true) return "Caching..."
     if (cacheState?.isComplete == true) return "Saved locally"
     if (cacheState != null && cacheState.totalImages > 0 && cacheState.cachedImages in 1 until cacheState.totalImages) {

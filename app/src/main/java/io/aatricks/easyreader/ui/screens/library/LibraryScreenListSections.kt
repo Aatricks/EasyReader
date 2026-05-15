@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.DropdownMenu
@@ -496,13 +497,24 @@ private fun NovelChapterList(
                             }
 
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = chapterItem.currentChapter.ifBlank { "Chapter 1" },
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary
-                                    else if (isCurrent) MaterialTheme.colorScheme.secondary
-                                    else MaterialTheme.colorScheme.onSurface,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (chapterItem.isDownloaded) {
+                                        Icon(
+                                            imageVector = Icons.Default.DownloadDone,
+                                            contentDescription = "Downloaded",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                    }
+                                    Text(
+                                        text = chapterItem.currentChapter.ifBlank { "Chapter 1" },
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary
+                                        else if (isCurrent) MaterialTheme.colorScheme.secondary
+                                        else MaterialTheme.colorScheme.onSurface,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
                                 if (isCurrent) {
                                     Text(
                                         text = "Resume here",
@@ -513,6 +525,19 @@ private fun NovelChapterList(
                             }
 
                             if (!uiState.isSelectionMode) {
+                                if (chapterItem.isDownloaded) {
+                                    IconButton(
+                                        onClick = { libraryViewModel.removeDownload(chapterItem.id) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.DownloadDone,
+                                            contentDescription = "Remove download",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
                                 TextButton(onClick = { onToggleSummary(chapterUrl) }) {
                                     Text(if (isSummaryExpanded) "Hide summary" else "Chapter summary")
                                 }

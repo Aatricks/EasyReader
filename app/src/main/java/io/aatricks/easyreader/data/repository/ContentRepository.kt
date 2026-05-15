@@ -39,10 +39,18 @@ class ContentRepository @Inject constructor(
         private const val WEB_CHAPTER_LOAD_TIMEOUT_MS = 25_000L
         private const val MAX_MEDIA_CACHE_BYTES = 512L * 1024L * 1024L
         private const val MAX_HTML_CACHE_BYTES = 64L * 1024L * 1024L
+        private const val INSPECT_MEMO_TTL_MS = 3_000L
         private val CHAPTER_URL_PATTERNS = listOf(
             Regex("(chapter[-_/])(\\d+)", RegexOption.IGNORE_CASE),
             Regex("(ch[-_/]?)(\\d+)", RegexOption.IGNORE_CASE)
         )
+    }
+
+    private data class InspectMemo(val result: PrefetchResult, val storedAt: Long)
+    private val inspectMemo = java.util.concurrent.ConcurrentHashMap<String, InspectMemo>()
+
+    private fun invalidateInspect(url: String) {
+        inspectMemo.remove(url)
     }
 
     private enum class ContentKind {
@@ -143,6 +151,7 @@ class ContentRepository @Inject constructor(
         mode: PrefetchMode,
         onProgress: (suspend (PrefetchResult) -> Unit)?
     ): PrefetchResult = withContext(Dispatchers.IO) {
+        invalidateInspect(url)
         val result = runCatching {
             when (resolveContentKind(url)) {
                 ContentKind.WEB -> webLoader.prefetch(url, mode, onProgress)
@@ -165,7 +174,10 @@ class ContentRepository @Inject constructor(
     }
 
     suspend fun inspectCache(url: String): PrefetchResult = withContext(Dispatchers.IO) {
-        runCatching {
+        val now = System.currentTimeMillis()
+        inspectMemo[url]?.takeIf { now - it.storedAt < INSPECT_MEMO_TTL_MS }?.let { return@withContext it.result }
+
+        val result = runCatching {
             when (resolveContentKind(url)) {
                 ContentKind.WEB -> webLoader.inspectCache(url)
                 ContentKind.EPUB -> {
@@ -178,6 +190,11 @@ class ContentRepository @Inject constructor(
         }.getOrElse {
             PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = true)
         }
+
+        if (!result.isInProgress) {
+            inspectMemo[url] = InspectMemo(result, now)
+        }
+        result
     }
 
     suspend fun incrementChapterUrl(url: String): String? = adjustChapterUrl(url, 1)
@@ -204,6 +221,7 @@ class ContentRepository @Inject constructor(
     suspend fun getEpubImage(url: String): ByteArray? = epubLoader.getEpubImage(url)
 
     suspend fun clearCache(url: String): Unit = withContext(Dispatchers.IO) {
+        invalidateInspect(url)
         when (resolveContentKind(url)) {
             ContentKind.EPUB -> {
                 epubLoader.clearCache(url)
@@ -240,6 +258,7 @@ class ContentRepository @Inject constructor(
 
     suspend fun clearAllCache(): Boolean = withContext(Dispatchers.IO) {
         runCatching {
+            inspectMemo.clear()
             webLoader.clearAllCache()
             epubLoader.clearAllCache()
             pdfLoader.clearAllCache()
@@ -251,6 +270,7 @@ class ContentRepository @Inject constructor(
 
     suspend fun clearAllDownloads(): Boolean = withContext(Dispatchers.IO) {
         runCatching {
+            inspectMemo.clear()
             webLoader.clearAllDownloads()
             epubLoader.clearAllDownloads()
             true

@@ -607,9 +607,28 @@ class LibraryViewModel @Inject constructor(
         if (targetUrls.isEmpty()) return
 
         viewModelScope.launch {
+            val downloadedByUrl = repository.libraryItems.value
+                .asSequence()
+                .filter { it.isDownloaded }
+                .associate { it.url to it.id }
+
             val results = supervisorScope {
                 targetUrls.map { url ->
-                    async { runCatching { contentRepository.inspectCache(url) }.getOrNull() }
+                    async {
+                        if (url in downloadedByUrl) {
+                            PrefetchResult(
+                                url = url,
+                                htmlCached = true,
+                                totalImages = 0,
+                                cachedImages = 0,
+                                isComplete = true,
+                                isInProgress = false,
+                                isRetryable = false
+                            )
+                        } else {
+                            runCatching { contentRepository.inspectCache(url) }.getOrNull()
+                        }
+                    }
                 }.awaitAll().filterNotNull()
             }
             if (results.isNotEmpty()) {

@@ -38,6 +38,9 @@ class ReaderViewModelTest {
     @Mock
     lateinit var preferencesManager: PreferencesManager
 
+    @Mock
+    lateinit var chapterListCache: io.aatricks.easyreader.data.repository.ChapterListCache
+
     private lateinit var viewModel: ReaderViewModel
 
     @Before
@@ -83,7 +86,8 @@ class ReaderViewModelTest {
             contentRepository,
             libraryRepository,
             exploreRepository,
-            preferencesManager
+            preferencesManager,
+            chapterListCache
         )
     }
 
@@ -850,7 +854,8 @@ class ReaderViewModelTest {
             contentRepository,
             libraryRepository,
             exploreRepository,
-            preferencesManager
+            preferencesManager,
+            chapterListCache
         )
 
         viewModel.loadContent(url)

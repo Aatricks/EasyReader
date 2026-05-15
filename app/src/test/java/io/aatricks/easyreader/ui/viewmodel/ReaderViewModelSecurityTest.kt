@@ -34,6 +34,9 @@ class ReaderViewModelSecurityTest {
     @Mock
     lateinit var preferencesManager: PreferencesManager
 
+    @Mock
+    lateinit var chapterListCache: io.aatricks.easyreader.data.repository.ChapterListCache
+
     private lateinit var viewModel: ReaderViewModel
 
     @Before
@@ -57,7 +60,8 @@ class ReaderViewModelSecurityTest {
             contentRepository,
             libraryRepository,
             exploreRepository,
-            preferencesManager
+            preferencesManager,
+            chapterListCache
         )
     }
 

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.model.*
+import io.aatricks.easyreader.data.repository.ChapterListCache
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
@@ -35,7 +36,8 @@ class ReaderViewModel @Inject constructor(
     val contentRepository: ContentRepository,
     private val libraryRepository: LibraryRepository,
     private val exploreRepository: ExploreRepository,
-    private val preferencesManager: PreferencesManager
+    private val preferencesManager: PreferencesManager,
+    private val chapterListCache: ChapterListCache
 ) : BaseViewModel<ReaderViewModel.ReaderUiState>(ReaderUiState()) {
     private val progressController = ReaderProgressController(libraryRepository, viewModelScope)
     val progressState: StateFlow<ReaderProgressState> = progressController.progressState
@@ -1142,28 +1144,44 @@ class ReaderViewModel @Inject constructor(
 
     fun loadFullChapterList(baseUrl: String, sourceName: String): Unit {
         viewModelScope.launch {
+            val cached = chapterListCache.load(baseUrl, sourceName)
+            if (cached != null && cached.chapters.isNotEmpty()) {
+                val normalizedCached = normalizeChapterList(cached.chapters)
+                applyFullChapterList(normalizedCached)
+                if (chapterListCache.isFresh(cached)) return@launch
+            }
+
             runCatching {
-                updateState { it.copy(isChaptersLoading = true) }
+                if (cached == null) updateState { it.copy(isChaptersLoading = true) }
                 val details = exploreRepository.getNovelDetails(baseUrl, sourceName)
                 val normalizedChapters = normalizeChapterList(details?.chapters.orEmpty())
                 if (details != null && normalizedChapters.isNotEmpty()) {
-                    updateState {
-                        it.copy(
-                            fullChapterList = normalizedChapters,
-                            isChaptersLoading = false,
-                            isFullChapterListLoaded = true
-                        )
-                    }
-                    updateNavigationUrls()
-                    currentLibraryItemId?.let { id ->
-                        libraryRepository.getItemById(id)?.let { item ->
-                            if (item.totalChapters != normalizedChapters.size) {
-                                libraryRepository.updateItem(item.copy(totalChapters = normalizedChapters.size))
-                            }
-                        }
-                    }
-                } else updateState { it.copy(isChaptersLoading = false) }
-            }.onFailure { updateState { it.copy(isChaptersLoading = false) } }
+                    chapterListCache.save(baseUrl, sourceName, normalizedChapters)
+                    applyFullChapterList(normalizedChapters)
+                } else if (cached == null) {
+                    updateState { it.copy(isChaptersLoading = false) }
+                }
+            }.onFailure {
+                if (cached == null) updateState { it.copy(isChaptersLoading = false) }
+            }
+        }
+    }
+
+    private suspend fun applyFullChapterList(normalizedChapters: List<ChapterInfo>) {
+        updateState {
+            it.copy(
+                fullChapterList = normalizedChapters,
+                isChaptersLoading = false,
+                isFullChapterListLoaded = true
+            )
+        }
+        updateNavigationUrls()
+        currentLibraryItemId?.let { id ->
+            libraryRepository.getItemById(id)?.let { item ->
+                if (item.totalChapters != normalizedChapters.size) {
+                    libraryRepository.updateItem(item.copy(totalChapters = normalizedChapters.size))
+                }
+            }
         }
     }
 

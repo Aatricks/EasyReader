@@ -36,6 +36,10 @@ annotation class MediaDownloadsDir
 @Retention(AnnotationRetention.BINARY)
 annotation class EpubDownloadsDir
 
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class ChapterListCacheDir
+
 @Module
 @InstallIn(SingletonComponent::class)
 object ContentModule {
@@ -80,6 +84,13 @@ object ContentModule {
     @EpubDownloadsDir
     fun provideEpubDownloadsDir(@ApplicationContext context: Context): File {
         return File(context.filesDir, "downloads/epub").apply { if (!exists()) mkdirs() }
+    }
+
+    @Provides
+    @Singleton
+    @ChapterListCacheDir
+    fun provideChapterListCacheDir(@ApplicationContext context: Context): File {
+        return File(context.filesDir, "chapter_lists").apply { if (!exists()) mkdirs() }
     }
 
     @Provides
