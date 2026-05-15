@@ -7,6 +7,27 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.detekt)
+}
+
+detekt {
+    toolVersion = libs.versions.detekt.get()
+    source.setFrom("src/main/java", "src/standard/java", "src/ai/java")
+    baseline = file("detekt-baseline.xml")
+    parallel = true
+    buildUponDefaultConfig = true
+    autoCorrect = false
+}
+
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    reports {
+        html.required.set(true)
+        xml.required.set(false)
+        txt.required.set(false)
+        sarif.required.set(false)
+        md.required.set(false)
+    }
+    jvmTarget = "17"
 }
 
 android {
@@ -96,6 +117,11 @@ android {
         }
         getByName("test") {
             java.srcDirs("src/test/java")
+            // Opt-in: pass -PrunBenchmarks=true to include the slow benchmark suite
+            // in the standard test task. Default off to keep PR CI fast.
+            if (project.findProperty("runBenchmarks") == "true") {
+                java.srcDirs("src/benchmark/java")
+            }
         }
     }
 
@@ -106,6 +132,26 @@ android {
             it.testLogging {
                 events("passed", "skipped", "failed", "standardOut", "standardError")
                 showStandardStreams = true
+            }
+            if (project.findProperty("runBenchmarks") != "true") {
+                it.exclude("**/*BenchmarkTest*")
+            }
+        }
+    }
+
+    // Convenience alias: ./gradlew :app:benchmark runs the standardDebug unit-test task
+    // with the benchmark filter and the runBenchmarks property turned on, so the slow
+    // suite under src/benchmark/java is compiled and executed.
+    tasks.register("benchmark") {
+        group = "verification"
+        description = "Run the manual benchmark suite (slow). Use ./gradlew :app:benchmark."
+        dependsOn(":app:testStandardDebugUnitTest")
+        doFirst {
+            if (project.findProperty("runBenchmarks") != "true") {
+                throw GradleException(
+                    "Pass -PrunBenchmarks=true to enable the benchmark suite. " +
+                        "Example: ./gradlew :app:benchmark -PrunBenchmarks=true"
+                )
             }
         }
     }
@@ -124,6 +170,7 @@ dependencies {
     // Core Android
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
+    implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     

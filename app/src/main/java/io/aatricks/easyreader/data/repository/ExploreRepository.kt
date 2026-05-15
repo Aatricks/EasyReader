@@ -3,6 +3,7 @@ package io.aatricks.easyreader.data.repository
 import io.aatricks.easyreader.data.model.ExploreItem
 import io.aatricks.easyreader.data.repository.source.BrowseMode
 import io.aatricks.easyreader.data.repository.source.NovelSource
+import io.aatricks.easyreader.data.repository.source.isSourceEnabled
 import io.aatricks.easyreader.util.normalizeExploreItemDetails
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -21,7 +22,10 @@ class ExploreRepository @Inject constructor(
     private val sources: Set<@JvmSuppressWildcards NovelSource>
 ) {
 
-    fun getAllSources(): List<NovelSource> = sources.toList()
+    private val enabledSources: List<NovelSource>
+        get() = sources.filter(::isSourceEnabled)
+
+    fun getAllSources(): List<NovelSource> = enabledSources
 
     suspend fun getPopularNovels(
         page: Int = 1,
@@ -53,9 +57,9 @@ class ExploreRepository @Inject constructor(
     
     suspend fun getTags(sourceName: String?): List<String> = coroutineScope {
         if (sourceName != null) {
-            sources.find { it.name == sourceName }?.getTags() ?: emptyList()
+            enabledSources.find { it.name == sourceName }?.getTags() ?: emptyList()
         } else {
-            sources.map { async { it.getTags() } }
+            enabledSources.map { async { it.getTags() } }
                 .awaitAll()
                 .flatten()
                 .distinct()
@@ -104,12 +108,12 @@ class ExploreRepository @Inject constructor(
     }
 
     suspend fun getNovelDetails(url: String, sourceName: String): ExploreItem? {
-        val source = sources.find { it.name == sourceName } ?: return null
+        val source = enabledSources.find { it.name == sourceName } ?: return null
         return runCatching { normalizeExploreItemDetails(source.getNovelDetails(url)) }.getOrNull()
     }
 
     private fun filterSources(sourceName: String?): List<NovelSource> {
-        return if (sourceName == null) sources.toList() else sources.filter { it.name == sourceName }
+        return if (sourceName == null) enabledSources else enabledSources.filter { it.name == sourceName }
     }
 
     private suspend fun loadNovelsWithTagIntersection(
@@ -135,5 +139,5 @@ class ExploreRepository @Inject constructor(
         return resultSets.first().filter { it.url in commonUrls }
     }
 
-    fun getSourceNames(): List<String> = sources.map { it.name }
+    fun getSourceNames(): List<String> = enabledSources.map { it.name }
 }

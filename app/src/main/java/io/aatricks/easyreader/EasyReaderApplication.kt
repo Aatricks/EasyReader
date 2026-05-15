@@ -10,6 +10,7 @@ import coil3.request.crossfade
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.content.EpubImageFetcher
 import io.aatricks.easyreader.data.repository.content.HttpMediaCacheFetcher
+import io.aatricks.easyreader.util.CrashRecorder
 import dagger.hilt.android.HiltAndroidApp
 import okhttp3.OkHttpClient
 import javax.inject.Inject
@@ -19,6 +20,11 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory {
 
     @Inject lateinit var okHttpClient: OkHttpClient
     @Inject lateinit var contentRepository: ContentRepository
+
+    override fun onCreate() {
+        super.onCreate()
+        CrashRecorder.install(this)
+    }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         return ImageLoader.Builder(context)

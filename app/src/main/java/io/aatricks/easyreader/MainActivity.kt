@@ -24,8 +24,6 @@ import androidx.navigation.compose.rememberNavController
 import dagger.hilt.android.AndroidEntryPoint
 import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.repository.ContentRepository
-import io.aatricks.easyreader.data.repository.ExploreRepository
-import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.ui.ExploreRoute
 import io.aatricks.easyreader.ui.LibraryRoute
 import io.aatricks.easyreader.ui.ReaderRoute
@@ -39,8 +37,8 @@ import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import io.aatricks.easyreader.util.FileUtils
 import io.aatricks.easyreader.util.UrlSecurity
+import io.aatricks.easyreader.work.LibraryUpdateWorker
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
 import javax.inject.Inject
 
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -52,16 +50,12 @@ class MainActivity : ComponentActivity() {
     private companion object {
         private const val TAG = "MainActivity"
         private val URL_REGEX = Regex("https?://[^\\s]+")
-        private const val UPDATE_CHECK_INTERVAL_MS: Long = 6L * 60L * 60L * 1000L
     }
 
     private val readerViewModel: ReaderViewModel by viewModels()
     private val libraryViewModel: LibraryViewModel by viewModels()
     
     @Inject lateinit var contentRepository: ContentRepository
-    @Inject lateinit var libraryRepository: LibraryRepository
-    @Inject lateinit var exploreRepository: ExploreRepository
-    @Inject lateinit var okHttpClient: OkHttpClient
 
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -87,7 +81,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        checkForLibraryUpdates()
+        LibraryUpdateWorker.schedule(applicationContext)
 
         setContent {
             val readerUiState by readerViewModel.uiState.collectAsState()
@@ -181,17 +175,6 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleIntent(intent)
-    }
-
-    private fun checkForLibraryUpdates(): Unit {
-        val prefs = io.aatricks.easyreader.data.local.PreferencesManager(applicationContext)
-        if (System.currentTimeMillis() - prefs.lastUpdateCheckTime < UPDATE_CHECK_INTERVAL_MS) return
-        lifecycleScope.launch {
-            runCatching {
-                libraryRepository.refreshLibraryUpdates(exploreRepository)
-                prefs.lastUpdateCheckTime = System.currentTimeMillis()
-            }.onFailure { android.util.Log.w(TAG, "library refresh failed", it) }
-        }
     }
 
     private fun handleIntent(intent: Intent?): Unit {

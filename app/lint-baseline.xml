@@ -41,7 +41,7 @@
         errorLine2="        ~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="20"
+            line="41"
             column="9"/>
     </issue>
 
@@ -212,12 +212,23 @@
 
     <issue
         id="GradleDependency"
+        message="A newer version of androidx.work:work-runtime-ktx than 2.9.1 is available: 2.11.2"
+        errorLine1="work = &quot;2.9.1&quot;"
+        errorLine2="       ~~~~~~~">
+        <location
+            file="$HOME/Documents/Dev/EasyReader/gradle/libs.versions.toml"
+            line="31"
+            column="8"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
         message="A newer version of androidx.hilt:hilt-navigation-compose than 1.2.0 is available: 1.3.0"
         errorLine1="hilt-navigation-compose = { group = &quot;androidx.hilt&quot;, name = &quot;hilt-navigation-compose&quot;, version = &quot;1.2.0&quot; }"
         errorLine2="                                                                                                 ~~~~~~~">
         <location
             file="$HOME/Documents/Dev/EasyReader/gradle/libs.versions.toml"
-            line="57"
+            line="60"
             column="98"/>
     </issue>
 
@@ -465,12 +476,23 @@
 
     <issue
         id="NewerVersionAvailable"
+        message="A newer version of io.gitlab.arturbosch.detekt than 1.23.7 is available: 1.23.8"
+        errorLine1="detekt = &quot;1.23.7&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/Documents/Dev/EasyReader/gradle/libs.versions.toml"
+            line="32"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
         message="A newer version of org.mockito:mockito-core than 5.11.0 is available: 5.23.0"
         errorLine1="mockito-core = { group = &quot;org.mockito&quot;, name = &quot;mockito-core&quot;, version = &quot;5.11.0&quot; }"
         errorLine2="                                                                         ~~~~~~~~">
         <location
             file="$HOME/Documents/Dev/EasyReader/gradle/libs.versions.toml"
-            line="38"
+            line="41"
             column="74"/>
     </issue>
 
@@ -481,7 +503,7 @@
         errorLine2="                                                                                    ~~~~~~~">
         <location
             file="$HOME/Documents/Dev/EasyReader/gradle/libs.versions.toml"
-            line="39"
+            line="42"
             column="85"/>
     </issue>
 
@@ -526,6 +548,17 @@
         <location
             file="src/main/java/io/aatricks/easyreader/ui/components/GridStateTiles.kt"
             line="73"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="MissingQuantity"
+        message="For locale &quot;fr&quot; (French) the following quantity should also be defined: `many` (e.g. &quot;1000000 de jours&quot;)"
+        errorLine1="    &lt;plurals name=&quot;bulk_delete_title&quot;>"
+        errorLine2="    ^">
+        <location
+            file="src/main/res/values-fr/strings.xml"
+            line="81"
             column="5"/>
     </issue>
 
@@ -590,7 +623,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/aatricks/easyreader/MainActivity.kt"
-            line="287"
+            line="270"
             column="13"/>
     </issue>
 
@@ -1320,7 +1353,7 @@
         errorLine2="                                                 ~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/aatricks/easyreader/MainActivity.kt"
-            line="128"
+            line="122"
             column="50"/>
     </issue>
 
