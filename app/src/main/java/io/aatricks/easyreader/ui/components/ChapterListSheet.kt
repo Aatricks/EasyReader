@@ -88,7 +88,13 @@ fun ChapterListSheet(
         contentColor = MaterialTheme.colorScheme.onSurface
     ) {
         val libraryItemsInGroup = libraryUiState.groupedItems[uiState.baseTitle] ?: emptyList()
+        val libraryItemsByUrl = libraryItemsInGroup.associateBy { it.url }
         val libraryUrls = libraryItemsInGroup.map { it.url }.toSet()
+        val downloadedUrls = libraryItemsInGroup
+            .asSequence()
+            .filter { it.isDownloaded }
+            .map { it.url }
+            .toSet()
         val readUrls = libraryItemsInGroup.filter { it.progress == 100 }.map { it.url }.toSet()
 
         val allChapters = normalizeChapterList(
@@ -104,7 +110,7 @@ fun ChapterListSheet(
             if (isDeleteMode) {
                 allChapters.filter { it.url in libraryUrls }
             } else {
-                allChapters.filter { it.url !in libraryUrls }
+                allChapters.filter { it.url !in downloadedUrls }
             }
         } else {
             allChapters
@@ -152,7 +158,7 @@ fun ChapterListSheet(
                                     allChapters = allChapters,
                                     currentChapterUrl = uiState.content?.url,
                                     readUrls = readUrls,
-                                    downloadedUrls = libraryUrls
+                                    downloadedUrls = downloadedUrls
                                 )
                             )
                         },
@@ -264,10 +270,8 @@ fun ChapterListSheet(
                 ) {
                     itemsIndexed(filteredChapters, key = { _, chapter -> chapter.url }) { index, chapter ->
                         val cacheState = cacheStates[chapter.url]
-                        val libraryItem = libraryItemsInGroup.firstOrNull { it.url == chapter.url }
+                        val libraryItem = libraryItemsByUrl[chapter.url]
                         val isDownloaded = libraryItem?.isDownloaded == true
-                        val isOfflineReady = isDownloaded || cacheState?.isComplete == true
-                        val isCaching = cacheState?.isInProgress == true
                         val isInLibrary = chapter.url in libraryUrls
                         val isSelected = chapter.url in selectedChapterUrls
                         val isCurrent = chapter.url == uiState.content?.url
@@ -277,6 +281,8 @@ fun ChapterListSheet(
                             isInLibrary = isInLibrary,
                             isDownloaded = isDownloaded
                         )
+                        val isOfflineReady = statusKind == ChapterStatus.Downloaded
+                        val isDownloading = statusKind == ChapterStatus.Caching
                         val statusText = chapterCacheStatusLabel(statusKind)
 
                         ListItem(
@@ -302,8 +308,8 @@ fun ChapterListSheet(
                                 }
                             } else null,
                             trailingContent = {
-                                if (!isSelectionMode && !isCurrent && !isCaching) {
-                                    if (isDownloaded && libraryItem != null) {
+                                if (!isSelectionMode && !isCurrent && !isDownloading) {
+                                    if (isOfflineReady && libraryItem != null) {
                                         IconButton(
                                             onClick = { libraryViewModel.removeDownload(libraryItem.id) }
                                         ) {
@@ -316,12 +322,23 @@ fun ChapterListSheet(
                                         }
                                     } else if (!isOfflineReady) {
                                         IconButton(
-                                            onClick = { libraryViewModel.retryDownload(chapter.url) }
+                                            onClick = {
+                                                if (libraryItem != null) {
+                                                    libraryViewModel.retryDownload(chapter.url)
+                                                } else {
+                                                    libraryViewModel.addChapters(
+                                                        chapters = listOf(chapter),
+                                                        baseTitle = uiState.baseTitle,
+                                                        baseNovelUrl = uiState.baseNovelUrl,
+                                                        sourceName = uiState.sourceName
+                                                    )
+                                                }
+                                            }
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Download,
                                                 contentDescription = stringResource(R.string.download_button),
-                                                tint = if (statusKind is ChapterStatus.SavedPartial) {
+                                                tint = if (statusKind is ChapterStatus.DownloadIncomplete) {
                                                     MaterialTheme.colorScheme.primary
                                                 } else {
                                                     MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
@@ -446,8 +463,7 @@ internal sealed class ChapterStatus {
     data object CurrentlyReading : ChapterStatus()
     data object Downloaded : ChapterStatus()
     data object Caching : ChapterStatus()
-    data object SavedLocally : ChapterStatus()
-    data class SavedPartial(val cached: Int, val total: Int) : ChapterStatus()
+    data class DownloadIncomplete(val cached: Int, val total: Int) : ChapterStatus()
     data object InLibrary : ChapterStatus()
 }
 
@@ -458,11 +474,14 @@ internal fun chapterCacheStatusKind(
     isDownloaded: Boolean = false
 ): ChapterStatus? {
     if (isCurrent) return ChapterStatus.CurrentlyReading
-    if (isDownloaded) return ChapterStatus.Downloaded
-    if (cacheState?.isInProgress == true) return ChapterStatus.Caching
-    if (cacheState?.isComplete == true) return ChapterStatus.SavedLocally
-    if (cacheState != null && cacheState.totalImages > 0 && cacheState.cachedImages in 1 until cacheState.totalImages) {
-        return ChapterStatus.SavedPartial(cacheState.cachedImages, cacheState.totalImages)
+    val hasManagedDownload = isDownloaded || (isInLibrary && cacheState?.isPersistentDownload == true)
+    if (cacheState?.isInProgress == true && (isInLibrary || hasManagedDownload)) return ChapterStatus.Caching
+    if (hasManagedDownload) {
+        if (cacheState == null) return ChapterStatus.Downloaded
+        if (cacheState.isComplete) return ChapterStatus.Downloaded
+        if (cacheState.totalImages > 0) {
+            return ChapterStatus.DownloadIncomplete(cacheState.cachedImages, cacheState.totalImages)
+        }
     }
     if (isInLibrary) return ChapterStatus.InLibrary
     return null
@@ -481,9 +500,8 @@ internal fun chapterCacheStatusText(
 ): String? = when (val kind = chapterCacheStatusKind(isCurrent, cacheState, isInLibrary, isDownloaded)) {
     ChapterStatus.CurrentlyReading -> "Currently reading"
     ChapterStatus.Downloaded -> "Downloaded"
-    ChapterStatus.Caching -> "Caching..."
-    ChapterStatus.SavedLocally -> "Saved locally"
-    is ChapterStatus.SavedPartial -> "Saved partially: ${kind.cached}/${kind.total} images"
+    ChapterStatus.Caching -> "Downloading..."
+    is ChapterStatus.DownloadIncomplete -> "Download incomplete: ${kind.cached}/${kind.total} images"
     ChapterStatus.InLibrary -> "In library"
     null -> null
 }
@@ -493,8 +511,11 @@ internal fun chapterCacheStatusLabel(status: ChapterStatus?): String? = when (st
     ChapterStatus.CurrentlyReading -> stringResource(R.string.chapter_status_currently_reading)
     ChapterStatus.Downloaded -> stringResource(R.string.chapter_status_downloaded)
     ChapterStatus.Caching -> stringResource(R.string.chapter_status_caching)
-    ChapterStatus.SavedLocally -> stringResource(R.string.chapter_status_saved_locally)
-    is ChapterStatus.SavedPartial -> stringResource(R.string.chapter_status_saved_partial, status.cached, status.total)
+    is ChapterStatus.DownloadIncomplete -> stringResource(
+        R.string.chapter_status_download_incomplete,
+        status.cached,
+        status.total
+    )
     ChapterStatus.InLibrary -> stringResource(R.string.chapter_status_in_library)
     null -> null
 }

@@ -314,6 +314,127 @@ class WebContentLoaderTest {
     }
 
     @Test
+    fun `reader load stores html in cache tier without creating a download`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-cache-only"
+        val htmlParser = mock<HtmlParser>()
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                when (chain.request().url.toString()) {
+                    chapterUrl -> buildResponse(
+                        chain.request(),
+                        "<html><head><title>Cache Only</title></head><body><p>Loaded</p></body></html>",
+                        "text/html"
+                    )
+                    else -> buildResponse(chain.request(), "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Text("Loaded")))
+
+        val result = loader.loadWebContent(chapterUrl)
+        val downloadState = loader.inspectDownload(chapterUrl)
+
+        assertTrue(result is ContentResult.Success)
+        assertTrue(loader.isCached(chapterUrl))
+        assertFalse(loader.isDownloaded(chapterUrl))
+        assertFalse(downloadState.htmlCached)
+        assertFalse(downloadState.isComplete)
+    }
+
+    @Test
+    fun `fetchTitle stores html in cache tier without creating a download`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-title-cache"
+        val loader = createLoader(
+            htmlParser = mock(),
+            interceptor = Interceptor { chain ->
+                when (chain.request().url.toString()) {
+                    chapterUrl -> buildResponse(
+                        chain.request(),
+                        "<html><head><title>Title Cache</title></head><body><p>Loaded</p></body></html>",
+                        "text/html"
+                    )
+                    else -> buildResponse(chain.request(), "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        val title = loader.fetchTitle(chapterUrl)
+
+        assertEquals("Title Cache", title)
+        assertTrue(loader.isCached(chapterUrl))
+        assertFalse(loader.isDownloaded(chapterUrl))
+    }
+
+    @Test
+    fun `inspectDownload ignores complete reader cache`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-reader-cache"
+        val imageUrl = "https://example.com/reader-cache.jpg"
+        val htmlParser = mock<HtmlParser>()
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                when (chain.request().url.toString()) {
+                    chapterUrl -> buildResponse(
+                        chain.request(),
+                        "<html><head><title>Reader Cache</title></head><body><img src=\"$imageUrl\"></body></html>",
+                        "text/html"
+                    )
+                    imageUrl -> buildResponse(chain.request(), "image-body", "image/jpeg")
+                    else -> buildResponse(chain.request(), "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Image(imageUrl)))
+
+        loader.loadWebContent(chapterUrl)
+        loader.downloadAndCacheImage(imageUrl, chapterUrl)
+
+        val cacheState = loader.inspectCache(chapterUrl)
+        val downloadState = loader.inspectDownload(chapterUrl)
+
+        assertTrue(cacheState.isComplete)
+        assertFalse(cacheState.isPersistentDownload)
+        assertFalse(downloadState.htmlCached)
+        assertFalse(downloadState.isComplete)
+        assertEquals(0, downloadState.cachedImages)
+    }
+
+    @Test
+    fun `user requested prefetch stores a persistent download`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-download"
+        val imageUrl = "https://example.com/download.jpg"
+        val htmlParser = mock<HtmlParser>()
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                when (chain.request().url.toString()) {
+                    chapterUrl -> buildResponse(
+                        chain.request(),
+                        "<html><head><title>Download</title></head><body><img src=\"$imageUrl\"></body></html>",
+                        "text/html"
+                    )
+                    imageUrl -> buildResponse(chain.request(), "image-body", "image/jpeg")
+                    else -> buildResponse(chain.request(), "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Image(imageUrl)))
+
+        val result = loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
+        val downloadState = loader.inspectDownload(chapterUrl)
+
+        assertTrue(result.isComplete)
+        assertTrue(result.isPersistentDownload)
+        assertTrue(loader.isDownloaded(chapterUrl))
+        assertTrue(downloadState.isComplete)
+        assertTrue(downloadState.isPersistentDownload)
+    }
+
+    @Test
     fun `loadWebContent does not wait for remote image dimensions on initial load`() = runBlocking {
         val chapterUrl = "https://example.com/chapter-nonblocking"
         val imageUrl = "https://example.com/nonblocking-image.png"

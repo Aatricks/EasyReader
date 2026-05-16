@@ -53,11 +53,12 @@ class WebContentLoaderPrefetchRetryTest {
             loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
         }
 
-        // Permanent failures are recorded in the sidecar and count as "accounted for"
-        // so the chapter is considered complete-enough and won't re-trigger network on future opens.
-        assertTrue(result.isComplete)
+        // Permanent failures do NOT mark the chapter complete — strict completion requires
+        // every image to be successfully cached. The permanent-failure sidecar still
+        // suppresses network retries, so the chapter is honest-incomplete-but-not-retryable
+        // and we only see one request.
+        assertFalse(result.isComplete)
         assertFalse(result.isRetryable)
-        // Should make exactly 1 request because 404 is permanent and we break early.
         assertEquals(1, imageRequests.get())
     }
 

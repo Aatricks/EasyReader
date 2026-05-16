@@ -298,7 +298,8 @@ class LibraryViewModelTest {
             htmlCached = true,
             totalImages = 5,
             cachedImages = 5,
-            isComplete = true
+            isComplete = true,
+            isPersistentDownload = true
         )
 
         whenever(libraryRepository.getItemByUrl(chapter.url)).thenReturn(null)
@@ -335,6 +336,46 @@ class LibraryViewModelTest {
         advanceUntilIdle()
 
         verify(contentRepository, timeout(1000)).prefetch(chapter.url, PrefetchMode.USER_REQUESTED)
+        verify(libraryRepository, timeout(1000)).markDownloaded("chapter-11-id", true)
+        assertEquals(prefetchResult, viewModel.uiState.value.chapterCacheStates[chapter.url])
+    }
+
+    @Test
+    fun `addChapters downloads existing non-downloaded chapter`() = runTest {
+        val chapter = ChapterInfo("Chapter 12", "https://example.com/novel/chapter-12")
+        val existingItem = LibraryItem(
+            id = "chapter-12-id",
+            title = chapter.title,
+            url = chapter.url,
+            currentChapter = "Chapter 12",
+            baseTitle = "Novel",
+            baseNovelUrl = "https://example.com/novel",
+            sourceName = "Source1",
+            isDownloaded = false
+        )
+        val prefetchResult = PrefetchResult(
+            url = chapter.url,
+            htmlCached = true,
+            totalImages = 2,
+            cachedImages = 2,
+            isComplete = true,
+            isPersistentDownload = true
+        )
+
+        whenever(libraryRepository.getItemByUrl(chapter.url)).thenReturn(existingItem)
+        whenever(contentRepository.prefetch(chapter.url, PrefetchMode.USER_REQUESTED)).thenReturn(prefetchResult)
+
+        viewModel.addChapters(
+            chapters = listOf(chapter),
+            baseTitle = "Novel",
+            baseNovelUrl = "https://example.com/novel",
+            sourceName = "Source1"
+        )
+        advanceUntilIdle()
+
+        verify(libraryRepository, never()).addItem(any(), any(), any(), any(), any(), any(), any(), any())
+        verify(contentRepository, timeout(1000)).prefetch(chapter.url, PrefetchMode.USER_REQUESTED)
+        verify(libraryRepository, timeout(1000)).markDownloaded(existingItem.id, true)
         assertEquals(prefetchResult, viewModel.uiState.value.chapterCacheStates[chapter.url])
     }
 
@@ -356,5 +397,40 @@ class LibraryViewModelTest {
         advanceUntilIdle()
 
         assertEquals(inspected, viewModel.uiState.value.chapterCacheStates[chapterUrl])
+    }
+
+    @Test
+    fun `refreshChapterCacheStates validates downloaded items against download tier`() = runTest {
+        val chapterUrl = "https://example.com/novel/chapter-13"
+        val downloadedItem = LibraryItem(
+            id = "chapter-13-id",
+            title = "Chapter 13",
+            url = chapterUrl,
+            currentChapter = "Chapter 13",
+            baseTitle = "Novel",
+            isDownloaded = true
+        )
+        val libraryItems = MutableStateFlow(listOf(downloadedItem))
+        val inspected = PrefetchResult(
+            url = chapterUrl,
+            htmlCached = true,
+            totalImages = 4,
+            cachedImages = 2,
+            isComplete = false,
+            isPersistentDownload = true
+        )
+
+        whenever(libraryRepository.libraryItems).thenReturn(libraryItems)
+        whenever(libraryRepository.getGroupedByTitle(anyOrNull())).thenReturn(mapOf("Novel" to listOf(downloadedItem)))
+        whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(inspected)
+
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository)
+        activeViewModel.refreshChapterCacheStates(listOf(chapterUrl))
+        advanceUntilIdle()
+
+        verify(contentRepository, timeout(1000)).inspectDownload(chapterUrl)
+        verify(contentRepository, never()).inspectCache(chapterUrl)
+        verify(libraryRepository, timeout(1000)).markDownloaded(downloadedItem.id, false)
+        assertEquals(inspected, activeViewModel.uiState.value.chapterCacheStates[chapterUrl])
     }
 }

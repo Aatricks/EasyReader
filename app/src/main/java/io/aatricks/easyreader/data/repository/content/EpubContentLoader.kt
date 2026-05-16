@@ -94,6 +94,12 @@ class EpubContentLoader @Inject constructor(
         cachedEpubFileVariants(url).forEach { it.delete() }
     }
 
+    fun clearDownload(url: String) {
+        epubBookCache.remove(url)
+        primaryEpubFile(url, StorageTier.DOWNLOADS).delete()
+        File(epubDownloadsDir, CacheKeyUtils.keyFor(url)).deleteRecursively()
+    }
+
     fun clearAllCache() {
         epubCacheDir.deleteRecursively()
         epubBookCache.evictAll()

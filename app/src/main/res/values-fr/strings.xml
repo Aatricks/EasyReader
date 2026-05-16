@@ -72,11 +72,10 @@
     <string name="chapter_action_remove_download">Supprimer le téléchargement</string>
     <string name="chapter_status_currently_reading">En cours de lecture</string>
     <string name="chapter_status_downloaded">Téléchargé</string>
-    <string name="chapter_status_saved_locally">Enregistré localement</string>
     <string name="chapter_status_saved_offline">Disponible hors ligne</string>
-    <string name="chapter_status_caching">Mise en cache…</string>
+    <string name="chapter_status_caching">Téléchargement…</string>
     <string name="chapter_status_in_library">Dans la bibliothèque</string>
-    <string name="chapter_status_saved_partial">Enregistré partiellement : %1$d/%2$d images</string>
+    <string name="chapter_status_download_incomplete">Téléchargement incomplet : %1$d/%2$d images</string>
     <string name="chapter_selection_count">%1$d sélectionné(s)</string>
     <plurals name="bulk_delete_title">
         <item quantity="one">Supprimer %d chapitre ?</item>

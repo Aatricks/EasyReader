@@ -669,7 +669,7 @@
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun shouldGroupWithLastGroup(last: ContentElement, current: ContentElement.Image): Boolean</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun shouldGroupWithLastImage(last: ContentElement, current: ContentElement.Image): Boolean</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun shouldRetryException(e: Exception): Boolean</ID>
-    <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private suspend fun getDocumentFromCacheOrNetwork(url: String, priority: ImageRequestPriority = ImageRequestPriority.USER_REQUESTED): CachedDocument</ID>
+    <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private suspend fun getDocumentFromCacheOrNetwork( url: String, priority: ImageRequestPriority = ImageRequestPriority.USER_REQUESTED, writeTier: StorageTier? = null ): CachedDocument</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private suspend fun processChapterElements( elements: List&lt;ContentElement&gt;, url: String, diskOnly: Boolean ): List&lt;ContentElement&gt;</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$suspend fun prefetch( url: String, mode: PrefetchMode, onProgress: (suspend (PrefetchResult) -&gt; Unit)? ): PrefetchResult</ID>
     <ID>ReturnCount:WebViewUtils.kt$WebViewUtils$fun shouldAllowCloudflareNavigation(url: String?, expectedHost: String? = null): Boolean</ID>

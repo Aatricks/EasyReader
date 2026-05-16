@@ -316,8 +316,8 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             chapters.forEach { chapter ->
                 runCatching {
-                    if (repository.getItemByUrl(chapter.url) == null) {
-                        repository.addItem(
+                    val libraryItem = repository.getItemByUrl(chapter.url)
+                        ?: repository.addItem(
                             title = chapter.title,
                             url = chapter.url,
                             contentType = ContentType.WEB,
@@ -328,30 +328,34 @@ class LibraryViewModel @Inject constructor(
                             baseNovelUrl = baseNovelUrl,
                             sourceName = sourceName
                         )
-                        setCacheState(
-                            PrefetchResult(
-                                url = chapter.url,
-                                htmlCached = false,
-                                totalImages = 0,
-                                cachedImages = 0,
-                                isComplete = false,
-                                isInProgress = true
-                            )
+                    setCacheState(
+                        PrefetchResult(
+                            url = chapter.url,
+                            htmlCached = false,
+                            totalImages = 0,
+                            cachedImages = 0,
+                            isComplete = false,
+                            isInProgress = true,
+                            isPersistentDownload = true
                         )
-                        val result = contentRepository.prefetch(chapter.url, PrefetchMode.USER_REQUESTED)
-                        setCacheState(result)
-                        markDownloadedIfComplete(chapter.url, result)
-                    }
+                    )
+                    val result = contentRepository.prefetch(chapter.url, PrefetchMode.USER_REQUESTED)
+                    setCacheState(result)
+                    syncDownloadedFlag(libraryItem, result)
                 }
             }
         }
     }
 
-    private suspend fun markDownloadedIfComplete(url: String, result: PrefetchResult) {
-        if (!result.isComplete) return
+    private suspend fun syncDownloadedFlag(url: String, result: PrefetchResult) {
         val item = repository.getItemByUrl(url) ?: return
-        if (!item.isDownloaded) {
-            repository.markDownloaded(item.id, true)
+        syncDownloadedFlag(item, result)
+    }
+
+    private suspend fun syncDownloadedFlag(item: LibraryItem, result: PrefetchResult) {
+        val shouldBeDownloaded = result.isPersistentDownload && result.isComplete
+        if (item.isDownloaded != shouldBeDownloaded) {
+            repository.markDownloaded(item.id, shouldBeDownloaded)
         }
     }
 
@@ -462,14 +466,18 @@ class LibraryViewModel @Inject constructor(
                                     totalImages = 0,
                                     cachedImages = 0,
                                     isComplete = false,
-                                    isInProgress = true
+                                    isInProgress = true,
+                                    isPersistentDownload = true
                                 )
                             )
                             gate.withPermit {
                                 runCatching {
-                                    val result = contentRepository.prefetchWithProgress(item.url, PrefetchMode.USER_REQUESTED) { setCacheState(it) }
+                                    val result = contentRepository.prefetchWithProgress(
+                                        item.url,
+                                        PrefetchMode.USER_REQUESTED
+                                    ) { setCacheState(it) }
                                     setCacheState(result)
-                                    markDownloadedIfComplete(item.url, result)
+                                    syncDownloadedFlag(item.url, result)
                                 }
                             }
                         }
@@ -486,12 +494,12 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             setCacheState(
                 (uiState.value.chapterCacheStates[url] ?: PrefetchResult(url, false, 0, 0, false))
-                    .copy(isInProgress = true, isRetryable = false)
+                    .copy(isInProgress = true, isRetryable = false, isPersistentDownload = true)
             )
             runCatching {
                 val result = contentRepository.prefetchWithProgress(url, PrefetchMode.USER_REQUESTED) { setCacheState(it) }
                 setCacheState(result)
-                markDownloadedIfComplete(url, result)
+                syncDownloadedFlag(url, result)
             }
         }
     }
@@ -504,7 +512,7 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             val item = repository.getItemById(itemId) ?: return@launch
             runCatching {
-                contentRepository.clearCachesForUrls(listOf(item.url))
+                contentRepository.clearDownload(item.url)
                 repository.markDownloaded(itemId, false)
             }
         }
@@ -607,27 +615,28 @@ class LibraryViewModel @Inject constructor(
         if (targetUrls.isEmpty()) return
 
         viewModelScope.launch {
-            val downloadedByUrl = repository.libraryItems.value
+            val libraryItemsByUrl = repository.libraryItems.value
                 .asSequence()
-                .filter { it.isDownloaded }
-                .associate { it.url to it.id }
+                .associateBy { it.url }
 
             val results = supervisorScope {
                 targetUrls.map { url ->
                     async {
-                        if (url in downloadedByUrl) {
-                            PrefetchResult(
-                                url = url,
-                                htmlCached = true,
-                                totalImages = 0,
-                                cachedImages = 0,
-                                isComplete = true,
-                                isInProgress = false,
-                                isRetryable = false
-                            )
+                        val item = libraryItemsByUrl[url]
+                        val downloadResult = if (item != null) {
+                            runCatching { contentRepository.inspectDownload(url) }.getOrNull()
+                        } else {
+                            null
+                        }
+                        val result = if (item?.isDownloaded == true || downloadResult.hasDownloadEvidence()) {
+                            downloadResult
                         } else {
                             runCatching { contentRepository.inspectCache(url) }.getOrNull()
                         }
+                        if (item != null && result != null && !result.isInProgress) {
+                            syncDownloadedFlag(item, result)
+                        }
+                        result
                     }
                 }.awaitAll().filterNotNull()
             }
@@ -701,6 +710,9 @@ class LibraryViewModel @Inject constructor(
     }
 
 }
+
+private fun PrefetchResult?.hasDownloadEvidence(): Boolean =
+    this != null && (htmlCached || totalImages > 0 || cachedImages > 0 || isInProgress)
 
 internal fun selectLatestChapter(chapters: List<ChapterInfo>): ChapterInfo? {
     if (chapters.isEmpty()) return null

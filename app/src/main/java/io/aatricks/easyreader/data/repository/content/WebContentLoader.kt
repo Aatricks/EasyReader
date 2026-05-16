@@ -135,7 +135,7 @@ class WebContentLoader @Inject constructor(
         val safeUrl = UrlSanitizer.sanitize(url)
         Log.d(TAG, "start load url=$safeUrl")
         try {
-            val cachedDocument = getDocumentFromCacheOrNetwork(url)
+            val cachedDocument = getDocumentFromCacheOrNetwork(url, writeTier = StorageTier.CACHE)
             val document = cachedDocument.document
             Log.d(
                 TAG,
@@ -248,7 +248,7 @@ class WebContentLoader @Inject constructor(
 
     suspend fun fetchTitle(url: String): String? = withContext(Dispatchers.IO) {
         runCatching {
-            val doc = getDocumentFromCacheOrNetwork(url).document
+            val doc = getDocumentFromCacheOrNetwork(url, writeTier = StorageTier.CACHE).document
             doc.title().takeIf { it.isNotBlank() }
         }.getOrNull()
     }
@@ -265,6 +265,10 @@ class WebContentLoader @Inject constructor(
 
     suspend fun inspectCache(url: String): PrefetchResult = withContext(Dispatchers.IO) {
         inspectCacheInternal(url)
+    }
+
+    suspend fun inspectDownload(url: String): PrefetchResult = withContext(Dispatchers.IO) {
+        inspectCacheInternal(url, persistentOnly = true)
     }
 
     fun getCachedMediaFile(url: String): File = imageCache.getCachedMediaFile(url)
@@ -290,7 +294,22 @@ class WebContentLoader @Inject constructor(
     }
 
     fun clearDownload(url: String) {
-        clearCache(url)
+        val sourceForImageList = primaryCachedFile(url, StorageTier.DOWNLOADS)
+            .takeIf(File::exists)
+            ?: findExistingCachedFile(url)
+
+        if (sourceForImageList != null) {
+            runCatching {
+                val document = Jsoup.parse(sourceForImageList, "UTF-8", url)
+                extractImageUrls(htmlParser.parse(document, url))
+                    .distinct()
+                    .forEach(imageCache::deleteDownloadedMediaFile)
+            }
+        }
+
+        primaryCachedFile(url, StorageTier.DOWNLOADS).delete()
+        File(downloadsDir, "${CacheKeyUtils.keyFor(url)}.html.failed").delete()
+        parsedImageMemo.remove(url)
     }
 
     suspend fun resetInFlightState(url: String) {
@@ -338,13 +357,19 @@ class WebContentLoader @Inject constructor(
     private fun tierForMode(mode: PrefetchMode): StorageTier =
         if (mode == PrefetchMode.USER_REQUESTED) StorageTier.DOWNLOADS else StorageTier.CACHE
 
-    private suspend fun getDocumentFromCacheOrNetwork(url: String, priority: ImageRequestPriority = ImageRequestPriority.USER_REQUESTED): CachedDocument {
+    private suspend fun getDocumentFromCacheOrNetwork(
+        url: String,
+        priority: ImageRequestPriority = ImageRequestPriority.USER_REQUESTED,
+        writeTier: StorageTier? = null
+    ): CachedDocument {
         findExistingCachedFile(url)?.let { cachedFile ->
             return CachedDocument(
                 document = Jsoup.parse(cachedFile, "UTF-8", url),
                 fromCache = true
             )
         }
+
+        val effectiveWriteTier = writeTier ?: tierForPriority(priority)
 
         val inFlight = chapterPrefetchMutex.withLock { inFlightHtmlFetches[url] }
         if (priority == ImageRequestPriority.USER_REQUESTED &&
@@ -361,7 +386,7 @@ class WebContentLoader @Inject constructor(
 
         val deferred = chapterPrefetchMutex.withLock {
             inFlightHtmlFetches[url]?.deferred ?: repositoryScope.async {
-                fetchAndCacheDocument(url, priority)
+                fetchAndCacheDocument(url, priority, effectiveWriteTier)
             }.also { created ->
                 created.invokeOnCompletion {
                     repositoryScope.launch {
@@ -379,7 +404,11 @@ class WebContentLoader @Inject constructor(
         return deferred.await()
     }
 
-    private suspend fun fetchAndCacheDocument(url: String, priority: ImageRequestPriority): CachedDocument {
+    private suspend fun fetchAndCacheDocument(
+        url: String,
+        priority: ImageRequestPriority,
+        writeTier: StorageTier = tierForPriority(priority)
+    ): CachedDocument {
         findExistingCachedFile(url)?.let { cachedFile ->
             return CachedDocument(
                 document = Jsoup.parse(cachedFile, "UTF-8", url),
@@ -388,7 +417,7 @@ class WebContentLoader @Inject constructor(
         }
 
         val html = downloadHtml(url, priority = priority)
-        val target = primaryCachedFile(url, tierForPriority(priority))
+        val target = primaryCachedFile(url, writeTier)
         writeTextAtomically(target, html)
         return CachedDocument(
             document = Jsoup.parse(html, url),
@@ -455,7 +484,7 @@ class WebContentLoader @Inject constructor(
                 }
             } catch (e: Exception) {
                 lastException = e
-                if (attempt == attempts - 1 || (e is Exception && e.message?.startsWith("HTTP") == true && !shouldRetryException(e))) {
+                if (attempt == attempts - 1 || (e.message?.startsWith("HTTP") == true && !shouldRetryException(e))) {
                     throw e
                 }
                 delay(HttpRetry.nextRetryDelayMs(null, url, attempt))
@@ -654,10 +683,14 @@ class WebContentLoader @Inject constructor(
         val cachedDocument = try {
             getDocumentFromCacheOrNetwork(
                 url = url,
-                priority = priority
+                priority = priority,
+                writeTier = tierForMode(mode)
             )
         } catch (e: Exception) {
-            return inspectCacheInternal(url).copy(isRetryable = shouldRetryException(e))
+            return inspectCacheInternal(
+                url = url,
+                persistentOnly = mode == PrefetchMode.USER_REQUESTED
+            ).copy(isRetryable = shouldRetryException(e))
         }
 
         if (mode == PrefetchMode.USER_REQUESTED) {
@@ -682,7 +715,8 @@ class WebContentLoader @Inject constructor(
                         cachedImages = cached,
                         isComplete = cached == imageUrls.size && imageUrls.isNotEmpty(),
                         isInProgress = cached < imageUrls.size,
-                        isRetryable = true
+                        isRetryable = true,
+                        isPersistentDownload = mode == PrefetchMode.USER_REQUESTED
                     )
                 )
             }
@@ -760,7 +794,11 @@ class WebContentLoader @Inject constructor(
             recordPermanentFailures(url, permanentFailuresAccumulated)
         }
 
-        val inspected = inspectCacheInternal(url, cachedDocument.document)
+        val inspected = inspectCacheInternal(
+            url = url,
+            cachedDocument = cachedDocument.document,
+            persistentOnly = mode == PrefetchMode.USER_REQUESTED
+        )
         val finalResult = inspected.copy(
             isInProgress = false,
             isRetryable = allImagesRetryable && !inspected.isComplete
@@ -924,9 +962,11 @@ class WebContentLoader @Inject constructor(
 
     private suspend fun inspectCacheInternal(
         url: String,
-        cachedDocument: Document? = null
+        cachedDocument: Document? = null,
+        persistentOnly: Boolean = false
     ): PrefetchResult {
-        val htmlFile = findExistingCachedFile(url)
+        val downloadHtmlFile = primaryCachedFile(url, StorageTier.DOWNLOADS).takeIf(File::exists)
+        val htmlFile = if (persistentOnly) downloadHtmlFile else findExistingCachedFile(url)
         val htmlCached = htmlFile != null
 
         val memo: ParsedImageMemo? = if (cachedDocument != null) {
@@ -950,18 +990,18 @@ class WebContentLoader @Inject constructor(
         } else null
 
         val imageUrls = memo?.imageUrls.orEmpty()
-        val permanentFailures = loadPermanentFailures(url)
         val cachedImages = imageUrls.count { imageUrl ->
-            imageCache.findExistingCachedMediaFile(imageUrl) != null
-        }
-        val accountedFor = imageUrls.count { imageUrl ->
-            imageCache.findExistingCachedMediaFile(imageUrl) != null || imageUrl in permanentFailures
+            if (persistentOnly) {
+                imageCache.isDownloaded(imageUrl)
+            } else {
+                imageCache.findExistingCachedMediaFile(imageUrl) != null
+            }
         }
 
         val isInProgress = chapterPrefetchMutex.withLock { url in inFlightChapterPrefetches }
         val finalComplete = when {
             !htmlCached -> false
-            imageUrls.isNotEmpty() -> accountedFor == imageUrls.size
+            imageUrls.isNotEmpty() -> cachedImages == imageUrls.size
             memo?.hasImageTags == true -> false
             else -> memo?.bodyNonEmpty == true
         }
@@ -973,7 +1013,8 @@ class WebContentLoader @Inject constructor(
             cachedImages = cachedImages,
             isComplete = finalComplete,
             isInProgress = isInProgress,
-            isRetryable = !finalComplete
+            isRetryable = !finalComplete,
+            isPersistentDownload = persistentOnly
         )
     }
 

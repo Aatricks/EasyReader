@@ -65,7 +65,7 @@ class ChapterListSheetSelectionTest {
     }
 
     @Test
-    fun `chapter cache status text shows partial cache progress`() {
+    fun `chapter cache status hides incidental partial cache progress`() {
         val status = chapterCacheStatusText(
             isCurrent = false,
             cacheState = PrefetchResult(
@@ -78,11 +78,11 @@ class ChapterListSheetSelectionTest {
             isInLibrary = true
         )
 
-        assertEquals("Saved partially: 3/5 images", status)
+        assertEquals("In library", status)
     }
 
     @Test
-    fun `chapter cache status text prefers saved locally for complete chapters`() {
+    fun `chapter cache status hides incidental complete cache when not downloaded`() {
         val status = chapterCacheStatusText(
             isCurrent = false,
             cacheState = PrefetchResult(
@@ -92,10 +92,68 @@ class ChapterListSheetSelectionTest {
                 cachedImages = 5,
                 isComplete = true
             ),
-            isInLibrary = true
+            isInLibrary = true,
+            isDownloaded = false
         )
 
-        assertEquals("Saved locally", status)
+        assertEquals("In library", status)
+    }
+
+    @Test
+    fun `chapter cache status shows downloaded when user-downloaded and cache complete`() {
+        val status = chapterCacheStatusText(
+            isCurrent = false,
+            cacheState = PrefetchResult(
+                url = "url-1",
+                htmlCached = true,
+                totalImages = 5,
+                cachedImages = 5,
+                isComplete = true
+            ),
+            isInLibrary = true,
+            isDownloaded = true
+        )
+
+        assertEquals("Downloaded", status)
+    }
+
+    @Test
+    fun `chapter cache status shows incomplete managed download`() {
+        val status = chapterCacheStatusText(
+            isCurrent = false,
+            cacheState = PrefetchResult(
+                url = "url-1",
+                htmlCached = true,
+                totalImages = 5,
+                cachedImages = 2,
+                isComplete = false,
+                isPersistentDownload = true
+            ),
+            isInLibrary = true,
+            isDownloaded = true
+        )
+
+        assertEquals("Download incomplete: 2/5 images", status)
+    }
+
+    @Test
+    fun `chapter cache status shows managed download in progress`() {
+        val status = chapterCacheStatusText(
+            isCurrent = false,
+            cacheState = PrefetchResult(
+                url = "url-1",
+                htmlCached = true,
+                totalImages = 5,
+                cachedImages = 2,
+                isComplete = false,
+                isInProgress = true,
+                isPersistentDownload = true
+            ),
+            isInLibrary = true,
+            isDownloaded = false
+        )
+
+        assertEquals("Downloading...", status)
     }
 
     @Test

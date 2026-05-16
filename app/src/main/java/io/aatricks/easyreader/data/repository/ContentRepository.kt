@@ -172,18 +172,84 @@ class ContentRepository @Inject constructor(
                 ContentKind.EPUB -> {
                     val tier = if (mode == PrefetchMode.USER_REQUESTED) StorageTier.DOWNLOADS else StorageTier.CACHE
                     if (epubLoader.prefetchEpub(url, tier)) {
-                        PrefetchResult(url, htmlCached = true, totalImages = 0, cachedImages = 0, isComplete = true, isRetryable = false)
+                        PrefetchResult(
+                            url,
+                            htmlCached = true,
+                            totalImages = 0,
+                            cachedImages = 0,
+                            isComplete = true,
+                            isRetryable = false,
+                            isPersistentDownload = mode == PrefetchMode.USER_REQUESTED
+                        )
                     } else {
-                        PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = true)
+                        PrefetchResult(
+                            url,
+                            htmlCached = false,
+                            totalImages = 0,
+                            cachedImages = 0,
+                            isComplete = false,
+                            isRetryable = true,
+                            isPersistentDownload = mode == PrefetchMode.USER_REQUESTED
+                        )
                     }
                 }
-                ContentKind.PDF, ContentKind.HTML, ContentKind.LOCAL -> localContentResult(url)
-                ContentKind.UNKNOWN -> PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = false)
+                ContentKind.PDF, ContentKind.HTML, ContentKind.LOCAL ->
+                    localContentResult(url, isPersistentDownload = mode == PrefetchMode.USER_REQUESTED)
+                ContentKind.UNKNOWN -> PrefetchResult(
+                    url,
+                    htmlCached = false,
+                    totalImages = 0,
+                    cachedImages = 0,
+                    isComplete = false,
+                    isRetryable = false
+                )
             }
         }.getOrElse {
             PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = true)
         }
         trimCachesInternal()
+        result
+    }
+
+    suspend fun inspectDownload(url: String): PrefetchResult = withContext(Dispatchers.IO) {
+        val result = runCatching {
+            when (resolveContentKind(url)) {
+                ContentKind.WEB -> webLoader.inspectDownload(url)
+                ContentKind.EPUB -> {
+                    val downloaded = epubLoader.isDownloaded(url)
+                    PrefetchResult(
+                        url,
+                        htmlCached = downloaded,
+                        totalImages = 0,
+                        cachedImages = 0,
+                        isComplete = downloaded,
+                        isRetryable = !downloaded,
+                        isPersistentDownload = downloaded
+                    )
+                }
+                ContentKind.PDF, ContentKind.HTML, ContentKind.LOCAL ->
+                    localContentResult(url, isPersistentDownload = true)
+                ContentKind.UNKNOWN -> PrefetchResult(
+                    url,
+                    htmlCached = false,
+                    totalImages = 0,
+                    cachedImages = 0,
+                    isComplete = false,
+                    isRetryable = false,
+                    isPersistentDownload = true
+                )
+            }
+        }.getOrElse {
+            PrefetchResult(
+                url,
+                htmlCached = false,
+                totalImages = 0,
+                cachedImages = 0,
+                isComplete = false,
+                isRetryable = true,
+                isPersistentDownload = true
+            )
+        }
         result
     }
 
@@ -199,7 +265,14 @@ class ContentRepository @Inject constructor(
                     PrefetchResult(url, htmlCached = cached, totalImages = 0, cachedImages = 0, isComplete = cached, isRetryable = !cached)
                 }
                 ContentKind.PDF, ContentKind.HTML, ContentKind.LOCAL -> localContentResult(url)
-                ContentKind.UNKNOWN -> PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = false)
+                ContentKind.UNKNOWN -> PrefetchResult(
+                    url,
+                    htmlCached = false,
+                    totalImages = 0,
+                    cachedImages = 0,
+                    isComplete = false,
+                    isRetryable = false
+                )
             }
         }.getOrElse {
             PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = true)
@@ -248,6 +321,15 @@ class ContentRepository @Inject constructor(
             }
             ContentKind.WEB, ContentKind.HTML, ContentKind.LOCAL -> webLoader.clearCache(url)
             ContentKind.UNKNOWN -> Unit
+        }
+    }
+
+    suspend fun clearDownload(url: String): Unit = withContext(Dispatchers.IO) {
+        invalidateInspect(url)
+        when (resolveContentKind(url)) {
+            ContentKind.EPUB -> epubLoader.clearDownload(url)
+            ContentKind.WEB, ContentKind.HTML, ContentKind.LOCAL -> webLoader.clearDownload(url)
+            ContentKind.PDF, ContentKind.UNKNOWN -> Unit
         }
     }
 
@@ -301,9 +383,17 @@ class ContentRepository @Inject constructor(
         trimCachesInternal()
     }
 
-    private fun localContentResult(url: String): PrefetchResult {
+    private fun localContentResult(url: String, isPersistentDownload: Boolean = false): PrefetchResult {
         val exists = localResourceExists(url)
-        return PrefetchResult(url, htmlCached = exists, totalImages = 0, cachedImages = 0, isComplete = exists, isRetryable = !exists)
+        return PrefetchResult(
+            url,
+            htmlCached = exists,
+            totalImages = 0,
+            cachedImages = 0,
+            isComplete = exists,
+            isRetryable = !exists,
+            isPersistentDownload = isPersistentDownload && exists
+        )
     }
 
     private fun localResourceExists(url: String): Boolean {

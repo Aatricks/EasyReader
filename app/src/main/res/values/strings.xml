@@ -72,11 +72,10 @@
     <string name="chapter_action_remove_download">Remove download</string>
     <string name="chapter_status_currently_reading">Currently reading</string>
     <string name="chapter_status_downloaded">Downloaded</string>
-    <string name="chapter_status_saved_locally">Saved locally</string>
     <string name="chapter_status_saved_offline">Saved offline</string>
-    <string name="chapter_status_caching">Caching…</string>
+    <string name="chapter_status_caching">Downloading…</string>
     <string name="chapter_status_in_library">In library</string>
-    <string name="chapter_status_saved_partial">Saved partially: %1$d/%2$d images</string>
+    <string name="chapter_status_download_incomplete">Download incomplete: %1$d/%2$d images</string>
     <string name="chapter_selection_count">%1$d selected</string>
     <plurals name="bulk_delete_title">
         <item quantity="one">Delete %d chapter?</item>
