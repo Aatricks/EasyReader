@@ -325,7 +325,7 @@ class LibraryViewModelTest {
                 sourceName = "Source1"
             )
         )
-        whenever(contentRepository.prefetch(chapter.url, PrefetchMode.USER_REQUESTED)).thenReturn(prefetchResult)
+        whenever(contentRepository.prefetchWithProgress(eq(chapter.url), eq(PrefetchMode.USER_REQUESTED), any())).thenReturn(prefetchResult)
 
         viewModel.addChapters(
             chapters = listOf(chapter),
@@ -335,7 +335,7 @@ class LibraryViewModelTest {
         )
         advanceUntilIdle()
 
-        verify(contentRepository, timeout(1000)).prefetch(chapter.url, PrefetchMode.USER_REQUESTED)
+        verify(contentRepository, timeout(1000)).prefetchWithProgress(eq(chapter.url), eq(PrefetchMode.USER_REQUESTED), any())
         verify(libraryRepository, timeout(1000)).markDownloaded("chapter-11-id", true)
         assertEquals(prefetchResult, viewModel.uiState.value.chapterCacheStates[chapter.url])
     }
@@ -363,7 +363,7 @@ class LibraryViewModelTest {
         )
 
         whenever(libraryRepository.getItemByUrl(chapter.url)).thenReturn(existingItem)
-        whenever(contentRepository.prefetch(chapter.url, PrefetchMode.USER_REQUESTED)).thenReturn(prefetchResult)
+        whenever(contentRepository.prefetchWithProgress(eq(chapter.url), eq(PrefetchMode.USER_REQUESTED), any())).thenReturn(prefetchResult)
 
         viewModel.addChapters(
             chapters = listOf(chapter),
@@ -374,7 +374,7 @@ class LibraryViewModelTest {
         advanceUntilIdle()
 
         verify(libraryRepository, never()).addItem(any(), any(), any(), any(), any(), any(), any(), any())
-        verify(contentRepository, timeout(1000)).prefetch(chapter.url, PrefetchMode.USER_REQUESTED)
+        verify(contentRepository, timeout(1000)).prefetchWithProgress(eq(chapter.url), eq(PrefetchMode.USER_REQUESTED), any())
         verify(libraryRepository, timeout(1000)).markDownloaded(existingItem.id, true)
         assertEquals(prefetchResult, viewModel.uiState.value.chapterCacheStates[chapter.url])
     }

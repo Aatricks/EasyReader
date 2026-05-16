@@ -77,13 +77,45 @@ class LibraryViewModel @Inject constructor(
     private fun verifyDownloadedItemsOnStartup() {
         viewModelScope.launch {
             val urls = runCatching {
-                repository.getDownloadedItems()
-                    .orEmpty()
+                repository.getAllItemsSnapshot()
                     .map { it.url }
                     .filter { it.isNotBlank() }
             }.getOrDefault(emptyList())
-            if (urls.isNotEmpty()) {
-                refreshChapterCacheStates(urls)
+            if (urls.isEmpty()) return@launch
+            val results = refreshChapterCacheStatesSuspend(urls)
+            autoResumeIncompleteDownloads(results)
+        }
+    }
+
+    private fun autoResumeIncompleteDownloads(results: List<PrefetchResult>) {
+        val targets = results.filter {
+            it.isPersistentDownload &&
+                it.htmlCached &&
+                !it.isComplete &&
+                !it.isInProgress &&
+                it.totalImages > 0 &&
+                it.cachedImages < it.totalImages
+        }
+        if (targets.isEmpty()) return
+        Log.d(TAG, "Auto-resuming ${targets.size} incomplete downloads")
+        val gate = Semaphore(LIBRARY_PREFETCH_CONCURRENCY)
+        viewModelScope.launch {
+            supervisorScope {
+                targets.map { state ->
+                    async {
+                        gate.withPermit {
+                            setCacheState(state.copy(isInProgress = true, isRetryable = false))
+                            runCatching {
+                                val result = contentRepository.prefetchWithProgress(
+                                    state.url,
+                                    PrefetchMode.USER_REQUESTED
+                                ) { setCacheState(it) }
+                                setCacheState(result)
+                                syncDownloadedFlag(state.url, result)
+                            }
+                        }
+                    }
+                }.awaitAll()
             }
         }
     }
@@ -354,7 +386,10 @@ class LibraryViewModel @Inject constructor(
                             isPersistentDownload = true
                         )
                     )
-                    val result = contentRepository.prefetch(chapter.url, PrefetchMode.USER_REQUESTED)
+                    val result = contentRepository.prefetchWithProgress(
+                        chapter.url,
+                        PrefetchMode.USER_REQUESTED
+                    ) { setCacheState(it) }
                     setCacheState(result)
                     syncDownloadedFlag(libraryItem, result)
                 }
@@ -507,6 +542,7 @@ class LibraryViewModel @Inject constructor(
 
     fun retryDownload(url: String): Unit {
         viewModelScope.launch {
+            runCatching { contentRepository.clearPermanentFailures(url) }
             setCacheState(
                 (uiState.value.chapterCacheStates[url] ?: PrefetchResult(url, false, 0, 0, false))
                     .copy(isInProgress = true, isRetryable = false, isPersistentDownload = true)
@@ -622,45 +658,48 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun refreshChapterCacheStates(urls: Collection<String>): Unit {
+        viewModelScope.launch { refreshChapterCacheStatesSuspend(urls) }
+    }
+
+    private suspend fun refreshChapterCacheStatesSuspend(urls: Collection<String>): List<PrefetchResult> {
         val targetUrls = urls.asSequence()
             .map { it.trim() }
             .filter { it.isNotBlank() }
             .distinct()
             .toList()
-        if (targetUrls.isEmpty()) return
+        if (targetUrls.isEmpty()) return emptyList()
 
-        viewModelScope.launch {
-            val libraryItemsByUrl = repository.libraryItems.value
-                .asSequence()
-                .associateBy { it.url }
+        val libraryItemsByUrl = repository.libraryItems.value
+            .asSequence()
+            .associateBy { it.url }
 
-            val results = supervisorScope {
-                targetUrls.map { url ->
-                    async {
-                        val item = libraryItemsByUrl[url]
-                        val downloadResult = if (item != null) {
-                            runCatching { contentRepository.inspectDownload(url) }.getOrNull()
-                        } else {
-                            null
-                        }
-                        val result = if (item?.isDownloaded == true || downloadResult.hasDownloadEvidence()) {
-                            downloadResult
-                        } else {
-                            runCatching { contentRepository.inspectCache(url) }.getOrNull()
-                        }
-                        if (item != null && result != null && !result.isInProgress) {
-                            syncDownloadedFlag(item, result)
-                        }
-                        result
+        val results = supervisorScope {
+            targetUrls.map { url ->
+                async {
+                    val item = libraryItemsByUrl[url]
+                    val downloadResult = if (item != null) {
+                        runCatching { contentRepository.inspectDownload(url) }.getOrNull()
+                    } else {
+                        null
                     }
-                }.awaitAll().filterNotNull()
-            }
-            if (results.isNotEmpty()) {
-                _chapterCacheStates.update { current ->
-                    current + results.associateBy { it.url }
+                    val result = if (item?.isDownloaded == true || downloadResult.hasDownloadEvidence()) {
+                        downloadResult
+                    } else {
+                        runCatching { contentRepository.inspectCache(url) }.getOrNull()
+                    }
+                    if (item != null && result != null && !result.isInProgress) {
+                        syncDownloadedFlag(item, result)
+                    }
+                    result
                 }
+            }.awaitAll().filterNotNull()
+        }
+        if (results.isNotEmpty()) {
+            _chapterCacheStates.update { current ->
+                current + results.associateBy { it.url }
             }
         }
+        return results
     }
 
     fun removeSelectedItems(): Unit {

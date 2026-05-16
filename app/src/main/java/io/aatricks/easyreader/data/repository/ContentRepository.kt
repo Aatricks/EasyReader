@@ -343,6 +343,13 @@ class ContentRepository @Inject constructor(
         }
     }
 
+    suspend fun clearPermanentFailures(url: String): Unit = withContext(Dispatchers.IO) {
+        when (resolveContentKind(url)) {
+            ContentKind.WEB, ContentKind.HTML, ContentKind.LOCAL -> webLoader.clearPermanentFailures(url)
+            else -> Unit
+        }
+    }
+
     suspend fun clearCachesForUrls(urls: Collection<String>): Int = withContext(Dispatchers.IO) {
         coroutineScope {
             urls.asSequence()

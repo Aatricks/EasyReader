@@ -17,7 +17,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -299,6 +301,10 @@ class WebContentLoader @Inject constructor(
         }
         deleteCachedHtmlFiles(url)
         parsedImageMemo.remove(url)
+    }
+
+    fun clearPermanentFailures(url: String) {
+        sidecarFileVariants(url).forEach { it.delete() }
     }
 
     fun clearDownload(url: String) {
@@ -711,6 +717,7 @@ class WebContentLoader @Inject constructor(
 
         var allImagesRetryable = true
         val permanentFailuresAccumulated = mutableListOf<String>()
+        val backgroundJobs = mutableListOf<Job>()
 
         val emitProgress: (suspend () -> Unit)? = if (onProgress != null) {
             {
@@ -764,11 +771,11 @@ class WebContentLoader @Inject constructor(
                     permanentFailuresAccumulated.addAll(report.permanentFailures)
 
                     if (backgroundRest.isNotEmpty()) {
-                        repositoryScope.launch {
+                        backgroundJobs += repositoryScope.launch {
                             val bgReport = cacheImages(
                                 imageUrls = backgroundRest,
                                 pageUrl = url,
-                                priority = ImageRequestPriority.SPECULATIVE,
+                                priority = ImageRequestPriority.USER_REQUESTED,
                                 writeTier = StorageTier.DOWNLOADS,
                                 maxConcurrency = MAX_CONCURRENT_DOWNLOADS,
                                 onImageCached = emitProgress
@@ -800,6 +807,10 @@ class WebContentLoader @Inject constructor(
 
         if (permanentFailuresAccumulated.isNotEmpty()) {
             recordPermanentFailures(url, permanentFailuresAccumulated)
+        }
+
+        if (backgroundJobs.isNotEmpty()) {
+            backgroundJobs.joinAll()
         }
 
         val inspected = inspectCacheInternal(

@@ -446,6 +446,10 @@ class LibraryRepository @Inject constructor(
         libraryDao.getDownloadedItems()
     } ?: emptyList()
 
+    suspend fun getAllItemsSnapshot(): List<LibraryItem> = runRepoCatching("Failed to fetch all items", emptyList<LibraryItem>()) {
+        libraryDao.getAllItems().first()
+    } ?: emptyList()
+
     suspend fun clearUpdateIndicator(itemId: String): Boolean = runRepoCatching("Failed to clear update indicator", false) {
         libraryDao.getItemById(itemId)?.let { item ->
             if (item.hasUpdates) {
