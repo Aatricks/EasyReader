@@ -253,8 +253,12 @@ class WebContentLoader @Inject constructor(
         }.getOrNull()
     }
 
-    suspend fun downloadAndCacheImage(imageUrl: String, pageUrl: String): File? = withContext(Dispatchers.IO) {
-        val result = downloadAndCacheImageInternal(imageUrl, pageUrl, ImageRequestPriority.USER_REQUESTED, StorageTier.CACHE)
+    suspend fun downloadAndCacheImage(
+        imageUrl: String,
+        pageUrl: String,
+        tier: StorageTier = StorageTier.CACHE
+    ): File? = withContext(Dispatchers.IO) {
+        val result = downloadAndCacheImageInternal(imageUrl, pageUrl, ImageRequestPriority.USER_REQUESTED, tier)
         (result as? ImageDownloadResult.Success)?.file
     }
 
@@ -278,6 +282,10 @@ class WebContentLoader @Inject constructor(
     fun isCached(url: String): Boolean = findExistingCachedFile(url) != null
 
     fun isDownloaded(url: String): Boolean = primaryCachedFile(url, StorageTier.DOWNLOADS).exists()
+
+    fun isImageDownloaded(imageUrl: String): Boolean = imageCache.isDownloaded(imageUrl)
+
+    fun promoteImageToDownloads(imageUrl: String): File? = imageCache.promoteToDownloads(imageUrl)
 
     fun clearCache(url: String) {
         val cachedFile = findExistingCachedFile(url)
@@ -1014,7 +1022,7 @@ class WebContentLoader @Inject constructor(
             isComplete = finalComplete,
             isInProgress = isInProgress,
             isRetryable = !finalComplete,
-            isPersistentDownload = persistentOnly
+            isPersistentDownload = persistentOnly && htmlCached
         )
     }
 

@@ -22,6 +22,7 @@ import coil3.network.NetworkHeaders
 import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import io.aatricks.easyreader.data.repository.content.ChapterPageUrlExtra
 import coil3.size.Dimension
 import coil3.size.Precision
 import coil3.size.Scale
@@ -166,6 +167,9 @@ fun ReaderImageView(
         ImageRequest.Builder(context)
             .data(imageUrl)
             .apply {
+                if (imageUrl.startsWith("http")) {
+                    extras.set(ChapterPageUrlExtra, pageUrl)
+                }
                 if (shouldSubsampleImage) {
                     // Width-only constraint. Long-strip manhwa pages can be 15000+ px tall;
                     // a `size(screenW, screenH)` FIT picks sampleSize by max(w-ratio, h-ratio),

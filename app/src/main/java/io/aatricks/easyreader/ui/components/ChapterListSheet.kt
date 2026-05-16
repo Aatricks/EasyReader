@@ -476,8 +476,7 @@ internal fun chapterCacheStatusKind(
     if (isCurrent) return ChapterStatus.CurrentlyReading
     val hasManagedDownload = isDownloaded || (isInLibrary && cacheState?.isPersistentDownload == true)
     if (cacheState?.isInProgress == true && (isInLibrary || hasManagedDownload)) return ChapterStatus.Caching
-    if (hasManagedDownload) {
-        if (cacheState == null) return ChapterStatus.Downloaded
+    if (hasManagedDownload && cacheState != null) {
         if (cacheState.isComplete) return ChapterStatus.Downloaded
         if (cacheState.totalImages > 0) {
             return ChapterStatus.DownloadIncomplete(cacheState.cachedImages, cacheState.totalImages)

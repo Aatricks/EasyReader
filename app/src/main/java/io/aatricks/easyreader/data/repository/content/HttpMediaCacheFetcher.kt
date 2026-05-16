@@ -1,5 +1,6 @@
 package io.aatricks.easyreader.data.repository.content
 
+import coil3.Extras
 import coil3.ImageLoader
 import coil3.decode.DataSource
 import coil3.decode.ImageSource
@@ -11,6 +12,8 @@ import coil3.request.Options
 import io.aatricks.easyreader.data.repository.ContentRepository
 import okio.Path.Companion.toPath
 
+val ChapterPageUrlExtra: Extras.Key<String?> = Extras.Key(default = null)
+
 class HttpMediaCacheFetcher(
     private val url: String,
     private val contentRepository: ContentRepository,
@@ -18,11 +21,20 @@ class HttpMediaCacheFetcher(
 ) : Fetcher {
 
     override suspend fun fetch(): FetchResult? {
+        val pageUrl = options.extras[ChapterPageUrlExtra]
+        val chapterDownloaded = pageUrl != null && contentRepository.isDownloaded(pageUrl)
+        val tier = if (chapterDownloaded) StorageTier.DOWNLOADS else StorageTier.CACHE
+
         val cachedFile = contentRepository.getCachedMediaFile(url)
         val file = if (cachedFile.exists()) {
-            cachedFile
+            if (chapterDownloaded && !contentRepository.isImageDownloaded(url)) {
+                contentRepository.promoteImageToDownloads(url) ?: cachedFile
+            } else {
+                cachedFile
+            }
         } else {
-            contentRepository.downloadAndCacheImage(url, requestReferer()) ?: return null
+            val referer = pageUrl ?: requestReferer()
+            contentRepository.downloadAndCacheImage(url, referer, tier) ?: return null
         }
 
         if (!file.exists() || file.length() <= 0L) return null

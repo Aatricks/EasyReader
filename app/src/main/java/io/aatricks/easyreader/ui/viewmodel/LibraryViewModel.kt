@@ -71,6 +71,21 @@ class LibraryViewModel @Inject constructor(
     init {
         _collapsedSources.value = repository.loadCollapsedSources()
         observeLibraryChanges()
+        verifyDownloadedItemsOnStartup()
+    }
+
+    private fun verifyDownloadedItemsOnStartup() {
+        viewModelScope.launch {
+            val urls = runCatching {
+                repository.getDownloadedItems()
+                    .orEmpty()
+                    .map { it.url }
+                    .filter { it.isNotBlank() }
+            }.getOrDefault(emptyList())
+            if (urls.isNotEmpty()) {
+                refreshChapterCacheStates(urls)
+            }
+        }
     }
 
     data class LibraryUiState(
