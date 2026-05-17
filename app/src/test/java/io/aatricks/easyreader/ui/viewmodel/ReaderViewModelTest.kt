@@ -804,7 +804,7 @@ class ReaderViewModelTest {
     }
 
     @Test
-    fun `computeAutoDeleteCandidates skips downloaded chapters`() {
+    fun `computeAutoDeleteCandidates includes downloaded chapters once read and far enough behind`() {
         val chapters = listOf(
             LibraryItem(id = "1", title = "Chapter 1", url = "url-1", currentChapter = "Chapter 1", baseTitle = "Novel", progress = 100, isDownloaded = true),
             LibraryItem(id = "2", title = "Chapter 2", url = "url-2", currentChapter = "Chapter 2", baseTitle = "Novel", progress = 100, isDownloaded = false),
@@ -818,10 +818,9 @@ class ReaderViewModelTest {
             currentChapterNumber = 5.0
         )
 
-        // Chapter 1 downloaded → kept. Chapter 2 + 3 both >1 behind → only 2 is 2-behind from 5? wait
-        // Distances from 5: c1=4, c2=3, c3=2. All > 1, so all candidates by distance.
-        // But isDownloaded filter removes chapter 1. Result: c2 and c3.
-        assertEquals(listOf("2", "3"), toDelete.map { it.id }.sorted())
+        // Distances from 5: c1=4, c2=3, c3=2. All > 1 → all candidates. Downloaded chapters
+        // are no longer skipped: voluntary downloads also auto-purge once read.
+        assertEquals(listOf("1", "2", "3"), toDelete.map { it.id }.sorted())
     }
 
     @Test

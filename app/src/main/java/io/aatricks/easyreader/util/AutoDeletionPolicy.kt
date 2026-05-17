@@ -15,8 +15,7 @@ fun computeAutoDeleteCandidates(
             item.baseTitle == baseTitle &&
                 item.contentType == ContentType.WEB &&
                 item.url != currentUrl &&
-                item.progress == 100 &&
-                !item.isDownloaded
+                item.progress == 100
         }
         .filter { item ->
             val otherNumber = TextUtils.extractChapterNumber(item.currentChapter)

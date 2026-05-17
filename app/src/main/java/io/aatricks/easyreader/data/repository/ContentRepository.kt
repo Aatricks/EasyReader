@@ -370,6 +370,27 @@ class ContentRepository @Inject constructor(
         }
     }
 
+    suspend fun clearCachesAndDownloadsForUrls(urls: Collection<String>): Int = withContext(Dispatchers.IO) {
+        coroutineScope {
+            urls.asSequence()
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .map { url ->
+                    async {
+                        runCatching {
+                            clearDownload(url)
+                            clearCache(url)
+                            true
+                        }.getOrDefault(false)
+                    }
+                }
+                .toList()
+                .awaitAll()
+                .count { it }
+        }
+    }
+
     suspend fun clearAllCache(): Unit = withContext(Dispatchers.IO) {
         inspectMemo.clear()
         webLoader.clearAllCache()
