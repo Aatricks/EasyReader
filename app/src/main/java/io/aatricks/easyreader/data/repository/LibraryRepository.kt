@@ -116,7 +116,7 @@ class LibraryRepository @Inject constructor(
             currentChapter = currentChapter,
             contentType = contentType,
             dateAdded = System.currentTimeMillis(),
-            lastRead = System.currentTimeMillis(),
+            lastRead = 0L,
             isCurrentlyReading = false,
             baseTitle = baseTitle,
             baseNovelUrl = baseNovelUrl,
