@@ -18,8 +18,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
-import coil3.network.NetworkHeaders
-import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import io.aatricks.easyreader.data.repository.content.ChapterPageUrlExtra
@@ -82,8 +80,24 @@ fun ReaderImageView(
     val aspectRatioModifier = Modifier.imageAspectRatio(side, effectiveWidth, effectiveHeight)
     val hasResolvedAspectRatio = effectiveDimensions != null
 
+    // Single, idempotent cache probe used to seed loading state and the loading UI choice.
+    // Performed once per imageUrl on the Composition thread (down from 3–4 File ops previously).
+    // Coil's HttpMediaCacheFetcher owns the authoritative disk check inside its own dispatcher.
+    val isInitiallyCached = remember(imageUrl) {
+        when {
+            imageUrl.startsWith("file") -> true
+            imageUrl.startsWith("http") ->
+                readerViewModel.contentRepository.getCachedMediaFile(imageUrl).exists()
+            else -> false
+        }
+    }
+
     // Hoist loading state so containerModifier can react to it, shrinking the container
     // once the image has loaded to avoid black gaps in long-strip (manhwa) mode.
+    // Always start true so the 48dp minHeight reservation below holds until Coil delivers
+    // a bitmap — without it LazyColumn measures cached items at 0 px before decode finishes,
+    // breaking scroll-restore (ReaderContentArea snapshotFlow waits for itemSize > 0) and
+    // forcing extra item composition at launch.
     var isLoadingHoisted by remember(imageUrl, pageUrl) { mutableStateOf(true) }
 
     // When dynamicHeight is true (scrolling mode zoom - though now disabled), we don't apply aspect ratio to the outer container.
@@ -109,9 +123,11 @@ fun ReaderImageView(
 
     // Paged manga: dim letterbox. Scroll mode: surface while loading to hide the dark theme bleeding
     // through the reserved aspect-ratio space, then transparent once decoded.
+    // Skip the surface placeholder for already-cached images so the container does not flash
+    // surface → transparent on every page during a long-strip scroll of a downloaded chapter.
     val effectiveBackground = when {
         enableZoom -> backgroundColor.copy(alpha = 0.5f)
-        isLoadingHoisted -> MaterialTheme.colorScheme.surface
+        isLoadingHoisted && !isInitiallyCached -> MaterialTheme.colorScheme.surface
         else -> Color.Transparent
     }
 
@@ -139,31 +155,19 @@ fun ReaderImageView(
 
     val context = LocalContext.current
 
-    val cachedFile = remember(imageUrl) {
-        if (imageUrl.startsWith("http")) {
-            readerViewModel.contentRepository.getCachedMediaFile(imageUrl)
-        } else if (imageUrl.startsWith("file")) {
-            java.io.File(imageUrl.removePrefix("file://"))
-        } else {
-            null
-        }
-    }
-    
-    // We use a derived state for isCachedImage so it can be re-evaluated if needed,
-    // though it primarily depends on the file existing.
-    var isCachedImage by remember(imageUrl, cachedFile) { 
-        mutableStateOf(imageUrl.startsWith("file") || (cachedFile != null && cachedFile.exists()))
-    }
-
     val showAnimatedLoadingUi = shouldUseAnimatedImageLoadingUi(
         enableZoom = enableZoom,
-        isCached = isCachedImage
+        isCached = isInitiallyCached
     )
 
     var retryTrigger by remember { mutableStateOf(0L) }
-    val imageRequest = remember(imageUrl, pageUrl, isCachedImage, showAnimatedLoadingUi, retryTrigger) {
-        val referer = if (imageUrl.startsWith("http")) readerViewModel.contentRepository.getReferer(pageUrl) else null
-        
+    // Keys are only the inputs that actually change the request. isInitiallyCached is stable
+    // for the lifetime of the composition, so it does not need to be a key — capturing the
+    // value once avoids the re-fetch loop that previously fired when the success handler
+    // flipped a cached-state flag. UA/Referer are owned by ImageDownloader for HTTP URLs
+    // (see ImageDownloader.executeImageRequest) and by HttpMediaCacheFetcher's referer
+    // fallback, so no per-request httpHeaders override is needed here.
+    val imageRequest = remember(imageUrl, pageUrl, retryTrigger) {
         ImageRequest.Builder(context)
             .data(imageUrl)
             .apply {
@@ -179,12 +183,6 @@ fun ReaderImageView(
                     size(CoilSize(Dimension.Pixels(screenWidthPx), Dimension.Undefined))
                     scale(Scale.FIT)
                     precision(Precision.INEXACT)
-                }
-                if (referer != null) {
-                    httpHeaders(NetworkHeaders.Builder()
-                        .set("Referer", referer)
-                        .set("User-Agent", "Mozilla/5.0")
-                        .build())
                 }
             }
             .crossfade(showAnimatedLoadingUi)
@@ -219,10 +217,6 @@ fun ReaderImageView(
                     }
                     isLoadingHoisted = false
                     isError = false
-                    // If it was loaded from network but now should be in cache, update isCachedImage
-                    if (!isCachedImage && cachedFile?.exists() == true) {
-                        isCachedImage = true
-                    }
                 },
                 onError = {
                     isError = true
