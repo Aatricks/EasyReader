@@ -49,6 +49,18 @@ class ContentRepository @Inject constructor(
     private data class InspectMemo(val result: PrefetchResult, val storedAt: Long)
     private val inspectMemo = java.util.concurrent.ConcurrentHashMap<String, InspectMemo>()
 
+    private val userDownloadsInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    fun beginUserDownload(url: String) {
+        userDownloadsInFlight.add(url)
+    }
+
+    fun endUserDownload(url: String) {
+        userDownloadsInFlight.remove(url)
+    }
+
+    fun isUserDownloadInFlight(url: String): Boolean = url in userDownloadsInFlight
+
     private fun invalidateInspect(url: String) {
         inspectMemo.remove(url)
     }

@@ -285,5 +285,6 @@ class MainActivity : ComponentActivity() {
                 readerViewModel.persistLifecycleProgress()
             }
         }
+        runCatching { libraryViewModel.flushPendingDeletion() }
     }
 }

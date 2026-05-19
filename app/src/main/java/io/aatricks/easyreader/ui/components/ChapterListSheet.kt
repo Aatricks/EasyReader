@@ -438,7 +438,7 @@ fun ChapterListSheet(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    libraryViewModel.removeItems(ids)
+                    libraryViewModel.removeItemsImmediate(ids)
                     pendingBulkDelete = null
                     isSelectionMode = false
                     selectedChapterUrls.clear()

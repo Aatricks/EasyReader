@@ -121,10 +121,28 @@ class LibraryViewModelTest {
         activeViewModel.removeSelectedItems()
         advanceUntilIdle()
 
-        verify(contentRepository).clearCachesForUrls(listOf(item1.url, item2.url))
+        verify(contentRepository).clearCachesAndDownloadsForUrls(listOf(item1.url, item2.url))
         verify(libraryRepository).removeItems(setOf(item1.id, item2.id))
         assertTrue(activeViewModel.uiState.value.selectedIds.isEmpty())
         assertFalse(activeViewModel.uiState.value.isSelectionMode)
+    }
+
+    @Test
+    fun `removeItemsImmediate clears downloads and removes items without undo window`() = runTest {
+        val item1 = LibraryItem(id = "id-1", title = "Novel 1", url = "https://example.com/novel-1")
+        val item2 = LibraryItem(id = "id-2", title = "Novel 2", url = "https://example.com/novel-2")
+        whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(listOf(item1, item2)))
+
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository)
+        advanceUntilIdle()
+
+        activeViewModel.removeItemsImmediate(setOf(item1.id, item2.id))
+        advanceUntilIdle()
+
+        verify(contentRepository).clearCachesAndDownloadsForUrls(listOf(item1.url, item2.url))
+        verify(libraryRepository).removeItems(setOf(item1.id, item2.id))
+        // The immediate path must NOT populate the pending-deletion undo state.
+        assertTrue(activeViewModel.pendingDeletion.value.isEmpty())
     }
 
     @Test

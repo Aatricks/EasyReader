@@ -615,9 +615,10 @@ class ReaderViewModel @Inject constructor(
                 currentChapterNumber = currentChapterNumber
             )
 
-            if (toDelete.isNotEmpty()) {
-                contentRepository.clearCachesAndDownloadsForUrls(toDelete.map { it.url })
-                val ids = toDelete.map { it.id }.toSet()
+            val safeToDelete = toDelete.filterNot { contentRepository.isUserDownloadInFlight(it.url) }
+            if (safeToDelete.isNotEmpty()) {
+                contentRepository.clearCachesAndDownloadsForUrls(safeToDelete.map { it.url })
+                val ids = safeToDelete.map { it.id }.toSet()
                 libraryRepository.removeItems(ids)
             }
 

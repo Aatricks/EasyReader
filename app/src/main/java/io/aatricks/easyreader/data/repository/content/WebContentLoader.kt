@@ -721,7 +721,13 @@ class WebContentLoader @Inject constructor(
 
         val emitProgress: (suspend () -> Unit)? = if (onProgress != null) {
             {
-                val cached = imageUrls.count { imageCache.findExistingCachedMediaFile(it) != null }
+                val cached = imageUrls.count { imageUrl ->
+                    if (mode == PrefetchMode.USER_REQUESTED) {
+                        imageCache.isDownloaded(imageUrl)
+                    } else {
+                        imageCache.findExistingCachedMediaFile(imageUrl) != null
+                    }
+                }
                 onProgress(
                     PrefetchResult(
                         url = url,
@@ -745,7 +751,7 @@ class WebContentLoader @Inject constructor(
                 for (pass in 0 until USER_REQUEST_PREFETCH_PASSES) {
                     val knownPermanent = loadPermanentFailures(url)
                     val missingImages = imageUrls.filterNot {
-                        imageCache.findExistingCachedMediaFile(it) != null || it in knownPermanent
+                        imageCache.isDownloaded(it) || it in knownPermanent
                     }
                     if (missingImages.isEmpty()) {
                         Log.d(TAG, "USER_REQUESTED prefetch complete url=$safeUrl pass=$pass")

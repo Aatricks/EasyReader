@@ -642,6 +642,47 @@ class WebContentLoaderTest {
         assertFalse(tempFile.exists())
     }
 
+    @Test
+    fun `user requested prefetch promotes cache-tier images into downloads tier`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-warmed"
+        val imageUrl1 = "https://example.com/warm-a.png"
+        val imageUrl2 = "https://example.com/warm-b.png"
+        val imageRequests = AtomicInteger(0)
+        val htmlParser = mock<HtmlParser>()
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                when (request.url.toString()) {
+                    imageUrl1, imageUrl2 -> {
+                        imageRequests.incrementAndGet()
+                        buildByteResponse(request, tinyPng(width = 2, height = 3), "image/png")
+                    }
+                    else -> buildResponse(request, "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(
+            listOf(ContentElement.Image(imageUrl1), ContentElement.Image(imageUrl2))
+        )
+
+        loader.getCachedFile(chapterUrl).writeText(
+            "<html><body><img src=\"$imageUrl1\"/><img src=\"$imageUrl2\"/></body></html>"
+        )
+        loader.getCachedMediaFile(imageUrl1).writeBytes(tinyPng(width = 2, height = 3))
+        loader.getCachedMediaFile(imageUrl2).writeBytes(tinyPng(width = 2, height = 3))
+
+        val result = loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
+
+        assertEquals(0, imageRequests.get())
+        assertTrue("isComplete should be true after promotion", result.isComplete)
+        assertEquals(2, result.totalImages)
+        assertEquals(2, result.cachedImages)
+        assertTrue("imageUrl1 must be in downloads tier", loader.isImageDownloaded(imageUrl1))
+        assertTrue("imageUrl2 must be in downloads tier", loader.isImageDownloaded(imageUrl2))
+    }
+
     private fun createLoader(
         htmlParser: HtmlParser,
         interceptor: Interceptor
