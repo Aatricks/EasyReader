@@ -48,6 +48,7 @@ class WebContentLoader @Inject constructor(
     private val okHttpClient: OkHttpClient,
     private val imageCache: ImageCache,
     private val imageDownloader: ImageDownloader,
+    private val parsedContentCache: ParsedContentCache,
     @HtmlCacheDir private val cacheDir: File,
     @HtmlDownloadsDir private val downloadsDir: File
 ) {
@@ -137,6 +138,22 @@ class WebContentLoader @Inject constructor(
         val safeUrl = UrlSanitizer.sanitize(url)
         Log.d(TAG, "start load url=$safeUrl")
         try {
+            // Fast path: HTML already on disk and parsed sidecar matches its mtime/length.
+            // Skips Jsoup parse + dimension enrichment entirely. Falls through on any miss.
+            findExistingCachedFile(url)?.let { htmlFile ->
+                parsedContentCache.load(htmlFile)?.let { parsed ->
+                    Log.d(
+                        TAG,
+                        "parsed cache hit url=$safeUrl elements=${parsed.elements.size} elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+                    )
+                    return@withContext ContentResult.Success(
+                        elements = parsed.elements,
+                        title = parsed.title,
+                        url = url
+                    )
+                }
+            }
+
             val cachedDocument = getDocumentFromCacheOrNetwork(url, writeTier = StorageTier.CACHE)
             val document = cachedDocument.document
             Log.d(
@@ -173,9 +190,14 @@ class WebContentLoader @Inject constructor(
                 "dimension enrichment end url=$safeUrl elapsedMs=${System.currentTimeMillis() - startedAtMs}"
             )
 
+            val title = document.title().takeIf { it.isNotBlank() }
+            findExistingCachedFile(url)?.let { htmlFile ->
+                parsedContentCache.save(htmlFile, title, finalElements)
+            }
+
             val success = ContentResult.Success(
                 elements = finalElements,
-                title = document.title().takeIf { it.isNotBlank() },
+                title = title,
                 url = url
             )
             Log.d(
@@ -446,12 +468,13 @@ class WebContentLoader @Inject constructor(
             ?: primaryCachedFile(url, StorageTier.CACHE).takeIf(File::exists)
             ?: return null
         target.parentFile?.mkdirs()
-        if (src.renameTo(target)) return target
-        return runCatching {
+        val moved = if (src.renameTo(target)) target else runCatching {
             src.copyTo(target, overwrite = true)
             src.delete()
             target
         }.getOrNull()
+        moved?.let { parsedContentCache.moveAlongside(src, it) }
+        return moved
     }
 
     private fun extractImageUrls(elements: List<ContentElement>): List<String> {
@@ -1138,7 +1161,10 @@ class WebContentLoader @Inject constructor(
         cacheFileVariants(url).firstOrNull(File::exists)
 
     private fun deleteCachedHtmlFiles(url: String) {
-        cacheFileVariants(url).forEach { it.delete() }
+        cacheFileVariants(url).forEach { variant ->
+            parsedContentCache.delete(variant)
+            variant.delete()
+        }
         // also drop the permanent-failure sidecar
         sidecarFileVariants(url).forEach { it.delete() }
     }

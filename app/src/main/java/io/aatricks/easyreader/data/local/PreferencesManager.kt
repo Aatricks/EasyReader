@@ -31,6 +31,23 @@ class PreferencesManager @Inject constructor(
     var currentUrl: String?
         get() = prefs.getString(KEY_CURRENT_URL, null)
         set(value) = prefs.edit().putString(KEY_CURRENT_URL, value).apply()
+
+    // Last-read chapter URL, mirrored on every successful chapter load so cold launch can
+    // restore the reader without waiting for the Room currently-reading query.
+    var lastReadUrl: String?
+        get() = prefs.getString(KEY_LAST_READ_URL, null)
+        set(value) = prefs.edit().putString(KEY_LAST_READ_URL, value).apply()
+
+    var lastReadLibraryItemId: String?
+        get() = prefs.getString(KEY_LAST_READ_LIBRARY_ITEM_ID, null)
+        set(value) = prefs.edit().putString(KEY_LAST_READ_LIBRARY_ITEM_ID, value).apply()
+
+    fun batchUpdateLastRead(url: String?, libraryItemId: String?) {
+        prefs.edit()
+            .putString(KEY_LAST_READ_URL, url)
+            .putString(KEY_LAST_READ_LIBRARY_ITEM_ID, libraryItemId)
+            .apply()
+    }
     
     // Current paragraphs
     fun saveParagraphs(paragraphs: List<String>) {
@@ -168,6 +185,8 @@ class PreferencesManager @Inject constructor(
         private const val PREFS_NAME = "novel_scraper_prefs"
         
         private const val KEY_CURRENT_URL = "current_url"
+        private const val KEY_LAST_READ_URL = "last_read_url"
+        private const val KEY_LAST_READ_LIBRARY_ITEM_ID = "last_read_library_item_id"
         private const val KEY_PARAGRAPHS = "paragraphs"
         private const val KEY_SCROLL_POSITION = "scroll_position"
         private const val KEY_LIBRARY_ITEMS = "library_items"

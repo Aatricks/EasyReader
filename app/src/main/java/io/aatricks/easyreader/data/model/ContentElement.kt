@@ -1,33 +1,39 @@
 package io.aatricks.easyreader.data.model
 
+import kotlinx.serialization.Serializable
+
 /**
  * Sealed class representing different types of content elements that can appear in a chapter.
  * Allows for type-safe handling of mixed content (text and images).
  */
+@Serializable
 sealed class ContentElement {
     /**
      * Placeholder content element for loading states
      * @property text The placeholder text
      * @property heightDp The height in dp to reserve
      */
+    @Serializable
     data class Placeholder(val text: String, val heightDp: Int = 1000) : ContentElement()
 
     /**
      * Represents all content for a single page, containing sub-elements
      * @property elements The list of text and image elements on the page
      */
+    @Serializable
     data class PageContent(val elements: List<ContentElement>) : ContentElement()
 
     /**
      * Text content element
      * @property content The text content, typically a paragraph
      */
+    @Serializable
     data class Text(val content: String) : ContentElement() {
         init {
             require(content.isNotEmpty()) { "Text content cannot be empty" }
         }
     }
-    
+
     /**
      * Image content element
      * @property url The URL or path to the image
@@ -37,6 +43,7 @@ sealed class ContentElement {
      * @property height Image height in pixels (0 if unknown)
      * @property side Which part of the image to display (for split pages)
      */
+    @Serializable
     data class Image(
         val url: String,
         val altText: String? = null,
@@ -46,6 +53,7 @@ sealed class ContentElement {
         val height: Int = 0,
         val side: Side = Side.FULL
     ) : ContentElement() {
+        @Serializable
         enum class Side { FULL, LEFT, RIGHT }
 
         init {
@@ -57,6 +65,7 @@ sealed class ContentElement {
      * Group of images that should be displayed together as a single page
      * @property images List of images in the group
      */
+    @Serializable
     data class ImageGroup(
         val images: List<Image>
     ) : ContentElement() {

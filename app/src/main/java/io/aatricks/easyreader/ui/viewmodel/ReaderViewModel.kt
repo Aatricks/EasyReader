@@ -98,12 +98,28 @@ class ReaderViewModel @Inject constructor(
             )
         }
 
-        // Load last read item
-        viewModelScope.launch {
-            libraryRepository.getCurrentlyReading()?.let { last ->
-                val loadUrl = last.currentChapterUrl.ifBlank { last.url }
-                loadContent(loadUrl, last.id)
-            } ?: updateState { it.copy(isLoading = false) }
+        // Load last read item. Fast path: SharedPreferences mirrors the last-read URL on every
+        // successful chapter load, so cold launch can fire loadContent without waiting for
+        // Room's getCurrentlyReading query. Falls back to Room when prefs are empty (fresh
+        // install, post-clear) and reconciles async so a stale prefs entry self-corrects.
+        val cachedLastUrl = preferencesManager.lastReadUrl
+        val cachedLastItemId = preferencesManager.lastReadLibraryItemId
+        if (!cachedLastUrl.isNullOrBlank()) {
+            loadContent(cachedLastUrl, cachedLastItemId)
+            viewModelScope.launch {
+                val canonical = libraryRepository.getCurrentlyReading() ?: return@launch
+                val canonicalUrl = canonical.currentChapterUrl.ifBlank { canonical.url }
+                if (canonicalUrl.isNotBlank() && canonicalUrl != cachedLastUrl) {
+                    loadContent(canonicalUrl, canonical.id)
+                }
+            }
+        } else {
+            viewModelScope.launch {
+                libraryRepository.getCurrentlyReading()?.let { last ->
+                    val loadUrl = last.currentChapterUrl.ifBlank { last.url }
+                    loadContent(loadUrl, last.id)
+                } ?: updateState { it.copy(isLoading = false) }
+            }
         }
     }
 
@@ -570,6 +586,11 @@ class ReaderViewModel @Inject constructor(
 
         updateNavigationUrls()
         maybeWarmNextChapter(_uiState.value.content?.nextChapterUrl)
+
+        // Mirror the just-loaded chapter to SharedPreferences so the next cold launch can
+        // restore without waiting for Room. Written unconditionally (incl. non-library
+        // chapters) — relaunching the same external URL is the most common case to optimise.
+        preferencesManager.batchUpdateLastRead(content.url, effectiveId)
 
         libraryItem?.let { item ->
             if (item.baseNovelUrl.isNotBlank() && item.sourceName.isNotBlank()) {

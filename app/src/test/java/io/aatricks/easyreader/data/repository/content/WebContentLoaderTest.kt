@@ -697,7 +697,7 @@ class WebContentLoaderTest {
             .build()
         val imageCache = ImageCache(mediaCacheDir, mediaDownloadsDir)
         val imageDownloader = ImageDownloader(client)
-        return WebContentLoader(htmlParser, client, imageCache, imageDownloader, htmlCacheDir, htmlDownloadsDir)
+        return WebContentLoader(htmlParser, client, imageCache, imageDownloader, ParsedContentCache(), htmlCacheDir, htmlDownloadsDir)
     }
 
     private fun buildResponse(
