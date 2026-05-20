@@ -450,6 +450,12 @@ class LibraryRepository @Inject constructor(
         libraryDao.getAllItems().first()
     } ?: emptyList()
 
+    suspend fun restoreItems(items: List<LibraryItem>): Int = io {
+        if (items.isEmpty()) return@io 0
+        libraryDao.insertItems(items)
+        items.size
+    }
+
     suspend fun clearUpdateIndicator(itemId: String): Boolean = runRepoCatching("Failed to clear update indicator", false) {
         libraryDao.getItemById(itemId)?.let { item ->
             if (item.hasUpdates) {

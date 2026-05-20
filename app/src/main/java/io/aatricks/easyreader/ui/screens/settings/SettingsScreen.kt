@@ -1,5 +1,7 @@
 package io.aatricks.easyreader.ui.screens.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -44,30 +46,70 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
+import io.aatricks.easyreader.ui.viewmodel.BackupViewModel
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     readerViewModel: ReaderViewModel,
     libraryViewModel: LibraryViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    backupViewModel: BackupViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val libraryState by libraryViewModel.uiState.collectAsState()
+    val backupStatus by backupViewModel.status.collectAsState()
 
     var cacheBytes by remember { mutableLongStateOf(-1L) }
     var showClearCacheDialog by remember { mutableStateOf(false) }
     var showClearLibraryDialog by remember { mutableStateOf(false) }
+    var pendingSettingsImportUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var pendingLibraryImportUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var refreshKey by remember { mutableStateOf(0) }
+
+    val exportSettingsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri -> uri?.let(backupViewModel::exportSettings) }
+
+    val importSettingsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) pendingSettingsImportUri = uri }
+
+    val exportLibraryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri -> uri?.let(backupViewModel::exportLibrary) }
+
+    val importLibraryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) pendingLibraryImportUri = uri }
 
     LaunchedEffect(refreshKey) {
         cacheBytes = runCatching { readerViewModel.getCacheSize() }.getOrDefault(0L)
+    }
+
+    LaunchedEffect(backupStatus) {
+        when (val s = backupStatus) {
+            is BackupViewModel.OpStatus.Success -> {
+                snackbarHostState.showSnackbar(s.message)
+                backupViewModel.ackStatus()
+                refreshKey++
+            }
+            is BackupViewModel.OpStatus.Error -> {
+                snackbarHostState.showSnackbar(s.message)
+                backupViewModel.ackStatus()
+            }
+            else -> Unit
+        }
     }
 
     Scaffold(
@@ -122,6 +164,53 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Clear entire library")
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            SettingsSection(title = "Backup & restore") {
+                val inProgress = backupStatus is BackupViewModel.OpStatus.InProgress
+                SettingsRow(
+                    title = "Settings",
+                    subtitle = "Reader font, theme, margins"
+                )
+                FilledTonalButton(
+                    onClick = { exportSettingsLauncher.launch(defaultSettingsFilename()) },
+                    enabled = !inProgress,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Export settings")
+                }
+                OutlinedButton(
+                    onClick = { importSettingsLauncher.launch(arrayOf("application/json")) },
+                    enabled = !inProgress,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Import settings")
+                }
+                SettingsRow(
+                    title = "Library",
+                    subtitle = "Titles, progress, bundled EPUBs"
+                )
+                FilledTonalButton(
+                    onClick = { exportLibraryLauncher.launch(defaultLibraryFilename()) },
+                    enabled = !inProgress && libraryState.items.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Export library")
+                }
+                OutlinedButton(
+                    onClick = {
+                        importLibraryLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
+                    },
+                    enabled = !inProgress,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Import library")
+                }
+                if (inProgress) {
+                    SettingsRow(title = "Status", subtitle = "Working…")
                 }
             }
 
@@ -210,7 +299,68 @@ fun SettingsScreen(
             }
         )
     }
+
+    pendingSettingsImportUri?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { pendingSettingsImportUri = null },
+            title = { Text("Restore settings?") },
+            text = {
+                Text(
+                    "This replaces your current reader font, theme, and margins " +
+                        "with the values from the backup."
+                )
+            },
+            confirmButton = {
+                FilledTonalButton(onClick = {
+                    backupViewModel.importSettings(uri)
+                    pendingSettingsImportUri = null
+                }) {
+                    Text("Restore")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingSettingsImportUri = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    pendingLibraryImportUri?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { pendingLibraryImportUri = null },
+            title = { Text("Restore library?") },
+            text = {
+                Text(
+                    "Imports titles, progress, and bundled EPUBs. " +
+                        "Existing titles whose URL matches a backup entry are skipped."
+                )
+            },
+            confirmButton = {
+                FilledTonalButton(onClick = {
+                    backupViewModel.importLibrary(uri)
+                    pendingLibraryImportUri = null
+                }) {
+                    Text("Restore")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingLibraryImportUri = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
+
+private fun defaultSettingsFilename(): String =
+    "easyreader-settings-${todayStamp()}.json"
+
+private fun defaultLibraryFilename(): String =
+    "easyreader-library-${todayStamp()}.zip"
+
+private fun todayStamp(): String =
+    SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
 @Composable
 private fun SettingsSection(
@@ -271,4 +421,3 @@ private fun formatBytes(bytes: Long): String {
     return if (unit == 0) "${value.toLong()} ${units[unit]}"
     else String.format("%.1f %s", value, units[unit])
 }
-
