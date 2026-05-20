@@ -430,10 +430,15 @@ class LibraryViewModel @Inject constructor(
         syncDownloadedFlag(item, result)
     }
 
+    // Promote-only: inspection can confirm a chapter is now downloaded, but must never
+    // demote a previously-downloaded chapter. Demotion belongs to explicit user actions
+    // (removeDownload, library deletion, reader auto-delete) so a transient inspect miss
+    // (e.g. an image that's a permanent 404 outside the sidecar, a file mtime change)
+    // can't silently wipe the badge.
     private suspend fun syncDownloadedFlag(item: LibraryItem, result: PrefetchResult) {
         val shouldBeDownloaded = result.isPersistentDownload && result.isComplete
-        if (item.isDownloaded != shouldBeDownloaded) {
-            repository.markDownloaded(item.id, shouldBeDownloaded)
+        if (shouldBeDownloaded && !item.isDownloaded) {
+            repository.markDownloaded(item.id, true)
         }
     }
 

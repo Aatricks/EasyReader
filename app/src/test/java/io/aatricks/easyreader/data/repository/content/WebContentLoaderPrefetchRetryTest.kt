@@ -53,11 +53,10 @@ class WebContentLoaderPrefetchRetryTest {
             loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
         }
 
-        // Permanent failures do NOT mark the chapter complete — strict completion requires
-        // every image to be successfully cached. The permanent-failure sidecar still
-        // suppresses network retries, so the chapter is honest-incomplete-but-not-retryable
-        // and we only see one request.
-        assertFalse(result.isComplete)
+        // Permanent failures (4xx) are accounted for via the .failed sidecar so the chapter
+        // counts as complete offline — there's nothing more we can fetch. The sidecar also
+        // suppresses retries so we only see one network request.
+        assertTrue(result.isComplete)
         assertFalse(result.isRetryable)
         assertEquals(1, imageRequests.get())
     }

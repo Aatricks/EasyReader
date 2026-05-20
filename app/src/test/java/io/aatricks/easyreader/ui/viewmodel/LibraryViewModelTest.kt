@@ -418,7 +418,7 @@ class LibraryViewModelTest {
     }
 
     @Test
-    fun `refreshChapterCacheStates validates downloaded items against download tier`() = runTest {
+    fun `refreshChapterCacheStates does not demote downloaded flag from incomplete inspect`() = runTest {
         val chapterUrl = "https://example.com/novel/chapter-13"
         val downloadedItem = LibraryItem(
             id = "chapter-13-id",
@@ -448,7 +448,7 @@ class LibraryViewModelTest {
 
         verify(contentRepository, timeout(1000)).inspectDownload(chapterUrl)
         verify(contentRepository, never()).inspectCache(chapterUrl)
-        verify(libraryRepository, timeout(1000)).markDownloaded(downloadedItem.id, false)
+        verify(libraryRepository, never()).markDownloaded(eq(downloadedItem.id), eq(false))
         assertEquals(inspected, activeViewModel.uiState.value.chapterCacheStates[chapterUrl])
     }
 }

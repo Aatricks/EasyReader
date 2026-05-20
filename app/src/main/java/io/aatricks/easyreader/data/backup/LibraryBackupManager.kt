@@ -146,16 +146,23 @@ class LibraryBackupManager @Inject constructor(
         tempDir: File,
         epubsDir: File,
         existingUrls: Set<String>
-    ): LibraryItem? = resolveItemUrl(backupItem, tempDir, epubsDir)
-        ?.takeUnless { it in existingUrls }
-        ?.let { url -> runCatching { backupItem.toEntity(url) }.getOrNull() }
+    ): LibraryItem? {
+        val resolved = resolveItemUrl(backupItem, tempDir, epubsDir) ?: return null
+        if (resolved.url in existingUrls) return null
+        return runCatching { backupItem.toEntity(resolved.url, resolved.fileVerified) }.getOrNull()
+    }
 
-    private fun resolveItemUrl(item: LibraryItemBackup, tempDir: File, epubsDir: File): String? =
-        item.bundledEpubPath
-            ?.let { bundled -> installBundledEpub(item.id, bundled, tempDir, epubsDir) }
-            ?: item.url.takeIf { it.isNotBlank() }
+    private fun resolveItemUrl(item: LibraryItemBackup, tempDir: File, epubsDir: File): ResolvedItem? {
+        item.bundledEpubPath?.let { bundled ->
+            return installBundledEpub(item.id, bundled, tempDir, epubsDir)
+        }
+        val url = item.url.takeIf { it.isNotBlank() } ?: return null
+        // WEB / PDF backups don't ride bundled files along, so we can't honor the
+        // downloaded flag — the cached HTML/media weren't exported.
+        return ResolvedItem(url = url, fileVerified = false)
+    }
 
-    private fun installBundledEpub(id: String, bundledPath: String, tempDir: File, epubsDir: File): String? {
+    private fun installBundledEpub(id: String, bundledPath: String, tempDir: File, epubsDir: File): ResolvedItem? {
         val source = File(tempDir, sanitizeForFilename(bundledPath.removePrefix(EPUB_ENTRY_PREFIX)))
         if (!source.exists()) {
             Log.w(TAG, "Bundled EPUB missing from ZIP: $bundledPath")
@@ -164,9 +171,11 @@ class LibraryBackupManager @Inject constructor(
         val dest = File(epubsDir, "${sanitizeForFilename(id)}.epub")
         return runCatching { source.copyTo(dest, overwrite = true) }
             .onFailure { Log.w(TAG, "Could not move bundled EPUB to ${dest.absolutePath}", it) }
-            .map { Uri.fromFile(dest).toString() }
+            .map { ResolvedItem(url = Uri.fromFile(dest).toString(), fileVerified = dest.exists()) }
             .getOrNull()
     }
+
+    private data class ResolvedItem(val url: String, val fileVerified: Boolean)
 
     private fun readAppVersionName(): String = runCatching {
         @Suppress("DEPRECATION")
@@ -212,7 +221,7 @@ private fun LibraryItem.toBackup(bundledPath: String?): LibraryItemBackup = Libr
     bundledEpubPath = bundledPath
 )
 
-private fun LibraryItemBackup.toEntity(rewrittenUrl: String): LibraryItem = LibraryItem(
+private fun LibraryItemBackup.toEntity(rewrittenUrl: String, fileVerified: Boolean): LibraryItem = LibraryItem(
     id = id,
     title = title,
     url = rewrittenUrl,
@@ -236,6 +245,6 @@ private fun LibraryItemBackup.toEntity(rewrittenUrl: String): LibraryItem = Libr
     readingMode = runCatching { ReadingMode.valueOf(readingMode) }.getOrDefault(ReadingMode.VERTICAL),
     baseNovelUrl = baseNovelUrl,
     sourceName = sourceName,
-    isDownloaded = false,
-    downloadedAt = downloadedAt
+    isDownloaded = isDownloaded && fileVerified,
+    downloadedAt = if (isDownloaded && fileVerified) downloadedAt else null
 )

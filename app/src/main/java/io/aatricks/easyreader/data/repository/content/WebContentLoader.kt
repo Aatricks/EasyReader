@@ -1028,18 +1028,27 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         val memo = resolveParsedImageMemo(url, htmlFile, cachedDocument)
 
         val imageUrls = memo?.imageUrls.orEmpty()
-        val cachedImages = imageUrls.count { imageUrl ->
+        // Permanent failures (4xx that the fetcher gave up on) are tracked in the .failed
+        // sidecar. The download flow already treats them as accounted-for; the inspect flow
+        // must do the same when judging downloads-tier completeness, otherwise any chapter
+        // with a 404 image can never reach isComplete=true and the isDownloaded flag never
+        // sticks. Restricted to persistentOnly so cache-tier inspect can't be falsely
+        // completed by a stale sidecar from a never-finished download.
+        val knownPermanent = if (persistentOnly) loadPermanentFailures(url) else emptySet()
+        val downloadedCount = imageUrls.count { imageUrl ->
             if (persistentOnly) {
                 imageCache.isDownloaded(imageUrl)
             } else {
                 imageCache.findExistingCachedMediaFile(imageUrl) != null
             }
         }
+        val accountedPermanent = if (persistentOnly) imageUrls.count { it in knownPermanent } else 0
+        val effectiveCached = downloadedCount + accountedPermanent
 
         val isInProgress = chapterPrefetchMutex.withLock { url in inFlightChapterPrefetches }
         val finalComplete = when {
             !htmlCached -> false
-            imageUrls.isNotEmpty() -> cachedImages == imageUrls.size
+            imageUrls.isNotEmpty() -> effectiveCached == imageUrls.size
             memo?.hasImageTags == true -> false
             else -> memo?.bodyNonEmpty == true
         }
@@ -1048,7 +1057,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             url = url,
             htmlCached = htmlCached,
             totalImages = imageUrls.size,
-            cachedImages = cachedImages,
+            cachedImages = effectiveCached,
             isComplete = finalComplete,
             isInProgress = isInProgress,
             isRetryable = !finalComplete,
