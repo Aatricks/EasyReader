@@ -52,6 +52,8 @@ class ImageDownloader @Inject constructor(
         private const val SHORT_REQUEST_ATTEMPTS = 2
         private const val MAX_IMAGE_BYTES = 20 * 1024 * 1024L // 20MB
         private const val MAX_DIMENSION_SNIFF_BYTES = 64 * 1024L // 64KB
+        private const val MANGABAT_REFERER = "https://www.mangabats.com/"
+        private const val MANGANATO_REFERER = "https://manganato.com/"
     }
 
     private val shortTimeoutClient = okHttpClient.newBuilder()
@@ -244,8 +246,8 @@ class ImageDownloader @Inject constructor(
 
     fun getReferer(url: String): String = try {
         when {
-            url.contains("mangabat") -> "https://www.mangabats.com/"
-            url.contains("manganato") -> "https://manganato.com/"
+            isMangaBatPageOrAsset(url) -> MANGABAT_REFERER
+            url.contains("manganato") -> MANGANATO_REFERER
             url.contains("asurascans") || url.contains("asuracomic") -> "https://asurascans.com/"
             else -> {
                 val uri = URI(url)
@@ -254,5 +256,14 @@ class ImageDownloader @Inject constructor(
         }
     } catch (e: Exception) {
         url
+    }
+
+    private fun isMangaBatPageOrAsset(url: String): Boolean {
+        if (url.contains("mangabat", ignoreCase = true)) return true
+        val host = url.toHttpUrlOrNull()?.host?.lowercase() ?: return false
+        return host == "2xstorage.com" ||
+            host.endsWith(".2xstorage.com") ||
+            host == "waitst.com" ||
+            host.endsWith(".waitst.com")
     }
 }

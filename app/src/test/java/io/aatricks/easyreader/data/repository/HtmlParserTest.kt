@@ -43,6 +43,31 @@ class HtmlParserTest {
     }
 
     @Test
+    fun `extracts MangaBat chapter images from current reader markup`() {
+        val pageUrl = "https://www.mangabats.com/manga/mercenary-enrollment/chapter-238"
+        val html = """
+            <html><body>
+              <div class="container-chapter-reader">
+                <img src="https://img-r1.2xstorage.com/mercenary-enrollment/238/0.webp"
+                     alt="Mercenary Enrollment Chapter 238 page 1 - Mangabat"
+                     loading="lazy">
+                <img src="https://img-r1.2xstorage.com/mercenary-enrollment/238/1.webp"
+                     alt="Mercenary Enrollment Chapter 238 page 2 - Mangabat"
+                     loading="lazy">
+              </div>
+            </body></html>
+        """.trimIndent()
+
+        val document = Jsoup.parse(html, pageUrl)
+        val elements = parser.parse(document, pageUrl)
+        val images = elements.filterIsInstance<ContentElement.Image>()
+
+        assertEquals(2, images.size)
+        assertEquals("https://img-r1.2xstorage.com/mercenary-enrollment/238/0.webp", images[0].url)
+        assertEquals("https://img-r1.2xstorage.com/mercenary-enrollment/238/1.webp", images[1].url)
+    }
+
+    @Test
     fun `real Asura chapter html yields many CDN images`() {
         val html = javaClass.classLoader!!.getResourceAsStream("asura_chapter_real.html")!!
             .bufferedReader().readText()

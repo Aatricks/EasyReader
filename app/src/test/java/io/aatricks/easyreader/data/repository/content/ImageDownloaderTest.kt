@@ -26,6 +26,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import okio.Buffer
 import okio.BufferedSource
 import okio.Source
@@ -62,6 +63,44 @@ class ImageDownloaderTest {
         assertTrue(result is ImageFetchResult.Success)
         assertEquals(destFile.absolutePath, (result as ImageFetchResult.Success).file.absolutePath)
         assertEquals(content, destFile.readText())
+    }
+
+    @Test
+    fun `executeImageRequest uses MangaBat root referer for MangaBat CDN URLs`() = runBlocking {
+        val imageUrl = "https://img-r1.2xstorage.com/mercenary-enrollment/238/0.webp"
+        val refererHeader = AtomicReference<String?>()
+
+        val client = createClient { chain ->
+            refererHeader.set(chain.request().header("Referer"))
+            buildResponse(chain.request(), "fake-image-binary", "image/webp")
+        }
+        val downloader = ImageDownloader(client)
+
+        val result = downloader.executeImageRequest(
+            imageUrl = imageUrl,
+            pageUrl = imageUrl,
+            priority = ImageRequestPriority.USER_REQUESTED,
+            destinationFile = tempFolder.newFile("mangabat.webp")
+        )
+
+        assertTrue(result is ImageFetchResult.Success)
+        assertEquals("https://www.mangabats.com/", refererHeader.get())
+    }
+
+    @Test
+    fun `MangaBat alternate image hosts use MangaBat root referer`() {
+        val downloader = ImageDownloader(createClient { chain ->
+            buildResponse(chain.request(), "unused", "text/plain")
+        })
+
+        assertEquals(
+            "https://www.mangabats.com/",
+            downloader.getReferer("https://imgs-2.2xstorage.com/thumb/versatile-mage.webp")
+        )
+        assertEquals(
+            "https://www.mangabats.com/",
+            downloader.getReferer("https://storage4.waitst.com/thumb/for-my-husbands-new-wife.webp")
+        )
     }
 
     @Test
