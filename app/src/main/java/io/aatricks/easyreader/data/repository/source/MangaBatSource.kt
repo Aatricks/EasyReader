@@ -43,24 +43,26 @@ class MangaBatSource @Inject constructor(
     }
 
     private fun parseListElements(document: org.jsoup.nodes.Document): List<ExploreItem> {
-        val elements = document.select(".list-story-item, .item-story, .story_item, .itemupdate, .list-comic-item-wrap")
+        val elements = document.select(".list-comic-item-wrap, .list-story-item, .item-story, .story_item, .itemupdate")
+        val seenUrls = mutableSetOf<String>()
         return elements.mapNotNull { element ->
-            val titleElement = element.select("h3 a, .item-title, .story_name a").first() 
-                ?: element.select("a").firstOrNull { it.text().isNotBlank() }
-            
-            val title = titleElement?.text() ?: return@mapNotNull null
-            val href = titleElement.attr("href")
+            val anchor = anchorFor(element) ?: return@mapNotNull null
+
+            val href = anchor.attr("href")
             if (href.isBlank()) return@mapNotNull null
-            
-            val img = element.select("img").first()
+            val absoluteUrl = resolveUrl(href)
+            if (!seenUrls.add(absoluteUrl)) return@mapNotNull null
+
+            val img = element.selectFirst("img") ?: anchor.selectFirst("img")
+            val title = extractItemTitle(anchor, img) ?: return@mapNotNull null
             val coverUrl = img?.findImage()?.let { resolveUrl(it) }
 
             val chapterText = element.select(".list-story-item-wrap-chapter, .item-chapter a, .chapter").text()
             val chapterCount = io.aatricks.easyreader.util.TextUtils.extractChapterNumber(chapterText)?.toInt() ?: 0
 
             ExploreItem(
-                title = title.trim(),
-                url = resolveUrl(href),
+                title = title,
+                url = absoluteUrl,
                 coverUrl = coverUrl?.ifBlank { null },
                 source = name,
                 chapterCount = chapterCount
@@ -68,13 +70,32 @@ class MangaBatSource @Inject constructor(
         }
     }
 
+    private fun anchorFor(element: org.jsoup.nodes.Element): org.jsoup.nodes.Element? {
+        if (element.tagName() == "a" && element.attr("href").isNotBlank()) return element
+        return element.select("h3 a, .item-title, .story_name a, a[href*='/manga/']")
+            .firstOrNull { it.attr("href").isNotBlank() }
+            ?: element.selectFirst("a[href]")
+    }
+
+    private fun extractItemTitle(anchor: org.jsoup.nodes.Element, img: org.jsoup.nodes.Element?): String? {
+        val candidates = listOf(
+            anchor.text(),
+            anchor.attr("title"),
+            img?.attr("alt").orEmpty(),
+            img?.attr("title").orEmpty()
+        )
+        return candidates.firstOrNull { it.isNotBlank() }?.trim()
+    }
+
     private fun parseFallbackHomepageLinks(document: org.jsoup.nodes.Document): List<ExploreItem> {
         return document.select("a[href*='/manga/']").mapNotNull { link ->
-            val title = link.text().trim()
             val href = link.attr("href")
-            if (title.length <= 5 || title.contains("Chapter", ignoreCase = true)) return@mapNotNull null
+            if (href.contains("/chapter", ignoreCase = true)) return@mapNotNull null
 
-            val img = link.parent()?.select("img")?.first() ?: link.closest("div")?.select("img")?.first()
+            val img = link.selectFirst("img")
+                ?: link.parent()?.selectFirst("img")
+                ?: link.closest("div")?.selectFirst("img")
+            val title = extractItemTitle(link, img)?.takeIf { it.length > 5 } ?: return@mapNotNull null
             val coverUrl = img?.findImage()?.let { resolveUrl(it) }
 
             ExploreItem(
