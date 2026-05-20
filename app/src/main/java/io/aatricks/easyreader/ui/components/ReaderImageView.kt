@@ -18,6 +18,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
+import coil3.network.NetworkHeaders
+import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import io.aatricks.easyreader.data.repository.content.ChapterPageUrlExtra
@@ -38,6 +40,9 @@ internal fun shouldUseAnimatedImageLoadingUi(enableZoom: Boolean, isCached: Bool
 
 internal fun shouldSubsampleReaderImage(enableZoom: Boolean, dynamicHeight: Boolean): Boolean =
     !enableZoom && !dynamicHeight
+
+internal fun readerImageRefererSource(imageUrl: String, pageUrl: String): String =
+    pageUrl.takeIf { it.isNotBlank() } ?: imageUrl
 
 @Composable
 fun ReaderImageView(
@@ -164,15 +169,21 @@ fun ReaderImageView(
     // Keys are only the inputs that actually change the request. isInitiallyCached is stable
     // for the lifetime of the composition, so it does not need to be a key — capturing the
     // value once avoids the re-fetch loop that previously fired when the success handler
-    // flipped a cached-state flag. UA/Referer are owned by ImageDownloader for HTTP URLs
-    // (see ImageDownloader.executeImageRequest) and by HttpMediaCacheFetcher's referer
-    // fallback, so no per-request httpHeaders override is needed here.
+    // flipped a cached-state flag.
     val imageRequest = remember(imageUrl, pageUrl, retryTrigger) {
         ImageRequest.Builder(context)
             .data(imageUrl)
             .apply {
                 if (imageUrl.startsWith("http")) {
                     extras.set(ChapterPageUrlExtra, pageUrl)
+                    httpHeaders(
+                        NetworkHeaders.Builder()
+                            .set("Referer", readerViewModel.contentRepository.getReferer(
+                                readerImageRefererSource(imageUrl, pageUrl)
+                            ))
+                            .set("User-Agent", "Mozilla/5.0")
+                            .build()
+                    )
                 }
                 if (shouldSubsampleImage) {
                     // Width-only constraint. Long-strip manhwa pages can be 15000+ px tall;
