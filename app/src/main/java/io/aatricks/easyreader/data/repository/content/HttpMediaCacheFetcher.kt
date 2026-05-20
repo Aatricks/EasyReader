@@ -20,6 +20,9 @@ class HttpMediaCacheFetcher(
     private val contentRepository: ContentRepository,
     private val options: Options
 ) : Fetcher {
+    private companion object {
+        const val HTML_SIGNATURE_SNIFF_BYTES = 512
+    }
 
     override suspend fun fetch(): FetchResult? {
         val pageUrl = options.extras[ChapterPageUrlExtra]?.takeIf { it.isNotBlank() }
@@ -76,7 +79,7 @@ class HttpMediaCacheFetcher(
     private fun File.isLikelyHtmlPayload(): Boolean {
         return runCatching {
             inputStream().use { stream ->
-                val bytes = ByteArray(512)
+                val bytes = ByteArray(HTML_SIGNATURE_SNIFF_BYTES)
                 val read = stream.read(bytes)
                 if (read <= 0) return@runCatching false
                 val prefix = bytes.decodeToString(endIndex = read)

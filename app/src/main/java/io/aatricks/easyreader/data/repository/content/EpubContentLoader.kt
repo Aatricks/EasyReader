@@ -56,6 +56,11 @@ class EpubContentLoader @Inject constructor(
         val properties: Set<String>
     )
 
+    private data class SpineItems(
+        val raw: List<String>,
+        val reading: List<String>
+    )
+
     suspend fun loadEpubContent(filePath: String, chapterHref: String? = null): ContentResult = withContext(Dispatchers.IO) {
         runCatching {
             val book = getEpubBook(filePath) ?: throw Exception("Failed to load EPUB")
@@ -169,75 +174,118 @@ class EpubContentLoader @Inject constructor(
         val file = resolveEpubFile(filePath)
 
         ZipFile(file).use { zip ->
-            val cont = ZipUtils.readZipEntrySafely(zip, "META-INF/container.xml") ?: throw Exception("No container.xml")
-            val opfPath = Jsoup.parse(String(cont), "", org.jsoup.parser.Parser.xmlParser()).select("rootfile").attr("full-path")
-            val opfContent = ZipUtils.readZipEntrySafely(zip, opfPath) ?: throw Exception("No OPF")
-            val opfDoc = Jsoup.parse(String(opfContent), "", org.jsoup.parser.Parser.xmlParser())
+            val opfPath = readOpfPath(zip)
+            val opfDoc = readOpfDocument(zip, opfPath)
+            val manifestItems = parseManifestItems(opfDoc, opfPath)
+            val spineItems = parseSpineItems(opfDoc, manifestItems)
+            val spine = spineItems.reading.ifEmpty { spineItems.raw }
+            val toc = parseToc(zip, opfDoc, manifestItems)
 
-            val meta = EpubMetadata(
-                title = opfDoc.select("metadata dc|title, title").first()?.text() ?: "Unknown",
-                author = opfDoc.select("dc|creator").first()?.text()
+            return EpubBook(
+                metadata = parseMetadata(opfDoc),
+                toc = toc,
+                spine = spine,
+                manifest = manifestItems.mapValues { it.value.href }
             )
-
-            val manifestItems = mutableMapOf<String, ManifestItem>()
-            opfDoc.select("manifest item").forEach {
-                val id = it.attr("id").trim()
-                val href = it.attr("href").trim()
-                if (id.isNotBlank() && href.isNotBlank()) {
-                    manifestItems[id] = ManifestItem(
-                        id = id,
-                        href = resolveEpubPath(opfPath, href),
-                        mediaType = it.attr("media-type").lowercase(),
-                        properties = it.attr("properties")
-                            .split(WHITESPACE_REGEX)
-                            .filter { property -> property.isNotBlank() }
-                            .map { property -> property.lowercase() }
-                            .toSet()
-                    )
-                }
-            }
-
-            val rawSpine = mutableListOf<String>()
-            val readingSpine = mutableListOf<String>()
-            opfDoc.select("spine itemref").forEach { itemRef ->
-                manifestItems[itemRef.attr("idref")]?.let { item ->
-                    rawSpine.add(item.href)
-                    if (isReadingSpineItem(itemRef, item)) {
-                        readingSpine.add(item.href)
-                    }
-                }
-            }
-
-            val manifest = manifestItems.mapValues { it.value.href }
-            val spine = readingSpine.ifEmpty { rawSpine }
-            val ncxPath = opfDoc.select("spine").first()?.attr("toc")
-                ?.takeIf { it.isNotBlank() }
-                ?.let { manifestItems[it]?.href }
-                ?: manifestItems.values.firstOrNull { item ->
-                    item.mediaType == "application/x-dtbncx+xml" ||
-                        item.href.endsWith(".ncx", ignoreCase = true)
-                }?.href
-            val ncxBytes = if (ncxPath != null) ZipUtils.readZipEntrySafely(zip, ncxPath) else null
-            val navItem = manifestItems.values.firstOrNull { item ->
-                item.properties.contains("nav") && item.mediaType.isHtmlMediaType()
-            } ?: manifestItems.values.firstOrNull { item ->
-                item.id.equals("nav", ignoreCase = true) && item.mediaType.isHtmlMediaType()
-            }
-            val navBytes = navItem?.let { ZipUtils.readZipEntrySafely(zip, it.href) }
-
-            val toc = parseTocNcx(ncxBytes, ncxPath).takeUnless { it.isNullOrEmpty() }
-                ?: parseTocNav(navBytes, navItem?.href)
-                ?: emptyList()
-            return EpubBook(meta, toc, spine, manifest)
         }
     }
 
-    private fun isReadingSpineItem(itemRef: org.jsoup.nodes.Element, item: ManifestItem): Boolean {
-        if (itemRef.attr("linear").equals("no", ignoreCase = true)) return false
-        if (item.properties.contains("nav")) return false
-        if (item.mediaType == "application/x-dtbncx+xml") return false
-        return true
+    private fun readOpfPath(zip: ZipFile): String {
+        val container = ZipUtils.readZipEntrySafely(zip, "META-INF/container.xml")
+            ?: throw Exception("No container.xml")
+        return Jsoup.parse(String(container), "", org.jsoup.parser.Parser.xmlParser())
+            .select("rootfile")
+            .attr("full-path")
     }
+
+    private fun readOpfDocument(zip: ZipFile, opfPath: String): org.jsoup.nodes.Document {
+        val opfContent = ZipUtils.readZipEntrySafely(zip, opfPath) ?: throw Exception("No OPF")
+        return Jsoup.parse(String(opfContent), "", org.jsoup.parser.Parser.xmlParser())
+    }
+
+    private fun parseMetadata(opfDoc: org.jsoup.nodes.Document): EpubMetadata =
+        EpubMetadata(
+            title = opfDoc.select("metadata dc|title, title").first()?.text() ?: "Unknown",
+            author = opfDoc.select("dc|creator").first()?.text()
+        )
+
+    private fun parseManifestItems(
+        opfDoc: org.jsoup.nodes.Document,
+        opfPath: String
+    ): Map<String, ManifestItem> {
+        val manifestItems = mutableMapOf<String, ManifestItem>()
+        opfDoc.select("manifest item").forEach { item ->
+            val id = item.attr("id").trim()
+            val href = item.attr("href").trim()
+            if (id.isNotBlank() && href.isNotBlank()) {
+                manifestItems[id] = ManifestItem(
+                    id = id,
+                    href = resolveEpubPath(opfPath, href),
+                    mediaType = item.attr("media-type").lowercase(),
+                    properties = item.attr("properties").asPropertySet()
+                )
+            }
+        }
+        return manifestItems
+    }
+
+    private fun parseSpineItems(
+        opfDoc: org.jsoup.nodes.Document,
+        manifestItems: Map<String, ManifestItem>
+    ): SpineItems {
+        val rawSpine = mutableListOf<String>()
+        val readingSpine = mutableListOf<String>()
+        opfDoc.select("spine itemref").forEach { itemRef ->
+            manifestItems[itemRef.attr("idref")]?.let { item ->
+                rawSpine.add(item.href)
+                if (isReadingSpineItem(itemRef, item)) {
+                    readingSpine.add(item.href)
+                }
+            }
+        }
+        return SpineItems(raw = rawSpine, reading = readingSpine)
+    }
+
+    private fun parseToc(
+        zip: ZipFile,
+        opfDoc: org.jsoup.nodes.Document,
+        manifestItems: Map<String, ManifestItem>
+    ): List<EpubTocItem> {
+        val ncxPath = resolveNcxPath(opfDoc, manifestItems)
+        val ncxBytes = ncxPath?.let { ZipUtils.readZipEntrySafely(zip, it) }
+        val navItem = resolveNavItem(manifestItems)
+        val navBytes = navItem?.let { ZipUtils.readZipEntrySafely(zip, it.href) }
+
+        return parseTocNcx(ncxBytes, ncxPath).takeUnless { it.isNullOrEmpty() }
+            ?: parseTocNav(navBytes, navItem?.href)
+            ?: emptyList()
+    }
+
+    private fun resolveNcxPath(
+        opfDoc: org.jsoup.nodes.Document,
+        manifestItems: Map<String, ManifestItem>
+    ): String? {
+        return opfDoc.select("spine").first()?.attr("toc")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { manifestItems[it]?.href }
+            ?: manifestItems.values.firstOrNull { item ->
+                item.mediaType == "application/x-dtbncx+xml" ||
+                    item.href.endsWith(".ncx", ignoreCase = true)
+            }?.href
+    }
+
+    private fun resolveNavItem(manifestItems: Map<String, ManifestItem>): ManifestItem? {
+        return manifestItems.values.firstOrNull { item ->
+            item.properties.contains("nav") && item.mediaType.isHtmlMediaType()
+        } ?: manifestItems.values.firstOrNull { item ->
+            item.id.equals("nav", ignoreCase = true) && item.mediaType.isHtmlMediaType()
+        }
+    }
+
+    private fun isReadingSpineItem(itemRef: org.jsoup.nodes.Element, item: ManifestItem): Boolean =
+        !itemRef.attr("linear").equals("no", ignoreCase = true) &&
+            !item.properties.contains("nav") &&
+            item.mediaType != "application/x-dtbncx+xml"
 
     private fun parseTocNcx(ncxBytes: ByteArray?, ncxPath: String?): List<EpubTocItem>? {
         if (ncxBytes == null || ncxPath == null) return null
@@ -258,17 +306,23 @@ class EpubContentLoader @Inject constructor(
     }
 
     private fun parseTocNav(navBytes: ByteArray?, navHref: String?): List<EpubTocItem>? {
-        if (navBytes == null || navHref == null) return null
-        val doc = Jsoup.parse(String(navBytes), "", org.jsoup.parser.Parser.xmlParser())
-        val tocNav = doc.select("nav").firstOrNull { nav ->
-            nav.attr("epub:type").hasToken("toc") || nav.attr("type").hasToken("toc")
-        } ?: doc.select("nav").firstOrNull() ?: return null
+        val tocItems = if (navBytes == null || navHref == null) {
+            null
+        } else {
+            val doc = Jsoup.parse(String(navBytes), "", org.jsoup.parser.Parser.xmlParser())
+            val tocNav = doc.select("nav").firstOrNull { nav ->
+                nav.attr("epub:type").hasToken("toc") || nav.attr("type").hasToken("toc")
+            } ?: doc.select("nav").firstOrNull()
 
-        return normalizeTocRoots(
-            tocNav.select("> ol > li, > ul > li")
-                .mapNotNull { parseNavListItem(it, navHref) }
-        )
-            .takeIf { it.isNotEmpty() }
+            tocNav?.let {
+                normalizeTocRoots(
+                    it.select("> ol > li, > ul > li")
+                        .mapNotNull { item -> parseNavListItem(item, navHref) }
+                )
+            }
+        }
+
+        return tocItems?.takeIf { it.isNotEmpty() }
     }
 
     private fun normalizeTocRoots(items: List<EpubTocItem>): List<EpubTocItem> {
@@ -344,22 +398,31 @@ class EpubContentLoader @Inject constructor(
 
     private fun getChapterSpineHrefs(book: EpubBook, chapterHref: String): List<String> {
         val startIndex = book.spine.indexOfFirst { epubPathsMatch(it, chapterHref) }
-        if (startIndex < 0) return listOf(chapterHref)
-
         val toc = book.getFlatToc()
         val tocIndex = toc.indexOfFirst { epubPathsMatch(it.href, chapterHref) }
-        if (tocIndex < 0) return listOf(book.spine[startIndex])
+        return when {
+            startIndex < 0 -> listOf(chapterHref)
+            tocIndex < 0 -> listOf(book.spine[startIndex])
+            else -> {
+                val endIndex = findNextTocSpineIndex(book, toc, tocIndex, startIndex)
+                book.spine.subList(startIndex, endIndex).ifEmpty { listOf(book.spine[startIndex]) }
+            }
+        }
+    }
 
-        val endIndex = toc.asSequence()
+    private fun findNextTocSpineIndex(
+        book: EpubBook,
+        toc: List<EpubTocItem>,
+        tocIndex: Int,
+        startIndex: Int
+    ): Int =
+        toc.asSequence()
             .drop(tocIndex + 1)
             .mapNotNull { nextItem ->
                 book.spine.indexOfFirst { epubPathsMatch(it, nextItem.href) }
                     .takeIf { it > startIndex }
             }
             .firstOrNull() ?: book.spine.size
-
-        return book.spine.subList(startIndex, endIndex).ifEmpty { listOf(book.spine[startIndex]) }
-    }
 
     private fun readChapterBytes(zip: ZipFile, href: String): ByteArray? {
         val normalizedHref = normalizeEpubPath(href.substringBefore("#").replace("\\", "/").removePrefix("/"))
@@ -389,37 +452,12 @@ class EpubContentLoader @Inject constructor(
         fun traverse(element: org.jsoup.nodes.Element) {
             val tagName = element.tagName().lowercase()
             when {
-                tagName == "img" || tagName == "image" -> {
-                    val src = if (tagName == "img") {
-                        element.attr("src")
-                    } else {
-                        element.attr("xlink:href").ifEmpty { element.attr("href") }
-                    }
-                    if (src.isNotBlank()) {
-                        els.add(ContentElement.Image("$filePath#img:${resolveEpubPath(chapterHref, src)}", element.attr("alt")))
-                    }
-                }
-                tagName in setOf("p", "h1", "h2", "h3", "h4", "li") -> {
-                    val text = element.text().trim()
-                    if (text.length > 1) {
-                        els.add(ContentElement.Text(text))
-                    }
-                    element.select("img, image").forEach { img ->
-                        val iTagName = img.tagName().lowercase()
-                        val src = if (iTagName == "img") {
-                            img.attr("src")
-                        } else {
-                            img.attr("xlink:href").ifEmpty { img.attr("href") }
-                        }
-                        if (src.isNotBlank()) {
-                            els.add(ContentElement.Image("$filePath#img:${resolveEpubPath(chapterHref, src)}", img.attr("alt")))
-                        }
-                    }
-                }
+                tagName.isImageTag() -> addImageElement(element, filePath, chapterHref, els)
+                tagName.isTextBlockTag() -> addTextBlockElement(element, filePath, chapterHref, els)
                 else -> {
                     element.children().forEach { traverse(it) }
                     val ownText = element.ownText().trim()
-                    if (ownText.length > 1 && element.children().none { it.tagName().lowercase() in setOf("p", "div", "h1", "h2", "h3", "h4", "li") }) {
+                    if (ownText.length > 1 && !element.hasBlockChildren()) {
                         els.add(ContentElement.Text(ownText))
                     }
                 }
@@ -428,6 +466,56 @@ class EpubContentLoader @Inject constructor(
 
         doc.body()?.let { traverse(it) }
     }
+
+    private fun addTextBlockElement(
+        element: org.jsoup.nodes.Element,
+        filePath: String,
+        chapterHref: String,
+        els: MutableList<ContentElement>
+    ) {
+        val text = element.text().trim()
+        if (text.length > 1) {
+            els.add(ContentElement.Text(text))
+        }
+        element.select("img, image").forEach { img ->
+            addImageElement(img, filePath, chapterHref, els)
+        }
+    }
+
+    private fun addImageElement(
+        element: org.jsoup.nodes.Element,
+        filePath: String,
+        chapterHref: String,
+        els: MutableList<ContentElement>
+    ) {
+        val src = element.imageSource()
+        if (src.isNotBlank()) {
+            els.add(
+                ContentElement.Image(
+                    url = "$filePath#img:${resolveEpubPath(chapterHref, src)}",
+                    altText = element.attr("alt")
+                )
+            )
+        }
+    }
+
+    private fun org.jsoup.nodes.Element.imageSource(): String =
+        if (tagName().equals("img", ignoreCase = true)) {
+            attr("src")
+        } else {
+            attr("xlink:href").ifEmpty { attr("href") }
+        }
+
+    private fun org.jsoup.nodes.Element.hasBlockChildren(): Boolean =
+        children().any { it.tagName().lowercase().isBlockChildTag() }
+
+    private fun String.isImageTag(): Boolean = this == "img" || this == "image"
+
+    private fun String.isTextBlockTag(): Boolean =
+        this in setOf("p", "h1", "h2", "h3", "h4", "li")
+
+    private fun String.isBlockChildTag(): Boolean =
+        this in setOf("p", "div", "h1", "h2", "h3", "h4", "li")
 
     private fun resolveEpubPath(base: String, rel: String): String {
         val cleanRel = rel.replace("\\", "/").substringBefore("#")
@@ -454,6 +542,12 @@ class EpubContentLoader @Inject constructor(
     private fun epubPathsMatch(first: String, second: String): Boolean =
         normalizeEpubPath(first.substringBefore("#").replace("\\", "/").removePrefix("/")) ==
             normalizeEpubPath(second.substringBefore("#").replace("\\", "/").removePrefix("/"))
+
+    private fun String.asPropertySet(): Set<String> =
+        split(WHITESPACE_REGEX)
+            .filter { property -> property.isNotBlank() }
+            .map { property -> property.lowercase() }
+            .toSet()
 
     private fun String.hasToken(token: String): Boolean =
         split(WHITESPACE_REGEX).any { it.equals(token, ignoreCase = true) }

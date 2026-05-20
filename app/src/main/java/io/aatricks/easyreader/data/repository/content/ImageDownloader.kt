@@ -259,11 +259,11 @@ class ImageDownloader @Inject constructor(
     }
 
     private fun isMangaBatPageOrAsset(url: String): Boolean {
-        if (url.contains("mangabat", ignoreCase = true)) return true
-        val host = url.toHttpUrlOrNull()?.host?.lowercase() ?: return false
-        return host == "2xstorage.com" ||
-            host.endsWith(".2xstorage.com") ||
+        val host = url.toHttpUrlOrNull()?.host?.lowercase()
+        return url.contains("mangabat", ignoreCase = true) ||
+            host == "2xstorage.com" ||
+            host?.endsWith(".2xstorage.com") == true ||
             host == "waitst.com" ||
-            host.endsWith(".waitst.com")
+            host?.endsWith(".waitst.com") == true
     }
 }
