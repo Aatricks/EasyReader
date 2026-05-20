@@ -117,34 +117,55 @@ data class EpubBook(
      * Get the first document that should be opened for reading.
      */
     fun getFirstReadableHref(): String? =
-        getFlatToc().firstOrNull()?.href ?: spine.firstOrNull()
+        getReadableNavigationHrefs().firstOrNull()
+            ?: getFlatToc().firstOrNull()?.href
+            ?: spine.firstOrNull()
     
     /**
      * Get next chapter href in spine order
      */
     fun getNextHref(currentHref: String): String? {
-        val navigationHrefs = getNavigationHrefs()
-        return if (navigationHrefs.any { hrefsMatch(it, currentHref) }) {
-            getAdjacentHref(navigationHrefs, currentHref, direction = 1)
-        } else {
-            getAdjacentHref(spine, currentHref, direction = 1)
+        val readableHrefs = getReadableNavigationHrefs()
+        if (readableHrefs.any { hrefsMatch(it, currentHref) }) {
+            return getAdjacentHref(readableHrefs, currentHref, direction = 1)
         }
+
+        val navigationHrefs = getNavigationHrefs()
+        return getAdjacentHref(navigationHrefs, currentHref, direction = 1)
+            ?: getAdjacentHref(spine, currentHref, direction = 1)
     }
     
     /**
      * Get previous chapter href in spine order
      */
     fun getPreviousHref(currentHref: String): String? {
-        val navigationHrefs = getNavigationHrefs()
-        return if (navigationHrefs.any { hrefsMatch(it, currentHref) }) {
-            getAdjacentHref(navigationHrefs, currentHref, direction = -1)
-        } else {
-            getAdjacentHref(spine, currentHref, direction = -1)
+        val readableHrefs = getReadableNavigationHrefs()
+        if (readableHrefs.any { hrefsMatch(it, currentHref) }) {
+            return getAdjacentHref(readableHrefs, currentHref, direction = -1)
         }
+
+        val navigationHrefs = getNavigationHrefs()
+        return getAdjacentHref(navigationHrefs, currentHref, direction = -1)
+            ?: getAdjacentHref(spine, currentHref, direction = -1)
     }
 
     private fun getNavigationHrefs(): List<String> =
         getFlatToc().map { it.href }.distinctBy(::normalizeHref)
+
+    private fun getReadableNavigationHrefs(): List<String> {
+        val tocItems = getFlatToc()
+        val firstReadableIndex = tocItems.indexOfFirst { it.isLikelyContentTocItem() }
+            .takeIf { it >= 0 }
+            ?: tocItems.indexOfFirst { !it.isKnownNonReadingTocItem() }
+                .takeIf { it >= 0 }
+            ?: return emptyList()
+
+        return tocItems
+            .drop(firstReadableIndex)
+            .filterNot { it.isKnownNonReadingTocItem() }
+            .map { it.href }
+            .distinctBy(::normalizeHref)
+    }
 
     private fun getAdjacentHref(hrefs: List<String>, currentHref: String, direction: Int): String? {
         val index = hrefs.indexOfFirst { hrefsMatch(it, currentHref) }
@@ -161,3 +182,39 @@ private fun normalizeHref(href: String): String =
     href.replace("\\", "/")
         .removePrefix("/")
         .substringBefore("#")
+
+private fun EpubTocItem.isLikelyContentTocItem(): Boolean {
+    val normalizedTitle = title.normalizeTitle()
+    return READABLE_TOC_TITLE_PATTERNS.any { it.containsMatchIn(normalizedTitle) }
+}
+
+private fun EpubTocItem.isKnownNonReadingTocItem(): Boolean =
+    title.normalizeTitle() in NON_READING_TOC_TITLES
+
+private fun String.normalizeTitle(): String =
+    trim()
+        .lowercase()
+        .replace('\u00a0', ' ')
+        .replace(Regex("\\s+"), " ")
+
+private val READABLE_TOC_TITLE_PATTERNS = listOf(
+    Regex("""^\d+(?:[.)]|:|\s)"""),
+    Regex("""^(chapter|chapitre|prologue|epilogue|afterword|bonus|interlude|side story|act|part|book|volume)\b""")
+)
+
+private val NON_READING_TOC_TITLES = setOf(
+    "cover",
+    "title page",
+    "contents",
+    "table of contents",
+    "table of contents page",
+    "toc",
+    "sommaire",
+    "color gallery",
+    "characters",
+    "copyright",
+    "copyrights",
+    "copyrights and credits",
+    "credits",
+    "newsletter"
+)

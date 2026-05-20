@@ -446,6 +446,147 @@ class ContentRepositoryEpubTest {
         }
     }
 
+    private fun createFrontmatterHeavyTocEpub(file: File) {
+        ZipOutputStream(FileOutputStream(file)).use { zip ->
+            zip.putNextEntry(ZipEntry("META-INF/container.xml"))
+            zip.write(
+                """
+                    <?xml version="1.0"?>
+                    <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                        <rootfiles>
+                            <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+                        </rootfiles>
+                    </container>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            zip.putNextEntry(ZipEntry("OEBPS/content.opf"))
+            zip.write(
+                """
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">
+                        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+                            <dc:title>Frontmatter Test</dc:title>
+                            <dc:creator>Test Author</dc:creator>
+                        </metadata>
+                        <manifest>
+                            <item id="toc-page" href="Text/section-0001.html" media-type="application/xhtml+xml"/>
+                            <item id="color-gallery" href="Text/section-0002.html" media-type="application/xhtml+xml"/>
+                            <item id="characters" href="Text/section-0004.html" media-type="application/xhtml+xml"/>
+                            <item id="copyright" href="Text/section-0006.html" media-type="application/xhtml+xml"/>
+                            <item id="title-page" href="Text/section-0007.html" media-type="application/xhtml+xml"/>
+                            <item id="prologue" href="Text/section-0008.html" media-type="application/xhtml+xml"/>
+                            <item id="prologue-extra" href="Text/section-0009.html" media-type="application/xhtml+xml"/>
+                            <item id="chapter-one" href="Text/section-0010.html" media-type="application/xhtml+xml"/>
+                            <item id="newsletter" href="Text/section-0011.html" media-type="application/xhtml+xml"/>
+                            <item id="nav" href="Text/nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+                            <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+                        </manifest>
+                        <spine toc="ncx">
+                            <itemref idref="toc-page"/>
+                            <itemref idref="color-gallery"/>
+                            <itemref idref="characters"/>
+                            <itemref idref="copyright"/>
+                            <itemref idref="title-page"/>
+                            <itemref idref="prologue"/>
+                            <itemref idref="prologue-extra"/>
+                            <itemref idref="chapter-one"/>
+                            <itemref idref="newsletter"/>
+                            <itemref idref="nav" linear="no"/>
+                        </spine>
+                    </package>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            zip.putNextEntry(ZipEntry("OEBPS/toc.ncx"))
+            zip.write(
+                """
+                    <?xml version="1.0" encoding="utf-8"?>
+                    <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+                        <docTitle><text>Frontmatter Test</text></docTitle>
+                        <navMap>
+                            <navPoint id="toc" playOrder="1">
+                                <navLabel><text>Table of Contents</text></navLabel>
+                                <content src="Text/section-0001.html#tableofcontents"/>
+                            </navPoint>
+                            <navPoint id="gallery" playOrder="2">
+                                <navLabel><text>Color Gallery</text></navLabel>
+                                <content src="Text/section-0002.html"/>
+                            </navPoint>
+                            <navPoint id="characters" playOrder="3">
+                                <navLabel><text>Characters</text></navLabel>
+                                <content src="Text/section-0004.html"/>
+                            </navPoint>
+                            <navPoint id="copyright" playOrder="4">
+                                <navLabel><text>Copyrights and Credits</text></navLabel>
+                                <content src="Text/section-0006.html"/>
+                            </navPoint>
+                            <navPoint id="title-page" playOrder="5">
+                                <navLabel><text>Title Page</text></navLabel>
+                                <content src="Text/section-0007.html"/>
+                            </navPoint>
+                            <navPoint id="prologue" playOrder="6">
+                                <navLabel><text>Prologue</text></navLabel>
+                                <content src="Text/section-0008.html#auto_bookmark_toc_8"/>
+                            </navPoint>
+                            <navPoint id="chapter-one" playOrder="7">
+                                <navLabel><text>Chapter 1: Journey to the Unknown Continent</text></navLabel>
+                                <content src="Text/section-0010.html#auto_bookmark_toc_10"/>
+                            </navPoint>
+                            <navPoint id="newsletter" playOrder="8">
+                                <navLabel><text>Newsletter</text></navLabel>
+                                <content src="Text/section-0011.html"/>
+                            </navPoint>
+                        </navMap>
+                    </ncx>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            zip.putNextEntry(ZipEntry("OEBPS/Text/nav.xhtml"))
+            zip.write(
+                """
+                    <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+                        <body>
+                            <nav epub:type="toc">
+                                <ol>
+                                    <li><a href="section-0001.html">Table of Contents</a></li>
+                                    <li><a href="section-0008.html">Prologue</a></li>
+                                    <li><a href="section-0010.html">Chapter 1</a></li>
+                                </ol>
+                            </nav>
+                        </body>
+                    </html>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            listOf(
+                "section-0001.html" to "Table of Contents",
+                "section-0002.html" to "Color Gallery",
+                "section-0004.html" to "Characters",
+                "section-0006.html" to "Copyrights and Credits",
+                "section-0007.html" to "Title Page",
+                "section-0008.html" to "Prologue body text.",
+                "section-0009.html" to "Prologue continues here.",
+                "section-0010.html" to "Chapter one body text.",
+                "section-0011.html" to "Newsletter"
+            ).forEach { (name, text) ->
+                zip.putNextEntry(ZipEntry("OEBPS/Text/$name"))
+                zip.write(
+                    """
+                        <html xmlns="http://www.w3.org/1999/xhtml">
+                            <body><p>$text</p></body>
+                        </html>
+                    """.trimIndent().toByteArray()
+                )
+                zip.closeEntry()
+            }
+        }
+    }
+
     @Test
     fun testLoadEpubChapterLocalFile() = runBlocking {
         // Test loading from local file path
@@ -538,5 +679,39 @@ class ContentRepositoryEpubTest {
         assertEquals("1. Chapter One", success.title)
         assertTrue(text.contains("Chapter one body text."))
         assertFalse(text.contains("Contents"))
+    }
+
+    @Test
+    fun testFrontmatterHeavyTocStartsAtFirstNarrativeEntry() = runBlocking {
+        val frontmatterFile = File(tempDir, "frontmatter.epub")
+        createFrontmatterHeavyTocEpub(frontmatterFile)
+
+        val book = repository.getEpubBook(frontmatterFile.absolutePath)
+
+        assertNotNull(book)
+        assertEquals("OEBPS/Text/section-0008.html", book!!.getFirstReadableHref())
+
+        val chapter = repository.loadEpubChapterFull(frontmatterFile.absolutePath, book.getFirstReadableHref()!!)
+
+        assertNotNull(chapter)
+        assertEquals("Prologue", chapter!!.title)
+        assertEquals(null, chapter.previousHref)
+        assertEquals("OEBPS/Text/section-0010.html", chapter.nextHref)
+        assertTrue(chapter.getAllText().contains("Prologue body text."))
+        assertTrue(chapter.getAllText().contains("Prologue continues here."))
+        assertFalse(chapter.getAllText().contains("Table of Contents"))
+
+        val result = repository.loadContent(frontmatterFile.absolutePath)
+
+        assertTrue("Expected EPUB load success but was $result", result is ContentResult.Success)
+        val success = result as ContentResult.Success
+        val text = success.elements
+            .filterIsInstance<ContentElement.Text>()
+            .joinToString("\n") { it.content }
+
+        assertEquals("${frontmatterFile.absolutePath}#OEBPS/Text/section-0008.html", success.url)
+        assertEquals("Prologue", success.title)
+        assertTrue(text.contains("Prologue body text."))
+        assertFalse(text.contains("Table of Contents"))
     }
 }
