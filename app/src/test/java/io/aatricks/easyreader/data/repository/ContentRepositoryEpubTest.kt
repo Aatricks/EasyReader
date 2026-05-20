@@ -2,6 +2,8 @@ package io.aatricks.easyreader.data.repository
 
 import android.content.Context
 import android.net.Uri
+import io.aatricks.easyreader.data.model.ContentElement
+import io.aatricks.easyreader.data.model.ContentResult
 import io.aatricks.easyreader.data.model.EpubBook
 import io.aatricks.easyreader.data.repository.content.ContentUriTypeResolver
 import io.aatricks.easyreader.data.repository.content.EpubContentLoader
@@ -19,7 +21,9 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.mockito.MockedStatic
@@ -205,6 +209,95 @@ class ContentRepositoryEpubTest {
         }
     }
 
+    private fun createEpub3WithNavDocument(file: File) {
+        ZipOutputStream(FileOutputStream(file)).use { zip ->
+            zip.putNextEntry(ZipEntry("META-INF/container.xml"))
+            zip.write(
+                """
+                    <?xml version="1.0"?>
+                    <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                        <rootfiles>
+                            <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+                        </rootfiles>
+                    </container>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            zip.putNextEntry(ZipEntry("OEBPS/content.opf"))
+            zip.write(
+                """
+                    <?xml version="1.0"?>
+                    <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="bookid" version="3.0">
+                        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+                            <dc:title>French Nav Test</dc:title>
+                            <dc:creator>Test Author</dc:creator>
+                        </metadata>
+                        <manifest>
+                            <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+                            <item id="chapter1" href="chapters/chapter1.xhtml" media-type="application/xhtml+xml"/>
+                            <item id="chapter2" href="chapters/chapter2.xhtml" media-type="application/xhtml+xml"/>
+                        </manifest>
+                        <spine>
+                            <itemref idref="nav" linear="no"/>
+                            <itemref idref="chapter1"/>
+                            <itemref idref="chapter2"/>
+                        </spine>
+                    </package>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            zip.putNextEntry(ZipEntry("OEBPS/nav.xhtml"))
+            zip.write(
+                """
+                    <?xml version="1.0"?>
+                    <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+                        <head><title>Sommaire</title></head>
+                        <body>
+                            <nav epub:type="toc">
+                                <h1>Sommaire</h1>
+                                <ol>
+                                    <li><a href="chapters/chapter1.xhtml#start">Chapitre 1</a></li>
+                                    <li><a href="chapters/chapter2.xhtml">Chapitre 2</a></li>
+                                </ol>
+                            </nav>
+                        </body>
+                    </html>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            zip.putNextEntry(ZipEntry("OEBPS/chapters/chapter1.xhtml"))
+            zip.write(
+                """
+                    <html xmlns="http://www.w3.org/1999/xhtml">
+                        <head><title>Chapitre 1</title></head>
+                        <body>
+                            <h1>Chapitre 1</h1>
+                            <p>This is real chapter one.</p>
+                        </body>
+                    </html>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            zip.putNextEntry(ZipEntry("OEBPS/chapters/chapter2.xhtml"))
+            zip.write(
+                """
+                    <html xmlns="http://www.w3.org/1999/xhtml">
+                        <head><title>Chapitre 2</title></head>
+                        <body>
+                            <h1>Chapitre 2</h1>
+                            <p>This is real chapter two.</p>
+                        </body>
+                    </html>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+        }
+    }
+
     @Test
     fun testLoadEpubChapterLocalFile() = runBlocking {
         // Test loading from local file path
@@ -233,5 +326,34 @@ class ContentRepositoryEpubTest {
         val cacheDir = File(tempDir, "cache/epub_cache")
         val cachedFiles = cacheDir.listFiles { _, name -> name.endsWith(".epub") }
         assertEquals(1, cachedFiles?.size ?: 0)
+    }
+
+    @Test
+    fun testEpub3NavDocumentIsParsedAndSkippedAsDefaultContent() = runBlocking {
+        val epub3File = File(tempDir, "epub3_nav.epub")
+        createEpub3WithNavDocument(epub3File)
+
+        val book = repository.getEpubBook(epub3File.absolutePath)
+
+        assertNotNull(book)
+        assertEquals(
+            listOf("OEBPS/chapters/chapter1.xhtml", "OEBPS/chapters/chapter2.xhtml"),
+            book!!.spine
+        )
+        assertEquals("Chapitre 1", book.toc.first().title)
+        assertEquals("OEBPS/chapters/chapter1.xhtml", book.getFirstReadableHref())
+
+        val result = repository.loadContent(epub3File.absolutePath)
+
+        assertTrue("Expected EPUB load success but was $result", result is ContentResult.Success)
+        val success = result as ContentResult.Success
+        val text = success.elements
+            .filterIsInstance<ContentElement.Text>()
+            .joinToString("\n") { it.content }
+
+        assertEquals("${epub3File.absolutePath}#OEBPS/chapters/chapter1.xhtml", success.url)
+        assertEquals("Chapitre 1", success.title)
+        assertTrue(text.contains("This is real chapter one."))
+        assertFalse(text.contains("Sommaire"))
     }
 }

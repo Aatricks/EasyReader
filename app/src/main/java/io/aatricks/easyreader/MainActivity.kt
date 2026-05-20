@@ -247,7 +247,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             runCatching {
                 val epubBook = contentRepository.getEpubBook(uri.toString())
-                val firstHref = epubBook?.toc?.firstOrNull()?.href
+                val firstHref = epubBook?.getFirstReadableHref()
                 if (firstHref != null) {
                     readerViewModel.loadEpubChapter(uri.toString(), firstHref, null)
                 } else {

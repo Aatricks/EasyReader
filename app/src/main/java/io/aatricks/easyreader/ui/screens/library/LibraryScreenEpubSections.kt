@@ -89,7 +89,7 @@ internal fun EpubItemCard(
                                     libraryViewModel.toggleSelection(item.id)
                                 } else {
                                     epubBook?.let { book ->
-                                        val firstHref = book.spine.firstOrNull()
+                                        val firstHref = book.getFirstReadableHref()
                                         if (firstHref != null) {
                                             readerViewModel.loadEpubChapter(item.url, firstHref, item.id)
                                             libraryViewModel.markAsCurrentlyReading(item.id)

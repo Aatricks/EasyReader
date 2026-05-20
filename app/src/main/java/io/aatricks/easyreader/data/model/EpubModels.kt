@@ -45,7 +45,7 @@ data class EpubTocItem(
      * Find a TOC item by href
      */
     fun findByHref(href: String): EpubTocItem? {
-        if (this.href == href) return this
+        if (hrefsMatch(this.href, href)) return this
         children.forEach { child ->
             val found = child.findByHref(href)
             if (found != null) return found
@@ -112,12 +112,18 @@ data class EpubBook(
         }
         return null
     }
+
+    /**
+     * Get the first document that should be opened for reading.
+     */
+    fun getFirstReadableHref(): String? =
+        spine.firstOrNull() ?: getFlatToc().firstOrNull()?.href
     
     /**
      * Get next chapter href in spine order
      */
     fun getNextHref(currentHref: String): String? {
-        val index = spine.indexOf(currentHref)
+        val index = spine.indexOfFirst { hrefsMatch(it, currentHref) }
         return if (index >= 0 && index < spine.size - 1) {
             spine[index + 1]
         } else null
@@ -127,9 +133,17 @@ data class EpubBook(
      * Get previous chapter href in spine order
      */
     fun getPreviousHref(currentHref: String): String? {
-        val index = spine.indexOf(currentHref)
+        val index = spine.indexOfFirst { hrefsMatch(it, currentHref) }
         return if (index > 0) {
             spine[index - 1]
         } else null
     }
 }
+
+private fun hrefsMatch(first: String, second: String): Boolean =
+    normalizeHref(first) == normalizeHref(second)
+
+private fun normalizeHref(href: String): String =
+    href.replace("\\", "/")
+        .removePrefix("/")
+        .substringBefore("#")
