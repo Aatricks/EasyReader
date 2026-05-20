@@ -298,6 +298,154 @@ class ContentRepositoryEpubTest {
         }
     }
 
+    private fun createCalibreSplitChapterEpub(file: File) {
+        ZipOutputStream(FileOutputStream(file)).use { zip ->
+            zip.putNextEntry(ZipEntry("META-INF/container.xml"))
+            zip.write(
+                """
+                    <?xml version="1.0"?>
+                    <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                        <rootfiles>
+                            <rootfile full-path="content.opf" media-type="application/oebps-package+xml"/>
+                        </rootfiles>
+                    </container>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            zip.putNextEntry(ZipEntry("content.opf"))
+            zip.write(
+                """
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="uuid_id">
+                        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+                            <dc:title>Split Chapter Test</dc:title>
+                            <dc:creator>Kuji Furumiya</dc:creator>
+                        </metadata>
+                        <manifest>
+                            <item id="titlepage" href="titlepage.xhtml" media-type="application/xhtml+xml"/>
+                            <item id="index" href="index.html" media-type="application/xhtml+xml"/>
+                            <item id="chapter1-image" href="chap1.html" media-type="application/xhtml+xml"/>
+                            <item id="chapter1-text" href="chap_1.html" media-type="application/xhtml+xml"/>
+                            <item id="chapter2-image" href="chap2.html" media-type="application/xhtml+xml"/>
+                            <item id="chapter2-text" href="chap_2.html" media-type="application/xhtml+xml"/>
+                            <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+                            <item id="chapter-image" href="embed0006_HD.jpg" media-type="image/jpeg"/>
+                        </manifest>
+                        <spine toc="ncx">
+                            <itemref idref="titlepage"/>
+                            <itemref idref="index"/>
+                            <itemref idref="chapter1-image"/>
+                            <itemref idref="chapter1-text"/>
+                            <itemref idref="chapter2-image"/>
+                            <itemref idref="chapter2-text"/>
+                        </spine>
+                    </package>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            zip.putNextEntry(ZipEntry("toc.ncx"))
+            zip.write(
+                """
+                    <?xml version="1.0" encoding="utf-8"?>
+                    <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+                        <docTitle><text>Split Chapter Test</text></docTitle>
+                        <navMap>
+                            <navPoint id="start" playOrder="1">
+                                <navLabel><text>Start</text></navLabel>
+                                <content src="titlepage.xhtml"/>
+                                <navPoint id="chapter-one" playOrder="2">
+                                    <navLabel><text>1. Chapter One</text></navLabel>
+                                    <content src="chap1.html"/>
+                                </navPoint>
+                                <navPoint id="chapter-two" playOrder="3">
+                                    <navLabel><text>2. Chapter Two</text></navLabel>
+                                    <content src="chap2.html"/>
+                                </navPoint>
+                            </navPoint>
+                        </navMap>
+                    </ncx>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            zip.putNextEntry(ZipEntry("titlepage.xhtml"))
+            zip.write(
+                """
+                    <html xmlns="http://www.w3.org/1999/xhtml">
+                        <body><p>Cover</p></body>
+                    </html>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            zip.putNextEntry(ZipEntry("index.html"))
+            zip.write(
+                """
+                    <html xmlns="http://www.w3.org/1999/xhtml">
+                        <body>
+                            <p>Contents</p>
+                            <p><a href="chap1.html">1. Chapter One</a></p>
+                            <p><a href="chap2.html">2. Chapter Two</a></p>
+                        </body>
+                    </html>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            zip.putNextEntry(ZipEntry("chap1.html"))
+            zip.write(
+                """
+                    <html xmlns="http://www.w3.org/1999/xhtml">
+                        <body>
+                            <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+                                <image width="100" height="100" xlink:href="embed0006_HD.jpg" />
+                            </svg>
+                        </body>
+                    </html>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            zip.putNextEntry(ZipEntry("chap_1.html"))
+            zip.write(
+                """
+                    <html xmlns="http://www.w3.org/1999/xhtml">
+                        <body>
+                            <p>Chapter one body text.</p>
+                        </body>
+                    </html>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            zip.putNextEntry(ZipEntry("chap2.html"))
+            zip.write(
+                """
+                    <html xmlns="http://www.w3.org/1999/xhtml">
+                        <body><p>Chapter two title page.</p></body>
+                    </html>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            zip.putNextEntry(ZipEntry("chap_2.html"))
+            zip.write(
+                """
+                    <html xmlns="http://www.w3.org/1999/xhtml">
+                        <body><p>Chapter two body text.</p></body>
+                    </html>
+                """.trimIndent().toByteArray()
+            )
+            zip.closeEntry()
+
+            zip.putNextEntry(ZipEntry("embed0006_HD.jpg"))
+            zip.write(byteArrayOf(1, 2, 3))
+            zip.closeEntry()
+        }
+    }
+
     @Test
     fun testLoadEpubChapterLocalFile() = runBlocking {
         // Test loading from local file path
@@ -355,5 +503,40 @@ class ContentRepositoryEpubTest {
         assertEquals("Chapitre 1", success.title)
         assertTrue(text.contains("This is real chapter one."))
         assertFalse(text.contains("Sommaire"))
+    }
+
+    @Test
+    fun testCalibreSplitChapterEpubLoadsChapterTextPastImageStub() = runBlocking {
+        val splitFile = File(tempDir, "split_chapter.epub")
+        createCalibreSplitChapterEpub(splitFile)
+
+        val book = repository.getEpubBook(splitFile.absolutePath)
+
+        assertNotNull(book)
+        assertEquals(listOf("1. Chapter One", "2. Chapter Two"), book!!.toc.map { it.title })
+        assertEquals("chap1.html", book.getFirstReadableHref())
+
+        val chapter = repository.loadEpubChapterFull(splitFile.absolutePath, "chap1.html")
+
+        assertNotNull(chapter)
+        assertEquals("1. Chapter One", chapter!!.title)
+        assertEquals("chap2.html", chapter.nextHref)
+        assertEquals(null, chapter.previousHref)
+        assertTrue(chapter.content.any { it is ContentElement.Image })
+        assertTrue(chapter.getAllText().contains("Chapter one body text."))
+        assertFalse(chapter.getAllText().contains("Contents"))
+
+        val result = repository.loadContent(splitFile.absolutePath)
+
+        assertTrue("Expected EPUB load success but was $result", result is ContentResult.Success)
+        val success = result as ContentResult.Success
+        val text = success.elements
+            .filterIsInstance<ContentElement.Text>()
+            .joinToString("\n") { it.content }
+
+        assertEquals("${splitFile.absolutePath}#chap1.html", success.url)
+        assertEquals("1. Chapter One", success.title)
+        assertTrue(text.contains("Chapter one body text."))
+        assertFalse(text.contains("Contents"))
     }
 }

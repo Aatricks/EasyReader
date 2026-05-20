@@ -27,6 +27,24 @@ class EpubContentLoader @Inject constructor(
 ) {
     companion object {
         private val WHITESPACE_REGEX = Regex("\\s+")
+        private val WRAPPER_TOC_TITLES = setOf(
+            "start",
+            "cover",
+            "contents",
+            "table of contents",
+            "toc",
+            "sommaire"
+        )
+        private val WRAPPER_TOC_FILES = setOf(
+            "cover.xhtml",
+            "cover.html",
+            "index.xhtml",
+            "index.html",
+            "toc.xhtml",
+            "toc.html",
+            "nav.xhtml",
+            "nav.html"
+        )
     }
 
     private val epubBookCache = object : LruCache<String, EpubBook>(5) {}
@@ -236,7 +254,7 @@ class EpubContentLoader @Inject constructor(
             )
         }
 
-        return doc.select("navMap > navPoint").map { parsePoint(it) }
+        return normalizeTocRoots(doc.select("navMap > navPoint").map { parsePoint(it) })
     }
 
     private fun parseTocNav(navBytes: ByteArray?, navHref: String?): List<EpubTocItem>? {
@@ -246,9 +264,29 @@ class EpubContentLoader @Inject constructor(
             nav.attr("epub:type").hasToken("toc") || nav.attr("type").hasToken("toc")
         } ?: doc.select("nav").firstOrNull() ?: return null
 
-        return tocNav.select("> ol > li, > ul > li")
-            .mapNotNull { parseNavListItem(it, navHref) }
+        return normalizeTocRoots(
+            tocNav.select("> ol > li, > ul > li")
+                .mapNotNull { parseNavListItem(it, navHref) }
+        )
             .takeIf { it.isNotEmpty() }
+    }
+
+    private fun normalizeTocRoots(items: List<EpubTocItem>): List<EpubTocItem> {
+        val root = items.singleOrNull() ?: return items
+        return if (root.children.isNotEmpty() && root.isWrapperTocRoot()) {
+            root.children
+        } else {
+            items
+        }
+    }
+
+    private fun EpubTocItem.isWrapperTocRoot(): Boolean {
+        val normalizedTitle = title.trim().lowercase()
+        val fileName = href.substringAfterLast('/').substringBefore('#').lowercase()
+        return normalizedTitle in WRAPPER_TOC_TITLES ||
+            fileName in WRAPPER_TOC_FILES ||
+            fileName.startsWith("titlepage") ||
+            fileName.startsWith("cover")
     }
 
     private fun parseNavListItem(item: org.jsoup.nodes.Element, navHref: String): EpubTocItem? {
@@ -276,24 +314,16 @@ class EpubContentLoader @Inject constructor(
     private fun loadEpubChapter(filePath: String, book: EpubBook, href: String): EpubChapter {
         val file = resolveEpubFile(filePath)
         val chapterHref = normalizeEpubPath(href.substringBefore("#").replace("\\", "/").removePrefix("/"))
+        val chapterHrefs = getChapterSpineHrefs(book, chapterHref)
 
-        var bytes: ByteArray? = null
+        val els = mutableListOf<ContentElement>()
+        var loadedAnyDocument = false
         try {
             ZipFile(file).use { zip ->
-                var entry = zip.getEntry(chapterHref)
-                if (entry == null) {
-                    val entries = zip.entries()
-                    while (entries.hasMoreElements()) {
-                        val e = entries.nextElement()
-                        if (e.name == chapterHref || e.name.endsWith("/$chapterHref")) {
-                            entry = e
-                            break
-                        }
-                    }
-                }
-
-                if (entry != null) {
-                     bytes = ZipUtils.readZipEntrySafely(zip, entry.name)
+                chapterHrefs.forEach { segmentHref ->
+                    val bytes = readChapterBytes(zip, segmentHref) ?: return@forEach
+                    loadedAnyDocument = true
+                    parseChapterElements(String(bytes), filePath, segmentHref, els)
                 }
             }
         } catch (e: Exception) {
@@ -301,8 +331,60 @@ class EpubContentLoader @Inject constructor(
             throw e
         }
 
-        val doc = Jsoup.parse(String(bytes ?: throw Exception("No chapter bytes")))
-        val els = mutableListOf<ContentElement>()
+        if (!loadedAnyDocument) throw Exception("No chapter bytes")
+
+        return EpubChapter(
+            href = chapterHref,
+            title = book.findTocItemByHref(chapterHref)?.title,
+            content = els,
+            nextHref = book.getNextHref(chapterHref),
+            previousHref = book.getPreviousHref(chapterHref)
+        )
+    }
+
+    private fun getChapterSpineHrefs(book: EpubBook, chapterHref: String): List<String> {
+        val startIndex = book.spine.indexOfFirst { epubPathsMatch(it, chapterHref) }
+        if (startIndex < 0) return listOf(chapterHref)
+
+        val toc = book.getFlatToc()
+        val tocIndex = toc.indexOfFirst { epubPathsMatch(it.href, chapterHref) }
+        if (tocIndex < 0) return listOf(book.spine[startIndex])
+
+        val endIndex = toc.asSequence()
+            .drop(tocIndex + 1)
+            .mapNotNull { nextItem ->
+                book.spine.indexOfFirst { epubPathsMatch(it, nextItem.href) }
+                    .takeIf { it > startIndex }
+            }
+            .firstOrNull() ?: book.spine.size
+
+        return book.spine.subList(startIndex, endIndex).ifEmpty { listOf(book.spine[startIndex]) }
+    }
+
+    private fun readChapterBytes(zip: ZipFile, href: String): ByteArray? {
+        val normalizedHref = normalizeEpubPath(href.substringBefore("#").replace("\\", "/").removePrefix("/"))
+        var entry = zip.getEntry(normalizedHref)
+        if (entry == null) {
+            val entries = zip.entries()
+            while (entries.hasMoreElements()) {
+                val e = entries.nextElement()
+                if (e.name == normalizedHref || e.name.endsWith("/$normalizedHref")) {
+                    entry = e
+                    break
+                }
+            }
+        }
+
+        return entry?.let { ZipUtils.readZipEntrySafely(zip, it.name) }
+    }
+
+    private fun parseChapterElements(
+        html: String,
+        filePath: String,
+        chapterHref: String,
+        els: MutableList<ContentElement>
+    ) {
+        val doc = Jsoup.parse(html)
 
         fun traverse(element: org.jsoup.nodes.Element) {
             val tagName = element.tagName().lowercase()
@@ -345,14 +427,6 @@ class EpubContentLoader @Inject constructor(
         }
 
         doc.body()?.let { traverse(it) }
-
-        return EpubChapter(
-            href = chapterHref,
-            title = book.findTocItemByHref(chapterHref)?.title,
-            content = els,
-            nextHref = book.getNextHref(chapterHref),
-            previousHref = book.getPreviousHref(chapterHref)
-        )
     }
 
     private fun resolveEpubPath(base: String, rel: String): String {
@@ -376,6 +450,10 @@ class EpubContentLoader @Inject constructor(
         }
         return result.joinToString("/")
     }
+
+    private fun epubPathsMatch(first: String, second: String): Boolean =
+        normalizeEpubPath(first.substringBefore("#").replace("\\", "/").removePrefix("/")) ==
+            normalizeEpubPath(second.substringBefore("#").replace("\\", "/").removePrefix("/"))
 
     private fun String.hasToken(token: String): Boolean =
         split(WHITESPACE_REGEX).any { it.equals(token, ignoreCase = true) }

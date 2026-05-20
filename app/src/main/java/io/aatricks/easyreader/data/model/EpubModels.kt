@@ -117,26 +117,40 @@ data class EpubBook(
      * Get the first document that should be opened for reading.
      */
     fun getFirstReadableHref(): String? =
-        spine.firstOrNull() ?: getFlatToc().firstOrNull()?.href
+        getFlatToc().firstOrNull()?.href ?: spine.firstOrNull()
     
     /**
      * Get next chapter href in spine order
      */
     fun getNextHref(currentHref: String): String? {
-        val index = spine.indexOfFirst { hrefsMatch(it, currentHref) }
-        return if (index >= 0 && index < spine.size - 1) {
-            spine[index + 1]
-        } else null
+        val navigationHrefs = getNavigationHrefs()
+        return if (navigationHrefs.any { hrefsMatch(it, currentHref) }) {
+            getAdjacentHref(navigationHrefs, currentHref, direction = 1)
+        } else {
+            getAdjacentHref(spine, currentHref, direction = 1)
+        }
     }
     
     /**
      * Get previous chapter href in spine order
      */
     fun getPreviousHref(currentHref: String): String? {
-        val index = spine.indexOfFirst { hrefsMatch(it, currentHref) }
-        return if (index > 0) {
-            spine[index - 1]
-        } else null
+        val navigationHrefs = getNavigationHrefs()
+        return if (navigationHrefs.any { hrefsMatch(it, currentHref) }) {
+            getAdjacentHref(navigationHrefs, currentHref, direction = -1)
+        } else {
+            getAdjacentHref(spine, currentHref, direction = -1)
+        }
+    }
+
+    private fun getNavigationHrefs(): List<String> =
+        getFlatToc().map { it.href }.distinctBy(::normalizeHref)
+
+    private fun getAdjacentHref(hrefs: List<String>, currentHref: String, direction: Int): String? {
+        val index = hrefs.indexOfFirst { hrefsMatch(it, currentHref) }
+        if (index < 0) return null
+        val adjacentIndex = index + direction
+        return hrefs.getOrNull(adjacentIndex)
     }
 }
 
