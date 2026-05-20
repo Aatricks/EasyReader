@@ -94,7 +94,9 @@ class ExploreRepository @Inject constructor(
             }
         }.awaitAll()
 
-        val items = outcomes.flatMap { (_, result) -> result.getOrDefault(emptyList()) }
+        val items = outcomes
+            .flatMap { (_, result) -> result.getOrDefault(emptyList()) }
+            .let { filterByQueryRelevance(it, query) }
         val failures = outcomes.mapNotNull { (source, result) ->
             result.exceptionOrNull()?.let { e ->
                 SourceFailure(
@@ -105,6 +107,18 @@ class ExploreRepository @Inject constructor(
             }
         }
         SearchOutcome(items, failures)
+    }
+
+    // Sources sometimes fall back to their popular/browse page when search yields no hits
+    // (failed JSON endpoint, ignored `q=` param, etc). Drop anything whose title doesn't
+    // share every query token so the UI doesn't surface unrelated bestsellers.
+    private fun filterByQueryRelevance(items: List<ExploreItem>, query: String): List<ExploreItem> {
+        val tokens = query.lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (tokens.isEmpty()) return items
+        return items.filter { item ->
+            val title = item.title.lowercase()
+            tokens.all { it in title }
+        }
     }
 
     suspend fun getNovelDetails(url: String, sourceName: String): ExploreItem? {

@@ -244,7 +244,8 @@ class ImageDownloader @Inject constructor(
 
     fun getReferer(url: String): String = try {
         when {
-            url.contains("mangabat") || url.contains("manganato") -> "https://manganato.com/"
+            url.contains("mangabat") -> "https://www.mangabats.com/"
+            url.contains("manganato") -> "https://manganato.com/"
             url.contains("asurascans") || url.contains("asuracomic") -> "https://asurascans.com/"
             else -> {
                 val uri = URI(url)

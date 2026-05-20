@@ -43,7 +43,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class WebContentLoader @Inject constructor(
+class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     private val htmlParser: HtmlParser,
     private val okHttpClient: OkHttpClient,
     private val imageCache: ImageCache,
@@ -138,73 +138,16 @@ class WebContentLoader @Inject constructor(
         val safeUrl = UrlSanitizer.sanitize(url)
         Log.d(TAG, "start load url=$safeUrl")
         try {
-            // Fast path: HTML already on disk and parsed sidecar matches its mtime/length.
-            // Skips Jsoup parse + dimension enrichment entirely. Falls through on any miss.
-            findExistingCachedFile(url)?.let { htmlFile ->
-                parsedContentCache.load(htmlFile)?.let { parsed ->
-                    Log.d(
-                        TAG,
-                        "parsed cache hit url=$safeUrl elements=${parsed.elements.size} elapsedMs=${System.currentTimeMillis() - startedAtMs}"
-                    )
-                    return@withContext ContentResult.Success(
-                        elements = parsed.elements,
-                        title = parsed.title,
-                        url = url
-                    )
-                }
-            }
+            tryLoadFromParsedCache(url, safeUrl, startedAtMs)?.let { return@withContext it }
 
             val cachedDocument = getDocumentFromCacheOrNetwork(url, writeTier = StorageTier.CACHE)
-            val document = cachedDocument.document
             Log.d(
                 TAG,
-                "cache/html fetch complete url=$safeUrl fromCache=${cachedDocument.fromCache} elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+                "cache/html fetch complete url=$safeUrl fromCache=${cachedDocument.fromCache} " +
+                    "elapsedMs=${System.currentTimeMillis() - startedAtMs}"
             )
 
-            val elements = htmlParser.parse(document, url)
-            Log.d(
-                TAG,
-                "HTML parse complete url=$safeUrl elapsedMs=${System.currentTimeMillis() - startedAtMs}"
-            )
-
-            val imageCount = extractImageUrls(elements).size
-            Log.d(
-                TAG,
-                "image extraction count url=$safeUrl imageCount=$imageCount elapsedMs=${System.currentTimeMillis() - startedAtMs}"
-            )
-
-            val canUseDiskOnlyDimensions = cachedDocument.fromCache && hasCachedMediaForAllRemoteImages(elements)
-            val useDiskOnlyDimensions = canUseDiskOnlyDimensions || !FETCH_REMOTE_DIMENSIONS_DURING_INITIAL_LOAD
-
-            Log.d(
-                TAG,
-                "dimension enrichment start url=$safeUrl diskOnly=$useDiskOnlyDimensions elapsedMs=${System.currentTimeMillis() - startedAtMs}"
-            )
-            val finalElements = processChapterElements(
-                elements = elements,
-                url = url,
-                diskOnly = useDiskOnlyDimensions
-            )
-            Log.d(
-                TAG,
-                "dimension enrichment end url=$safeUrl elapsedMs=${System.currentTimeMillis() - startedAtMs}"
-            )
-
-            val title = document.title().takeIf { it.isNotBlank() }
-            findExistingCachedFile(url)?.let { htmlFile ->
-                parsedContentCache.save(htmlFile, title, finalElements)
-            }
-
-            val success = ContentResult.Success(
-                elements = finalElements,
-                title = title,
-                url = url
-            )
-            Log.d(
-                TAG,
-                "success url=$safeUrl elapsedMs=${System.currentTimeMillis() - startedAtMs}"
-            )
-            success
+            buildSuccessResult(url, safeUrl, cachedDocument, startedAtMs)
         } catch (e: Exception) {
             Log.e(
                 TAG,
@@ -213,6 +156,71 @@ class WebContentLoader @Inject constructor(
             )
             throw e
         }
+    }
+
+    // Fast path: HTML already on disk and parsed sidecar matches its mtime/length.
+    // Skips Jsoup parse + dimension enrichment entirely. Falls through on any miss.
+    private fun tryLoadFromParsedCache(
+        url: String,
+        safeUrl: String,
+        startedAtMs: Long
+    ): ContentResult.Success? {
+        val parsed = findExistingCachedFile(url)?.let { parsedContentCache.load(it) } ?: return null
+        Log.d(
+            TAG,
+            "parsed cache hit url=$safeUrl elements=${parsed.elements.size} " +
+                "elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+        )
+        return ContentResult.Success(
+            elements = parsed.elements,
+            title = parsed.title,
+            url = url
+        )
+    }
+
+    private suspend fun buildSuccessResult(
+        url: String,
+        safeUrl: String,
+        cachedDocument: CachedDocument,
+        startedAtMs: Long
+    ): ContentResult.Success {
+        val document = cachedDocument.document
+        val elements = htmlParser.parse(document, url)
+        Log.d(TAG, "HTML parse complete url=$safeUrl elapsedMs=${System.currentTimeMillis() - startedAtMs}")
+
+        val imageCount = extractImageUrls(elements).size
+        Log.d(
+            TAG,
+            "image extraction count url=$safeUrl imageCount=$imageCount " +
+                "elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+        )
+
+        val canUseDiskOnlyDimensions = cachedDocument.fromCache && hasCachedMediaForAllRemoteImages(elements)
+        val useDiskOnlyDimensions = canUseDiskOnlyDimensions || !FETCH_REMOTE_DIMENSIONS_DURING_INITIAL_LOAD
+
+        Log.d(
+            TAG,
+            "dimension enrichment start url=$safeUrl diskOnly=$useDiskOnlyDimensions " +
+                "elapsedMs=${System.currentTimeMillis() - startedAtMs}"
+        )
+        val finalElements = processChapterElements(
+            elements = elements,
+            url = url,
+            diskOnly = useDiskOnlyDimensions
+        )
+        Log.d(TAG, "dimension enrichment end url=$safeUrl elapsedMs=${System.currentTimeMillis() - startedAtMs}")
+
+        val title = document.title().takeIf { it.isNotBlank() }
+        findExistingCachedFile(url)?.let { htmlFile ->
+            parsedContentCache.save(htmlFile, title, finalElements)
+        }
+
+        Log.d(TAG, "success url=$safeUrl elapsedMs=${System.currentTimeMillis() - startedAtMs}")
+        return ContentResult.Success(
+            elements = finalElements,
+            title = title,
+            url = url
+        )
     }
 
     suspend fun prefetch(url: String, mode: PrefetchMode): PrefetchResult =
@@ -1017,25 +1025,7 @@ class WebContentLoader @Inject constructor(
         val htmlFile = if (persistentOnly) downloadHtmlFile else findExistingCachedFile(url)
         val htmlCached = htmlFile != null
 
-        val memo: ParsedImageMemo? = if (cachedDocument != null) {
-            val parsed = computeParsedImageMemo(cachedDocument, url, htmlFile)
-            if (htmlFile != null) parsedImageMemo[url] = parsed
-            parsed
-        } else if (htmlFile != null) {
-            val cached = parsedImageMemo[url]
-            val mtime = htmlFile.lastModified()
-            val length = htmlFile.length()
-            if (cached != null && cached.mtime == mtime && cached.length == length) {
-                cached
-            } else {
-                val doc = runCatching { Jsoup.parse(htmlFile, "UTF-8", url) }.getOrNull()
-                if (doc != null) {
-                    val parsed = computeParsedImageMemo(doc, url, htmlFile)
-                    parsedImageMemo[url] = parsed
-                    parsed
-                } else null
-            }
-        } else null
+        val memo = resolveParsedImageMemo(url, htmlFile, cachedDocument)
 
         val imageUrls = memo?.imageUrls.orEmpty()
         val cachedImages = imageUrls.count { imageUrl ->
@@ -1064,6 +1054,31 @@ class WebContentLoader @Inject constructor(
             isRetryable = !finalComplete,
             isPersistentDownload = persistentOnly && htmlCached
         )
+    }
+
+    private fun resolveParsedImageMemo(
+        url: String,
+        htmlFile: File?,
+        cachedDocument: Document?
+    ): ParsedImageMemo? {
+        val memo = when {
+            cachedDocument != null -> computeParsedImageMemo(cachedDocument, url, htmlFile)
+            htmlFile == null -> null
+            else -> reuseOrReparseMemo(url, htmlFile)
+        }
+        if (memo != null && htmlFile != null) parsedImageMemo[url] = memo
+        return memo
+    }
+
+    private fun reuseOrReparseMemo(url: String, htmlFile: File): ParsedImageMemo? {
+        val cached = parsedImageMemo[url]
+        val cacheValid = cached != null &&
+            cached.mtime == htmlFile.lastModified() &&
+            cached.length == htmlFile.length()
+        if (cacheValid) return cached
+        return runCatching { Jsoup.parse(htmlFile, "UTF-8", url) }
+            .getOrNull()
+            ?.let { computeParsedImageMemo(it, url, htmlFile) }
     }
 
     private fun computeParsedImageMemo(document: Document, url: String, htmlFile: File?): ParsedImageMemo {

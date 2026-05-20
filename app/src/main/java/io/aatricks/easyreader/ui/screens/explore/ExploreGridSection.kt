@@ -513,7 +513,9 @@ internal fun rememberExploreImageRequest(item: ExploreItem): ImageRequest {
         }
 
         var referer = if (uri != null) "${uri.scheme}://${uri.host}/" else item.url
-        if (item.source == "MangaBat" || referer.contains("mangabat") || referer.contains("manganato")) {
+        if (item.source == "MangaBat" || referer.contains("mangabat")) {
+            referer = "https://www.mangabats.com/"
+        } else if (referer.contains("manganato")) {
             referer = "https://manganato.com/"
         }
 

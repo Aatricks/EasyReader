@@ -39,8 +39,7 @@ class ParsedContentCache @Inject constructor() {
 
     fun load(htmlFile: File): Parsed? {
         val sidecar = sidecarFor(htmlFile)
-        if (!sidecar.exists()) return null
-        if (!htmlFile.exists()) return null
+        if (!sidecar.exists() || !htmlFile.exists()) return null
         val mtime = htmlFile.lastModified()
         val length = htmlFile.length()
         return runCatching {

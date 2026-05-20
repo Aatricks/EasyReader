@@ -29,6 +29,7 @@ import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 import android.util.Log
 
+@Suppress("LargeClass")
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     val repository: LibraryRepository,

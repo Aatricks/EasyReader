@@ -149,7 +149,9 @@ fun AsyncImageElement(
         val uri = try { java.net.URI(pageUrl) } catch (ex: Exception) { null }
         var referer = if (uri != null) "${uri.scheme}://${uri.host}/" else pageUrl
         
-        if (referer.contains("mangabat") || referer.contains("manganato")) {
+        if (referer.contains("mangabat")) {
+            referer = "https://www.mangabats.com/"
+        } else if (referer.contains("manganato")) {
             referer = "https://manganato.com/"
         }
 
