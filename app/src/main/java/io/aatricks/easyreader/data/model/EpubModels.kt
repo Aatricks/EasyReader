@@ -114,6 +114,29 @@ data class EpubBook(
     }
 
     /**
+     * Resolve any spine href (including sub-anchors or mid-chapter split segments)
+     * to the href of the TOC entry that owns it — the last TOC entry whose spine
+     * position is at or before the given href. Returns null if no TOC entry maps.
+     */
+    fun findContainingTocHref(href: String): String? {
+        if (toc.isEmpty() || spine.isEmpty()) return null
+        val targetSpineIndex = spine.indexOfFirst { hrefsMatch(it, href) }
+        if (targetSpineIndex < 0) return null
+
+        val tocBySpineIndex = getFlatToc()
+            .mapNotNull { item ->
+                val idx = spine.indexOfFirst { hrefsMatch(it, item.href) }
+                if (idx >= 0) item to idx else null
+            }
+            .sortedBy { it.second }
+
+        return tocBySpineIndex
+            .lastOrNull { it.second <= targetSpineIndex }
+            ?.first
+            ?.href
+    }
+
+    /**
      * Get the first document that should be opened for reading.
      */
     fun getFirstReadableHref(): String? =

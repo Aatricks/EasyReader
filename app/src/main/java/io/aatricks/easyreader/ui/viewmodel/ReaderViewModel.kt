@@ -807,15 +807,25 @@ class ReaderViewModel @Inject constructor(
             val effectiveLibraryItemId = libraryItemId ?: libraryRepository.getItemByUrl(epubPath)?.id
             currentLibraryItemId = effectiveLibraryItemId
 
+            // Canonicalize the loaded href to the owning TOC entry so the chapter list
+            // can highlight it by exact URL match — sub-anchors and split-chapter
+            // spine segments otherwise produce URLs that never appear in the TOC.
+            val canonicalHref = epubBook.findContainingTocHref(chapter.href)
+                ?: epubBook.findTocItemByHref(chapter.href)?.href
+                ?: chapter.href
+
             val content = ChapterContent(
                 paragraphs = formatEpubElements(chapter.content),
                 title = chapter.title,
-                url = "$epubPath#$href",
+                url = "$epubPath#$canonicalHref",
                 nextChapterUrl = chapter.nextHref?.let { "$epubPath#${it}" }
                     ?: epubBook.getNextHref(href)?.let { "$epubPath#${it}" },
                 previousChapterUrl = chapter.previousHref?.let { "$epubPath#${it}" }
                     ?: epubBook.getPreviousHref(href)?.let { "$epubPath#${it}" }
             )
+
+            val tocChapterList = epubBook.getFlatToc()
+                .map { ChapterInfo(title = it.title, url = "$epubPath#${it.href}") }
 
             val libraryItem = effectiveLibraryItemId?.let { libraryRepository.getItemById(it) }
             val baseTitle = libraryItem?.baseTitle?.ifBlank { null }
@@ -847,7 +857,11 @@ class ReaderViewModel @Inject constructor(
                     hasReachedQuarterScreen = fromBottom || initialScroll.progress >= 25,
                     novelName = novelName,
                     chapterTitle = chapterTitle,
-                    baseTitle = baseTitle
+                    baseTitle = baseTitle,
+                    // Keep isFullChapterListLoaded false so updateNavigationUrls — which
+                    // assumes spine-ordered web chapter lists — does not overwrite the
+                    // next/previous URLs we just computed from the EPUB spine.
+                    fullChapterList = tocChapterList
                 )
             }
             syncProgressState(
@@ -858,8 +872,16 @@ class ReaderViewModel @Inject constructor(
                 targetScrollPosition = initialScroll.targetPosition
             )
 
-            effectiveLibraryItemId?.let {
-                libraryRepository.markAsCurrentlyReading(it)
+            preferencesManager.batchUpdateLastRead(content.url, effectiveLibraryItemId)
+
+            effectiveLibraryItemId?.let { id ->
+                libraryRepository.markAsCurrentlyReading(id)
+                libraryRepository.saveProgressAsync(
+                    itemId = id,
+                    currentChapter = chapterTitle,
+                    progress = initialScroll.progress,
+                    currentChapterUrl = content.url
+                )
             }
 
             isExplicitNavigation = false
