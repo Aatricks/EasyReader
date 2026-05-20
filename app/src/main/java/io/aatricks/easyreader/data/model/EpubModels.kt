@@ -121,17 +121,14 @@ data class EpubBook(
     fun findContainingTocHref(href: String): String? {
         if (toc.isEmpty() || spine.isEmpty()) return null
         val targetSpineIndex = spine.indexOfFirst { hrefsMatch(it, href) }
-        if (targetSpineIndex < 0) return null
-
-        val tocBySpineIndex = getFlatToc()
-            .mapNotNull { item ->
+        return getFlatToc()
+            .takeIf { targetSpineIndex >= 0 }
+            ?.mapNotNull { item ->
                 val idx = spine.indexOfFirst { hrefsMatch(it, item.href) }
                 if (idx >= 0) item to idx else null
             }
-            .sortedBy { it.second }
-
-        return tocBySpineIndex
-            .lastOrNull { it.second <= targetSpineIndex }
+            ?.sortedBy { it.second }
+            ?.lastOrNull { it.second <= targetSpineIndex }
             ?.first
             ?.href
     }
