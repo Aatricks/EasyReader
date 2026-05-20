@@ -451,4 +451,80 @@ class LibraryViewModelTest {
         verify(libraryRepository, never()).markDownloaded(eq(downloadedItem.id), eq(false))
         assertEquals(inspected, activeViewModel.uiState.value.chapterCacheStates[chapterUrl])
     }
+
+    @Test
+    fun `addChapters does not mark download when permanent failures are present`() = runTest {
+        val chapter = ChapterInfo("Chapter 14", "https://example.com/novel/chapter-14")
+        val partialResult = PrefetchResult(
+            url = chapter.url,
+            htmlCached = true,
+            totalImages = 5,
+            cachedImages = 3,
+            isComplete = true,
+            isPersistentDownload = true,
+            hasPermanentFailures = true
+        )
+
+        whenever(libraryRepository.getItemByUrl(chapter.url)).thenReturn(null)
+        whenever(
+            libraryRepository.addItem(any(), any(), any(), any(), any(), any(), any(), any())
+        ).thenReturn(
+            LibraryItem(
+                id = "chapter-14-id",
+                title = chapter.title,
+                url = chapter.url,
+                currentChapter = "Chapter 14",
+                baseTitle = "Novel",
+                baseNovelUrl = "https://example.com/novel",
+                sourceName = "Source1"
+            )
+        )
+        whenever(contentRepository.prefetchWithProgress(eq(chapter.url), eq(PrefetchMode.USER_REQUESTED), any()))
+            .thenReturn(partialResult)
+
+        viewModel.addChapters(
+            chapters = listOf(chapter),
+            baseTitle = "Novel",
+            baseNovelUrl = "https://example.com/novel",
+            sourceName = "Source1"
+        )
+        advanceUntilIdle()
+
+        verify(libraryRepository, never()).markDownloaded(eq("chapter-14-id"), eq(true))
+        assertEquals(partialResult, viewModel.uiState.value.chapterCacheStates[chapter.url])
+    }
+
+    @Test
+    fun `refreshChapterCacheStates demotes downloaded flag when permanent failures show up`() = runTest {
+        val chapterUrl = "https://example.com/novel/chapter-15"
+        val downloadedItem = LibraryItem(
+            id = "chapter-15-id",
+            title = "Chapter 15",
+            url = chapterUrl,
+            currentChapter = "Chapter 15",
+            baseTitle = "Novel",
+            isDownloaded = true
+        )
+        val libraryItems = MutableStateFlow(listOf(downloadedItem))
+        val inspected = PrefetchResult(
+            url = chapterUrl,
+            htmlCached = true,
+            totalImages = 5,
+            cachedImages = 3,
+            isComplete = true,
+            isPersistentDownload = true,
+            hasPermanentFailures = true
+        )
+
+        whenever(libraryRepository.libraryItems).thenReturn(libraryItems)
+        whenever(libraryRepository.getGroupedByTitle(anyOrNull())).thenReturn(mapOf("Novel" to listOf(downloadedItem)))
+        whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(inspected)
+
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository)
+        activeViewModel.refreshChapterCacheStates(listOf(chapterUrl))
+        advanceUntilIdle()
+
+        verify(libraryRepository, timeout(1000)).markDownloaded(downloadedItem.id, false)
+        assertEquals(inspected, activeViewModel.uiState.value.chapterCacheStates[chapterUrl])
+    }
 }

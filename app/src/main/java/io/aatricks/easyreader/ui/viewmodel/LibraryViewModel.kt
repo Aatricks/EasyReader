@@ -430,15 +430,26 @@ class LibraryViewModel @Inject constructor(
         syncDownloadedFlag(item, result)
     }
 
-    // Promote-only: inspection can confirm a chapter is now downloaded, but must never
-    // demote a previously-downloaded chapter. Demotion belongs to explicit user actions
-    // (removeDownload, library deletion, reader auto-delete) so a transient inspect miss
-    // (e.g. an image that's a permanent 404 outside the sidecar, a file mtime change)
-    // can't silently wipe the badge.
+    // The DB isDownloaded flag means "every image of this chapter is actually on disk and
+    // openable offline". Permanent failures (4xx images in the .failed sidecar) count toward
+    // isComplete (so the download loop and auto-resume stop), but they are NOT on disk and
+    // must not promote the flag — otherwise the chapter shows "Downloaded" while opening it
+    // surfaces "Image unavailable" for the missing images.
+    //
+    // Demotion is only permitted when we have a confident, terminal signal that the chapter
+    // is not fully downloaded: a USER_REQUESTED inspect that finished (not in progress) and
+    // either accepted permanent failures or could no longer find images that were previously
+    // counted. Transient inspect misses (e.g. images not yet inspected during startup) leave
+    // the flag alone.
     private suspend fun syncDownloadedFlag(item: LibraryItem, result: PrefetchResult) {
-        val shouldBeDownloaded = result.isPersistentDownload && result.isComplete
-        if (shouldBeDownloaded && !item.isDownloaded) {
-            repository.markDownloaded(item.id, true)
+        if (!result.isPersistentDownload) return
+        val isFullyDownloaded = result.isComplete && !result.hasPermanentFailures
+        if (isFullyDownloaded) {
+            if (!item.isDownloaded) repository.markDownloaded(item.id, true)
+            return
+        }
+        if (item.isDownloaded && !result.isInProgress && result.hasPermanentFailures) {
+            repository.markDownloaded(item.id, false)
         }
     }
 

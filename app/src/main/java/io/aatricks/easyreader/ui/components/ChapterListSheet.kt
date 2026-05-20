@@ -477,11 +477,19 @@ internal fun chapterCacheStatusKind(
     val hasManagedDownload = isDownloaded || (isInLibrary && cacheState?.isPersistentDownload == true)
     if (cacheState?.isInProgress == true && (isInLibrary || hasManagedDownload)) return ChapterStatus.Caching
     if (hasManagedDownload && cacheState != null) {
-        if (cacheState.isComplete) return ChapterStatus.Downloaded
+        // "Downloaded" requires the chapter to be fully present on disk. Chapters where some
+        // images ended up as permanent failures (404/403/etc.) are reported as incomplete so
+        // the user sees the missing-image count and a retry control instead of a misleading
+        // "Downloaded" badge that would then surface "Image unavailable" on open.
+        if (cacheState.isComplete && !cacheState.hasPermanentFailures) return ChapterStatus.Downloaded
         if (cacheState.totalImages > 0) {
             return ChapterStatus.DownloadIncomplete(cacheState.cachedImages, cacheState.totalImages)
         }
     }
+    // No cache state yet but the DB remembers this chapter as downloaded — trust the DB to
+    // avoid flickering to "In library" between app launch and the first inspect refresh.
+    // Once the refresh runs, the branch above takes over and corrects the label if needed.
+    if (isDownloaded && cacheState == null) return ChapterStatus.Downloaded
     if (isInLibrary) return ChapterStatus.InLibrary
     return null
 }

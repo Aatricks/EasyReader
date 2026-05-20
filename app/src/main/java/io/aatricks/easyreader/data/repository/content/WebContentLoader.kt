@@ -857,9 +857,18 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         )
         val finalResult = inspected.copy(
             isInProgress = false,
-            isRetryable = allImagesRetryable && !inspected.isComplete
+            // Retry is useful when there's missing content (incomplete) OR we accepted
+            // permanent failures into the sidecar — clearing the sidecar and re-attempting
+            // can recover transient errors that were misclassified as permanent (e.g. a 404
+            // returned by an overloaded CDN).
+            isRetryable = (allImagesRetryable && !inspected.isComplete) || inspected.hasPermanentFailures
         )
-        Log.d(TAG, "prefetch final result url=$safeUrl complete=${finalResult.isComplete} cached=${finalResult.cachedImages}/${finalResult.totalImages}")
+        Log.d(
+            TAG,
+            "prefetch final result url=$safeUrl complete=${finalResult.isComplete} " +
+                "cached=${finalResult.cachedImages}/${finalResult.totalImages} " +
+                "permanentFailures=${finalResult.hasPermanentFailures}"
+        )
         return finalResult
     }
 
@@ -1029,11 +1038,12 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
         val imageUrls = memo?.imageUrls.orEmpty()
         // Permanent failures (4xx that the fetcher gave up on) are tracked in the .failed
-        // sidecar. The download flow already treats them as accounted-for; the inspect flow
-        // must do the same when judging downloads-tier completeness, otherwise any chapter
-        // with a 404 image can never reach isComplete=true and the isDownloaded flag never
-        // sticks. Restricted to persistentOnly so cache-tier inspect can't be falsely
-        // completed by a stale sidecar from a never-finished download.
+        // sidecar. They count toward isComplete so the download loop and the auto-resume
+        // path don't keep retrying URLs we've already concluded are dead — but they are
+        // NOT actually on disk, so cachedImages reflects only the on-disk count and
+        // hasPermanentFailures signals the gap. The DB isDownloaded flag and the
+        // "Downloaded" UI label require isComplete && !hasPermanentFailures so chapters
+        // that can't be read offline don't masquerade as fully downloaded.
         val knownPermanent = if (persistentOnly) loadPermanentFailures(url) else emptySet()
         val downloadedCount = imageUrls.count { imageUrl ->
             if (persistentOnly) {
@@ -1042,7 +1052,9 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                 imageCache.findExistingCachedMediaFile(imageUrl) != null
             }
         }
-        val accountedPermanent = if (persistentOnly) imageUrls.count { it in knownPermanent } else 0
+        val accountedPermanent = if (persistentOnly) {
+            imageUrls.count { it in knownPermanent && !imageCache.isDownloaded(it) }
+        } else 0
         val effectiveCached = downloadedCount + accountedPermanent
 
         val isInProgress = chapterPrefetchMutex.withLock { url in inFlightChapterPrefetches }
@@ -1052,16 +1064,18 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             memo?.hasImageTags == true -> false
             else -> memo?.bodyNonEmpty == true
         }
+        val hasPermanentFailures = imageUrls.isNotEmpty() && accountedPermanent > 0
 
         return PrefetchResult(
             url = url,
             htmlCached = htmlCached,
             totalImages = imageUrls.size,
-            cachedImages = effectiveCached,
+            cachedImages = downloadedCount,
             isComplete = finalComplete,
             isInProgress = isInProgress,
-            isRetryable = !finalComplete,
-            isPersistentDownload = persistentOnly && htmlCached
+            isRetryable = !finalComplete || hasPermanentFailures,
+            isPersistentDownload = persistentOnly && htmlCached,
+            hasPermanentFailures = hasPermanentFailures
         )
     }
 
