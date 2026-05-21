@@ -8,6 +8,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class DisabledSummaryEngine @Inject constructor() : SummaryEngine {
+    override val supportsAi: Boolean = false
+
     override fun isAvailable(): Boolean = false
 
     override suspend fun initialize(): Result<Unit> = 

@@ -5,6 +5,14 @@ package io.aatricks.easyreader.data.repository.summary
  */
 interface SummaryEngine {
     /**
+     * Whether this build supports on-device AI summarization at all.
+     * False for the standard flavor; true for the AI flavor regardless of
+     * whether the model has been downloaded yet.
+     */
+    val supportsAi: Boolean
+        get() = true
+
+    /**
      * Check if the engine is available and ready to use.
      */
     fun isAvailable(): Boolean

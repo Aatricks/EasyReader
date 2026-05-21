@@ -23,6 +23,13 @@ class SummaryService @Inject constructor(
     }
     
     /**
+     * Whether the active build flavor includes the on-device summarization
+     * engine. UI can use this to hide AI controls completely on the standard
+     * flavor while still showing them (and offering opt-in) on the AI flavor.
+     */
+    fun supportsAi(): Boolean = summaryEngine.supportsAi
+
+    /**
      * Initialize the summary model (lazy loading)
      */
     suspend fun initialize(): Result<Unit> = summaryEngine.initialize()

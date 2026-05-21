@@ -3,6 +3,7 @@ package io.aatricks.easyreader.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.repository.SummaryService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,13 +18,21 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class SummaryViewModel @Inject constructor(
-    private val summaryService: SummaryService
-) : BaseViewModel<SummaryViewModel.SummaryUiState>(SummaryUiState()) {
-    
+    private val summaryService: SummaryService,
+    private val preferencesManager: PreferencesManager
+) : BaseViewModel<SummaryViewModel.SummaryUiState>(
+    SummaryUiState(
+        supportsAi = summaryService.supportsAi(),
+        isEnabled = summaryService.supportsAi() && preferencesManager.aiSummaryEnabled
+    )
+) {
+
     private val TAG = "SummaryViewModel"
-    
+
     // UI State
     data class SummaryUiState(
+        val supportsAi: Boolean = false,
+        val isEnabled: Boolean = false,
         val isInitializing: Boolean = false,
         val isGenerating: Boolean = false,
         val error: String? = null,
@@ -31,14 +40,41 @@ class SummaryViewModel @Inject constructor(
         val activeChapterUrl: String? = null,
         val summariesCache: Map<String, String> = emptyMap() // chapterUrl -> summary
     )
-    
+
+    /**
+     * Toggle the AI summary opt-in. Enabling triggers a download/initialize;
+     * disabling releases the in-memory engine. Persists across launches.
+     */
+    fun setAiSummaryEnabled(enabled: Boolean): Unit {
+        if (!_uiState.value.supportsAi) return
+        if (_uiState.value.isEnabled == enabled) return
+        preferencesManager.aiSummaryEnabled = enabled
+        updateState { it.copy(isEnabled = enabled, error = null) }
+        if (enabled) {
+            initializeSummaryService()
+        } else {
+            summaryService.cancelGeneration()
+            summaryService.release()
+            updateState {
+                it.copy(
+                    isInitializing = false,
+                    isGenerating = false,
+                    activeChapterUrl = null,
+                    currentSummary = null
+                )
+            }
+        }
+    }
+
     /**
      * Initialize the summary service (loads AI model)
      */
     fun initializeSummaryService(): Unit {
+        val state = _uiState.value
+        if (!state.supportsAi || !state.isEnabled) return
         viewModelScope.launch {
             updateState { it.copy(isInitializing = true, error = null) }
-            
+
             summaryService.initialize()
                 .onSuccess {
                     Log.d(TAG, "Summary service initialized successfully")
@@ -51,7 +87,7 @@ class SummaryViewModel @Inject constructor(
                 }
         }
     }
-    
+
     /**
      * Generate a summary for a chapter
      */
@@ -66,7 +102,7 @@ class SummaryViewModel @Inject constructor(
             onComplete(cached)
             return
         }
-        
+
         viewModelScope.launch {
             updateState { it.copy(
                 isGenerating = true,
@@ -74,7 +110,7 @@ class SummaryViewModel @Inject constructor(
                 error = null,
                 currentSummary = null
             ) }
-            
+
             val sb = StringBuilder()
             summaryService.generateSummary(chapterTitle, content, onProgress = { token ->
                 sb.append(token)
@@ -95,7 +131,7 @@ class SummaryViewModel @Inject constructor(
         val updatedCache = _uiState.value.summariesCache.toMutableMap().apply {
             put(chapterUrl, summary)
         }
-        
+
         updateState { it.copy(
             isGenerating = false,
             activeChapterUrl = null,
@@ -118,15 +154,15 @@ class SummaryViewModel @Inject constructor(
         summaryService.cancelGeneration()
         updateState { it.copy(isGenerating = false, activeChapterUrl = null) }
     }
-    
+
     fun getCachedSummary(chapterUrl: String): String? = _uiState.value.summariesCache[chapterUrl]
-    
+
     fun clearError(): Unit {
         updateState { it.copy(error = null) }
     }
-    
+
     fun isServiceReady(): Boolean = summaryService.isReady()
-    
+
     override fun onCleared(): Unit {
         super.onCleared()
         summaryService.release()

@@ -1,5 +1,7 @@
 package io.aatricks.easyreader.ui.viewmodel
 
+import androidx.test.core.app.ApplicationProvider
+import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.repository.SummaryService
 import io.aatricks.easyreader.data.repository.summary.DisabledSummaryEngine
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +28,7 @@ class SummaryViewModelBenchmarkTest {
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var summaryEngine: DisabledSummaryEngine
     private lateinit var summaryService: SummaryService
+    private lateinit var preferencesManager: PreferencesManager
     private lateinit var viewModel: SummaryViewModel
 
     @Before
@@ -33,7 +36,8 @@ class SummaryViewModelBenchmarkTest {
         Dispatchers.setMain(testDispatcher)
         summaryEngine = DisabledSummaryEngine()
         summaryService = SummaryService(summaryEngine)
-        viewModel = SummaryViewModel(summaryService)
+        preferencesManager = PreferencesManager(ApplicationProvider.getApplicationContext())
+        viewModel = SummaryViewModel(summaryService, preferencesManager)
     }
 
     @After
@@ -65,13 +69,15 @@ class SummaryViewModelBenchmarkTest {
     }
 
     @Test
-    fun `initializeSummaryService should fail gracefully with disabled engine`() = runTest {
+    fun `initializeSummaryService is a no-op when the build does not support AI`() = runTest {
         viewModel.initializeSummaryService()
-        
+
         advanceUntilIdle()
-        
+
         val state = viewModel.uiState.value
+        assertFalse(state.supportsAi)
+        assertFalse(state.isEnabled)
         assertFalse(state.isInitializing)
-        assertEquals("AI Summarization is disabled in this build.", state.error)
+        assertNull(state.error)
     }
 }

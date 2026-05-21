@@ -144,7 +144,13 @@ class PreferencesManager @Inject constructor(
         get() = prefs.getString(KEY_ACCENT_THEME, io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name)
             ?: io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name
         set(value) = prefs.edit().putString(KEY_ACCENT_THEME, value).apply()
-    
+
+    // Opt-in for AI summary model. False by default so the model is never
+    // downloaded unless the user explicitly enables the feature.
+    var aiSummaryEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AI_SUMMARY_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_AI_SUMMARY_ENABLED, value).apply()
+
     // Clear all preferences
     fun clearAll() {
         prefs.edit().clear().apply()
@@ -202,5 +208,7 @@ class PreferencesManager @Inject constructor(
         private const val KEY_PARAGRAPH_SPACING = "reader_paragraph_spacing"
         private const val KEY_READER_THEME = "reader_theme"
         private const val KEY_ACCENT_THEME = "accent_theme"
+
+        private const val KEY_AI_SUMMARY_ENABLED = "ai_summary_enabled"
     }
 }
