@@ -39,8 +39,8 @@ class ImageCacheTest {
     fun `getCachedMediaFile returns existing legacy file if primary does not exist`() {
         val url = "https://example.com/image.jpg"
         val legacyFile = File(cacheDir, url.hashCode().toString())
-        legacyFile.writeText("legacy content")
-        
+        legacyFile.writeBytes(validJpegBytes())
+
         val actual = imageCache.getCachedMediaFile(url)
         assertEquals(legacyFile.absolutePath, actual.absolutePath)
     }
@@ -50,12 +50,17 @@ class ImageCacheTest {
         val url = "https://example.com/image.jpg"
         val primaryFile = File(cacheDir, CacheKeyUtils.keyFor(url))
         val legacyFile = File(cacheDir, url.hashCode().toString())
-        primaryFile.writeText("primary content")
-        legacyFile.writeText("legacy content")
-        
+        primaryFile.writeBytes(validJpegBytes())
+        legacyFile.writeBytes(validJpegBytes())
+
         val actual = imageCache.getCachedMediaFile(url)
         assertEquals(primaryFile.absolutePath, actual.absolutePath)
     }
+
+    private fun validJpegBytes(): ByteArray =
+        byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()) +
+            ByteArray(60) +
+            byteArrayOf(0xFF.toByte(), 0xD9.toByte())
 
     @Test
     fun `deleteCachedMediaFiles deletes both primary and legacy files`() {

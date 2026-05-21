@@ -707,9 +707,13 @@ class WebContentLoaderTest {
         code: Int = 200
     ): Response {
         val payload = if (code == 200 && contentType.startsWith("image/")) {
-            val bytes = VALID_JPEG_HEADER + body.toByteArray()
-            // ImageIntegrity requires at least 64 bytes; pad with zeros if the fixture body is short.
-            if (bytes.size < 64) bytes + ByteArray(64 - bytes.size) else bytes
+            val bodyBytes = body.toByteArray()
+            // ImageIntegrity now requires a structural trailer (EOI marker for JPEG) so the
+            // fixture must look like a complete file end-to-end. Pad to ≥64 bytes and finish
+            // with FF D9 so inspect treats the body as a valid (if minimal) JPEG.
+            val header = VALID_JPEG_HEADER + bodyBytes
+            val padded = if (header.size < 62) header + ByteArray(62 - header.size) else header
+            padded + JPEG_EOI
         } else {
             body.toByteArray()
         }
@@ -723,10 +727,12 @@ class WebContentLoaderTest {
     }
 
     private companion object {
-        // ImageIntegrity validates downloaded files by magic bytes. Test fixtures use string
-        // bodies like "image-body" that wouldn't pass; prepend a JPEG SOI/APP0 marker so the
-        // integrity check accepts them without requiring real image payloads.
+        // ImageIntegrity validates downloaded files by magic bytes AND structural trailer.
+        // Test fixtures use string bodies like "image-body" that wouldn't pass; wrap them
+        // in a JPEG SOI/APP0 header and EOI trailer so the integrity check accepts them
+        // without requiring real image payloads.
         private val VALID_JPEG_HEADER = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte())
+        private val JPEG_EOI = byteArrayOf(0xFF.toByte(), 0xD9.toByte())
     }
 
     private fun buildByteResponse(

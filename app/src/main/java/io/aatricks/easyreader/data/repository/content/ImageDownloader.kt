@@ -204,9 +204,9 @@ class ImageDownloader @Inject constructor(
 
         return if (destinationFile != null) {
             try {
+                var totalRead = 0L
                 destinationFile.sink().buffer().use { sink ->
                     val source = body.source()
-                    var totalRead = 0L
                     while (true) {
                         val read = source.read(sink.buffer, 8192)
                         if (read == -1L) break
@@ -216,6 +216,16 @@ class ImageDownloader @Inject constructor(
                         }
                         sink.emitCompleteSegments()
                     }
+                }
+                // Some servers close the connection mid-stream without throwing — OkHttp
+                // returns -1 cleanly and we end up persisting a truncated body. If the
+                // response advertised a Content-Length, fail loud when the bytes we got
+                // don't match so the retry path runs and the disk file never enters the
+                // cache in a half-baked state.
+                if (contentLength != -1L && totalRead != contentLength) {
+                    return ImageFetchResult.NetworkError(
+                        IOException("Short read: got $totalRead, expected $contentLength")
+                    )
                 }
                 ImageFetchResult.Success(destinationFile)
             } catch (e: Exception) {

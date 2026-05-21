@@ -29,7 +29,7 @@ class ImageCache @Inject constructor(
     fun trimToSize(maxBytes: Long): Long = FileSizeUtils.trimDirectoryToSize(mediaCacheDir, maxBytes)
 
     fun findExistingCachedMediaFile(url: String): File? =
-        candidateFiles(url).firstOrNull(File::exists)
+        candidateFiles(url).firstOrNull { it.exists() && it.isCachedImageValid() }
 
     fun destinationFile(url: String, tier: StorageTier): File {
         val key = CacheKeyUtils.keyFor(url)

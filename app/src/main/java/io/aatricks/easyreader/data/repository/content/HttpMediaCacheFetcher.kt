@@ -10,6 +10,7 @@ import coil3.fetch.SourceFetchResult
 import coil3.network.httpHeaders
 import coil3.request.Options
 import io.aatricks.easyreader.data.repository.ContentRepository
+import io.aatricks.easyreader.util.ImageIntegrity
 import okio.Path.Companion.toPath
 import java.io.File
 
@@ -20,9 +21,6 @@ class HttpMediaCacheFetcher(
     private val contentRepository: ContentRepository,
     private val options: Options
 ) : Fetcher {
-    private companion object {
-        const val HTML_SIGNATURE_SNIFF_BYTES = 512
-    }
 
     override suspend fun fetch(): FetchResult? {
         val pageUrl = options.extras[ChapterPageUrlExtra]?.takeIf { it.isNotBlank() }
@@ -71,28 +69,9 @@ class HttpMediaCacheFetcher(
         }
     }
 
-    private fun File.isUsableCachedMedia(): Boolean {
-        if (!exists() || length() <= 0L) return false
-        return !isLikelyHtmlPayload()
-    }
-
-    private fun File.isLikelyHtmlPayload(): Boolean {
-        return runCatching {
-            inputStream().use { stream ->
-                val bytes = ByteArray(HTML_SIGNATURE_SNIFF_BYTES)
-                val read = stream.read(bytes)
-                if (read <= 0) return@runCatching false
-                val prefix = bytes.decodeToString(endIndex = read)
-                    .trimStart()
-                    .lowercase()
-                when {
-                    prefix.startsWith("<svg") -> false
-                    prefix.startsWith("<!doctype") -> true
-                    prefix.startsWith("<html") -> true
-                    prefix.startsWith("<") && prefix.contains("cloudflare") -> true
-                    else -> false
-                }
-            }
-        }.getOrDefault(false)
-    }
+    // Reuse the same integrity rule the inspect path uses so a file inspect counts as
+    // "downloaded" is also a file the fetcher will serve from disk. If the cached file is
+    // truncated or an HTML challenge, return false here and the caller redownloads instead
+    // of handing Coil a broken file that would surface as "Image unavailable".
+    private fun File.isUsableCachedMedia(): Boolean = ImageIntegrity.isValidImageFile(this)
 }

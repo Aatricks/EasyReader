@@ -999,8 +999,20 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                             is ImageFetchResult.Success -> {
                                 val finalFile = when {
                                     tempFile.renameTo(cachedFile) -> cachedFile
-                                    cachedFile.exists() -> { tempFile.delete(); cachedFile }
-                                    else -> null
+                                    // Fallback: rename failed but a file already sits at the
+                                    // target path. Only trust it if it actually decodes; a stale
+                                    // truncated/HTML file from a pre-fix download would otherwise
+                                    // get cemented in place and the fresh tempFile thrown away.
+                                    cachedFile.exists() && imageCache.isValidImageFile(cachedFile) -> {
+                                        tempFile.delete()
+                                        cachedFile
+                                    }
+                                    else -> {
+                                        // Either nothing at target, or what's there is corrupt.
+                                        // Force the freshly-downloaded tempFile into place.
+                                        cachedFile.delete()
+                                        if (tempFile.renameTo(cachedFile)) cachedFile else null
+                                    }
                                 }
                                 if (finalFile == null) {
                                     tempFile.delete()
