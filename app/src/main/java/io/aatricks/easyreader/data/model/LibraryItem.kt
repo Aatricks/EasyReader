@@ -6,9 +6,11 @@ import androidx.room.PrimaryKey
 import kotlinx.serialization.Serializable
 
 /**
- * Data class representing a library item in the Novel Scraper app.
- * Immutable by default with validation in init block.
+ * Sentinel used in `lastReadOffsetFraction` to mean "intra-item position not yet measured".
+ * Keeps the column NOT NULL while preserving the "unknown" branch in restore logic.
  */
+const val FRACTION_UNKNOWN: Float = -1f
+
 @Serializable
 @Entity(
     tableName = "library_items",
@@ -36,8 +38,8 @@ data class LibraryItem(
     val isDownloading: Boolean = false,
     val lastScrollPosition: Float = 0f,
     val lastReadIndex: Int = 0,
-    val lastReadOffset: Int = 0,
-    val lastReadOffsetFraction: Float? = null,
+    val lastReadElementKey: String = "",
+    val lastReadOffsetFraction: Float = FRACTION_UNKNOWN,
     val hasUpdates: Boolean = false,
     val chapterSummaries: Map<String, String> = emptyMap(),
     val baseTitle: String = "",
@@ -53,34 +55,15 @@ data class LibraryItem(
         require(progress in 0..100) { "Progress must be between 0 and 100, got: $progress" }
         require(timestamp > 0) { "Timestamp must be positive" }
     }
-    
-    /**
-     * Creates a copy of this LibraryItem with updated progress.
-     * Ensures progress stays within valid range (0-100).
-     */
+
     fun withProgress(newProgress: Int): LibraryItem {
         val clampedProgress = newProgress.coerceIn(0, 100)
         return copy(progress = clampedProgress)
     }
-    
-    /**
-     * Creates a copy marking this item as currently reading.
-     * Typically used when opening a chapter.
-     */
+
     fun markAsReading(): LibraryItem = copy(isCurrentlyReading = true)
-    
-    /**
-     * Creates a copy marking this item as not currently reading.
-     */
+
     fun markAsNotReading(): LibraryItem = copy(isCurrentlyReading = false)
-    
-    /**
-     * Checks if the item has been started (progress > 0).
-     */
+
     fun isStarted(): Boolean = progress > 0
-    
-    /**
-     * Checks if the item is completed (progress == 100).
-     */
-    fun isCompleted(): Boolean = progress == 100
 }

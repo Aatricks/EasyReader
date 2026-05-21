@@ -10,13 +10,13 @@ import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import io.aatricks.easyreader.data.model.ContentType
+import io.aatricks.easyreader.data.model.FRACTION_UNKNOWN
 import io.aatricks.easyreader.data.model.ReadingMode
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -49,7 +49,7 @@ class AppDatabaseMigrationTest {
         createVersion1Database(dbName)
 
         migrationTestHelper.runMigrationsAndValidate(dbName, CURRENT_VERSION, true, *ALL_MIGRATIONS).close()
-        assertMigratedCurrentData(dbName, expectsLastReadOffsetFraction = false)
+        assertMigratedCurrentData(dbName, hadFraction = false)
     }
 
     @Test
@@ -58,7 +58,7 @@ class AppDatabaseMigrationTest {
         createVersion2Database(dbName)
 
         migrationTestHelper.runMigrationsAndValidate(dbName, CURRENT_VERSION, true, *ALL_MIGRATIONS).close()
-        assertMigratedCurrentData(dbName, expectsLastReadOffsetFraction = false)
+        assertMigratedCurrentData(dbName, hadFraction = false)
     }
 
     @Test
@@ -67,7 +67,7 @@ class AppDatabaseMigrationTest {
         createVersion3Database(dbName)
 
         migrationTestHelper.runMigrationsAndValidate(dbName, CURRENT_VERSION, true, *ALL_MIGRATIONS).close()
-        assertMigratedCurrentData(dbName, expectsLastReadOffsetFraction = true)
+        assertMigratedCurrentData(dbName, hadFraction = true)
     }
 
     @Test
@@ -76,7 +76,134 @@ class AppDatabaseMigrationTest {
         createVersion4Database(dbName)
 
         migrationTestHelper.runMigrationsAndValidate(dbName, CURRENT_VERSION, true, *ALL_MIGRATIONS).close()
-        assertMigratedCurrentData(dbName, expectsLastReadOffsetFraction = true)
+        assertMigratedCurrentData(dbName, hadFraction = true)
+    }
+
+    @Test
+    fun migrate7To8_addsElementKeyAndNormalizesFraction() {
+        val dbName = migrationDbName("7-to-8")
+        createDatabaseAtVersion(
+            dbName = dbName,
+            version = 7,
+            createTableSql = """
+                CREATE TABLE library_items (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    progress INTEGER NOT NULL,
+                    isCurrentlyReading INTEGER NOT NULL,
+                    currentChapter TEXT NOT NULL,
+                    currentChapterUrl TEXT NOT NULL,
+                    totalChapters INTEGER NOT NULL,
+                    contentType TEXT NOT NULL,
+                    dateAdded INTEGER NOT NULL,
+                    lastRead INTEGER NOT NULL,
+                    isDownloading INTEGER NOT NULL,
+                    lastScrollPosition REAL NOT NULL,
+                    lastReadIndex INTEGER NOT NULL,
+                    lastReadOffset INTEGER NOT NULL,
+                    lastReadOffsetFraction REAL,
+                    hasUpdates INTEGER NOT NULL,
+                    chapterSummaries TEXT NOT NULL,
+                    baseTitle TEXT NOT NULL,
+                    readingMode TEXT NOT NULL,
+                    baseNovelUrl TEXT NOT NULL,
+                    sourceName TEXT NOT NULL,
+                    isDownloaded INTEGER NOT NULL DEFAULT 0,
+                    downloadedAt INTEGER
+                )
+            """.trimIndent(),
+            indexSqls = CURRENT_INDEX_SQL + listOf(
+                """
+                    CREATE TABLE chapter_image_state (
+                        chapterUrl TEXT NOT NULL,
+                        imageUrl TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        lastAttemptMs INTEGER NOT NULL DEFAULT 0,
+                        httpStatusCode INTEGER,
+                        PRIMARY KEY(chapterUrl, imageUrl)
+                    )
+                """.trimIndent(),
+                "CREATE INDEX index_chapter_image_state_chapterUrl ON chapter_image_state (chapterUrl)",
+                "CREATE INDEX index_chapter_image_state_status ON chapter_image_state (status)"
+            ),
+            insertSqls = listOf(
+                version7ItemWithFractionInsertSql(),
+                version7ItemNullFractionInsertSql()
+            )
+        )
+
+        migrationTestHelper.runMigrationsAndValidate(
+            dbName,
+            8,
+            true,
+            AppDatabase.MIGRATION_7_8
+        ).use { database ->
+            assertTrue("lastReadElementKey column must be present", hasColumn(database, "lastReadElementKey"))
+            assertFalse("lastReadOffset column must be dropped", hasColumn(database, "lastReadOffset"))
+
+            database.query(SimpleSQLiteQuery("SELECT lastReadOffsetFraction, lastReadElementKey FROM library_items WHERE id = 'item-with-fraction'"))
+                .use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals(0.25f, cursor.getFloat(0), 0.0001f)
+                    assertEquals("", cursor.getString(1))
+                }
+            database.query(SimpleSQLiteQuery("SELECT lastReadOffsetFraction, lastReadElementKey FROM library_items WHERE id = 'item-legacy-null-fraction'"))
+                .use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    // Sentinel: null fraction → -1.
+                    assertEquals(-1f, cursor.getFloat(0), 0.0001f)
+                    assertEquals("", cursor.getString(1))
+                }
+        }
+    }
+
+    private suspend fun assertMigratedCurrentData(dbName: String, hadFraction: Boolean) {
+        val database = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
+            .allowMainThreadQueries()
+            .addMigrations(*ALL_MIGRATIONS)
+            .build()
+        try {
+            val primary = database.libraryDao().getItemById("item-primary")
+            assertNotNull(primary)
+            assertEquals("My Novel", primary?.title)
+            assertEquals("https://example.com/novel", primary?.url)
+            assertEquals(75, primary?.progress)
+            assertEquals(true, primary?.isCurrentlyReading)
+            assertEquals("Chapter 12", primary?.currentChapter)
+            assertEquals("https://example.com/novel/chapter-12", primary?.currentChapterUrl)
+            assertEquals(12, primary?.totalChapters)
+            assertEquals(ContentType.WEB, primary?.contentType)
+            assertEquals(12345L, primary?.dateAdded)
+            assertEquals(23456L, primary?.lastRead)
+            assertEquals(1, primary?.lastReadIndex)
+            assertEquals("", primary?.lastReadElementKey)
+            if (hadFraction) {
+                assertEquals(0.25f, primary?.lastReadOffsetFraction)
+            } else {
+                assertEquals(FRACTION_UNKNOWN, primary?.lastReadOffsetFraction)
+            }
+            assertEquals(true, primary?.hasUpdates)
+            assertEquals("Base Title", primary?.baseTitle)
+            assertEquals(ReadingMode.PAGED, primary?.readingMode)
+            assertEquals("https://example.com/base", primary?.baseNovelUrl)
+            assertEquals("SourceName", primary?.sourceName)
+
+            val nullable = database.libraryDao().getItemById("item-legacy-nullable")
+            assertNotNull(nullable)
+            assertEquals("https://example.com/novel-nullable", nullable?.url)
+            assertEquals("https://example.com/novel-nullable/chapter-1", nullable?.currentChapterUrl)
+            assertEquals(ReadingMode.VERTICAL, nullable?.readingMode)
+            assertEquals(FRACTION_UNKNOWN, nullable?.lastReadOffsetFraction)
+            assertEquals("", nullable?.lastReadElementKey)
+
+            assertFalse(hasColumn(database.openHelper.readableDatabase, "isSelected"))
+            assertFalse(hasColumn(database.openHelper.readableDatabase, "lastReadOffset"))
+        } finally {
+            database.close()
+        }
     }
 
     @Test
@@ -183,7 +310,6 @@ class AppDatabaseMigrationTest {
             assertTrue("chapter_image_state table must exist", hasTable(database, "chapter_image_state"))
             assertIndexExists(database, "index_chapter_image_state_chapterUrl")
             assertIndexExists(database, "index_chapter_image_state_status")
-            // Insert a row and confirm composite primary key behavior.
             database.execSQL(
                 "INSERT INTO chapter_image_state (chapterUrl, imageUrl, status, attempts, lastAttemptMs, httpStatusCode) " +
                     "VALUES ('c1', 'i1', 'PERMANENT_FAILURE', 1, 12345, 404)"
@@ -403,50 +529,6 @@ class AppDatabaseMigrationTest {
         helper.close()
     }
 
-    private suspend fun assertMigratedCurrentData(dbName: String, expectsLastReadOffsetFraction: Boolean) {
-        val database = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .allowMainThreadQueries()
-            .addMigrations(*ALL_MIGRATIONS)
-            .build()
-        try {
-            val primary = database.libraryDao().getItemById("item-primary")
-            assertNotNull(primary)
-            assertEquals("My Novel", primary?.title)
-            assertEquals("https://example.com/novel", primary?.url)
-            assertEquals(75, primary?.progress)
-            assertEquals(true, primary?.isCurrentlyReading)
-            assertEquals("Chapter 12", primary?.currentChapter)
-            assertEquals("https://example.com/novel/chapter-12", primary?.currentChapterUrl)
-            assertEquals(12, primary?.totalChapters)
-            assertEquals(ContentType.WEB, primary?.contentType)
-            assertEquals(12345L, primary?.dateAdded)
-            assertEquals(23456L, primary?.lastRead)
-            assertEquals(1, primary?.lastReadIndex)
-            assertEquals(9, primary?.lastReadOffset)
-            if (expectsLastReadOffsetFraction) {
-                assertEquals(0.25f, primary?.lastReadOffsetFraction)
-            } else {
-                assertNull(primary?.lastReadOffsetFraction)
-            }
-            assertEquals(true, primary?.hasUpdates)
-            assertEquals("Base Title", primary?.baseTitle)
-            assertEquals(ReadingMode.PAGED, primary?.readingMode)
-            assertEquals("https://example.com/base", primary?.baseNovelUrl)
-            assertEquals("SourceName", primary?.sourceName)
-
-            val nullable = database.libraryDao().getItemById("item-legacy-nullable")
-            assertNotNull(nullable)
-            assertEquals("https://example.com/novel-nullable", nullable?.url)
-            assertEquals("https://example.com/novel-nullable/chapter-1", nullable?.currentChapterUrl)
-            assertEquals(ReadingMode.VERTICAL, nullable?.readingMode)
-            assertNull(nullable?.lastReadOffsetFraction)
-
-            assertFalse(hasColumn(database.openHelper.readableDatabase, "isSelected"))
-        } finally {
-            database.close()
-        }
-    }
-
     private fun hasColumn(database: SupportSQLiteDatabase, columnName: String): Boolean {
         database.query(SimpleSQLiteQuery("PRAGMA table_info(library_items)")).use { cursor ->
             val nameIndex = cursor.getColumnIndex("name")
@@ -553,49 +635,76 @@ class AppDatabaseMigrationTest {
         }
     }
 
-    private fun version1StandardItemInsertSql(): String {
-        return """
-            INSERT INTO library_items (
-                id, title, url, timestamp, progress, isCurrentlyReading, isSelected,
-                currentChapter, currentChapterUrl, totalChapters, contentType,
-                dateAdded, lastRead, isDownloading, lastScrollPosition, lastReadIndex,
-                lastReadOffset, hasUpdates, chapterSummaries, baseTitle, readingMode,
-                baseNovelUrl, sourceName, type
-            ) VALUES (
-                'item-primary', 'My Novel', 'https://example.com/novel', 111, 75, 1, 1,
-                'Chapter 12', 'https://example.com/novel/chapter-12', 12, 'WEB',
-                12345, 23456, 0, 0.75, 1, 9, 1,
-                '{}', 'Base Title', 'PAGED', 'https://example.com/base', 'SourceName', 'novel'
-            )
-        """.trimIndent()
-    }
+    private fun version7ItemWithFractionInsertSql(): String = """
+        INSERT INTO library_items (
+            id, title, url, timestamp, progress, isCurrentlyReading,
+            currentChapter, currentChapterUrl, totalChapters, contentType,
+            dateAdded, lastRead, isDownloading, lastScrollPosition, lastReadIndex,
+            lastReadOffset, lastReadOffsetFraction, hasUpdates, chapterSummaries,
+            baseTitle, readingMode, baseNovelUrl, sourceName, isDownloaded, downloadedAt
+        ) VALUES (
+            'item-with-fraction', 'Test', 'https://example.com/v7-fraction', 100, 50, 0,
+            'Chapter 5', 'https://example.com/v7-fraction', 5, 'WEB',
+            10, 20, 0, 50.0, 4, 100, 0.25, 0, '{}',
+            'TestBase', 'VERTICAL', 'https://example.com/v7-fraction-base', 'src', 0, NULL
+        )
+    """.trimIndent()
 
-    private fun version1LegacyNullableItemInsertSql(): String {
-        return """
-            INSERT INTO library_items (
-                id, title, url, timestamp, progress, isCurrentlyReading, isSelected,
-                currentChapter, currentChapterUrl, totalChapters, contentType,
-                dateAdded, lastRead, isDownloading, lastScrollPosition, lastReadIndex,
-                lastReadOffset, hasUpdates, chapterSummaries, baseTitle, readingMode,
-                baseNovelUrl, sourceName, type
-            ) VALUES (
-                'item-legacy-nullable', 'Nullable Legacy', 'https://example.com/novel-nullable', 222, 5, 0, 0,
-                'Chapter 1', 'https://example.com/novel-nullable/chapter-1', 30, 'WEB',
-                33333, 44444, 0, 0.0, 0, 0, 0,
-                '{}', 'Legacy Base', 'VERTICAL', 'https://example.com/legacy', 'LegacySource', 'novel'
-            )
-        """.trimIndent()
-    }
+    private fun version7ItemNullFractionInsertSql(): String = """
+        INSERT INTO library_items (
+            id, title, url, timestamp, progress, isCurrentlyReading,
+            currentChapter, currentChapterUrl, totalChapters, contentType,
+            dateAdded, lastRead, isDownloading, lastScrollPosition, lastReadIndex,
+            lastReadOffset, lastReadOffsetFraction, hasUpdates, chapterSummaries,
+            baseTitle, readingMode, baseNovelUrl, sourceName, isDownloaded, downloadedAt
+        ) VALUES (
+            'item-legacy-null-fraction', 'Legacy', 'https://example.com/v7-null', 100, 50, 0,
+            'Chapter 5', 'https://example.com/v7-null', 5, 'WEB',
+            10, 20, 0, 50.0, 4, 100, NULL, 0, '{}',
+            'TestBase', 'VERTICAL', 'https://example.com/v7-null-base', 'src', 0, NULL
+        )
+    """.trimIndent()
+
+    private fun version1StandardItemInsertSql(): String = """
+        INSERT INTO library_items (
+            id, title, url, timestamp, progress, isCurrentlyReading, isSelected,
+            currentChapter, currentChapterUrl, totalChapters, contentType,
+            dateAdded, lastRead, isDownloading, lastScrollPosition, lastReadIndex,
+            lastReadOffset, hasUpdates, chapterSummaries, baseTitle, readingMode,
+            baseNovelUrl, sourceName, type
+        ) VALUES (
+            'item-primary', 'My Novel', 'https://example.com/novel', 111, 75, 1, 1,
+            'Chapter 12', 'https://example.com/novel/chapter-12', 12, 'WEB',
+            12345, 23456, 0, 0.75, 1, 9, 1,
+            '{}', 'Base Title', 'PAGED', 'https://example.com/base', 'SourceName', 'novel'
+        )
+    """.trimIndent()
+
+    private fun version1LegacyNullableItemInsertSql(): String = """
+        INSERT INTO library_items (
+            id, title, url, timestamp, progress, isCurrentlyReading, isSelected,
+            currentChapter, currentChapterUrl, totalChapters, contentType,
+            dateAdded, lastRead, isDownloading, lastScrollPosition, lastReadIndex,
+            lastReadOffset, hasUpdates, chapterSummaries, baseTitle, readingMode,
+            baseNovelUrl, sourceName, type
+        ) VALUES (
+            'item-legacy-nullable', 'Nullable Legacy', 'https://example.com/novel-nullable', 222, 5, 0, 0,
+            'Chapter 1', 'https://example.com/novel-nullable/chapter-1', 30, 'WEB',
+            33333, 44444, 0, 0.0, 0, 0, 0,
+            '{}', 'Legacy Base', 'VERTICAL', 'https://example.com/legacy', 'LegacySource', 'novel'
+        )
+    """.trimIndent()
 
     companion object {
-        private const val CURRENT_VERSION = 7
+        private const val CURRENT_VERSION = 8
         private val ALL_MIGRATIONS = arrayOf(
             AppDatabase.MIGRATION_1_2,
             AppDatabase.MIGRATION_2_3,
             AppDatabase.MIGRATION_3_4,
             AppDatabase.MIGRATION_4_5,
             AppDatabase.MIGRATION_5_6,
-            AppDatabase.MIGRATION_6_7
+            AppDatabase.MIGRATION_6_7,
+            AppDatabase.MIGRATION_7_8
         )
         private val CURRENT_INDEX_SQL = listOf(
             "CREATE UNIQUE INDEX index_library_items_url ON library_items (url)",

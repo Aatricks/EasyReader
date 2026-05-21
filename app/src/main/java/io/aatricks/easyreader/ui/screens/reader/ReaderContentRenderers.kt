@@ -50,14 +50,9 @@ private fun readerContentType(element: ContentElement): String = when (element) 
     is ContentElement.ImageGroup -> CONTENT_TYPE_IMAGE_GROUP
 }
 
+// Element-key generator lives in viewmodel layer so non-UI code (progress restore) shares it.
 internal fun stableContentElementKey(pageUrl: String, index: Int, element: ContentElement): String {
-    return when (element) {
-        is ContentElement.Image -> "img:${element.url}"
-        is ContentElement.ImageGroup -> "group:${element.images.joinToString("|") { it.url }}"
-        is ContentElement.Text -> "txt:$pageUrl:$index:${element.content.take(64).hashCode()}"
-        is ContentElement.Placeholder -> "placeholder:$pageUrl:$index:${element.text}"
-        is ContentElement.PageContent -> "page:$pageUrl:$index"
-    }
+    return io.aatricks.easyreader.ui.viewmodel.stableContentElementKey(pageUrl, index, element)
 }
 
 @OptIn(ExperimentalFoundationApi::class)

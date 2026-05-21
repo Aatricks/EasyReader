@@ -8,6 +8,8 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mockito.kotlin.*
 
@@ -20,23 +22,29 @@ class ReaderProgressControllerTest {
     fun `saveCurrentProgress sends correct values to repository`() = runTest {
         val controller = ReaderProgressController(libraryRepository, this)
         controller.currentLibraryItemId = "test-id"
-        
+
         val content = ChapterContent(
             paragraphs = listOf(ContentElement.Text("Hello")),
             title = "Chapter 1",
             url = "http://example.com/1"
         )
-        
+
         controller.syncProgressState(
-            scrollPosition = 50f,
-            scrollProgress = 50,
-            scrollIndex = 10,
-            scrollOffset = 100,
-            scrollOffsetFraction = 0.5f
+            ReaderProgressState(
+                scrollPosition = 50f,
+                scrollProgress = 50,
+                scrollIndex = 10,
+                scrollElementKey = "txt:http://example.com/1:10:abc",
+                scrollOffsetFraction = 0.5f,
+                firstVisibleItemSize = 500
+            )
         )
-        
+        // Mark the user as having interacted so the controller treats the live state as truth.
+        controller.hasUserInteractedSinceLoad = true
+        controller.suppressAutoNavUntilUserInteraction = false
+
         controller.saveCurrentProgress(content)
-        
+
         verify(libraryRepository).updateProgressExplicit(
             itemId = eq("test-id"),
             currentChapter = eq(""),
@@ -44,15 +52,57 @@ class ReaderProgressControllerTest {
             currentChapterUrl = eq(FieldUpdate.Set("http://example.com/1")),
             lastScrollProgress = eq(FieldUpdate.Set(50f)),
             lastReadIndex = eq(FieldUpdate.Set(10)),
-            lastReadOffset = eq(FieldUpdate.Set(100)),
+            lastReadElementKey = eq(FieldUpdate.Set("txt:http://example.com/1:10:abc")),
             lastReadOffsetFraction = eq(FieldUpdate.Set(0.5f))
         )
     }
 
     @Test
-    fun `calculateInitialScroll restores from library item`() = runTest {
+    fun `calculateInitialPosition restores via element key when present`() = runTest {
         val controller = ReaderProgressController(libraryRepository, this)
-        
+
+        val paragraphs = List(30) { ContentElement.Text("Text $it") }
+        val targetIndex = 17
+        val targetKey = stableContentElementKey("http://example.com/1", targetIndex, paragraphs[targetIndex])
+
+        val libraryItem = LibraryItem(
+            id = "test-id",
+            url = "http://example.com/novel",
+            title = "Novel",
+            currentChapter = "Chapter 1",
+            currentChapterUrl = "http://example.com/1",
+            progress = 75,
+            lastScrollPosition = 75f,
+            // Wrong index — element key must win.
+            lastReadIndex = 5,
+            lastReadElementKey = targetKey,
+            lastReadOffsetFraction = 0.5f,
+            contentType = ContentType.WEB
+        )
+
+        val content = ChapterContent(
+            paragraphs = paragraphs,
+            title = "Chapter 1",
+            url = "http://example.com/1"
+        )
+
+        val state = controller.calculateInitialPosition(
+            content = content,
+            libraryItem = libraryItem,
+            fromBottom = false,
+            isExplicitNavigation = false
+        )
+
+        assertEquals(targetIndex, state.scrollIndex)
+        assertEquals(targetKey, state.scrollElementKey)
+        assertEquals(0.5f, state.scrollOffsetFraction)
+        assertEquals(75f, state.scrollPosition)
+    }
+
+    @Test
+    fun `calculateInitialPosition falls back to saved index when element key is empty`() = runTest {
+        val controller = ReaderProgressController(libraryRepository, this)
+
         val libraryItem = LibraryItem(
             id = "test-id",
             url = "http://example.com/novel",
@@ -62,36 +112,75 @@ class ReaderProgressControllerTest {
             progress = 75,
             lastScrollPosition = 75f,
             lastReadIndex = 20,
-            lastReadOffset = 200,
-            lastReadOffsetFraction = 0.75f,
+            lastReadElementKey = "",
+            lastReadOffsetFraction = 0.25f,
             contentType = ContentType.WEB
         )
-        
+
         val content = ChapterContent(
             paragraphs = List(30) { ContentElement.Text("Text $it") },
             title = "Chapter 1",
             url = "http://example.com/1"
         )
-        
-        val scrollState = controller.calculateInitialScroll(
+
+        val state = controller.calculateInitialPosition(
             content = content,
             libraryItem = libraryItem,
             fromBottom = false,
             isExplicitNavigation = false
         )
-        
-        assertEquals(20, scrollState.index)
-        assertEquals(75f, scrollState.position)
-        assertEquals(75, scrollState.progress)
-        assertEquals(0, scrollState.offset) // offset is 0 because offsetFraction is present
-        assertEquals(0.75f, scrollState.offsetFraction)
-        assertEquals(75f, scrollState.targetPosition)
+
+        assertEquals(20, state.scrollIndex)
+        assertEquals(0.25f, state.scrollOffsetFraction)
+        // Resolver refreshes the element key from the resolved index for future saves.
+        val expectedKey = stableContentElementKey("http://example.com/1", 20, content.paragraphs[20])
+        assertEquals(expectedKey, state.scrollElementKey)
     }
 
     @Test
-    fun `calculateInitialScroll for explicit navigation starts from top`() = runTest {
+    fun `calculateInitialPosition derives index from percent for legacy rows`() = runTest {
         val controller = ReaderProgressController(libraryRepository, this)
-        
+
+        // No key, no offset, no fraction sentinel — pre-unification legacy row.
+        val libraryItem = LibraryItem(
+            id = "test-id",
+            url = "http://example.com/novel",
+            title = "Novel",
+            currentChapter = "Chapter 1",
+            currentChapterUrl = "http://example.com/1",
+            progress = 50,
+            lastScrollPosition = 50f,
+            lastReadIndex = 0,
+            lastReadElementKey = "",
+            lastReadOffsetFraction = FRACTION_UNKNOWN,
+            contentType = ContentType.WEB
+        )
+
+        val content = ChapterContent(
+            paragraphs = List(101) { ContentElement.Text("Text $it") },
+            title = "Chapter 1",
+            url = "http://example.com/1"
+        )
+
+        val state = controller.calculateInitialPosition(
+            content = content,
+            libraryItem = libraryItem,
+            fromBottom = false,
+            isExplicitNavigation = false
+        )
+
+        // 50% of (101-1) = 50
+        assertEquals(50, state.scrollIndex)
+        assertEquals(0f, state.scrollOffsetFraction)
+        assertEquals(50f, state.scrollPosition)
+        assertTrue(state.scrollElementKey.isNotEmpty())
+        assertEquals(50, controller.restoredProgressSnapshot?.scrollIndex)
+    }
+
+    @Test
+    fun `calculateInitialPosition for explicit navigation starts from top`() = runTest {
+        val controller = ReaderProgressController(libraryRepository, this)
+
         val libraryItem = LibraryItem(
             id = "test-id",
             url = "http://example.com/novel",
@@ -101,25 +190,24 @@ class ReaderProgressControllerTest {
             progress = 75,
             contentType = ContentType.WEB
         )
-        
+
         val content = ChapterContent(
             paragraphs = List(30) { ContentElement.Text("Text $it") },
             title = "Chapter 1",
             url = "http://example.com/1"
         )
-        
-        val scrollState = controller.calculateInitialScroll(
+
+        val state = controller.calculateInitialPosition(
             content = content,
             libraryItem = libraryItem,
             fromBottom = false,
             isExplicitNavigation = true
         )
-        
-        assertEquals(0, scrollState.index)
-        assertEquals(0f, scrollState.position)
-        assertEquals(0, scrollState.progress)
-        assertEquals(0, scrollState.offset)
-        assertEquals(0f, scrollState.offsetFraction)
+
+        assertEquals(0, state.scrollIndex)
+        assertEquals(0f, state.scrollPosition)
+        assertEquals(0f, state.scrollOffsetFraction)
+        assertEquals("", state.scrollElementKey)
     }
 
     @Test
@@ -128,7 +216,7 @@ class ReaderProgressControllerTest {
         controller.suppressAutoNavUntilUserInteraction = true
         controller.hasUserInteractedSinceLoad = false
         controller.restoredProgressSnapshot = ReaderProgressState(scrollPosition = 50f)
-        
+
         controller.onUserInteraction(
             uiTargetScrollPosition = 50f,
             uiPendingRestoreOffsetFraction = 0.5f,
@@ -137,14 +225,14 @@ class ReaderProgressControllerTest {
                 assertNull(offset)
             }
         )
-        
+
         assertEquals(true, controller.hasUserInteractedSinceLoad)
         assertEquals(false, controller.suppressAutoNavUntilUserInteraction)
         assertNull(controller.restoredProgressSnapshot)
     }
 
     @Test
-    fun `updateScrollPosition skips persistence for tiny long-strip image samples`() = runTest {
+    fun `updateScrollPosition skips persistence when item size is below stability threshold`() = runTest {
         val controller = ReaderProgressController(libraryRepository, this)
         controller.currentLibraryItemId = "test-id"
         val content = ChapterContent(
@@ -162,7 +250,8 @@ class ReaderProgressControllerTest {
             maxScrollOffset = 10f,
             viewportHeight = 1f,
             index = 1,
-            offset = 40,
+            offsetFraction = 0.3f,
+            elementKey = "img:https://cdn.example.com/2.jpg",
             content = content,
             canScrollForward = true,
             firstVisibleItemSize = 48
@@ -170,12 +259,46 @@ class ReaderProgressControllerTest {
         advanceTimeBy(200)
         runCurrent()
 
+        // Index updates immediately for UI tracking, but no DB write while size is unstable.
         assertEquals(1, controller.progressState.value.scrollIndex)
-        assertEquals(40, controller.progressState.value.scrollOffset)
+        assertEquals(FRACTION_UNKNOWN, controller.progressState.value.scrollOffsetFraction)
         verify(libraryRepository, never()).updateProgressExplicit(any(), any(), any(), any(), any(), any(), any(), any())
     }
 
-    private fun assertNull(value: Any?) {
-        org.junit.Assert.assertNull(value)
+    @Test
+    fun `isSnapshotPersistable rejects unstable and unknown fraction states`() = runTest {
+        val controller = ReaderProgressController(libraryRepository, this)
+        val content = ChapterContent(
+            paragraphs = listOf(ContentElement.Text("Hello")),
+            title = "Chapter 1",
+            url = "http://example.com/1"
+        )
+
+        val unstable = ReaderProgressState(
+            scrollPosition = 50f,
+            scrollProgress = 50,
+            scrollIndex = 0,
+            scrollOffsetFraction = 0.5f,
+            firstVisibleItemSize = 40 // below MIN_STABLE_ITEM_SIZE_PX
+        )
+        assertEquals(false, controller.isSnapshotPersistable(content, unstable))
+
+        val unknown = ReaderProgressState(
+            scrollPosition = 50f,
+            scrollProgress = 50,
+            scrollIndex = 0,
+            scrollOffsetFraction = FRACTION_UNKNOWN,
+            firstVisibleItemSize = 500
+        )
+        assertEquals(false, controller.isSnapshotPersistable(content, unknown))
+
+        val stable = ReaderProgressState(
+            scrollPosition = 50f,
+            scrollProgress = 50,
+            scrollIndex = 0,
+            scrollOffsetFraction = 0.5f,
+            firstVisibleItemSize = 500
+        )
+        assertEquals(true, controller.isSnapshotPersistable(content, stable))
     }
 }

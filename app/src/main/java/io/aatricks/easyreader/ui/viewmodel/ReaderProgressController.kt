@@ -3,14 +3,18 @@ package io.aatricks.easyreader.ui.viewmodel
 import android.util.Log
 import io.aatricks.easyreader.data.model.*
 import io.aatricks.easyreader.data.repository.LibraryRepository
-import io.aatricks.easyreader.ui.util.normalizeRestoreOffset
 import io.aatricks.easyreader.util.FieldUpdate
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
 /**
- * Controller for managing reading progress persistence, restoration, and calculation.
- * Extracted from ReaderViewModel to focus on progress logic and facilitate testing.
+ * Reading-position controller. Single source of truth for the unified position model:
+ *
+ *  - `scrollPosition` / `scrollProgress`: % of the chapter (0..100) — UI display + last-resort restore.
+ *  - `scrollElementKey`: stable per-item anchor (image URL, paragraph hash). Preferred over index.
+ *  - `scrollIndex`: itemsIndexed fallback when the element key can't be located.
+ *  - `scrollOffsetFraction`: intra-item fraction (0..1), or `FRACTION_UNKNOWN` (-1f) = unmeasured.
+ *  - `firstVisibleItemSize`: stability witness; placeholder-sized items must not pollute the DB.
  */
 class ReaderProgressController(
     private val libraryRepository: LibraryRepository,
@@ -19,100 +23,134 @@ class ReaderProgressController(
     private val _progressState = MutableStateFlow(ReaderProgressState())
     val progressState: StateFlow<ReaderProgressState> = _progressState.asStateFlow()
 
-    // Current library item ID being read
     var currentLibraryItemId: String? = null
 
-    // Suppress auto navigation when restoring a saved position until user interacts
     var suppressAutoNavUntilUserInteraction: Boolean = false
     var restoredScrollPercent: Float = 0f
     var hasUserInteractedSinceLoad: Boolean = false
     var restoredProgressSnapshot: ReaderProgressState? = null
 
-    // Track last raw scroll offset (pixels) to detect actual user gesture direction
     private var lastRawScrollOffset: Float = -1f
     private var lastReportedIndex: Int = -1
-    private var lastReportedOffsetPx: Int = -1
+    private var lastReportedFractionMillis: Int = -1
     private var lastReportedProgress: Float = -1f
 
-    // Debounce progress updates to reduce jitter
     private var progressUpdateJob: Job? = null
 
     companion object {
         private const val TAG = "ReaderProgress"
-        private const val MIN_SCROLL_OFFSET_DELTA_PX = 8
+        private const val MIN_SCROLL_FRACTION_DELTA_PERMILLE = 5
         private const val MIN_SCROLL_PROGRESS_DELTA_PERCENT = 0.35f
-        private const val MIN_STABLE_MANHWA_ITEM_SIZE_PX = 96
+        const val MIN_STABLE_ITEM_SIZE_PX = 96
     }
 
-    fun syncProgressState(
-        scrollPosition: Float,
-        scrollProgress: Int,
-        scrollIndex: Int,
-        scrollOffset: Int,
-        scrollOffsetFraction: Float? = _progressState.value.scrollOffsetFraction,
-        firstVisibleItemSize: Int = _progressState.value.firstVisibleItemSize,
-        seekTrigger: Long = _progressState.value.seekTrigger,
-        targetScrollPosition: Float? = _progressState.value.targetScrollPosition
-    ) {
-        _progressState.value = ReaderProgressState(
-            scrollPosition = scrollPosition,
-            scrollProgress = scrollProgress,
-            scrollIndex = scrollIndex,
-            scrollOffset = scrollOffset,
-            scrollOffsetFraction = scrollOffsetFraction,
-            firstVisibleItemSize = firstVisibleItemSize,
-            seekTrigger = seekTrigger,
-            targetScrollPosition = targetScrollPosition
-        )
+    fun syncProgressState(state: ReaderProgressState) {
+        _progressState.value = state
     }
 
-    fun calculateInitialScroll(
+    /**
+     * Compute the initial position when entering a chapter. Returns `ReaderProgressState` directly
+     * (the old `ScrollState` intermediary was a strict duplicate). Resolution order on restore:
+     *
+     *  1. If `libraryItem.progress == 0` → top.
+     *  2. Locate `lastReadElementKey` inside the current chapter's elements → use that index.
+     *  3. If `lastReadIndex` points to a valid element with a usable fraction → use it.
+     *  4. Otherwise derive a coarse index from `lastScrollPosition` (the percent). This handles
+     *     legacy rows (missing key, FRACTION_UNKNOWN) and chapter-reparses where the element layout
+     *     shifted.
+     */
+    fun calculateInitialPosition(
         content: ChapterContent,
         libraryItem: LibraryItem?,
         fromBottom: Boolean,
         isExplicitNavigation: Boolean
-    ): ScrollState {
-        return if (libraryItem != null && !isExplicitNavigation) {
-            val shouldRestoreAtTop = libraryItem.progress == 0
-            restoredScrollPercent = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition
-            suppressAutoNavUntilUserInteraction = true
-            hasUserInteractedSinceLoad = false
-            val scrollState = ScrollState(
-                index = if (shouldRestoreAtTop) 0 else libraryItem.lastReadIndex,
-                position = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition,
-                progress = if (shouldRestoreAtTop) 0 else libraryItem.progress,
-                offset = when {
-                    shouldRestoreAtTop -> 0
-                    libraryItem.lastReadOffsetFraction != null -> 0
-                    else -> libraryItem.lastReadOffset
-                },
-                offsetFraction = if (shouldRestoreAtTop) 0f else libraryItem.lastReadOffsetFraction,
-                targetPosition = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition
-            )
-            restoredProgressSnapshot = ReaderProgressState(
-                scrollPosition = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition,
-                scrollProgress = if (shouldRestoreAtTop) 0 else libraryItem.progress,
-                scrollIndex = if (shouldRestoreAtTop) 0 else libraryItem.lastReadIndex,
-                scrollOffset = if (shouldRestoreAtTop) 0 else libraryItem.lastReadOffset,
-                scrollOffsetFraction = if (shouldRestoreAtTop) 0f else libraryItem.lastReadOffsetFraction,
+    ): ReaderProgressState {
+        suppressAutoNavUntilUserInteraction = true
+        hasUserInteractedSinceLoad = false
+
+        if (libraryItem == null || isExplicitNavigation) {
+            restoredScrollPercent = if (fromBottom) 100f else 0f
+            val lastIndex = (content.paragraphs.size - 1).coerceAtLeast(0)
+            val state = ReaderProgressState(
+                scrollPosition = if (fromBottom) 100f else 0f,
+                scrollProgress = if (fromBottom) 100 else 0,
+                scrollIndex = if (fromBottom) lastIndex else 0,
+                scrollElementKey = "",
+                scrollOffsetFraction = if (fromBottom) 1f else 0f,
                 firstVisibleItemSize = 0,
                 seekTrigger = 0L,
-                targetScrollPosition = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition
+                targetScrollPosition = if (fromBottom) 100f else 0f
             )
-            scrollState
-        } else {
-            restoredScrollPercent = if (fromBottom) 100f else 0f
-            suppressAutoNavUntilUserInteraction = true
-            hasUserInteractedSinceLoad = false
-            ScrollState(
-                index = if (fromBottom) (content.paragraphs.size - 1).coerceAtLeast(0) else 0,
-                position = if (fromBottom) 100f else 0f,
-                progress = if (fromBottom) 100 else 0,
-                offset = if (fromBottom) 10000000 else 0,
-                offsetFraction = if (fromBottom) 1f else 0f,
-                targetPosition = if (fromBottom) 100f else 0f
-            ).also { restoredProgressSnapshot = it.toProgressState() }
+            restoredProgressSnapshot = state
+            return state
         }
+
+        val shouldRestoreAtTop = libraryItem.progress == 0
+        restoredScrollPercent = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition
+
+        val resolved = if (shouldRestoreAtTop) {
+            ResolvedPosition(index = 0, elementKey = "", fraction = 0f)
+        } else {
+            resolveRestoredIndex(content, libraryItem)
+        }
+
+        val state = ReaderProgressState(
+            scrollPosition = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition,
+            scrollProgress = if (shouldRestoreAtTop) 0 else libraryItem.progress,
+            scrollIndex = resolved.index,
+            scrollElementKey = resolved.elementKey,
+            scrollOffsetFraction = resolved.fraction,
+            firstVisibleItemSize = 0,
+            seekTrigger = 0L,
+            targetScrollPosition = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition
+        )
+        restoredProgressSnapshot = state
+        return state
+    }
+
+    private fun resolveRestoredIndex(content: ChapterContent, libraryItem: LibraryItem): ResolvedPosition {
+        val totalItems = content.paragraphs.size
+        if (totalItems <= 0) {
+            return ResolvedPosition(index = 0, elementKey = "", fraction = 0f)
+        }
+        val lastItemIndex = totalItems - 1
+
+        // (2) Stable element-key anchor — survives reorderings, splits, item-count drift.
+        val savedKey = libraryItem.lastReadElementKey
+        if (savedKey.isNotEmpty()) {
+            content.paragraphs.forEachIndexed { idx, element ->
+                if (stableContentElementKey(content.url, idx, element) == savedKey) {
+                    return ResolvedPosition(
+                        index = idx,
+                        elementKey = savedKey,
+                        fraction = libraryItem.lastReadOffsetFraction.takeIf { it >= 0f } ?: 0f
+                    )
+                }
+            }
+        }
+
+        // (3) Saved index with usable fraction.
+        val savedIndex = libraryItem.lastReadIndex.coerceIn(0, lastItemIndex)
+        val hasUsableFraction = libraryItem.lastReadOffsetFraction >= 0f
+        val hasSavedPosition = libraryItem.lastReadIndex > 0 || hasUsableFraction
+        if (hasSavedPosition) {
+            val refreshedKey = content.paragraphs.getOrNull(savedIndex)
+                ?.let { stableContentElementKey(content.url, savedIndex, it) }
+                ?: ""
+            return ResolvedPosition(
+                index = savedIndex,
+                elementKey = refreshedKey,
+                fraction = if (hasUsableFraction) libraryItem.lastReadOffsetFraction else 0f
+            )
+        }
+
+        // (4) Percent fallback. Legacy rows with missing key/fraction land here.
+        val percent = libraryItem.lastScrollPosition.coerceIn(0f, 100f) / 100f
+        val derivedIndex = (percent * lastItemIndex).toInt().coerceIn(0, lastItemIndex)
+        val refreshedKey = content.paragraphs.getOrNull(derivedIndex)
+            ?.let { stableContentElementKey(content.url, derivedIndex, it) }
+            ?: ""
+        return ResolvedPosition(index = derivedIndex, elementKey = refreshedKey, fraction = 0f)
     }
 
     fun onUserInteraction(
@@ -133,17 +171,12 @@ class ReaderProgressController(
         hasUserInteractedSinceLoad = true
         suppressAutoNavUntilUserInteraction = false
         restoredProgressSnapshot = null
-        
-        var nextUiTargetScrollPosition = uiTargetScrollPosition
-        var nextUiPendingRestoreOffsetFraction = uiPendingRestoreOffsetFraction
-        
-        if (uiTargetScrollPosition != null || uiPendingRestoreOffsetFraction != null) {
-            nextUiTargetScrollPosition = null
-            nextUiPendingRestoreOffsetFraction = null
-        }
-        
+
+        val nextUiTargetScrollPosition = if (uiTargetScrollPosition != null) null else uiTargetScrollPosition
+        val nextUiPendingRestoreOffsetFraction = if (uiPendingRestoreOffsetFraction != null) null else uiPendingRestoreOffsetFraction
+
         updateUiState(nextUiTargetScrollPosition, nextUiPendingRestoreOffsetFraction)
-        
+
         if (progressState.targetScrollPosition != null) {
             _progressState.update { it.copy(targetScrollPosition = null) }
         }
@@ -152,20 +185,20 @@ class ReaderProgressController(
     suspend fun saveCurrentProgress(content: ChapterContent?) {
         val prevItemId = currentLibraryItemId ?: return
         val prevContent = content ?: return
-        val progressSnapshot = currentPersistedSnapshot()
+        val snapshot = currentPersistedSnapshot()
 
-        if (isPlaceholderAtCurrentPosition(prevContent, progressSnapshot.scrollIndex)) return
+        if (!isSnapshotPersistable(prevContent, snapshot)) return
 
         runCatching {
             libraryRepository.updateProgressExplicit(
                 itemId = prevItemId,
                 currentChapter = "",
-                progress = FieldUpdate.Set(progressSnapshot.scrollProgress),
+                progress = FieldUpdate.Set(snapshot.scrollProgress),
                 currentChapterUrl = FieldUpdate.Set(prevContent.url),
-                lastScrollProgress = FieldUpdate.Set(progressSnapshot.scrollPosition),
-                lastReadIndex = FieldUpdate.Set(progressSnapshot.scrollIndex),
-                lastReadOffset = FieldUpdate.Set(progressSnapshot.scrollOffset),
-                lastReadOffsetFraction = progressSnapshot.scrollOffsetFraction?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Clear
+                lastScrollProgress = FieldUpdate.Set(snapshot.scrollPosition),
+                lastReadIndex = FieldUpdate.Set(snapshot.scrollIndex),
+                lastReadElementKey = FieldUpdate.Set(snapshot.scrollElementKey),
+                lastReadOffsetFraction = FieldUpdate.Set(snapshot.scrollOffsetFraction)
             )
         }
     }
@@ -178,43 +211,51 @@ class ReaderProgressController(
         }
     }
 
+    /**
+     * Guard the DB write paths: refuse to persist measurements taken against placeholder-sized
+     * items, and refuse to persist an unknown fraction. Stops the placeholder-pollution pipeline
+     * that caused "saved progress but no anchor" rows under the old code.
+     */
+    fun isSnapshotPersistable(content: ChapterContent?, snapshot: ReaderProgressState): Boolean {
+        if (content == null || content.paragraphs.isEmpty()) return false
+        if (snapshot.scrollOffsetFraction < 0f) return false
+        if (snapshot.firstVisibleItemSize in 1 until MIN_STABLE_ITEM_SIZE_PX) {
+            // Item measured but at placeholder size — fraction is meaningless. Drop write.
+            return false
+        }
+        return !isPlaceholderAtCurrentPosition(content, snapshot.scrollIndex)
+    }
+
     fun updateScrollPosition(
         scrollOffset: Float,
         maxScrollOffset: Float,
         viewportHeight: Float,
         index: Int,
-        offset: Int,
+        offsetFraction: Float,
+        elementKey: String,
         content: ChapterContent?,
         canScrollForward: Boolean = true,
         firstVisibleItemSize: Int = 0
     ) {
-        val deltaRaw = if (lastRawScrollOffset < 0f) 0f else scrollOffset - lastRawScrollOffset
-        // Note: isScrollingDown is not used here but kept for logic consistency if needed later
-        // val isScrollingDown = deltaRaw > 0f
-
         val progress = when {
             !canScrollForward -> 100f
-            maxScrollOffset > viewportHeight -> ((scrollOffset / (maxScrollOffset - viewportHeight)) * 100f).coerceIn(
-                0f,
-                100f
-            )
-
+            maxScrollOffset > viewportHeight -> ((scrollOffset / (maxScrollOffset - viewportHeight)) * 100f).coerceIn(0f, 100f)
             maxScrollOffset > 0 -> 100f
             else -> 0f
         }
-
         val progressInt = progress.toInt()
+        val fractionPermille = (offsetFraction.coerceIn(0f, 1f) * 1000f).toInt()
+
         val isMicroDelta = index == lastReportedIndex &&
-            kotlin.math.abs(offset - lastReportedOffsetPx) < MIN_SCROLL_OFFSET_DELTA_PX &&
+            kotlin.math.abs(fractionPermille - lastReportedFractionMillis) < MIN_SCROLL_FRACTION_DELTA_PERMILLE &&
             kotlin.math.abs(progress - lastReportedProgress) < MIN_SCROLL_PROGRESS_DELTA_PERCENT
 
         if (isMicroDelta) {
             lastRawScrollOffset = scrollOffset
             return
         }
-
         lastReportedIndex = index
-        lastReportedOffsetPx = offset
+        lastReportedFractionMillis = fractionPermille
         lastReportedProgress = progress
 
         if (suppressAutoNavUntilUserInteraction) {
@@ -222,18 +263,20 @@ class ReaderProgressController(
             return
         }
 
-        val offsetFraction = normalizeRestoreOffset(offset, firstVisibleItemSize)
+        val isStable = firstVisibleItemSize >= MIN_STABLE_ITEM_SIZE_PX
+        val effectiveFraction = if (isStable) offsetFraction.coerceIn(0f, 1f) else FRACTION_UNKNOWN
 
         _progressState.value = _progressState.value.copy(
             scrollPosition = progress,
             scrollProgress = progressInt,
             scrollIndex = index,
-            scrollOffset = offset,
-            scrollOffsetFraction = offsetFraction,
+            scrollElementKey = if (isStable) elementKey else _progressState.value.scrollElementKey,
+            scrollOffsetFraction = effectiveFraction,
             firstVisibleItemSize = firstVisibleItemSize
         )
 
-        if (shouldSkipPersistForUnstableManhwaSample(content, index, firstVisibleItemSize)) {
+        // Only schedule a DB write when the sample is stable enough to be meaningful.
+        if (!isStable) {
             lastRawScrollOffset = scrollOffset
             return
         }
@@ -241,14 +284,13 @@ class ReaderProgressController(
         progressUpdateJob?.cancel()
         progressUpdateJob = scope.launch {
             delay(100)
-
             if (progressInt >= 0) {
                 updateReadingProgress(
                     progress = progressInt,
                     scrollPosition = progress,
                     index = index,
-                    offset = offset,
-                    offsetFraction = offsetFraction,
+                    elementKey = elementKey,
+                    offsetFraction = effectiveFraction,
                     content = content
                 )
             }
@@ -260,7 +302,7 @@ class ReaderProgressController(
         progress: Int,
         scrollPosition: Float? = null,
         index: Int? = null,
-        offset: Int? = null,
+        elementKey: String? = null,
         offsetFraction: Float? = null,
         currentChapterUrl: String? = null,
         content: ChapterContent? = null
@@ -271,20 +313,15 @@ class ReaderProgressController(
             val latest = currentPersistedSnapshot()
             val lastScroll = scrollPosition ?: latest.scrollPosition
             val lastIndex = index ?: latest.scrollIndex
-            val lastOffset = offset ?: latest.scrollOffset
-            val lastOffsetFraction = offsetFraction ?: latest.scrollOffsetFraction
+            val lastElementKey = elementKey ?: latest.scrollElementKey
+            val lastFraction = offsetFraction ?: latest.scrollOffsetFraction
 
             if (isPlaceholderAtCurrentPosition(content, lastIndex)) return@runCatching
+            if (lastFraction < 0f) return@runCatching
 
-            val currentElement = content?.paragraphs?.getOrNull(lastIndex)
-            val elementAnchor = when (currentElement) {
-                is ContentElement.Image -> currentElement.url
-                is ContentElement.ImageGroup -> currentElement.images.firstOrNull()?.url
-                else -> null
-            }
             Log.d(
                 TAG,
-                "saveProgress url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(resolvedChapterUrl)} index=$lastIndex offset=$lastOffset offsetFraction=$lastOffsetFraction firstVisibleItemSize=${latest.firstVisibleItemSize} anchor=${if (elementAnchor != null) "<elt>" else "null"}"
+                "saveProgress url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(resolvedChapterUrl)} index=$lastIndex elementKey=${if (lastElementKey.isNotEmpty()) "<set>" else "<empty>"} fraction=$lastFraction firstVisibleItemSize=${latest.firstVisibleItemSize}"
             )
 
             libraryRepository.updateProgressExplicit(
@@ -294,8 +331,8 @@ class ReaderProgressController(
                 currentChapterUrl = FieldUpdate.Set(resolvedChapterUrl),
                 lastScrollProgress = FieldUpdate.Set(lastScroll),
                 lastReadIndex = FieldUpdate.Set(lastIndex),
-                lastReadOffset = FieldUpdate.Set(lastOffset),
-                lastReadOffsetFraction = lastOffsetFraction?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Clear
+                lastReadElementKey = FieldUpdate.Set(lastElementKey),
+                lastReadOffsetFraction = FieldUpdate.Set(lastFraction)
             )
         }
     }
@@ -304,8 +341,8 @@ class ReaderProgressController(
         val lastIndex = index ?: _progressState.value.scrollIndex
         val paragraphs = content?.paragraphs ?: return false
         val currentItem = paragraphs.getOrNull(lastIndex)
-        return currentItem is ContentElement.Placeholder || 
-               (currentItem is ContentElement.Text && currentItem.content.startsWith("Loading page"))
+        return currentItem is ContentElement.Placeholder ||
+            (currentItem is ContentElement.Text && currentItem.content.startsWith("Loading page"))
     }
 
     fun resetState() {
@@ -315,7 +352,7 @@ class ReaderProgressController(
         restoredProgressSnapshot = null
         lastRawScrollOffset = -1f
         lastReportedIndex = -1
-        lastReportedOffsetPx = -1
+        lastReportedFractionMillis = -1
         lastReportedProgress = -1f
         progressUpdateJob?.cancel()
     }
@@ -323,62 +360,36 @@ class ReaderProgressController(
     fun cancelProgressUpdate() {
         progressUpdateJob?.cancel()
     }
-
-    private fun shouldSkipPersistForUnstableManhwaSample(
-        content: ChapterContent?,
-        index: Int,
-        firstVisibleItemSize: Int
-    ): Boolean {
-        if (content == null || firstVisibleItemSize >= MIN_STABLE_MANHWA_ITEM_SIZE_PX) return false
-
-        val isLongStrip = isLongStripContent(content)
-        if (!isLongStrip) return false
-
-        return when (content.paragraphs.getOrNull(index)) {
-            is ContentElement.Image, is ContentElement.ImageGroup -> true
-            else -> false
-        }
-    }
-
-    private fun isLongStripContent(content: ChapterContent): Boolean {
-        val isManga = content.url.contains("manga", ignoreCase = true) &&
-            !content.url.contains("manhwa", ignoreCase = true) &&
-            !content.url.contains("webtoon", ignoreCase = true)
-        if (isManga) return false
-
-        return content.url.contains("manhwa", ignoreCase = true) ||
-            content.url.contains("webtoon", ignoreCase = true) ||
-            (content.getImageCount() > content.getTextCount() && content.getImageCount() > 2)
-    }
 }
 
 data class ReaderProgressState(
     val scrollPosition: Float = 0f,
     val scrollProgress: Int = 0,
     val scrollIndex: Int = 0,
-    val scrollOffset: Int = 0,
-    val scrollOffsetFraction: Float? = null,
+    val scrollElementKey: String = "",
+    val scrollOffsetFraction: Float = FRACTION_UNKNOWN,
     val firstVisibleItemSize: Int = 0,
     val seekTrigger: Long = 0L,
     val targetScrollPosition: Float? = null
 )
 
-data class ScrollState(
+private data class ResolvedPosition(
     val index: Int,
-    val position: Float,
-    val progress: Int,
-    val offset: Int,
-    val offsetFraction: Float?,
-    val targetPosition: Float? = null
+    val elementKey: String,
+    val fraction: Float
 )
 
-internal fun ScrollState.toProgressState(): ReaderProgressState = ReaderProgressState(
-    scrollPosition = position,
-    scrollProgress = progress,
-    scrollIndex = index,
-    scrollOffset = offset,
-    scrollOffsetFraction = offsetFraction,
-    firstVisibleItemSize = 0,
-    seekTrigger = 0L,
-    targetScrollPosition = targetPosition
-)
+/**
+ * Lifted from the Compose renderer so non-UI code can resolve element anchors. Keep this
+ * deterministic and pure — both the writer (during scroll) and the reader (during restore) must
+ * agree on the same key for the same logical element.
+ */
+internal fun stableContentElementKey(pageUrl: String, index: Int, element: ContentElement): String {
+    return when (element) {
+        is ContentElement.Image -> "img:${element.url}"
+        is ContentElement.ImageGroup -> "group:${element.images.joinToString("|") { it.url }}"
+        is ContentElement.Text -> "txt:$pageUrl:$index:${element.content.take(64).hashCode()}"
+        is ContentElement.Placeholder -> "placeholder:$pageUrl:$index:${element.text}"
+        is ContentElement.PageContent -> "page:$pageUrl:$index"
+    }
+}
