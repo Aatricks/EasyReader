@@ -697,7 +697,7 @@ class WebContentLoaderTest {
             .build()
         val imageCache = ImageCache(mediaCacheDir, mediaDownloadsDir)
         val imageDownloader = ImageDownloader(client)
-        return WebContentLoader(htmlParser, client, imageCache, imageDownloader, ParsedContentCache(), htmlCacheDir, htmlDownloadsDir)
+        return WebContentLoader(htmlParser, client, imageCache, imageDownloader, ParsedContentCache(), htmlCacheDir, htmlDownloadsDir, InMemoryPermanentFailureStore())
     }
 
     private fun buildResponse(
@@ -706,13 +706,27 @@ class WebContentLoaderTest {
         contentType: String,
         code: Int = 200
     ): Response {
+        val payload = if (code == 200 && contentType.startsWith("image/")) {
+            val bytes = VALID_JPEG_HEADER + body.toByteArray()
+            // ImageIntegrity requires at least 64 bytes; pad with zeros if the fixture body is short.
+            if (bytes.size < 64) bytes + ByteArray(64 - bytes.size) else bytes
+        } else {
+            body.toByteArray()
+        }
         return Response.Builder()
             .request(request)
             .protocol(Protocol.HTTP_1_1)
             .code(code)
             .message(if (code == 200) "OK" else "Error")
-            .body(body.toResponseBody(contentType.toMediaType()))
+            .body(payload.toResponseBody(contentType.toMediaType()))
             .build()
+    }
+
+    private companion object {
+        // ImageIntegrity validates downloaded files by magic bytes. Test fixtures use string
+        // bodies like "image-body" that wouldn't pass; prepend a JPEG SOI/APP0 marker so the
+        // integrity check accepts them without requiring real image payloads.
+        private val VALID_JPEG_HEADER = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte())
     }
 
     private fun buildByteResponse(

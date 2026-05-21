@@ -47,7 +47,8 @@ class LibraryViewModelTest {
         viewModel = LibraryViewModel(
             libraryRepository,
             contentRepository,
-            exploreRepository
+            exploreRepository,
+            io.aatricks.easyreader.work.NoOpChapterDownloadQueue()
         )
     }
 
@@ -90,7 +91,7 @@ class LibraryViewModelTest {
         )
         whenever(libraryRepository.libraryItems).thenReturn(libraryItems)
 
-        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository)
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue())
         advanceUntilIdle()
 
         activeViewModel.toggleSelection(itemId)
@@ -98,7 +99,7 @@ class LibraryViewModelTest {
 
         assertEquals(setOf(itemId), activeViewModel.uiState.value.selectedIds)
 
-        val restoredViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository)
+        val restoredViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue())
         advanceUntilIdle()
 
         assertTrue(restoredViewModel.uiState.value.selectedIds.isEmpty())
@@ -111,7 +112,7 @@ class LibraryViewModelTest {
         val item2 = LibraryItem(id = "id-2", title = "Novel 2", url = "https://example.com/novel-2")
         whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(listOf(item1, item2)))
 
-        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository)
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue())
         advanceUntilIdle()
 
         activeViewModel.selectItem(item1.id)
@@ -133,7 +134,7 @@ class LibraryViewModelTest {
         val item2 = LibraryItem(id = "id-2", title = "Novel 2", url = "https://example.com/novel-2")
         whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(listOf(item1, item2)))
 
-        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository)
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue())
         advanceUntilIdle()
 
         activeViewModel.removeItemsImmediate(setOf(item1.id, item2.id))
@@ -163,7 +164,7 @@ class LibraryViewModelTest {
 
     @Test
     fun `toggle source expansion updates collapsed sources and persists`() = runTest {
-        val vm = LibraryViewModel(libraryRepository, contentRepository, exploreRepository)
+        val vm = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue())
         advanceUntilIdle()
 
         vm.toggleSourceExpansion("NovelFire")
@@ -442,7 +443,7 @@ class LibraryViewModelTest {
         whenever(libraryRepository.getGroupedByTitle(anyOrNull())).thenReturn(mapOf("Novel" to listOf(downloadedItem)))
         whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(inspected)
 
-        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository)
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue())
         activeViewModel.refreshChapterCacheStates(listOf(chapterUrl))
         advanceUntilIdle()
 
@@ -520,7 +521,7 @@ class LibraryViewModelTest {
         whenever(libraryRepository.getGroupedByTitle(anyOrNull())).thenReturn(mapOf("Novel" to listOf(downloadedItem)))
         whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(inspected)
 
-        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository)
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue())
         activeViewModel.refreshChapterCacheStates(listOf(chapterUrl))
         advanceUntilIdle()
 

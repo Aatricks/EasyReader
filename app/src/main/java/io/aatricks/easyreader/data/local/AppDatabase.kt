@@ -5,12 +5,18 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import io.aatricks.easyreader.data.model.ChapterImageStateEntity
 import io.aatricks.easyreader.data.model.LibraryItem
 
-@Database(entities = [LibraryItem::class], version = 6, exportSchema = true)
+@Database(
+    entities = [LibraryItem::class, ChapterImageStateEntity::class],
+    version = 7,
+    exportSchema = true
+)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
+    abstract fun chapterImageStateDao(): ChapterImageStateDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -191,6 +197,24 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE library_items ADD COLUMN isDownloaded INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE library_items ADD COLUMN downloadedAt INTEGER")
+            }
+        }
+
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS chapter_image_state (
+                        chapterUrl TEXT NOT NULL,
+                        imageUrl TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        lastAttemptMs INTEGER NOT NULL DEFAULT 0,
+                        httpStatusCode INTEGER,
+                        PRIMARY KEY(chapterUrl, imageUrl)
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_chapter_image_state_chapterUrl ON chapter_image_state (chapterUrl)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_chapter_image_state_status ON chapter_image_state (status)")
             }
         }
     }

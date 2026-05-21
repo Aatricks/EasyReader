@@ -17,6 +17,7 @@ import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.util.TextUtils
 import io.aatricks.easyreader.util.normalizeChapterList
+import io.aatricks.easyreader.work.ChapterDownloadQueue
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -34,7 +35,8 @@ import android.util.Log
 class LibraryViewModel @Inject constructor(
     val repository: LibraryRepository,
     private val contentRepository: ContentRepository,
-    private val exploreRepository: ExploreRepository
+    private val exploreRepository: ExploreRepository,
+    private val downloadQueue: ChapterDownloadQueue
 ) : BaseViewModel<LibraryViewModel.LibraryUiState>(LibraryUiState()) {
 
     private val TAG = "LibraryViewModel"
@@ -77,29 +79,38 @@ class LibraryViewModel @Inject constructor(
 
     private fun verifyDownloadedItemsOnStartup() {
         viewModelScope.launch {
-            val urls = runCatching {
-                repository.getAllItemsSnapshot()
-                    .map { it.url }
-                    .filter { it.isNotBlank() }
+            val snapshot = runCatching {
+                @Suppress("USELESS_ELVIS")
+                repository.getAllItemsSnapshot() ?: emptyList()
             }.getOrDefault(emptyList())
+            val urls = snapshot.asSequence().map { it.url }.filter { it.isNotBlank() }.toList()
             if (urls.isEmpty()) return@launch
             val results = refreshChapterCacheStatesSuspend(urls)
-            autoResumeIncompleteDownloads(results)
+            val wantedUrls = snapshot.asSequence().filter { it.isDownloaded }.map { it.url }.toSet()
+            autoResumeIncompleteDownloads(results, wantedUrls)
         }
     }
 
-    private fun autoResumeIncompleteDownloads(results: List<PrefetchResult>) {
-        val targets = results.filter {
-            it.isPersistentDownload &&
-                it.htmlCached &&
-                !it.isComplete &&
-                !it.isInProgress &&
-                it.totalImages > 0 &&
-                it.cachedImages < it.totalImages
+    private fun autoResumeIncompleteDownloads(results: List<PrefetchResult>, userWantedUrls: Set<String>) {
+        // Two ways a chapter qualifies as an in-flight-but-incomplete download:
+        //  - inspect reports it as a persistent download with images still missing
+        //  - DB remembers the user asked for it (isDownloaded=true) but html cache was lost
+        //    (cache eviction, manual clear) — these are invisible to the first condition
+        //    because isPersistentDownload requires htmlCached=true.
+        val targets = results.filter { result ->
+            if (result.isInProgress) return@filter false
+            val wanted = result.isPersistentDownload || result.url in userWantedUrls
+            if (!wanted) return@filter false
+            val missingHtml = !result.htmlCached
+            val missingImages = result.htmlCached &&
+                result.totalImages > 0 &&
+                result.cachedImages < result.totalImages
+            missingHtml || missingImages
         }
         if (targets.isEmpty()) return
         Log.d(TAG, "Auto-resuming ${targets.size} incomplete downloads")
         targets.forEach { contentRepository.beginUserDownload(it.url) }
+        targets.forEach { downloadQueue.enqueue(it.url) }
         val gate = Semaphore(LIBRARY_PREFETCH_CONCURRENCY)
         viewModelScope.launch {
             supervisorScope {
@@ -384,6 +395,12 @@ class LibraryViewModel @Inject constructor(
         sourceName: String
     ): Unit {
         chapters.forEach { contentRepository.beginUserDownload(it.url) }
+        // Dual-path: the in-process prefetch below drives the UI in the foreground session.
+        // The WorkManager enqueue is resilience-only — if the app/process dies before the
+        // in-process prefetch finishes, the worker resumes the download in the background.
+        // The worker short-circuits via inspectDownload when the in-process side already
+        // completed, so this is not a 2x cost for typical sessions.
+        chapters.forEach { downloadQueue.enqueue(it.url) }
         viewModelScope.launch {
             chapters.forEach { chapter ->
                 try {
@@ -550,6 +567,7 @@ class LibraryViewModel @Inject constructor(
                     repository.libraryItems.value
                 }
                 items.forEach { contentRepository.beginUserDownload(it.url) }
+                items.forEach { downloadQueue.enqueue(it.url) }
                 val gate = Semaphore(LIBRARY_PREFETCH_CONCURRENCY)
                 supervisorScope {
                     items.map { item ->
@@ -591,6 +609,9 @@ class LibraryViewModel @Inject constructor(
 
     fun retryDownload(url: String): Unit {
         contentRepository.beginUserDownload(url)
+        // Replace any in-flight worker so the retry runs on a fresh attempt with the
+        // permanent-failure cleanup reflected.
+        downloadQueue.enqueue(url, replaceExisting = true)
         viewModelScope.launch {
             try {
                 runCatching { contentRepository.clearPermanentFailures(url) }
@@ -616,6 +637,7 @@ class LibraryViewModel @Inject constructor(
     fun removeDownload(itemId: String): Unit {
         viewModelScope.launch {
             val item = repository.getItemById(itemId) ?: return@launch
+            downloadQueue.cancel(item.url)
             runCatching {
                 contentRepository.clearDownload(item.url)
                 repository.markDownloaded(itemId, false)

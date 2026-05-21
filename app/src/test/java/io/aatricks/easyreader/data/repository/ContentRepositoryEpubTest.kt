@@ -89,7 +89,7 @@ class ContentRepositoryEpubTest {
         // Use anyString() for Uri.parse
         mockedUriStatic.`when`<Uri> { Uri.parse(org.mockito.ArgumentMatchers.anyString()) }.thenReturn(mockUri)
 
-        val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, ImageCache(mediaCache, mediaDownloads), ImageDownloader(okHttpClient), ParsedContentCache(), htmlCache, htmlDownloads)
+        val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, ImageCache(mediaCache, mediaDownloads), ImageDownloader(okHttpClient), ParsedContentCache(), htmlCache, htmlDownloads, io.aatricks.easyreader.data.repository.content.InMemoryPermanentFailureStore())
         val pdfLoader = PdfContentLoader(mockContext, DefaultPdfDocumentOpener(mockContext))
         val epubLoader = EpubContentLoader(mockContext, epubCache, epubDownloads)
         val localLoader = LocalContentLoader(mockContext, mockHtmlParser, pdfLoader, epubLoader, contentUriTypeResolver)

@@ -50,7 +50,8 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     private val imageDownloader: ImageDownloader,
     private val parsedContentCache: ParsedContentCache,
     @HtmlCacheDir private val cacheDir: File,
-    @HtmlDownloadsDir private val downloadsDir: File
+    @HtmlDownloadsDir private val downloadsDir: File,
+    private val permanentFailureStore: PermanentFailureStore
 ) {
     companion object {
         private const val TAG = "WebContentLoader"
@@ -69,6 +70,10 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         private const val FETCH_REMOTE_DIMENSIONS_DURING_INITIAL_LOAD = false
         private const val USER_HTML_TIMEOUT_SECONDS = 15L
         private const val MAX_PARSED_IMAGE_MEMO = 128
+        // Permanent failures (4xx images recorded in the `.failed` sidecar) get a TTL so we
+        // re-attempt them after a day. Some CDNs return 404 transiently when overloaded; an
+        // entry that's still 404 after the TTL gets re-recorded with a fresh timestamp.
+        private const val PERMANENT_FAILURE_TTL_MS = 24L * 60L * 60L * 1000L
     }
 
     // Process-lifetime scope for background image prefetches that intentionally
@@ -333,11 +338,12 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         parsedImageMemo.remove(url)
     }
 
-    fun clearPermanentFailures(url: String) {
+    suspend fun clearPermanentFailures(url: String) {
         sidecarFileVariants(url).forEach { it.delete() }
+        permanentFailureStore.clear(url)
     }
 
-    fun clearDownload(url: String) {
+    suspend fun clearDownload(url: String) {
         val sourceForImageList = primaryCachedFile(url, StorageTier.DOWNLOADS)
             .takeIf(File::exists)
             ?: findExistingCachedFile(url)
@@ -354,6 +360,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         primaryCachedFile(url, StorageTier.DOWNLOADS).delete()
         File(downloadsDir, "${CacheKeyUtils.keyFor(url)}.html.failed").delete()
         parsedImageMemo.remove(url)
+        permanentFailureStore.clear(url)
     }
 
     suspend fun resetInFlightState(url: String) {
@@ -972,14 +979,23 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
                         when (result) {
                             is ImageFetchResult.Success -> {
-                                if (tempFile.renameTo(cachedFile)) {
-                                    ImageDownloadResult.Success(cachedFile)
-                                } else if (cachedFile.exists()) {
-                                    tempFile.delete()
-                                    ImageDownloadResult.Success(cachedFile)
-                                } else {
+                                val finalFile = when {
+                                    tempFile.renameTo(cachedFile) -> cachedFile
+                                    cachedFile.exists() -> { tempFile.delete(); cachedFile }
+                                    else -> null
+                                }
+                                if (finalFile == null) {
                                     tempFile.delete()
                                     ImageDownloadResult.Failure(false)
+                                } else if (!imageCache.isValidImageFile(finalFile)) {
+                                    // Server returned non-image bytes (HTML challenge, truncated
+                                    // payload). Treat as retryable so the next pass tries again
+                                    // and only escalates to a permanent failure on real HTTP 4xx.
+                                    Log.d(TAG, "Invalid image payload, deleting and retrying: ${UrlSanitizer.sanitize(imageUrl)}")
+                                    finalFile.delete()
+                                    ImageDownloadResult.Failure(true)
+                                } else {
+                                    ImageDownloadResult.Success(finalFile)
                                 }
                             }
                             is ImageFetchResult.HttpError -> {
@@ -1230,23 +1246,50 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     private fun sidecarFileVariants(url: String): List<File> =
         cacheFileVariants(url).map { File(it.parent, "${it.name}.failed") }
 
-    private fun loadPermanentFailures(url: String): Set<String> {
-        val files = sidecarFileVariants(url).filter(File::exists)
-        if (files.isEmpty()) return emptySet()
-        return files.flatMap { f ->
-            runCatching { f.readLines().filter { it.isNotBlank() } }.getOrDefault(emptyList())
-        }.toSet()
+    // Permanent failures are persisted in the chapter_image_state Room table via
+    // PermanentFailureStore. TTL filtering lives in the store (load takes freshAfterMs).
+    // Legacy `.failed` sidecar files from before the Room migration are imported on first
+    // read and then deleted, so existing installs upgrade losslessly.
+    private suspend fun loadPermanentFailures(
+        url: String,
+        now: Long = System.currentTimeMillis()
+    ): Set<String> {
+        migrateLegacySidecarIfPresent(url, now)
+        return permanentFailureStore.load(url, freshAfterMs = now - PERMANENT_FAILURE_TTL_MS)
     }
 
-    private fun recordPermanentFailures(url: String, failures: List<String>) {
+    private suspend fun recordPermanentFailures(url: String, failures: List<String>) {
         if (failures.isEmpty()) return
-        val htmlFile = findExistingCachedFile(url) ?: return
-        val sidecar = File(htmlFile.parent, "${htmlFile.name}.failed")
-        val existing = loadPermanentFailures(url)
-        val combined = (existing + failures).distinct()
-        runCatching {
-            sidecar.parentFile?.mkdirs()
-            sidecar.writeText(combined.joinToString("\n"))
+        permanentFailureStore.record(url, failures, recordedAtMs = System.currentTimeMillis())
+    }
+
+    // Reads any pre-migration sidecar entries, imports the still-fresh ones (those that
+    // already have a timestamp younger than the TTL) into the store, and removes the sidecar
+    // file. Legacy entries that pre-date the timestamp format are dropped — they'd be
+    // immediately expired by the TTL anyway, and dropping them gives the URL one fresh
+    // attempt which is the safer post-upgrade behavior.
+    private suspend fun migrateLegacySidecarIfPresent(url: String, now: Long) {
+        val sidecarFiles = sidecarFileVariants(url).filter(File::exists)
+        if (sidecarFiles.isEmpty()) return
+        val parsed = LinkedHashMap<String, Long>()
+        for (f in sidecarFiles) {
+            val lines = runCatching { f.readLines() }.getOrDefault(emptyList())
+            for (line in lines) {
+                val trimmed = line.trim()
+                if (trimmed.isEmpty()) continue
+                val sep = trimmed.lastIndexOf('|')
+                if (sep <= 0) continue
+                val imageUrl = trimmed.substring(0, sep)
+                val ts = trimmed.substring(sep + 1).toLongOrNull() ?: continue
+                if (imageUrl.isEmpty()) continue
+                if (now - ts >= PERMANENT_FAILURE_TTL_MS) continue
+                val prev = parsed[imageUrl]
+                if (prev == null || ts > prev) parsed[imageUrl] = ts
+            }
         }
+        if (parsed.isNotEmpty()) {
+            permanentFailureStore.record(url, parsed.keys, recordedAtMs = now)
+        }
+        sidecarFiles.forEach { it.delete() }
     }
 }

@@ -136,6 +136,71 @@ class AppDatabaseMigrationTest {
     }
 
     @Test
+    fun migrate6To7_createsChapterImageStateTableWithIndices() {
+        val dbName = migrationDbName("6-to-7")
+        createDatabaseAtVersion(
+            dbName = dbName,
+            version = 6,
+            createTableSql = """
+                CREATE TABLE library_items (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    progress INTEGER NOT NULL,
+                    isCurrentlyReading INTEGER NOT NULL,
+                    currentChapter TEXT NOT NULL,
+                    currentChapterUrl TEXT NOT NULL,
+                    totalChapters INTEGER NOT NULL,
+                    contentType TEXT NOT NULL,
+                    dateAdded INTEGER NOT NULL,
+                    lastRead INTEGER NOT NULL,
+                    isDownloading INTEGER NOT NULL,
+                    lastScrollPosition REAL NOT NULL,
+                    lastReadIndex INTEGER NOT NULL,
+                    lastReadOffset INTEGER NOT NULL,
+                    lastReadOffsetFraction REAL,
+                    hasUpdates INTEGER NOT NULL,
+                    chapterSummaries TEXT NOT NULL,
+                    baseTitle TEXT NOT NULL,
+                    readingMode TEXT NOT NULL,
+                    baseNovelUrl TEXT NOT NULL,
+                    sourceName TEXT NOT NULL,
+                    isDownloaded INTEGER NOT NULL DEFAULT 0,
+                    downloadedAt INTEGER
+                )
+            """.trimIndent(),
+            indexSqls = CURRENT_INDEX_SQL,
+            insertSqls = emptyList()
+        )
+
+        migrationTestHelper.runMigrationsAndValidate(
+            dbName,
+            7,
+            true,
+            AppDatabase.MIGRATION_6_7
+        ).use { database ->
+            assertTrue("chapter_image_state table must exist", hasTable(database, "chapter_image_state"))
+            assertIndexExists(database, "index_chapter_image_state_chapterUrl")
+            assertIndexExists(database, "index_chapter_image_state_status")
+            // Insert a row and confirm composite primary key behavior.
+            database.execSQL(
+                "INSERT INTO chapter_image_state (chapterUrl, imageUrl, status, attempts, lastAttemptMs, httpStatusCode) " +
+                    "VALUES ('c1', 'i1', 'PERMANENT_FAILURE', 1, 12345, 404)"
+            )
+            database.execSQL(
+                "INSERT OR REPLACE INTO chapter_image_state (chapterUrl, imageUrl, status, attempts, lastAttemptMs, httpStatusCode) " +
+                    "VALUES ('c1', 'i1', 'PERMANENT_FAILURE', 2, 67890, 404)"
+            )
+            database.query("SELECT attempts, lastAttemptMs FROM chapter_image_state WHERE chapterUrl='c1' AND imageUrl='i1'").use { c ->
+                assertTrue(c.moveToNext())
+                assertEquals(2, c.getInt(0))
+                assertEquals(67890L, c.getLong(1))
+            }
+        }
+    }
+
+    @Test
     fun migrate4To5() {
         val dbName = migrationDbName("4-to-5")
         createVersion4Database(dbName)
@@ -395,6 +460,15 @@ class AppDatabaseMigrationTest {
         return false
     }
 
+    private fun hasTable(database: SupportSQLiteDatabase, tableName: String): Boolean {
+        database.query(
+            SimpleSQLiteQuery(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                arrayOf<Any>(tableName)
+            )
+        ).use { cursor -> return cursor.moveToNext() }
+    }
+
     private fun rowCount(database: SupportSQLiteDatabase): Int {
         database.query(SimpleSQLiteQuery("SELECT COUNT(*) FROM library_items")).use { cursor ->
             check(cursor.moveToFirst()) { "Expected count cursor row." }
@@ -514,13 +588,14 @@ class AppDatabaseMigrationTest {
     }
 
     companion object {
-        private const val CURRENT_VERSION = 6
+        private const val CURRENT_VERSION = 7
         private val ALL_MIGRATIONS = arrayOf(
             AppDatabase.MIGRATION_1_2,
             AppDatabase.MIGRATION_2_3,
             AppDatabase.MIGRATION_3_4,
             AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6
+            AppDatabase.MIGRATION_5_6,
+            AppDatabase.MIGRATION_6_7
         )
         private val CURRENT_INDEX_SQL = listOf(
             "CREATE UNIQUE INDEX index_library_items_url ON library_items (url)",

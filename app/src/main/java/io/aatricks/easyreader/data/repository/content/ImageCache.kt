@@ -4,7 +4,9 @@ import io.aatricks.easyreader.di.MediaCacheDir
 import io.aatricks.easyreader.di.MediaDownloadsDir
 import io.aatricks.easyreader.util.CacheKeyUtils
 import io.aatricks.easyreader.util.FileSizeUtils
+import io.aatricks.easyreader.util.ImageIntegrity
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -37,8 +39,31 @@ class ImageCache @Inject constructor(
         }
     }
 
-    fun isDownloaded(url: String): Boolean =
-        File(mediaDownloadsDir, CacheKeyUtils.keyFor(url)).exists()
+    fun isDownloaded(url: String): Boolean {
+        val file = File(mediaDownloadsDir, CacheKeyUtils.keyFor(url))
+        return file.isCachedImageValid()
+    }
+
+    fun isValidImageFile(file: File): Boolean = file.isCachedImageValid()
+
+    // Verdict cache keyed by (path, length, mtime) so re-checking a file we already validated
+    // doesn't pay the disk read repeatedly. Invalidates automatically on any file mutation.
+    private data class IntegrityKey(val path: String, val length: Long, val mtime: Long)
+    private val integrityVerdicts = ConcurrentHashMap<IntegrityKey, Boolean>()
+
+    private fun File.isCachedImageValid(): Boolean {
+        if (!exists() || length() <= 0L) return false
+        val key = IntegrityKey(absolutePath, length(), lastModified())
+        integrityVerdicts[key]?.let { return it }
+        val verdict = ImageIntegrity.isValidImageFile(this)
+        if (integrityVerdicts.size > MAX_INTEGRITY_VERDICTS) integrityVerdicts.clear()
+        integrityVerdicts[key] = verdict
+        return verdict
+    }
+
+    private companion object {
+        private const val MAX_INTEGRITY_VERDICTS = 4096
+    }
 
     fun deleteCachedMediaFiles(url: String) {
         candidateFiles(url).forEach { it.delete() }

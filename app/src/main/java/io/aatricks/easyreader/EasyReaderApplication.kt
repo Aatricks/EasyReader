@@ -2,6 +2,8 @@ package io.aatricks.easyreader
 
 import android.app.Application
 import android.util.Log
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -22,11 +24,21 @@ import okhttp3.OkHttpClient
 import javax.inject.Inject
 
 @HiltAndroidApp
-class EasyReaderApplication : Application(), SingletonImageLoader.Factory {
+class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Configuration.Provider {
 
     @Inject lateinit var okHttpClient: OkHttpClient
     @Inject lateinit var contentRepository: ContentRepository
     @Inject lateinit var preferencesManager: PreferencesManager
+    @Inject lateinit var workerFactory: HiltWorkerFactory
+
+    // WorkManager pulls this lazily before its first enqueue, which happens after Hilt
+    // injection has populated `workerFactory`. Using on-demand initialization (no manual
+    // `WorkManager.initialize`) means the test variant can override via WorkManagerTestInitHelper.
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .setMinimumLoggingLevel(Log.INFO)
+            .build()
 
     private val warmupScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
