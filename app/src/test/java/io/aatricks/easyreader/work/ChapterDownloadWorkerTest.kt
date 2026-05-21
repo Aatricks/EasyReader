@@ -16,6 +16,8 @@ import androidx.work.workDataOf
 import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.repository.ContentRepository
+import io.aatricks.easyreader.data.repository.DownloadStatusReconciler
+import io.aatricks.easyreader.data.repository.LibraryRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -136,6 +138,80 @@ class ChapterDownloadWorkerTest {
     }
 
     @Test
+    fun `worker promotes DB flag after successful prefetch when item not yet downloaded`(): Unit = runBlocking {
+        val chapterUrl = "https://example.com/work-promote"
+        val contentRepository = mock<ContentRepository>()
+        val libraryRepository = mock<LibraryRepository>()
+        whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(
+            PrefetchResult(url = chapterUrl, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+        )
+        whenever(contentRepository.prefetchWithProgress(eq(chapterUrl), eq(PrefetchMode.USER_REQUESTED), any()))
+            .thenReturn(
+                PrefetchResult(
+                    url = chapterUrl,
+                    htmlCached = true,
+                    totalImages = 3,
+                    cachedImages = 3,
+                    isComplete = true,
+                    isPersistentDownload = true
+                )
+            )
+        whenever(libraryRepository.getItemByUrl(chapterUrl)).thenReturn(
+            io.aatricks.easyreader.data.model.LibraryItem(
+                id = "lib-id",
+                title = "Chapter promote",
+                url = chapterUrl,
+                isDownloaded = false
+            )
+        )
+
+        val worker = TestListenableWorkerBuilder<ChapterDownloadWorker>(context)
+            .setInputData(workDataOf(ChapterDownloadWorker.KEY_CHAPTER_URL to chapterUrl))
+            .setWorkerFactory(workerFactoryWith(contentRepository, libraryRepository))
+            .build()
+
+        val result = worker.doWork()
+        assertTrue("expected Success, got $result", result is ListenableWorker.Result.Success)
+        verify(libraryRepository).markDownloaded("lib-id", true)
+    }
+
+    @Test
+    fun `worker short-circuit still reconciles flag for orphaned downloads`(): Unit = runBlocking {
+        val chapterUrl = "https://example.com/work-shortcircuit-promote"
+        val contentRepository = mock<ContentRepository>()
+        val libraryRepository = mock<LibraryRepository>()
+        // Inspect short-circuits because in-process call already finished, but the VM was
+        // cancelled before it could write the flag. Worker must still write it.
+        whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(
+            PrefetchResult(
+                url = chapterUrl,
+                htmlCached = true,
+                totalImages = 4,
+                cachedImages = 4,
+                isComplete = true,
+                isPersistentDownload = true
+            )
+        )
+        whenever(libraryRepository.getItemByUrl(chapterUrl)).thenReturn(
+            io.aatricks.easyreader.data.model.LibraryItem(
+                id = "lib-orphan",
+                title = "Chapter orphan",
+                url = chapterUrl,
+                isDownloaded = false
+            )
+        )
+
+        val worker = TestListenableWorkerBuilder<ChapterDownloadWorker>(context)
+            .setInputData(workDataOf(ChapterDownloadWorker.KEY_CHAPTER_URL to chapterUrl))
+            .setWorkerFactory(workerFactoryWith(contentRepository, libraryRepository))
+            .build()
+
+        val result = worker.doWork()
+        assertTrue("expected Success, got $result", result is ListenableWorker.Result.Success)
+        verify(libraryRepository).markDownloaded("lib-orphan", true)
+    }
+
+    @Test
     fun `queue enqueueUniqueWork dedupes by chapter url`() = runBlocking {
         val queue = WorkManagerChapterDownloadQueue(context)
         val url = "https://example.com/work-dedup"
@@ -182,7 +258,11 @@ class ChapterDownloadWorkerTest {
         assertTrue("expected at most one live work, got $infos", live <= 1)
     }
 
-    private fun workerFactoryWith(contentRepository: ContentRepository): androidx.work.WorkerFactory {
+    private fun workerFactoryWith(
+        contentRepository: ContentRepository,
+        libraryRepository: LibraryRepository = mock(),
+        reconciler: DownloadStatusReconciler = DownloadStatusReconciler(libraryRepository)
+    ): androidx.work.WorkerFactory {
         return object : androidx.work.WorkerFactory() {
             override fun createWorker(
                 appContext: Context,
@@ -190,7 +270,13 @@ class ChapterDownloadWorkerTest {
                 workerParameters: WorkerParameters
             ): ListenableWorker? {
                 return if (workerClassName == ChapterDownloadWorker::class.java.name) {
-                    ChapterDownloadWorker(appContext, workerParameters, contentRepository)
+                    ChapterDownloadWorker(
+                        appContext,
+                        workerParameters,
+                        contentRepository,
+                        libraryRepository,
+                        reconciler
+                    )
                 } else null
             }
         }

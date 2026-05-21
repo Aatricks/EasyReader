@@ -91,11 +91,16 @@ class ImageCache @Inject constructor(
             ?: File(mediaCacheDir, url.hashCode().toString()).takeIf { it.exists() }
             ?: return null
         target.parentFile?.mkdirs()
-        return if (source.renameTo(target)) target else {
+        if (source.renameTo(target)) return target
+        // Cross-filesystem promotions fall back to copy+delete. A copyTo failure
+        // (disk full, permission, etc.) used to surface as an uncaught IOException
+        // and crash the calling cacheImages batch — return null so the caller treats
+        // this image as missing and the inspect path drives the correct demotion.
+        return runCatching {
             source.copyTo(target, overwrite = true)
             source.delete()
             target
-        }
+        }.getOrNull()
     }
 
     private fun primaryCachedMediaFile(url: String): File =

@@ -13,12 +13,15 @@ import io.aatricks.easyreader.data.model.SeriesReadingStatus
 import io.aatricks.easyreader.data.model.libraryNovelKey
 import io.aatricks.easyreader.data.model.seriesReadingStatus
 import io.aatricks.easyreader.data.repository.ContentRepository
+import io.aatricks.easyreader.data.repository.DownloadStatusReconciler
 import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.util.TextUtils
 import io.aatricks.easyreader.util.normalizeChapterList
 import io.aatricks.easyreader.work.ChapterDownloadQueue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
@@ -27,6 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import android.util.Log
 
@@ -36,7 +40,8 @@ class LibraryViewModel @Inject constructor(
     val repository: LibraryRepository,
     private val contentRepository: ContentRepository,
     private val exploreRepository: ExploreRepository,
-    private val downloadQueue: ChapterDownloadQueue
+    private val downloadQueue: ChapterDownloadQueue,
+    private val downloadStatusReconciler: DownloadStatusReconciler
 ) : BaseViewModel<LibraryViewModel.LibraryUiState>(LibraryUiState()) {
 
     private val TAG = "LibraryViewModel"
@@ -119,13 +124,19 @@ class LibraryViewModel @Inject constructor(
                         try {
                             gate.withPermit {
                                 setCacheState(state.copy(isInProgress = true, isRetryable = false))
-                                runCatching {
+                                runCatchingExceptCancel {
                                     val result = contentRepository.prefetchWithProgress(
                                         state.url,
                                         PrefetchMode.USER_REQUESTED
                                     ) { setCacheState(it) }
-                                    setCacheState(result)
-                                    syncDownloadedFlag(state.url, result)
+                                    withContext(NonCancellable) {
+                                        setCacheState(result)
+                                        downloadStatusReconciler.reconcile(
+                                            state.url,
+                                            result,
+                                            wasUserInspect = true
+                                        )
+                                    }
                                 }
                             }
                         } finally {
@@ -402,10 +413,11 @@ class LibraryViewModel @Inject constructor(
         // completed, so this is not a 2x cost for typical sessions.
         chapters.forEach { downloadQueue.enqueue(it.url) }
         viewModelScope.launch {
-            chapters.forEach { chapter ->
-                try {
-                    runCatching {
-                        val libraryItem = repository.getItemByUrl(chapter.url)
+            try {
+                chapters.forEach { chapter ->
+                    try {
+                        runCatchingExceptCancel {
+                            val libraryItem = repository.getItemByUrl(chapter.url)
                             ?: repository.addItem(
                                 title = chapter.title,
                                 url = chapter.url,
@@ -432,43 +444,38 @@ class LibraryViewModel @Inject constructor(
                             chapter.url,
                             PrefetchMode.USER_REQUESTED
                         ) { setCacheState(it) }
-                        setCacheState(result)
-                        syncDownloadedFlag(libraryItem, result)
+                        // Cancellation between the inspect-driven final result and the DB
+                        // write would leave the flag silently un-promoted (and the worker's
+                        // duplicate path may not run for in-process flows). Lock this final
+                        // commit out of cancellation; the prefetch itself was already
+                        // cancellable above.
+                        withContext(NonCancellable) {
+                            setCacheState(result)
+                            downloadStatusReconciler.reconcile(
+                                libraryItem,
+                                result,
+                                wasUserInspect = true
+                            )
+                        }
+                        }
+                    } finally {
+                        contentRepository.endUserDownload(chapter.url)
                     }
-                } finally {
-                    contentRepository.endUserDownload(chapter.url)
+                }
+            } finally {
+                // If cancellation tore the loop down before reaching every chapter, drain
+                // the upfront beginUserDownload calls so userDownloadsInFlight doesn't keep
+                // suppressing auto-delete checks until the WorkManager workers eventually
+                // catch up. Set.remove is idempotent so re-entering is harmless.
+                withContext(NonCancellable) {
+                    chapters.forEach { contentRepository.endUserDownload(it.url) }
                 }
             }
         }
     }
 
-    private suspend fun syncDownloadedFlag(url: String, result: PrefetchResult) {
-        val item = repository.getItemByUrl(url) ?: return
-        syncDownloadedFlag(item, result)
-    }
-
-    // The DB isDownloaded flag means "every image of this chapter is actually on disk and
-    // openable offline". Permanent failures (4xx images in the .failed sidecar) count toward
-    // isComplete (so the download loop and auto-resume stop), but they are NOT on disk and
-    // must not promote the flag — otherwise the chapter shows "Downloaded" while opening it
-    // surfaces "Image unavailable" for the missing images.
-    //
-    // Demotion is only permitted when we have a confident, terminal signal that the chapter
-    // is not fully downloaded: a USER_REQUESTED inspect that finished (not in progress) and
-    // either accepted permanent failures or could no longer find images that were previously
-    // counted. Transient inspect misses (e.g. images not yet inspected during startup) leave
-    // the flag alone.
-    private suspend fun syncDownloadedFlag(item: LibraryItem, result: PrefetchResult) {
-        if (!result.isPersistentDownload) return
-        val isFullyDownloaded = result.isComplete && !result.hasPermanentFailures
-        if (isFullyDownloaded) {
-            if (!item.isDownloaded) repository.markDownloaded(item.id, true)
-            return
-        }
-        if (item.isDownloaded && !result.isInProgress && result.hasPermanentFailures) {
-            repository.markDownloaded(item.id, false)
-        }
-    }
+    // All DB-flag writes go through [downloadStatusReconciler] so the badge, the DB flag,
+    // and on-disk state cannot disagree. See DownloadStatusReconciler for the rule.
 
     fun fetchAndAdd(url: String): Unit {
         viewModelScope.launch {
@@ -585,13 +592,19 @@ class LibraryViewModel @Inject constructor(
                                     )
                                 )
                                 gate.withPermit {
-                                    runCatching {
+                                    runCatchingExceptCancel {
                                         val result = contentRepository.prefetchWithProgress(
                                             item.url,
                                             PrefetchMode.USER_REQUESTED
                                         ) { setCacheState(it) }
-                                        setCacheState(result)
-                                        syncDownloadedFlag(item.url, result)
+                                        withContext(NonCancellable) {
+                                            setCacheState(result)
+                                            downloadStatusReconciler.reconcile(
+                                                item,
+                                                result,
+                                                wasUserInspect = true
+                                            )
+                                        }
                                     }
                                 }
                             } finally {
@@ -619,10 +632,12 @@ class LibraryViewModel @Inject constructor(
                     (uiState.value.chapterCacheStates[url] ?: PrefetchResult(url, false, 0, 0, false))
                         .copy(isInProgress = true, isRetryable = false, isPersistentDownload = true)
                 )
-                runCatching {
+                runCatchingExceptCancel {
                     val result = contentRepository.prefetchWithProgress(url, PrefetchMode.USER_REQUESTED) { setCacheState(it) }
-                    setCacheState(result)
-                    syncDownloadedFlag(url, result)
+                    withContext(NonCancellable) {
+                        setCacheState(result)
+                        downloadStatusReconciler.reconcile(url, result, wasUserInspect = true)
+                    }
                 }
             } finally {
                 contentRepository.endUserDownload(url)
@@ -758,13 +773,18 @@ class LibraryViewModel @Inject constructor(
                     } else {
                         null
                     }
-                    val result = if (item?.isDownloaded == true || downloadResult.hasDownloadEvidence()) {
+                    val useDownloadResult = item?.isDownloaded == true || downloadResult.hasDownloadEvidence()
+                    val result = if (useDownloadResult) {
                         downloadResult
                     } else {
                         runCatching { contentRepository.inspectCache(url) }.getOrNull()
                     }
                     if (item != null && result != null && !result.isInProgress) {
-                        syncDownloadedFlag(item, result)
+                        downloadStatusReconciler.reconcile(
+                            item,
+                            result,
+                            wasUserInspect = useDownloadResult
+                        )
                     }
                     result
                 }
@@ -836,6 +856,20 @@ class LibraryViewModel @Inject constructor(
     private fun setCacheState(result: PrefetchResult): Unit {
         _chapterCacheStates.update { current ->
             current + (result.url to result)
+        }
+    }
+
+    // kotlin.runCatching catches Throwable including CancellationException, which silently
+    // breaks coroutine cancellation propagation. This variant rethrows cancellation so the
+    // enclosing scope tears down as intended; other failures are still swallowed (the
+    // contract of these prefetch lambdas is "best-effort, never crash the bulk run").
+    private suspend inline fun runCatchingExceptCancel(block: () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            Log.w(TAG, "prefetch block failed: ${e.message}")
         }
     }
 

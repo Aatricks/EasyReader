@@ -12,6 +12,7 @@ import io.aatricks.easyreader.util.FileSizeUtils
 import io.aatricks.easyreader.util.HttpRetry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
@@ -251,7 +252,12 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                 return@repeat
             }
 
-            val deferred = repositoryScope.async {
+            // CoroutineStart.LAZY so the deferred is created but not yet running until the
+            // first .await() / .start(). Registering the URL in the inFlight map before
+            // starting closes the race where a concurrent inspect could observe
+            // isInProgress=false during a prefetch that has begun executing but hasn't yet
+            // been added to the map.
+            val deferred = repositoryScope.async(start = CoroutineStart.LAZY) {
                 executePrefetch(url, mode, onProgress)
             }.also { created ->
                 created.invokeOnCompletion {
@@ -766,14 +772,19 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                         imageCache.findExistingCachedMediaFile(imageUrl) != null
                     }
                 }
+                // Never claim isComplete=true from a progress emission. Mid-flight we don't
+                // yet know whether permanent failures will appear, and emitting Downloaded
+                // before the final inspectCacheInternal produces a UI badge that contradicts
+                // what the reader is about to display. The terminal PrefetchResult returned
+                // by executePrefetch is the only authoritative "complete" emission.
                 onProgress(
                     PrefetchResult(
                         url = url,
                         htmlCached = true,
                         totalImages = imageUrls.size,
                         cachedImages = cached,
-                        isComplete = cached == imageUrls.size && imageUrls.isNotEmpty(),
-                        isInProgress = cached < imageUrls.size,
+                        isComplete = false,
+                        isInProgress = true,
                         isRetryable = true,
                         isPersistentDownload = mode == PrefetchMode.USER_REQUESTED
                     )
@@ -943,7 +954,14 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         }
 
         val cachedFile = imageCache.destinationFile(imageUrl, writeTier)
-        val tempFile = File(cachedFile.parent, "${cachedFile.name}.tmp")
+        // Unique per attempt: a SPECULATIVE download that gets cancelled mid-write by an
+        // arriving USER_REQUESTED would otherwise race on the same `.tmp` path and
+        // interleave bytes. Random suffix isolates the two writers so the new attempt
+        // never observes partial data from the cancelled one.
+        val tempFile = File(
+            cachedFile.parent,
+            "${cachedFile.name}.${java.util.UUID.randomUUID()}.tmp"
+        )
 
         if (priority == ImageRequestPriority.USER_REQUESTED) {
             val toCancel = imageDownloadMutex.withLock {

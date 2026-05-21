@@ -7,6 +7,7 @@ import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.repository.ContentRepository
+import io.aatricks.easyreader.data.repository.DownloadStatusReconciler
 import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +29,7 @@ class LibraryViewModelTest {
     private val libraryRepository: LibraryRepository = mock()
     private val contentRepository: ContentRepository = mock()
     private val exploreRepository: ExploreRepository = mock()
+    private lateinit var reconciler: DownloadStatusReconciler
 
     private lateinit var viewModel: LibraryViewModel
 
@@ -44,11 +46,14 @@ class LibraryViewModelTest {
             whenever(libraryRepository.updateItem(any())).thenReturn(true)
         }
 
+        reconciler = DownloadStatusReconciler(libraryRepository)
+
         viewModel = LibraryViewModel(
             libraryRepository,
             contentRepository,
             exploreRepository,
-            io.aatricks.easyreader.work.NoOpChapterDownloadQueue()
+            io.aatricks.easyreader.work.NoOpChapterDownloadQueue(),
+            reconciler
         )
     }
 
@@ -91,7 +96,7 @@ class LibraryViewModelTest {
         )
         whenever(libraryRepository.libraryItems).thenReturn(libraryItems)
 
-        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue())
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue(), reconciler)
         advanceUntilIdle()
 
         activeViewModel.toggleSelection(itemId)
@@ -99,7 +104,7 @@ class LibraryViewModelTest {
 
         assertEquals(setOf(itemId), activeViewModel.uiState.value.selectedIds)
 
-        val restoredViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue())
+        val restoredViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue(), reconciler)
         advanceUntilIdle()
 
         assertTrue(restoredViewModel.uiState.value.selectedIds.isEmpty())
@@ -112,7 +117,7 @@ class LibraryViewModelTest {
         val item2 = LibraryItem(id = "id-2", title = "Novel 2", url = "https://example.com/novel-2")
         whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(listOf(item1, item2)))
 
-        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue())
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue(), reconciler)
         advanceUntilIdle()
 
         activeViewModel.selectItem(item1.id)
@@ -134,7 +139,7 @@ class LibraryViewModelTest {
         val item2 = LibraryItem(id = "id-2", title = "Novel 2", url = "https://example.com/novel-2")
         whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(listOf(item1, item2)))
 
-        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue())
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue(), reconciler)
         advanceUntilIdle()
 
         activeViewModel.removeItemsImmediate(setOf(item1.id, item2.id))
@@ -164,7 +169,7 @@ class LibraryViewModelTest {
 
     @Test
     fun `toggle source expansion updates collapsed sources and persists`() = runTest {
-        val vm = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue())
+        val vm = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue(), reconciler)
         advanceUntilIdle()
 
         vm.toggleSourceExpansion("NovelFire")
@@ -419,7 +424,7 @@ class LibraryViewModelTest {
     }
 
     @Test
-    fun `refreshChapterCacheStates does not demote downloaded flag from incomplete inspect`() = runTest {
+    fun `refreshChapterCacheStates demotes downloaded flag when persistent inspect is incomplete`() = runTest {
         val chapterUrl = "https://example.com/novel/chapter-13"
         val downloadedItem = LibraryItem(
             id = "chapter-13-id",
@@ -430,6 +435,10 @@ class LibraryViewModelTest {
             isDownloaded = true
         )
         val libraryItems = MutableStateFlow(listOf(downloadedItem))
+        // No permanent failures recorded, but two images are simply missing from disk.
+        // The new reconciler treats this as an authoritative terminal signal that the
+        // chapter is not fully downloaded and demotes the flag so the chapter list
+        // reflects reality on next render.
         val inspected = PrefetchResult(
             url = chapterUrl,
             htmlCached = true,
@@ -443,14 +452,47 @@ class LibraryViewModelTest {
         whenever(libraryRepository.getGroupedByTitle(anyOrNull())).thenReturn(mapOf("Novel" to listOf(downloadedItem)))
         whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(inspected)
 
-        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue())
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue(), reconciler)
         activeViewModel.refreshChapterCacheStates(listOf(chapterUrl))
         advanceUntilIdle()
 
         verify(contentRepository, timeout(1000)).inspectDownload(chapterUrl)
         verify(contentRepository, never()).inspectCache(chapterUrl)
-        verify(libraryRepository, never()).markDownloaded(eq(downloadedItem.id), eq(false))
+        verify(libraryRepository, timeout(1000)).markDownloaded(downloadedItem.id, false)
         assertEquals(inspected, activeViewModel.uiState.value.chapterCacheStates[chapterUrl])
+    }
+
+    @Test
+    fun `refreshChapterCacheStates does not demote when persistent inspect is still in progress`() = runTest {
+        val chapterUrl = "https://example.com/novel/chapter-13b"
+        val downloadedItem = LibraryItem(
+            id = "chapter-13b-id",
+            title = "Chapter 13b",
+            url = chapterUrl,
+            currentChapter = "Chapter 13b",
+            baseTitle = "Novel",
+            isDownloaded = true
+        )
+        val libraryItems = MutableStateFlow(listOf(downloadedItem))
+        val inProgress = PrefetchResult(
+            url = chapterUrl,
+            htmlCached = true,
+            totalImages = 4,
+            cachedImages = 2,
+            isComplete = false,
+            isInProgress = true,
+            isPersistentDownload = true
+        )
+
+        whenever(libraryRepository.libraryItems).thenReturn(libraryItems)
+        whenever(libraryRepository.getGroupedByTitle(anyOrNull())).thenReturn(mapOf("Novel" to listOf(downloadedItem)))
+        whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(inProgress)
+
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue(), reconciler)
+        activeViewModel.refreshChapterCacheStates(listOf(chapterUrl))
+        advanceUntilIdle()
+
+        verify(libraryRepository, never()).markDownloaded(eq(downloadedItem.id), eq(false))
     }
 
     @Test
@@ -521,7 +563,7 @@ class LibraryViewModelTest {
         whenever(libraryRepository.getGroupedByTitle(anyOrNull())).thenReturn(mapOf("Novel" to listOf(downloadedItem)))
         whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(inspected)
 
-        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue())
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue(), reconciler)
         activeViewModel.refreshChapterCacheStates(listOf(chapterUrl))
         advanceUntilIdle()
 

@@ -11,6 +11,8 @@ import dagger.assisted.AssistedInject
 import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.repository.ContentRepository
+import io.aatricks.easyreader.data.repository.DownloadStatusReconciler
+import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.util.UrlSanitizer
 
 /**
@@ -25,7 +27,9 @@ import io.aatricks.easyreader.util.UrlSanitizer
 class ChapterDownloadWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted params: WorkerParameters,
-    private val contentRepository: ContentRepository
+    private val contentRepository: ContentRepository,
+    private val libraryRepository: LibraryRepository,
+    private val downloadStatusReconciler: DownloadStatusReconciler
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
@@ -46,6 +50,9 @@ class ChapterDownloadWorker @AssistedInject constructor(
         if (existing != null && existing.isComplete && !existing.hasPermanentFailures) {
             Log.d(TAG, "already complete, skipping worker url=$safeUrl")
             publishProgress(existing)
+            // Reconcile so an orphaned isDownloaded=false (e.g. VM was cancelled before its
+            // own reconcile ran) gets promoted off the worker's durable execution.
+            runCatching { reconcileFlag(url, existing) }
             return Result.success(existing.toTerminalData())
         }
 
@@ -57,6 +64,10 @@ class ChapterDownloadWorker @AssistedInject constructor(
             ) { progress -> publishProgress(progress) }
 
             publishProgress(result)
+            // Worker is the durable second writer for the DB flag. Even if the VM call
+            // that originally enqueued us was cancelled mid-flight, this guarantees the
+            // flag eventually tracks on-disk reality.
+            runCatching { reconcileFlag(url, result) }
             val terminal = result.toTerminalData()
             // Treat "complete with permanent failures" as success — the loop has nothing more
             // to do. The badge logic separately downgrades it via hasPermanentFailures.
@@ -73,6 +84,11 @@ class ChapterDownloadWorker @AssistedInject constructor(
         } finally {
             contentRepository.endUserDownload(url)
         }
+    }
+
+    private suspend fun reconcileFlag(url: String, result: PrefetchResult) {
+        val item = libraryRepository.getItemByUrl(url) ?: return
+        downloadStatusReconciler.reconcile(item, result, wasUserInspect = true)
     }
 
     private suspend fun publishProgress(progress: PrefetchResult) {
