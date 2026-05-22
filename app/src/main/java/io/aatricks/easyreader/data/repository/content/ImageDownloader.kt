@@ -146,11 +146,18 @@ class ImageDownloader @Inject constructor(
     }
 
     private suspend fun waitForHostThrottle(state: HostThrottleState) {
-        state.throttleMutex.withLock {
-            val waitMs = (state.nextAllowedAtMs - System.currentTimeMillis()).coerceAtLeast(0L)
-            if (waitMs > 0) {
-                delay(waitMs)
+        val waitMs = state.throttleMutex.withLock {
+            val now = System.currentTimeMillis()
+            val allowed = state.nextAllowedAtMs
+            val wait = (allowed - now).coerceAtLeast(0L)
+            if (wait > 0) {
+                // Space subsequent requests relative to our reserved slot
+                state.nextAllowedAtMs = allowed + HOST_SUCCESS_SPACING_MS
             }
+            wait
+        }
+        if (waitMs > 0) {
+            delay(waitMs)
         }
     }
 
