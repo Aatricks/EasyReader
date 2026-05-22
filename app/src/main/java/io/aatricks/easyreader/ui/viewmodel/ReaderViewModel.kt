@@ -88,8 +88,57 @@ class ReaderViewModel @Inject constructor(
 
     fun persistImageDimensions(imageUrl: String, width: Int, height: Int) {
         if (imageUrl.isBlank() || width <= 0 || height <= 0) return
+        updateCurrentContentImageDimensions(imageUrl, width, height)
         viewModelScope.launch {
             imageDimensionCache.persist(imageUrl, width, height)
+        }
+    }
+
+    private fun updateCurrentContentImageDimensions(imageUrl: String, width: Int, height: Int) {
+        updateState { state ->
+            val content = state.content ?: return@updateState state
+            val updatedParagraphs = content.paragraphs.map { element ->
+                element.withResolvedImageDimensions(imageUrl, width, height)
+            }
+            if (updatedParagraphs == content.paragraphs) {
+                state
+            } else {
+                state.copy(content = content.copy(paragraphs = updatedParagraphs))
+            }
+        }
+    }
+
+    private fun ContentElement.withResolvedImageDimensions(
+        imageUrl: String,
+        width: Int,
+        height: Int
+    ): ContentElement {
+        return when (this) {
+            is ContentElement.Image -> {
+                if (url == imageUrl && (this.width <= 0 || this.height <= 0)) {
+                    copy(width = width, height = height)
+                } else {
+                    this
+                }
+            }
+
+            is ContentElement.ImageGroup -> {
+                val updatedImages = images.map { img ->
+                    if (img.url == imageUrl && (img.width <= 0 || img.height <= 0)) {
+                        img.copy(width = width, height = height)
+                    } else {
+                        img
+                    }
+                }
+                if (updatedImages == images) this else copy(images = updatedImages)
+            }
+
+            is ContentElement.PageContent -> {
+                val updatedElements = elements.map { it.withResolvedImageDimensions(imageUrl, width, height) }
+                if (updatedElements == elements) this else copy(elements = updatedElements)
+            }
+
+            else -> this
         }
     }
 
@@ -198,6 +247,7 @@ class ReaderViewModel @Inject constructor(
         val restoreElementKey: String = "",
         // Sentinel FRACTION_UNKNOWN (-1f) = no restore pending; 0..1 = pending intra-item fraction.
         val restoreOffsetFraction: Float = io.aatricks.easyreader.data.model.FRACTION_UNKNOWN,
+        val isPreciseRestore: Boolean = false,
         val isScrollingDown: Boolean = true,
         val hasReachedQuarterScreen: Boolean = false,
         val canNavigateNext: Boolean = false,
@@ -268,6 +318,7 @@ class ReaderViewModel @Inject constructor(
                 scrollIndex = scrollIndex,
                 scrollElementKey = restoreElementKey,
                 scrollOffsetFraction = restoreOffsetFraction,
+                isPreciseRestore = isPreciseRestore,
                 firstVisibleItemSize = 0,
                 seekTrigger = seekTrigger,
                 targetScrollPosition = targetScrollPosition
@@ -573,6 +624,7 @@ class ReaderViewModel @Inject constructor(
                 scrollIndex = initialPosition.scrollIndex,
                 restoreElementKey = initialPosition.scrollElementKey,
                 restoreOffsetFraction = initialPosition.scrollOffsetFraction,
+                isPreciseRestore = initialPosition.isPreciseRestore,
                 targetScrollPosition = initialPosition.targetScrollPosition,
                 hasReachedQuarterScreen = fromBottom || initialPosition.scrollProgress >= 25,
                 novelName = novelName,
@@ -938,7 +990,11 @@ class ReaderViewModel @Inject constructor(
         val content = _uiState.value.content ?: return
         progressController.cancelProgressUpdate()
         val latest = currentPersistedSnapshot()
-        val shouldSnapToTop = !hasUserInteractedSinceLoad && latest.scrollProgress == 0
+        val shouldSnapToTop = !hasUserInteractedSinceLoad &&
+            latest.scrollProgress == 0 &&
+            !latest.isPreciseRestore &&
+            latest.scrollIndex == 0 &&
+            latest.scrollElementKey.isBlank()
 
         if (shouldSnapToTop) {
             val itemId = currentLibraryItemId
@@ -1144,6 +1200,7 @@ class ReaderViewModel @Inject constructor(
                 scrollIndex = roughIndex,
                 restoreElementKey = targetElementKey,
                 restoreOffsetFraction = targetFraction,
+                isPreciseRestore = false,
                 seekTrigger = System.currentTimeMillis(),
                 targetScrollPosition = if (targetPercent == 100f) 100f else null
             )
@@ -1155,6 +1212,7 @@ class ReaderViewModel @Inject constructor(
                 scrollIndex = roughIndex,
                 scrollElementKey = targetElementKey,
                 scrollOffsetFraction = targetFraction,
+                isPreciseRestore = false,
                 firstVisibleItemSize = progressController.progressState.value.firstVisibleItemSize,
                 seekTrigger = System.currentTimeMillis(),
                 targetScrollPosition = if (targetPercent == 100f) 100f else null

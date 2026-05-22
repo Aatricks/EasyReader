@@ -58,6 +58,7 @@ class ReaderProgressController(
         private const val MIN_SCROLL_FRACTION_DELTA_PERMILLE = 5
         private const val MIN_SCROLL_PROGRESS_DELTA_PERCENT = 0.35f
         const val MIN_STABLE_ITEM_SIZE_PX = 96
+        const val PAGED_POSITION_ITEM_SIZE_PX = Int.MAX_VALUE
     }
 
     fun syncProgressState(state: ReaderProgressState) {
@@ -103,11 +104,11 @@ class ReaderProgressController(
             return state
         }
 
-        val shouldRestoreAtTop = libraryItem.progress == 0
+        val shouldRestoreAtTop = libraryItem.progress == 0 && !libraryItem.hasRestorablePosition()
         restoredScrollPercent = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition
 
         val resolved = if (shouldRestoreAtTop) {
-            ResolvedPosition(index = 0, elementKey = "", fraction = 0f)
+            ResolvedPosition(index = 0, elementKey = "", fraction = 0f, isPrecise = false)
         } else {
             resolveRestoredIndex(content, libraryItem)
         }
@@ -118,6 +119,7 @@ class ReaderProgressController(
             scrollIndex = resolved.index,
             scrollElementKey = resolved.elementKey,
             scrollOffsetFraction = resolved.fraction,
+            isPreciseRestore = resolved.isPrecise,
             firstVisibleItemSize = 0,
             seekTrigger = 0L,
             targetScrollPosition = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition
@@ -129,7 +131,7 @@ class ReaderProgressController(
     private fun resolveRestoredIndex(content: ChapterContent, libraryItem: LibraryItem): ResolvedPosition {
         val totalItems = content.paragraphs.size
         if (totalItems <= 0) {
-            return ResolvedPosition(index = 0, elementKey = "", fraction = 0f)
+            return ResolvedPosition(index = 0, elementKey = "", fraction = 0f, isPrecise = false)
         }
         val lastItemIndex = totalItems - 1
 
@@ -141,7 +143,8 @@ class ReaderProgressController(
                     return ResolvedPosition(
                         index = idx,
                         elementKey = savedKey,
-                        fraction = libraryItem.lastReadOffsetFraction.takeIf { it >= 0f } ?: 0f
+                        fraction = libraryItem.lastReadOffsetFraction.takeIf { it >= 0f } ?: 0f,
+                        isPrecise = true
                     )
                 }
             }
@@ -158,7 +161,8 @@ class ReaderProgressController(
             return ResolvedPosition(
                 index = savedIndex,
                 elementKey = refreshedKey,
-                fraction = if (hasUsableFraction) libraryItem.lastReadOffsetFraction else 0f
+                fraction = if (hasUsableFraction) libraryItem.lastReadOffsetFraction else 0f,
+                isPrecise = true
             )
         }
 
@@ -168,7 +172,7 @@ class ReaderProgressController(
         val refreshedKey = content.paragraphs.getOrNull(derivedIndex)
             ?.let { stableContentElementKey(content.url, derivedIndex, it) }
             ?: ""
-        return ResolvedPosition(index = derivedIndex, elementKey = refreshedKey, fraction = 0f)
+        return ResolvedPosition(index = derivedIndex, elementKey = refreshedKey, fraction = 0f, isPrecise = false)
     }
 
     fun markUserDragged() {
@@ -270,22 +274,29 @@ class ReaderProgressController(
             return false
         }
         if (isPlaceholderAtCurrentPosition(content, snapshot.scrollIndex)) return false
-        // If the first visible item is an image whose dimensions are still unknown, the
-        // current `firstVisibleItemSize` is whatever Coil has decoded so far — not the
-        // final layout size. Persisting the fraction against it stamps a position that
-        // will drift once decode completes. Skip writes until dims are known (either
-        // declared in the parser, or cached from a prior open, or runtime-resolved by
-        // Coil and threaded back to the parser).
-        if (!isFirstVisibleItemDimensionsKnown(content, snapshot.scrollIndex)) return false
+        if (snapshot.firstVisibleItemSize != PAGED_POSITION_ITEM_SIZE_PX &&
+            !isLayoutStableThroughPosition(content, snapshot.scrollIndex)
+        ) {
+            return false
+        }
         return true
     }
 
-    private fun isFirstVisibleItemDimensionsKnown(content: ChapterContent?, index: Int): Boolean {
-        val item = content?.paragraphs?.getOrNull(index) ?: return true
+    private fun isLayoutStableThroughPosition(content: ChapterContent, index: Int): Boolean {
+        val lastIndex = index.coerceIn(0, content.paragraphs.lastIndex)
+        return content.paragraphs
+            .asSequence()
+            .take(lastIndex + 1)
+            .all(::areElementDimensionsKnown)
+    }
+
+    private fun areElementDimensionsKnown(item: ContentElement): Boolean {
         return when (item) {
             is ContentElement.Image -> item.width > 0 && item.height > 0
             is ContentElement.ImageGroup -> item.images.isEmpty() ||
                 item.images.all { it.width > 0 && it.height > 0 }
+            is ContentElement.PageContent -> item.elements.all(::areElementDimensionsKnown)
+            is ContentElement.Placeholder -> false
             else -> true
         }
     }
@@ -339,7 +350,7 @@ class ReaderProgressController(
         val isStable = firstVisibleItemSize >= MIN_STABLE_ITEM_SIZE_PX
         val effectiveFraction = if (isStable) offsetFraction.coerceIn(0f, 1f) else FRACTION_UNKNOWN
 
-        _progressState.value = _progressState.value.copy(
+        val nextState = _progressState.value.copy(
             scrollPosition = progress,
             scrollProgress = progressInt,
             scrollIndex = index,
@@ -347,9 +358,10 @@ class ReaderProgressController(
             scrollOffsetFraction = effectiveFraction,
             firstVisibleItemSize = firstVisibleItemSize
         )
+        _progressState.value = nextState
 
         // Only schedule a DB write when the sample is stable enough to be meaningful.
-        if (!isStable) {
+        if (!isStable || !isSnapshotPersistable(content, nextState)) {
             lastRawScrollOffset = scrollOffset
             return
         }
@@ -388,9 +400,16 @@ class ReaderProgressController(
             val lastIndex = index ?: latest.scrollIndex
             val lastElementKey = elementKey ?: latest.scrollElementKey
             val lastFraction = offsetFraction ?: latest.scrollOffsetFraction
+            val snapshot = latest.copy(
+                scrollPosition = lastScroll,
+                scrollProgress = progress,
+                scrollIndex = lastIndex,
+                scrollElementKey = lastElementKey,
+                scrollOffsetFraction = lastFraction
+            )
 
             if (isPlaceholderAtCurrentPosition(content, lastIndex)) return@runCatching
-            if (lastFraction < 0f) return@runCatching
+            if (!isSnapshotPersistable(content, snapshot)) return@runCatching
 
             Log.d(
                 TAG,
@@ -443,6 +462,7 @@ data class ReaderProgressState(
     val scrollIndex: Int = 0,
     val scrollElementKey: String = "",
     val scrollOffsetFraction: Float = FRACTION_UNKNOWN,
+    val isPreciseRestore: Boolean = false,
     val firstVisibleItemSize: Int = 0,
     val seekTrigger: Long = 0L,
     val targetScrollPosition: Float? = null
@@ -451,8 +471,15 @@ data class ReaderProgressState(
 private data class ResolvedPosition(
     val index: Int,
     val elementKey: String,
-    val fraction: Float
+    val fraction: Float,
+    val isPrecise: Boolean
 )
+
+private fun LibraryItem.hasRestorablePosition(): Boolean =
+    lastReadElementKey.isNotEmpty() ||
+        lastReadIndex > 0 ||
+        lastReadOffsetFraction >= 0f ||
+        lastScrollPosition > 0f
 
 /**
  * Lifted from the Compose renderer so non-UI code can resolve element anchors. Keep this

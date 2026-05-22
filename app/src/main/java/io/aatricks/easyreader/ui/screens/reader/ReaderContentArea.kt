@@ -42,6 +42,7 @@ import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.FRACTION_UNKNOWN
 import io.aatricks.easyreader.ui.components.TopInfoBar
 import io.aatricks.easyreader.ui.components.BottomNavigationBar
+import io.aatricks.easyreader.ui.viewmodel.ReaderProgressController.Companion.PAGED_POSITION_ITEM_SIZE_PX
 import io.aatricks.easyreader.ui.util.toFontFamily
 import io.aatricks.easyreader.ui.viewmodel.ReaderProgressController.Companion.MIN_STABLE_ITEM_SIZE_PX
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
@@ -183,7 +184,12 @@ internal fun ContentArea(
         // Final percent-based smoke check. Gates on userHasDragged (not the looser
         // hasUserInteractedSinceLoad) so programmatic / reflow-induced scroll events don't
         // suppress self-heal.
-        if (!readerViewModel.userHasDragged) {
+        if (!readerViewModel.userHasDragged &&
+            shouldRunPercentRestoreFallback(
+                isPreciseRestore = uiState.isPreciseRestore,
+                targetFraction = targetFraction
+            )
+        ) {
             val visiblePercent = computeVisiblePercent(listState, content.paragraphs.size)
             val targetPercent = uiState.scrollPosition
             if (visiblePercent != null && abs(visiblePercent - targetPercent) > RESTORE_PERCENT_TOLERANCE) {
@@ -225,7 +231,7 @@ internal fun ContentArea(
                 index = currentItem,
                 offsetFraction = 0f,
                 elementKey = currentKey,
-                firstVisibleItemSize = Int.MAX_VALUE
+                firstVisibleItemSize = PAGED_POSITION_ITEM_SIZE_PX
             )
         }
     } else {
@@ -415,6 +421,11 @@ private fun computeVisiblePercent(listState: LazyListState, totalItems: Int): Fl
     val denom = (maxPos - viewportInItems).coerceAtLeast(0.0001f)
     return ((currentPos / denom) * 100f).coerceIn(0f, 100f)
 }
+
+internal fun shouldRunPercentRestoreFallback(
+    isPreciseRestore: Boolean,
+    targetFraction: Float?
+): Boolean = !isPreciseRestore && targetFraction != null && targetFraction > 0f
 
 private fun buildScrollSnapshot(listState: LazyListState, content: ChapterContent): ReaderScrollSnapshot? {
     if (content.paragraphs.isEmpty()) return null

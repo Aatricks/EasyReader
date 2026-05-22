@@ -31,4 +31,11 @@ class ReaderContentRenderersKeyTest {
 
         assertEquals("group:https://cdn.example.com/g1.jpg|https://cdn.example.com/g2.jpg", key)
     }
+
+    @Test
+    fun `percent restore fallback is skipped for precise restores`() {
+        assertEquals(false, shouldRunPercentRestoreFallback(isPreciseRestore = true, targetFraction = 0.4f))
+        assertEquals(false, shouldRunPercentRestoreFallback(isPreciseRestore = false, targetFraction = 0f))
+        assertEquals(true, shouldRunPercentRestoreFallback(isPreciseRestore = false, targetFraction = 0.4f))
+    }
 }

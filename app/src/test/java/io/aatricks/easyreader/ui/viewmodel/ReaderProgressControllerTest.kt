@@ -178,6 +178,44 @@ class ReaderProgressControllerTest {
     }
 
     @Test
+    fun `calculateInitialPosition restores saved anchor even when progress is zero`() = runTest {
+        val controller = ReaderProgressController(libraryRepository, this)
+        val paragraphs = List(8) { ContentElement.Text("Text $it") }
+        val targetIndex = 4
+        val targetKey = stableContentElementKey("http://example.com/1", targetIndex, paragraphs[targetIndex])
+        val libraryItem = LibraryItem(
+            id = "test-id",
+            url = "http://example.com/novel",
+            title = "Novel",
+            currentChapter = "Chapter 1",
+            currentChapterUrl = "http://example.com/1",
+            progress = 0,
+            lastScrollPosition = 0f,
+            lastReadIndex = targetIndex,
+            lastReadElementKey = targetKey,
+            lastReadOffsetFraction = 0.4f,
+            contentType = ContentType.WEB
+        )
+        val content = ChapterContent(
+            paragraphs = paragraphs,
+            title = "Chapter 1",
+            url = "http://example.com/1"
+        )
+
+        val state = controller.calculateInitialPosition(
+            content = content,
+            libraryItem = libraryItem,
+            fromBottom = false,
+            isExplicitNavigation = false
+        )
+
+        assertEquals(targetIndex, state.scrollIndex)
+        assertEquals(targetKey, state.scrollElementKey)
+        assertEquals(0.4f, state.scrollOffsetFraction)
+        assertEquals(true, state.isPreciseRestore)
+    }
+
+    @Test
     fun `calculateInitialPosition for explicit navigation starts from top`() = runTest {
         val controller = ReaderProgressController(libraryRepository, this)
 
@@ -300,5 +338,59 @@ class ReaderProgressControllerTest {
             firstVisibleItemSize = 500
         )
         assertEquals(true, controller.isSnapshotPersistable(content, stable))
+    }
+
+    @Test
+    fun `isSnapshotPersistable rejects unknown image dimensions before current position`() = runTest {
+        val controller = ReaderProgressController(libraryRepository, this)
+        val unstableContent = ChapterContent(
+            paragraphs = listOf(
+                ContentElement.Image("https://cdn.example.com/panel-1.jpg"),
+                ContentElement.Text("Text after image")
+            ),
+            title = "Chapter 1",
+            url = "https://example.com/webtoon/chapter-1"
+        )
+        val stableContent = unstableContent.copy(
+            paragraphs = listOf(
+                ContentElement.Image(
+                    url = "https://cdn.example.com/panel-1.jpg",
+                    width = 1080,
+                    height = 1920
+                ),
+                ContentElement.Text("Text after image")
+            )
+        )
+        val snapshot = ReaderProgressState(
+            scrollPosition = 20f,
+            scrollProgress = 20,
+            scrollIndex = 1,
+            scrollElementKey = "txt:after-image",
+            scrollOffsetFraction = 0.2f,
+            firstVisibleItemSize = 500
+        )
+
+        assertEquals(false, controller.isSnapshotPersistable(unstableContent, snapshot))
+        assertEquals(true, controller.isSnapshotPersistable(stableContent, snapshot))
+    }
+
+    @Test
+    fun `isSnapshotPersistable allows paged position without image dimensions`() = runTest {
+        val controller = ReaderProgressController(libraryRepository, this)
+        val content = ChapterContent(
+            paragraphs = listOf(ContentElement.Image("https://cdn.example.com/page-1.jpg")),
+            title = "Chapter 1",
+            url = "https://example.com/manga/chapter-1"
+        )
+        val snapshot = ReaderProgressState(
+            scrollPosition = 0f,
+            scrollProgress = 0,
+            scrollIndex = 0,
+            scrollElementKey = "img:https://cdn.example.com/page-1.jpg",
+            scrollOffsetFraction = 0f,
+            firstVisibleItemSize = ReaderProgressController.PAGED_POSITION_ITEM_SIZE_PX
+        )
+
+        assertEquals(true, controller.isSnapshotPersistable(content, snapshot))
     }
 }
