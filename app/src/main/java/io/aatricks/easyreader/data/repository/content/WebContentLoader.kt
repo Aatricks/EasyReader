@@ -348,6 +348,10 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
     fun getCachedMediaFile(url: String): File = imageCache.getCachedMediaFile(url)
 
+    fun invalidateCachedMediaFile(url: String) {
+        imageCache.deleteCachedMediaFiles(url)
+    }
+
     fun getCachedFile(url: String): File = findExistingCachedFile(url) ?: primaryCachedFile(url, StorageTier.CACHE)
 
     fun isCached(url: String): Boolean = findExistingCachedFile(url) != null

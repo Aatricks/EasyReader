@@ -114,4 +114,40 @@ class ReaderImageViewTest {
         assertFalse(shouldAutoRetryReaderImage(isError = true, imageUrl = "file:///tmp/a.jpg", attemptCount = 0))
         assertFalse(shouldAutoRetryReaderImage(isError = true, imageUrl = "https://example.com/a.jpg", attemptCount = 3))
     }
+
+    @Test
+    fun `failed http image with local file is eligible for one repair`() {
+        assertTrue(
+            shouldRepairReaderImage(
+                isError = true,
+                imageUrl = "https://example.com/a.jpg",
+                localMediaState = "/tmp/a.jpg:100:10",
+                attemptCount = 0
+            )
+        )
+        assertFalse(
+            shouldRepairReaderImage(
+                isError = true,
+                imageUrl = "https://example.com/a.jpg",
+                localMediaState = "missing",
+                attemptCount = 0
+            )
+        )
+        assertFalse(
+            shouldRepairReaderImage(
+                isError = true,
+                imageUrl = "https://example.com/a.jpg",
+                localMediaState = "/tmp/a.jpg:100:10",
+                attemptCount = 1
+            )
+        )
+        assertFalse(
+            shouldRepairReaderImage(
+                isError = true,
+                imageUrl = "file:///tmp/a.jpg",
+                localMediaState = "/tmp/a.jpg:100:10",
+                attemptCount = 0
+            )
+        )
+    }
 }

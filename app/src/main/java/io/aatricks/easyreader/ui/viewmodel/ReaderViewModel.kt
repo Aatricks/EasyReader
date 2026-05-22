@@ -1073,6 +1073,28 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    fun repairVisibleImage(imageUrl: String, pageUrl: String): Unit {
+        if (!imageUrl.startsWith("http")) return
+
+        viewModelScope.launch {
+            repairVisibleImageNow(imageUrl, pageUrl)
+        }
+    }
+
+    suspend fun repairVisibleImageNow(imageUrl: String, pageUrl: String): Boolean {
+        if (!imageUrl.startsWith("http")) return false
+
+        return runCatching {
+            contentRepository.invalidateCachedMediaFile(imageUrl, pageUrl)
+            libraryRepository.getItemByUrl(pageUrl)
+                ?.takeIf { it.isDownloaded }
+                ?.let { libraryRepository.markDownloaded(it.id, false) }
+            contentRepository.downloadAndCacheImage(imageUrl, pageUrl) != null
+        }.onFailure { e ->
+            Log.w(TAG, "repairVisibleImage failed", e)
+        }.getOrDefault(false)
+    }
+
     fun clearCache(url: String): Unit {
         viewModelScope.launch { runCatching { contentRepository.clearCache(url) } }
     }

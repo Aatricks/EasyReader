@@ -138,6 +138,11 @@ class ContentRepository @Inject constructor(
 
     fun getCachedMediaFile(url: String): File = webLoader.getCachedMediaFile(url)
 
+    suspend fun invalidateCachedMediaFile(imageUrl: String, pageUrl: String? = null): Unit = withContext(Dispatchers.IO) {
+        webLoader.invalidateCachedMediaFile(imageUrl)
+        pageUrl?.takeIf { it.isNotBlank() }?.let(::invalidateInspect)
+    }
+
     fun getReferer(url: String): String = webLoader.getReferer(url)
 
     fun isCached(url: String): Boolean = webLoader.isCached(url)

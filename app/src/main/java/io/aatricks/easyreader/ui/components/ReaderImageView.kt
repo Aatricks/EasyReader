@@ -74,6 +74,19 @@ internal fun shouldAutoRetryReaderImage(
 ): Boolean =
     isError && imageUrl.startsWith("http") && attemptCount < maxAttempts
 
+internal fun shouldRepairReaderImage(
+    isError: Boolean,
+    imageUrl: String,
+    localMediaState: String,
+    attemptCount: Int,
+    maxAttempts: Int = 1
+): Boolean =
+    isError &&
+        imageUrl.startsWith("http") &&
+        localMediaState.isNotBlank() &&
+        localMediaState != "missing" &&
+        attemptCount < maxAttempts
+
 @Composable
 fun ReaderImageView(
     imageUrl: String,
@@ -240,9 +253,16 @@ fun ReaderImageView(
     }
     var isError by remember(imageRequest) { mutableStateOf(false) }
     var autoRetryCount by remember(imageUrl, pageUrl) { mutableIntStateOf(0) }
+    var repairRetryCount by remember(imageUrl, pageUrl) { mutableIntStateOf(0) }
 
-    LaunchedEffect(isError, imageUrl, pageUrl, autoRetryCount) {
-        if (shouldAutoRetryReaderImage(isError, imageUrl, autoRetryCount)) {
+    LaunchedEffect(isError, imageUrl, pageUrl, localMediaState, autoRetryCount, repairRetryCount) {
+        if (shouldRepairReaderImage(isError, imageUrl, localMediaState, repairRetryCount)) {
+            repairRetryCount += 1
+            readerViewModel.repairVisibleImageNow(imageUrl, pageUrl)
+            isError = false
+            isLoadingHoisted = true
+            retryTrigger = System.currentTimeMillis()
+        } else if (shouldAutoRetryReaderImage(isError, imageUrl, autoRetryCount)) {
             val nextAttempt = autoRetryCount + 1
             kotlinx.coroutines.delay(750L * nextAttempt)
             autoRetryCount = nextAttempt

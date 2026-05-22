@@ -22,6 +22,7 @@ import org.junit.Assert.*
 import org.mockito.Mock
 import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.*
+import java.io.File
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReaderViewModelTest {
@@ -894,6 +895,29 @@ class ReaderViewModelTest {
         viewModel.prefetchVisibleImage(imageUrl, pageUrl)
         advanceUntilIdle()
 
+        verify(contentRepository).downloadAndCacheImage(imageUrl, pageUrl)
+    }
+
+    @Test
+    fun `repairVisibleImageNow invalidates local file demotes downloaded chapter and refetches`() = runTest {
+        val imageUrl = "https://example.com/image.jpg"
+        val pageUrl = "https://example.com/chapter-1"
+        val item = LibraryItem(
+            id = "item-1",
+            title = "Chapter 1",
+            url = pageUrl,
+            isDownloaded = true
+        )
+        val repairedFile = File("repaired-image")
+
+        whenever(libraryRepository.getItemByUrl(pageUrl)).thenReturn(item)
+        whenever(libraryRepository.markDownloaded(item.id, false)).thenReturn(true)
+        whenever(contentRepository.downloadAndCacheImage(imageUrl, pageUrl)).thenReturn(repairedFile)
+
+        assertTrue(viewModel.repairVisibleImageNow(imageUrl, pageUrl))
+
+        verify(contentRepository).invalidateCachedMediaFile(imageUrl, pageUrl)
+        verify(libraryRepository).markDownloaded(item.id, false)
         verify(contentRepository).downloadAndCacheImage(imageUrl, pageUrl)
     }
 
