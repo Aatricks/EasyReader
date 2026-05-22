@@ -5,6 +5,7 @@ import io.aatricks.easyreader.data.model.ContentResult
 import io.aatricks.easyreader.data.model.ImageRequestPriority
 import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.repository.HtmlParser
+import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
@@ -697,7 +698,7 @@ class WebContentLoaderTest {
             .build()
         val imageCache = ImageCache(mediaCacheDir, mediaDownloadsDir)
         val imageDownloader = ImageDownloader(client)
-        return WebContentLoader(htmlParser, client, imageCache, imageDownloader, ParsedContentCache(), htmlCacheDir, htmlDownloadsDir, InMemoryPermanentFailureStore())
+        return WebContentLoader(htmlParser, client, imageCache, imageDownloader, ParsedContentCache(), htmlCacheDir, htmlDownloadsDir, InMemoryPermanentFailureStore(), fakeImageDimensionCacheRepository())
     }
 
     private fun buildResponse(
@@ -708,9 +709,8 @@ class WebContentLoaderTest {
     ): Response {
         val payload = if (code == 200 && contentType.startsWith("image/")) {
             val bodyBytes = body.toByteArray()
-            // ImageIntegrity now requires a structural trailer (EOI marker for JPEG) so the
-            // fixture must look like a complete file end-to-end. Pad to ≥64 bytes and finish
-            // with FF D9 so inspect treats the body as a valid (if minimal) JPEG.
+            // ImageIntegrity requires recognizable image magic bytes; wrap string bodies in
+            // a minimal JPEG-looking payload so cache inspection accepts the fixture.
             val header = VALID_JPEG_HEADER + bodyBytes
             val padded = if (header.size < 62) header + ByteArray(62 - header.size) else header
             padded + JPEG_EOI
@@ -727,10 +727,8 @@ class WebContentLoaderTest {
     }
 
     private companion object {
-        // ImageIntegrity validates downloaded files by magic bytes AND structural trailer.
-        // Test fixtures use string bodies like "image-body" that wouldn't pass; wrap them
-        // in a JPEG SOI/APP0 header and EOI trailer so the integrity check accepts them
-        // without requiring real image payloads.
+        // Test fixtures use string bodies like "image-body" that would not pass image
+        // sniffing; wrap them in a JPEG SOI/APP0 header without requiring real image bytes.
         private val VALID_JPEG_HEADER = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte())
         private val JPEG_EOI = byteArrayOf(0xFF.toByte(), 0xD9.toByte())
     }

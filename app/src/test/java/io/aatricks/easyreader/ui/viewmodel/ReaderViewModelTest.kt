@@ -7,6 +7,7 @@ import io.aatricks.easyreader.data.model.ReadingMode
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
+import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
 import io.aatricks.easyreader.util.FieldUpdate
 import io.aatricks.easyreader.util.computeAutoDeleteCandidates
 import kotlinx.coroutines.CancellationException
@@ -88,7 +89,8 @@ class ReaderViewModelTest {
             libraryRepository,
             exploreRepository,
             preferencesManager,
-            chapterListCache
+            chapterListCache,
+            fakeImageDimensionCacheRepository()
         )
     }
 
@@ -585,7 +587,13 @@ class ReaderViewModelTest {
         val url = "https://example.com/manhwa/10"
 
         whenever(contentRepository.loadContent(url)).thenReturn(
-            ContentResult.Success(listOf(ContentElement.Image("https://cdn.example.com/1.jpg")), "Chapter 10", url)
+            ContentResult.Success(
+                // Declared dims so the lifecycle-save dim-known gate lets this through:
+                // an unknown-dim image is treated as mid-reflow and rightly drops the save.
+                listOf(ContentElement.Image(url = "https://cdn.example.com/1.jpg", width = 800, height = 1200)),
+                "Chapter 10",
+                url
+            )
         )
         whenever(libraryRepository.getItemByUrl(url)).thenReturn(
             LibraryItem(id = itemId, title = "Chapter 10", url = url)
@@ -866,7 +874,8 @@ class ReaderViewModelTest {
             libraryRepository,
             exploreRepository,
             preferencesManager,
-            chapterListCache
+            chapterListCache,
+            fakeImageDimensionCacheRepository()
         )
 
         viewModel.loadContent(url)

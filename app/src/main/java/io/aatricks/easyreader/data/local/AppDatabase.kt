@@ -6,17 +6,19 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import io.aatricks.easyreader.data.model.ChapterImageStateEntity
+import io.aatricks.easyreader.data.model.ImageDimensionEntity
 import io.aatricks.easyreader.data.model.LibraryItem
 
 @Database(
-    entities = [LibraryItem::class, ChapterImageStateEntity::class],
-    version = 8,
+    entities = [LibraryItem::class, ChapterImageStateEntity::class, ImageDimensionEntity::class],
+    version = 9,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
     abstract fun chapterImageStateDao(): ChapterImageStateDao
+    abstract fun imageDimensionDao(): ImageDimensionDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -281,6 +283,20 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX index_library_items_baseTitle ON library_items (baseTitle)")
                 db.execSQL("CREATE INDEX index_library_items_isCurrentlyReading ON library_items (isCurrentlyReading)")
                 db.execSQL("CREATE INDEX index_library_items_lastRead ON library_items (lastRead)")
+            }
+        }
+
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS image_dimension_cache (
+                        imageUrl TEXT NOT NULL PRIMARY KEY,
+                        width INTEGER NOT NULL,
+                        height INTEGER NOT NULL,
+                        cachedAtMs INTEGER NOT NULL,
+                        parserVersion INTEGER NOT NULL
+                    )
+                """.trimIndent())
             }
         }
     }

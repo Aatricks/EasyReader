@@ -7,6 +7,7 @@ import io.aatricks.easyreader.data.model.ImageRequestPriority
 import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.repository.HtmlParser
+import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
 import io.aatricks.easyreader.util.CacheKeyUtils
 import io.aatricks.easyreader.util.FileSizeUtils
 import io.aatricks.easyreader.util.HttpRetry
@@ -52,7 +53,8 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     private val parsedContentCache: ParsedContentCache,
     @HtmlCacheDir private val cacheDir: File,
     @HtmlDownloadsDir private val downloadsDir: File,
-    private val permanentFailureStore: PermanentFailureStore
+    private val permanentFailureStore: PermanentFailureStore,
+    private val imageDimensionCache: ImageDimensionCacheRepository
 ) {
     companion object {
         private const val TAG = "WebContentLoader"
@@ -629,10 +631,21 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         pageUrl: String,
         diskOnly: Boolean
     ): List<ContentElement.Image> = withContext(Dispatchers.IO) {
+        val needsLookup = imageElements
+            .filter { it.width <= 0 || it.height <= 0 }
+            .map { it.url }
+        val cached = imageDimensionCache.getMany(needsLookup)
+
         imageElements.map { img ->
+            if (img.width > 0 && img.height > 0) return@map async { img }
+            val hit = cached[img.url]
+            if (hit != null) {
+                return@map async { img.copy(width = hit.width, height = hit.height) }
+            }
             async {
                 DIMENSION_SEMAPHORE.withPermit {
                     fetchImageDimensions(img.url, pageUrl, diskOnly = diskOnly)?.let { (w, h) ->
+                        imageDimensionCache.persist(img.url, w, h)
                         img.copy(width = w, height = h)
                     } ?: img
                 }
@@ -1108,6 +1121,12 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             !htmlCached -> false
             imageUrls.isNotEmpty() -> effectiveCached == imageUrls.size
             memo?.hasImageTags == true -> false
+            // A chapter URL with zero parseable images AND zero raw img tags is a JS-rendered
+            // page (Next.js, SPA) where the static HTML carries only the shell. The
+            // bodyNonEmpty heuristic that follows is correct for novel text pages but would
+            // falsely mark these as Downloaded — refuse to claim complete for chapter URLs
+            // until we actually see images.
+            isChapterPageUrl(url) -> false
             else -> memo?.bodyNonEmpty == true
         }
         val hasPermanentFailures = imageUrls.isNotEmpty() && accountedPermanent > 0
@@ -1123,6 +1142,14 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             isPersistentDownload = persistentOnly && htmlCached,
             hasPermanentFailures = hasPermanentFailures
         )
+    }
+
+    private fun isChapterPageUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains("/chapter/") ||
+            lower.contains("/chapter-") ||
+            lower.contains("-chapter-") ||
+            (lower.contains("/manga/") && lower.contains("chapter"))
     }
 
     private fun resolveParsedImageMemo(

@@ -3,6 +3,7 @@ package io.aatricks.easyreader.data.repository.content
 import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.repository.HtmlParser
+import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
 import io.aatricks.easyreader.util.CacheKeyUtils
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -248,7 +249,7 @@ class WebContentLoaderPrefetchRetryTest {
         val loader = WebContentLoader(
             htmlParser, client, ImageCache(mediaCacheDir, mediaDownloadsDir),
             ImageDownloader(client), ParsedContentCache(), htmlCacheDir, htmlDownloadsDir,
-            store
+            store, fakeImageDimensionCacheRepository()
         )
         return LoaderHarness(loader, htmlDownloadsDir, store)
     }

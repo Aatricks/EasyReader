@@ -55,8 +55,12 @@ class HtmlParser @Inject constructor() {
 
         val filteredParagraphs = filterParagraphs(paragraphs, document.title())
 
-        // If it looks like a manga (many images or few paragraphs), return images
-        if (images.size > 5 || (images.isNotEmpty() && filteredParagraphs.size < 10)) {
+        // Chapter pages from manga sites legitimately have many paragraphs of footer text
+        // (comments, ads, "if you want to read free manga..."). If any chapter image was
+        // extracted from a manga reader container, trust that this is image content and
+        // ignore the boilerplate paragraphs — otherwise the user sees the footer text and
+        // none of the actual manga pages.
+        if (images.isNotEmpty() && (images.size > 5 || isChapterPage(url) || filteredParagraphs.size < 10)) {
             return images
         }
 
@@ -65,6 +69,14 @@ class HtmlParser @Inject constructor() {
         }
 
         return mergeAndFormatParagraphs(filteredParagraphs)
+    }
+
+    private fun isChapterPage(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains("/chapter/") ||
+            lower.contains("/chapter-") ||
+            lower.contains("-chapter-") ||
+            lower.contains("/manga/") && lower.contains("chapter")
     }
 
     private fun cleanDocument(document: Document): Unit {

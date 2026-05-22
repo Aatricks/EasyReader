@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -50,8 +51,14 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-private const val RESTORE_SMOKE_CHECK_DELAY_MS = 500L
 private const val RESTORE_PERCENT_TOLERANCE = 5f
+private const val RESTORE_STABILITY_POLL_INTERVAL_MS = 80L
+private const val RESTORE_STABILITY_DURATION_MS = 300L
+private const val RESTORE_MAX_WAIT_MS = 3_000L
+// Skip re-applying fraction unless the target item grew by at least this fraction since
+// the last applied size. Without it a slow image decode produces 5–10 visible position
+// hops as the LazyList re-measures intermediate sizes.
+private const val RESTORE_REJUMP_THRESHOLD = 0.20f
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -101,7 +108,15 @@ internal fun ContentArea(
     // After landing, runs a smoke check: if visible % drifts > RESTORE_PERCENT_TOLERANCE from the
     // saved %, falls back to percent-based scroll (defends against async-image-resize drift).
     LaunchedEffect(content.url, uiState.seekTrigger) {
-        if (content.paragraphs.isEmpty()) return@LaunchedEffect
+        // Re-arm restore gating on every entry. `calculateInitialPosition` does this for
+        // the first open, but seek-bar drags bump `seekTrigger` without going through it,
+        // and the previous restore may have already called `markRestoreDone()`.
+        readerViewModel.beginRestore()
+
+        if (content.paragraphs.isEmpty()) {
+            readerViewModel.markRestoreDone()
+            return@LaunchedEffect
+        }
 
         val targetIndex = resolveRestoreIndex(content, uiState)
             .coerceIn(0, content.paragraphs.lastIndex)
@@ -112,12 +127,14 @@ internal fun ContentArea(
         // Paged mode: page index is the whole position, no intra-page fraction to chase.
         if (uiState.isPagedMode) {
             runCatching { pagerState.scrollToPage(targetIndex) }
+            readerViewModel.markRestoreDone()
             return@LaunchedEffect
         }
 
         // From-bottom navigation always seeks the final item end.
         if (uiState.targetScrollPosition == 100f) {
             runCatching { listState.scrollToItem(content.paragraphs.lastIndex, Int.MAX_VALUE) }
+            readerViewModel.markRestoreDone()
             return@LaunchedEffect
         }
 
@@ -125,32 +142,71 @@ internal fun ContentArea(
         runCatching { listState.scrollToItem(targetIndex, 0) }
 
         if (targetFraction == null || targetFraction == 0f) {
+            readerViewModel.markRestoreDone()
             return@LaunchedEffect
         }
 
-        // Wait for the target item to reach a meaningful size — async image loads pass through
-        // a placeholder height first, and applying the fraction against the placeholder
-        // produces a meaningless offset.
-        val itemSize = snapshotFlow {
-            listState.layoutInfo.visibleItemsInfo
+        // Watch-until-stable: re-apply the intra-item fraction every time the target item
+        // grows significantly (image decode reflow), and lock in once the size is unchanged
+        // for RESTORE_STABILITY_DURATION_MS. Bails immediately on a real user drag. A 3s
+        // hard cap prevents runaway loops on very slow networks.
+        val deadline = System.currentTimeMillis() + RESTORE_MAX_WAIT_MS
+        var lastAppliedSize = 0
+        var stableSince = 0L
+
+        while (System.currentTimeMillis() < deadline && !readerViewModel.userHasDragged) {
+            val size = listState.layoutInfo.visibleItemsInfo
                 .firstOrNull { it.index == targetIndex }
                 ?.size ?: 0
-        }.first { it >= MIN_STABLE_ITEM_SIZE_PX }
+            if (size >= MIN_STABLE_ITEM_SIZE_PX) {
+                if (size == lastAppliedSize) {
+                    if (stableSince == 0L) stableSince = System.currentTimeMillis()
+                    if (System.currentTimeMillis() - stableSince >= RESTORE_STABILITY_DURATION_MS) {
+                        val offsetPx = (size * targetFraction).toInt().coerceIn(0, size)
+                        runCatching { listState.scrollToItem(targetIndex, offsetPx) }
+                        break
+                    }
+                } else {
+                    val grewEnough = lastAppliedSize == 0 ||
+                        abs(size - lastAppliedSize).toFloat() / lastAppliedSize.toFloat() >= RESTORE_REJUMP_THRESHOLD
+                    if (grewEnough) {
+                        val offsetPx = (size * targetFraction).toInt().coerceIn(0, size)
+                        runCatching { listState.scrollToItem(targetIndex, offsetPx) }
+                        lastAppliedSize = size
+                    }
+                    stableSince = 0L
+                }
+            }
+            kotlinx.coroutines.delay(RESTORE_STABILITY_POLL_INTERVAL_MS)
+        }
 
-        val targetOffsetPx = (itemSize * targetFraction).toInt().coerceIn(0, itemSize)
-        runCatching { listState.scrollToItem(targetIndex, targetOffsetPx) }
+        // Final percent-based smoke check. Gates on userHasDragged (not the looser
+        // hasUserInteractedSinceLoad) so programmatic / reflow-induced scroll events don't
+        // suppress self-heal.
+        if (!readerViewModel.userHasDragged) {
+            val visiblePercent = computeVisiblePercent(listState, content.paragraphs.size)
+            val targetPercent = uiState.scrollPosition
+            if (visiblePercent != null && abs(visiblePercent - targetPercent) > RESTORE_PERCENT_TOLERANCE) {
+                val fallbackIndex = ((targetPercent / 100f) * content.paragraphs.lastIndex).toInt()
+                    .coerceIn(0, content.paragraphs.lastIndex)
+                runCatching { listState.scrollToItem(fallbackIndex, 0) }
+            }
+        }
 
-        // Self-heal smoke check — verify after layout has settled. Skip if the user has already
-        // taken the wheel: yanking them away from their own scroll is worse than tolerating a
-        // small restore mismatch.
-        kotlinx.coroutines.delay(RESTORE_SMOKE_CHECK_DELAY_MS)
-        if (readerViewModel.hasUserInteractedSinceLoad) return@LaunchedEffect
-        val visiblePercent = computeVisiblePercent(listState, content.paragraphs.size)
-        val targetPercent = uiState.scrollPosition
-        if (visiblePercent != null && abs(visiblePercent - targetPercent) > RESTORE_PERCENT_TOLERANCE) {
-            val fallbackIndex = ((targetPercent / 100f) * content.paragraphs.lastIndex).toInt()
-                .coerceIn(0, content.paragraphs.lastIndex)
-            runCatching { listState.scrollToItem(fallbackIndex, 0) }
+        readerViewModel.markRestoreDone()
+    }
+
+    // Detect genuine user drags on the LazyList. Programmatic scrollToItem calls do NOT
+    // emit DragInteraction.Start, so the restore loop's own movements won't trip the flag.
+    // Tap-to-toggle-controls fires PressInteraction.Press but should NOT count as "user
+    // wants this position saved" — only Drag confirms that intent.
+    if (!uiState.isPagedMode) {
+        LaunchedEffect(listState, content.url) {
+            listState.interactionSource.interactions.collect { interaction ->
+                if (interaction is DragInteraction.Start) {
+                    readerViewModel.markUserDragged()
+                }
+            }
         }
     }
 
@@ -177,6 +233,14 @@ internal fun ContentArea(
             val observer = LifecycleEventObserver { _, event ->
                 if (event != Lifecycle.Event.ON_PAUSE && event != Lifecycle.Event.ON_STOP) return@LifecycleEventObserver
                 if (uiState.isPagedMode) return@LifecycleEventObserver
+
+                // If restore is still running and the user has not actually scrolled the
+                // content, the current listState position is the (possibly mid-reflow)
+                // restore landing — never the user's intent. Persisting it here would
+                // overwrite the saved row with a worse approximation of itself.
+                if (readerViewModel.restoreInProgress && !readerViewModel.userHasDragged) {
+                    return@LifecycleEventObserver
+                }
 
                 val snapshot = buildScrollSnapshot(listState, content) ?: return@LifecycleEventObserver
                 readerViewModel.updateScrollPosition(

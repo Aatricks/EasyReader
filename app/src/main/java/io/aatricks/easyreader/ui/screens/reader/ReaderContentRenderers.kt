@@ -160,6 +160,9 @@ internal fun PagedReaderView(
                                             zoomStateKey = "${content.url}_${page}_${subElement.url}_${subElement.side}",
                                             onZoomChanged = if (isZoomable) onPageZoomChanged else null,
                                             lockTapWhileZoomed = isZoomable,
+                                            onDimensionsResolved = { url, w, h ->
+                                                readerViewModel.persistImageDimensions(url, w, h)
+                                            },
                                             onTap = { readerViewModel.toggleControls() }
                                         )
                                     }
@@ -211,6 +214,9 @@ internal fun PagedReaderView(
                             zoomStateKey = "${content.url}_${page}_${el.url}_${el.side}",
                             onZoomChanged = if (isZoomable) onPageZoomChanged else null,
                             lockTapWhileZoomed = isZoomable,
+                            onDimensionsResolved = { url, w, h ->
+                                readerViewModel.persistImageDimensions(url, w, h)
+                            },
                             onTap = { readerViewModel.toggleControls() }
                         )
                     }
@@ -266,6 +272,9 @@ private fun PagedImageGroupView(
                     enableZoom = false,
                     dynamicHeight = true,
                     zoomStateKey = "${pageUrl}_${pageIndex}_group_$index",
+                    onDimensionsResolved = { url, w, h ->
+                        readerViewModel.persistImageDimensions(url, w, h)
+                    },
                     onTap = null
                 )
             }
@@ -395,6 +404,9 @@ internal fun ScrollingReaderView(
                                         side = subElement.side,
                                         enableZoom = false,
                                         dynamicHeight = false,
+                                        onDimensionsResolved = { url, w, h ->
+                                            readerViewModel.persistImageDimensions(url, w, h)
+                                        },
                                         onTap = { readerViewModel.toggleControls() }
                                     )
                                 }
@@ -438,6 +450,9 @@ internal fun ScrollingReaderView(
                         side = element.side,
                         enableZoom = false,
                         dynamicHeight = false,
+                        onDimensionsResolved = { url, w, h ->
+                            readerViewModel.persistImageDimensions(url, w, h)
+                        },
                         onTap = { readerViewModel.toggleControls() }
                     )
                 }
@@ -460,6 +475,9 @@ internal fun ScrollingReaderView(
                                 side = img.side,
                                 enableZoom = false,
                                 dynamicHeight = false,
+                                onDimensionsResolved = { url, w, h ->
+                                    readerViewModel.persistImageDimensions(url, w, h)
+                                },
                                 onTap = { readerViewModel.toggleControls() }
                             )
                         }

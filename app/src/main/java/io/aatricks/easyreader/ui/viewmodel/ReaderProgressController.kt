@@ -30,6 +30,22 @@ class ReaderProgressController(
     var hasUserInteractedSinceLoad: Boolean = false
     var restoredProgressSnapshot: ReaderProgressState? = null
 
+    /**
+     * True only after a confirmed user drag/press on the reader content. Distinct from
+     * `hasUserInteractedSinceLoad`, which also flips on programmatic scroll-position changes
+     * (e.g. the restore loop's own `scrollToItem`). Self-heal / smoke-check logic gates on
+     * this flag instead — yanking a user mid-gesture is worse than tolerating a small drift,
+     * but reflow-induced scroll updates should never disable the self-heal.
+     */
+    var userHasDragged: Boolean = false
+
+    /**
+     * True from `calculateInitialPosition` until the restore loop in the UI layer calls
+     * `markRestoreDone()`. While set (and the user has not yet dragged), DB writes from
+     * scroll snapshots are suppressed because the layout is still reflowing as images decode.
+     */
+    var restoreInProgress: Boolean = false
+
     private var lastRawScrollOffset: Float = -1f
     private var lastReportedIndex: Int = -1
     private var lastReportedFractionMillis: Int = -1
@@ -67,6 +83,8 @@ class ReaderProgressController(
     ): ReaderProgressState {
         suppressAutoNavUntilUserInteraction = true
         hasUserInteractedSinceLoad = false
+        userHasDragged = false
+        restoreInProgress = true
 
         if (libraryItem == null || isExplicitNavigation) {
             restoredScrollPercent = if (fromBottom) 100f else 0f
@@ -153,6 +171,30 @@ class ReaderProgressController(
         return ResolvedPosition(index = derivedIndex, elementKey = refreshedKey, fraction = 0f)
     }
 
+    fun markUserDragged() {
+        userHasDragged = true
+        hasUserInteractedSinceLoad = true
+        suppressAutoNavUntilUserInteraction = false
+        restoredProgressSnapshot = null
+        restoreInProgress = false
+    }
+
+    fun markRestoreDone() {
+        restoreInProgress = false
+    }
+
+    /**
+     * Called by the UI restore LaunchedEffect at entry. Mirrors [calculateInitialPosition]'s
+     * flag setup so that mid-flight UI-driven restores (e.g. seek-bar drags that bump
+     * `seekTrigger`) re-arm the gating even though they don't go through
+     * [calculateInitialPosition]. Without this, a second restore proceeds with stale
+     * `restoreInProgress=false`, letting mid-decode saves poison the just-seeked position.
+     */
+    fun beginRestore() {
+        restoreInProgress = true
+        userHasDragged = false
+    }
+
     fun onUserInteraction(
         uiTargetScrollPosition: Float?,
         uiPendingRestoreOffsetFraction: Float?,
@@ -168,8 +210,12 @@ class ReaderProgressController(
 
         if (!requiresInteractionCleanup) return
 
+        // Callers are paths that only fire on confirmed user input (nested scroll with
+        // touchSlop, seek bar, nav buttons). Treat as a drag for restore-gating purposes.
         hasUserInteractedSinceLoad = true
+        userHasDragged = true
         suppressAutoNavUntilUserInteraction = false
+        restoreInProgress = false
         restoredProgressSnapshot = null
 
         val nextUiTargetScrollPosition = if (uiTargetScrollPosition != null) null else uiTargetScrollPosition
@@ -223,7 +269,25 @@ class ReaderProgressController(
             // Item measured but at placeholder size — fraction is meaningless. Drop write.
             return false
         }
-        return !isPlaceholderAtCurrentPosition(content, snapshot.scrollIndex)
+        if (isPlaceholderAtCurrentPosition(content, snapshot.scrollIndex)) return false
+        // If the first visible item is an image whose dimensions are still unknown, the
+        // current `firstVisibleItemSize` is whatever Coil has decoded so far — not the
+        // final layout size. Persisting the fraction against it stamps a position that
+        // will drift once decode completes. Skip writes until dims are known (either
+        // declared in the parser, or cached from a prior open, or runtime-resolved by
+        // Coil and threaded back to the parser).
+        if (!isFirstVisibleItemDimensionsKnown(content, snapshot.scrollIndex)) return false
+        return true
+    }
+
+    private fun isFirstVisibleItemDimensionsKnown(content: ChapterContent?, index: Int): Boolean {
+        val item = content?.paragraphs?.getOrNull(index) ?: return true
+        return when (item) {
+            is ContentElement.Image -> item.width > 0 && item.height > 0
+            is ContentElement.ImageGroup -> item.images.isEmpty() ||
+                item.images.all { it.width > 0 && it.height > 0 }
+            else -> true
+        }
     }
 
     fun updateScrollPosition(
@@ -259,6 +323,15 @@ class ReaderProgressController(
         lastReportedProgress = progress
 
         if (suppressAutoNavUntilUserInteraction) {
+            lastRawScrollOffset = scrollOffset
+            return
+        }
+
+        // While the restore loop is still settling layout — and the user has not yet
+        // touched the screen — skip DB writes entirely. The in-memory state still updates
+        // below so the seek bar/UI stay live, but we refuse to overwrite the saved row
+        // with positions produced by image-decode-induced reflow.
+        if (restoreInProgress && !userHasDragged) {
             lastRawScrollOffset = scrollOffset
             return
         }
@@ -349,6 +422,8 @@ class ReaderProgressController(
         _progressState.value = ReaderProgressState()
         currentLibraryItemId = null
         hasUserInteractedSinceLoad = false
+        userHasDragged = false
+        restoreInProgress = false
         restoredProgressSnapshot = null
         lastRawScrollOffset = -1f
         lastReportedIndex = -1

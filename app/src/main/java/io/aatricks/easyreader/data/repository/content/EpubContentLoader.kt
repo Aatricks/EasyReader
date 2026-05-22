@@ -14,6 +14,7 @@ import java.io.File
 import java.util.UUID
 import java.util.zip.ZipFile
 import dagger.hilt.android.qualifiers.ApplicationContext
+import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
 import io.aatricks.easyreader.di.EpubCacheDir
 import io.aatricks.easyreader.di.EpubDownloadsDir
 import javax.inject.Inject
@@ -23,7 +24,8 @@ import javax.inject.Singleton
 class EpubContentLoader @Inject constructor(
     @ApplicationContext private val context: Context,
     @EpubCacheDir private val epubCacheDir: File,
-    @EpubDownloadsDir private val epubDownloadsDir: File
+    @EpubDownloadsDir private val epubDownloadsDir: File,
+    private val imageDimensionCache: ImageDimensionCacheRepository
 ) {
     companion object {
         private val WHITESPACE_REGEX = Regex("\\s+")
@@ -365,7 +367,7 @@ class EpubContentLoader @Inject constructor(
         )
     }
 
-    private fun loadEpubChapter(filePath: String, book: EpubBook, href: String): EpubChapter {
+    private suspend fun loadEpubChapter(filePath: String, book: EpubBook, href: String): EpubChapter {
         val file = resolveEpubFile(filePath)
         val chapterHref = normalizeEpubPath(href.substringBefore("#").replace("\\", "/").removePrefix("/"))
         val chapterHrefs = getChapterSpineHrefs(book, chapterHref)
@@ -387,13 +389,51 @@ class EpubContentLoader @Inject constructor(
 
         if (!loadedAnyDocument) throw Exception("No chapter bytes")
 
+        val enrichedEls = enrichEpubImageDimensionsFromCache(els)
+
         return EpubChapter(
             href = chapterHref,
             title = book.findTocItemByHref(chapterHref)?.title,
-            content = els,
+            content = enrichedEls,
             nextHref = book.getNextHref(chapterHref),
             previousHref = book.getPreviousHref(chapterHref)
         )
+    }
+
+    private suspend fun enrichEpubImageDimensionsFromCache(
+        els: List<ContentElement>
+    ): List<ContentElement> {
+        val imageUrls = mutableListOf<String>()
+        els.forEach { el ->
+            when (el) {
+                is ContentElement.Image ->
+                    if (el.width <= 0 || el.height <= 0) imageUrls.add(el.url)
+                is ContentElement.ImageGroup ->
+                    el.images.forEach { img ->
+                        if (img.width <= 0 || img.height <= 0) imageUrls.add(img.url)
+                    }
+                else -> Unit
+            }
+        }
+        if (imageUrls.isEmpty()) return els
+        val cached = imageDimensionCache.getMany(imageUrls)
+        if (cached.isEmpty()) return els
+
+        return els.map { el ->
+            when (el) {
+                is ContentElement.Image -> {
+                    if (el.width > 0 && el.height > 0) el
+                    else cached[el.url]?.let { el.copy(width = it.width, height = it.height) } ?: el
+                }
+                is ContentElement.ImageGroup -> el.copy(
+                    images = el.images.map { img ->
+                        if (img.width > 0 && img.height > 0) img
+                        else cached[img.url]?.let { img.copy(width = it.width, height = it.height) } ?: img
+                    }
+                )
+                else -> el
+            }
+        }
     }
 
     private fun getChapterSpineHrefs(book: EpubBook, chapterHref: String): List<String> {

@@ -12,6 +12,7 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.repository.ContentRepository
+import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
 import io.aatricks.easyreader.data.repository.content.EpubImageFetcher
 import io.aatricks.easyreader.data.repository.content.HttpMediaCacheFetcher
 import io.aatricks.easyreader.util.CrashRecorder
@@ -30,6 +31,7 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
     @Inject lateinit var contentRepository: ContentRepository
     @Inject lateinit var preferencesManager: PreferencesManager
     @Inject lateinit var workerFactory: HiltWorkerFactory
+    @Inject lateinit var imageDimensionCache: ImageDimensionCacheRepository
 
     // WorkManager pulls this lazily before its first enqueue, which happens after Hilt
     // injection has populated `workerFactory`. Using on-demand initialization (no manual
@@ -46,6 +48,14 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
         super.onCreate()
         CrashRecorder.install(this)
         prewarmLastReadChapter()
+        pruneImageDimensionCache()
+    }
+
+    private fun pruneImageDimensionCache() {
+        warmupScope.launch {
+            runCatching { imageDimensionCache.prune() }
+                .onFailure { Log.w(TAG, "image dim cache prune failed message=${it.message}") }
+        }
     }
 
     // Kick off chapter parse on a background coroutine so it overlaps Hilt graph build,

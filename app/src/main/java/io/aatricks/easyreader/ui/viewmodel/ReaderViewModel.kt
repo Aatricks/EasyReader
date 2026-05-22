@@ -9,6 +9,7 @@ import io.aatricks.easyreader.data.model.*
 import io.aatricks.easyreader.data.repository.ChapterListCache
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.ExploreRepository
+import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.ui.theme.AccentTheme
 import io.aatricks.easyreader.util.normalizeChapterList
@@ -37,7 +38,8 @@ class ReaderViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
     private val exploreRepository: ExploreRepository,
     private val preferencesManager: PreferencesManager,
-    private val chapterListCache: ChapterListCache
+    private val chapterListCache: ChapterListCache,
+    private val imageDimensionCache: ImageDimensionCacheRepository
 ) : BaseViewModel<ReaderViewModel.ReaderUiState>(ReaderUiState()) {
     private val progressController = ReaderProgressController(libraryRepository, viewModelScope)
     val progressState: StateFlow<ReaderProgressState> = progressController.progressState
@@ -65,6 +67,31 @@ class ReaderViewModel @Inject constructor(
     var hasUserInteractedSinceLoad: Boolean
         get() = progressController.hasUserInteractedSinceLoad
         private set(value) { progressController.hasUserInteractedSinceLoad = value }
+
+    val userHasDragged: Boolean
+        get() = progressController.userHasDragged
+
+    val restoreInProgress: Boolean
+        get() = progressController.restoreInProgress
+
+    fun markUserDragged() {
+        progressController.markUserDragged()
+    }
+
+    fun markRestoreDone() {
+        progressController.markRestoreDone()
+    }
+
+    fun beginRestore() {
+        progressController.beginRestore()
+    }
+
+    fun persistImageDimensions(imageUrl: String, width: Int, height: Int) {
+        if (imageUrl.isBlank() || width <= 0 || height <= 0) return
+        viewModelScope.launch {
+            imageDimensionCache.persist(imageUrl, width, height)
+        }
+    }
 
     private var restoredProgressSnapshot: ReaderProgressState?
         get() = progressController.restoredProgressSnapshot
