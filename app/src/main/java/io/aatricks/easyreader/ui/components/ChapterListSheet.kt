@@ -463,6 +463,7 @@ internal sealed class ChapterStatus {
     data object CurrentlyReading : ChapterStatus()
     data object Downloaded : ChapterStatus()
     data object Caching : ChapterStatus()
+    data object VerifyingDownload : ChapterStatus()
     data class DownloadIncomplete(val cached: Int, val total: Int) : ChapterStatus()
     data object InLibrary : ChapterStatus()
 }
@@ -488,10 +489,10 @@ internal fun chapterCacheStatusKind(
             return ChapterStatus.DownloadIncomplete(cacheState.cachedImages, cacheState.totalImages)
         }
     }
-    // No cache state yet but the DB remembers this chapter as downloaded — trust the DB to
-    // avoid flickering to "In library" between app launch and the first inspect refresh.
-    // Once the refresh runs, the branch above takes over and corrects the label if needed.
-    if (isDownloaded && cacheState == null) return ChapterStatus.Downloaded
+    // Device transfer / old installs can restore the DB flag without the corresponding
+    // files. Until a downloads-tier inspect proves the files are present, do not show the
+    // chapter as Downloaded.
+    if (isDownloaded && cacheState == null) return ChapterStatus.VerifyingDownload
     if (isInLibrary) return ChapterStatus.InLibrary
     return null
 }
@@ -510,6 +511,7 @@ internal fun chapterCacheStatusText(
     ChapterStatus.CurrentlyReading -> "Currently reading"
     ChapterStatus.Downloaded -> "Downloaded"
     ChapterStatus.Caching -> "Downloading..."
+    ChapterStatus.VerifyingDownload -> "Verifying download..."
     is ChapterStatus.DownloadIncomplete -> "Download incomplete: ${kind.cached}/${kind.total} images"
     ChapterStatus.InLibrary -> "In library"
     null -> null
@@ -520,6 +522,7 @@ internal fun chapterCacheStatusLabel(status: ChapterStatus?): String? = when (st
     ChapterStatus.CurrentlyReading -> stringResource(R.string.chapter_status_currently_reading)
     ChapterStatus.Downloaded -> stringResource(R.string.chapter_status_downloaded)
     ChapterStatus.Caching -> stringResource(R.string.chapter_status_caching)
+    ChapterStatus.VerifyingDownload -> stringResource(R.string.chapter_status_verifying_download)
     is ChapterStatus.DownloadIncomplete -> stringResource(
         R.string.chapter_status_download_incomplete,
         status.cached,

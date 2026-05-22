@@ -208,7 +208,7 @@ class ChapterListSheetSelectionTest {
     }
 
     @Test
-    fun `chapter cache status falls back to downloaded when db remembers download and cache state is missing`() {
+    fun `chapter cache status verifies db remembered download when cache state is missing`() {
         val status = chapterCacheStatusText(
             isCurrent = false,
             cacheState = null,
@@ -216,6 +216,6 @@ class ChapterListSheetSelectionTest {
             isDownloaded = true
         )
 
-        assertEquals("Downloaded", status)
+        assertEquals("Verifying download...", status)
     }
 }
