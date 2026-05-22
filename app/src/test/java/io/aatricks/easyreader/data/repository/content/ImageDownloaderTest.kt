@@ -15,6 +15,7 @@ import okhttp3.Response
 import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -85,6 +86,29 @@ class ImageDownloaderTest {
 
         assertTrue(result is ImageFetchResult.Success)
         assertEquals("https://www.mangabats.com/", refererHeader.get())
+    }
+
+    @Test
+    fun `executeImageRequest asks CDN for app-renderable image formats`() = runBlocking {
+        val imageUrl = "https://cdn.example.com/chapter/1.webp"
+        val acceptHeader = AtomicReference<String?>()
+
+        val client = createClient { chain ->
+            acceptHeader.set(chain.request().header("Accept"))
+            buildResponse(chain.request(), "fake-image-binary", "image/webp")
+        }
+        val downloader = ImageDownloader(client)
+
+        val result = downloader.executeImageRequest(
+            imageUrl = imageUrl,
+            pageUrl = "https://example.com/chapter-1",
+            priority = ImageRequestPriority.USER_REQUESTED,
+            destinationFile = tempFolder.newFile("accepted.webp")
+        )
+
+        assertTrue(result is ImageFetchResult.Success)
+        assertEquals(ImageDownloader.SUPPORTED_IMAGE_ACCEPT_HEADER, acceptHeader.get())
+        assertFalse(acceptHeader.get().orEmpty().contains("avif", ignoreCase = true))
     }
 
     @Test

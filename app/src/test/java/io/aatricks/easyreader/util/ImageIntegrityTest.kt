@@ -122,10 +122,21 @@ class ImageIntegrityTest {
     }
 
     @Test
-    fun `accepts SVG`() {
+    fun `rejects SVG because app has no registered SVG decoder`() {
         val svg = "<svg xmlns='http://www.w3.org/2000/svg'></svg>".toByteArray()
         val file = tempFolder.newFile("ok.svg").apply { writeBytes(svg) }
-        assertTrue(ImageIntegrity.isValidImageFile(file))
+        assertFalse(ImageIntegrity.isValidImageFile(file))
+    }
+
+    @Test
+    fun `rejects AVIF because platform decode support is not guaranteed`() {
+        val avif = byteArrayOf(
+            0x00, 0x00, 0x00, 0x18,
+            'f'.code.toByte(), 't'.code.toByte(), 'y'.code.toByte(), 'p'.code.toByte(),
+            'a'.code.toByte(), 'v'.code.toByte(), 'i'.code.toByte(), 'f'.code.toByte()
+        ) + ByteArray(32)
+        val file = tempFolder.newFile("cdn-webp-that-is-actually-avif.webp").apply { writeBytes(avif) }
+        assertFalse(ImageIntegrity.isValidImageFile(file))
     }
 
     @Test

@@ -32,6 +32,7 @@ import io.aatricks.easyreader.ui.util.ImageDimensions
 import io.aatricks.easyreader.ui.util.effectiveImageDimensions
 import io.aatricks.easyreader.ui.util.imageAspectRatio
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
+import io.aatricks.easyreader.data.repository.content.ImageDownloader
 import java.io.File
 
 internal fun shouldUseLightweightImageContainer(enableZoom: Boolean): Boolean = !enableZoom
@@ -233,6 +234,7 @@ fun ReaderImageView(
                             .set("Referer", readerViewModel.contentRepository.getReferer(
                                 readerImageRefererSource(imageUrl, pageUrl)
                             ))
+                            .set("Accept", ImageDownloader.SUPPORTED_IMAGE_ACCEPT_HEADER)
                             .set("User-Agent", "Mozilla/5.0")
                             .build()
                     )

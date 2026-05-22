@@ -54,6 +54,7 @@ class ImageDownloader @Inject constructor(
         private const val MAX_DIMENSION_SNIFF_BYTES = 64 * 1024L // 64KB
         private const val MANGABAT_REFERER = "https://www.mangabats.com/"
         private const val MANGANATO_REFERER = "https://manganato.com/"
+        const val SUPPORTED_IMAGE_ACCEPT_HEADER = "image/webp,image/jpeg,image/png,image/gif,image/*;q=0.8,*/*;q=0.5"
     }
 
     private val shortTimeoutClient = okHttpClient.newBuilder()
@@ -99,6 +100,7 @@ class ImageDownloader @Inject constructor(
                         val requestBuilder = Request.Builder()
                             .url(imageUrl)
                             .addHeader("User-Agent", "Mozilla/5.0")
+                            .addHeader("Accept", SUPPORTED_IMAGE_ACCEPT_HEADER)
                             .addHeader("Referer", getReferer(pageUrl))
                         if (rangeHeader != null) {
                             requestBuilder.addHeader("Range", rangeHeader)

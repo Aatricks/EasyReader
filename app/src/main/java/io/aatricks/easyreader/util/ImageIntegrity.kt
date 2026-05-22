@@ -4,8 +4,8 @@ import java.io.File
 
 /**
  * Shallow integrity check for cached image files. Catches the failure modes
- * that `File.exists()` alone would miss without rejecting valid CDN-served
- * files that have format-specific metadata, padding, or container variants:
+ * that `File.exists()` alone would miss while accepting only formats this app's
+ * registered Coil decoders can render reliably:
  *   1. Zero-byte / single-byte files.
  *   2. HTML error pages (Cloudflare/CDN challenges) returned with an image content-type.
  *   3. Totally wrong payloads with no supported image magic bytes.
@@ -28,8 +28,11 @@ object ImageIntegrity {
             ImageFormat.GIF -> hasGifTrailer(file)
             ImageFormat.WEBP -> hasCompleteRiffPayload(header, file.length())
             ImageFormat.BMP -> hasCompleteBmpPayload(header, file.length())
+            // These are valid image containers, but this app does not register decoders
+            // that can render them reliably across supported Android versions. Counting
+            // them as downloaded produces "Downloaded" rows that open to "Image unavailable".
             ImageFormat.AVIF_HEIF,
-            ImageFormat.SVG -> true
+            ImageFormat.SVG -> false
         }
     }
 
