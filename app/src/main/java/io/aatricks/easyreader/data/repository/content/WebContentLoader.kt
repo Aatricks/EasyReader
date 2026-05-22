@@ -108,15 +108,26 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     )
 
     private val inFlightImageDownloads = mutableMapOf<String, InFlightImageDownload>()
-    private val inFlightChapterPrefetches = mutableMapOf<String, Deferred<PrefetchResult>>()
+    private val inFlightChapterPrefetches = mutableMapOf<String, InFlightChapterPrefetch>()
     private val inFlightHtmlFetches = mutableMapOf<String, InFlightHtmlFetch>()
+
+    private data class InFlightChapterPrefetch(
+        val mode: PrefetchMode,
+        val deferred: Deferred<PrefetchResult>
+    )
 
     private data class ParsedImageMemo(
         val mtime: Long,
         val length: Long,
         val imageUrls: List<String>,
         val hasImageTags: Boolean,
-        val bodyNonEmpty: Boolean
+        val bodyNonEmpty: Boolean,
+        // True when the HTML carries any of the well-known manga-reader CSS hooks (empty
+        // .container-chapter-reader, img[data-page-index], Astro page-island markers, etc).
+        // Used by inspectCacheInternal to refuse the "novel text page" completeness branch
+        // when the page is clearly a manga reader whose pages are JS-rendered — those would
+        // otherwise be marked Downloaded with zero images on disk.
+        val hasMangaReaderHints: Boolean
     )
 
     // Bounded LRU so chapter-load memos do not grow unboundedly across long sessions.
@@ -244,14 +255,28 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
         repeat(maxAttempts) {
             val existing = chapterPrefetchMutex.withLock { inFlightChapterPrefetches[url] }
-            if (existing != null) {
-                val result = runCatching { existing.await() }
+            // A USER_REQUESTED caller must NOT reuse an in-flight SPECULATIVE prefetch:
+            // SPECULATIVE only downloads HTML and would return isComplete=false without
+            // ever fetching images. Awaiting it makes the user's tap "finish" without
+            // doing the work. Cancel the SPECULATIVE and run a real USER_REQUESTED.
+            if (existing != null && (mode == PrefetchMode.SPECULATIVE || existing.mode == PrefetchMode.USER_REQUESTED)) {
+                val result = runCatching { existing.deferred.await() }
                     .getOrElse { inspectCache(url) }
                     .copy(isInProgress = chapterPrefetchMutex.withLock { url in inFlightChapterPrefetches })
 
                 if (result.isComplete || !result.isRetryable || mode == PrefetchMode.SPECULATIVE) return result
                 lastResult = result
                 return@repeat
+            }
+            if (existing != null) {
+                // USER_REQUESTED arriving while a SPECULATIVE is in flight: drop the
+                // speculative reservation so our fresh deferred can register and run.
+                chapterPrefetchMutex.withLock {
+                    if (inFlightChapterPrefetches[url]?.deferred === existing.deferred) {
+                        inFlightChapterPrefetches.remove(url)
+                    }
+                }
+                existing.deferred.cancel()
             }
 
             // CoroutineStart.LAZY so the deferred is created but not yet running until the
@@ -265,7 +290,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                 created.invokeOnCompletion {
                     repositoryScope.launch {
                         chapterPrefetchMutex.withLock {
-                            if (inFlightChapterPrefetches[url] === created) {
+                            if (inFlightChapterPrefetches[url]?.deferred === created) {
                                 inFlightChapterPrefetches.remove(url)
                             }
                         }
@@ -275,11 +300,11 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
             val active = chapterPrefetchMutex.withLock {
                 val current = inFlightChapterPrefetches[url]
-                if (current != null) {
+                if (current != null && current.mode == PrefetchMode.USER_REQUESTED) {
                     deferred.cancel()
-                    current
+                    current.deferred
                 } else {
-                    inFlightChapterPrefetches[url] = deferred
+                    inFlightChapterPrefetches[url] = InFlightChapterPrefetch(mode, deferred)
                     deferred
                 }
             }
@@ -1121,6 +1146,11 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             !htmlCached -> false
             imageUrls.isNotEmpty() -> effectiveCached == imageUrls.size
             memo?.hasImageTags == true -> false
+            // The page carries manga-reader CSS hooks but the parser found zero images —
+            // typically a JS-rendered chapter where static HTML is just the shell. Refuse
+            // to claim Downloaded; the user would otherwise see a 1-second tap that ends
+            // with a chapter that has nothing to render offline.
+            memo?.hasMangaReaderHints == true -> false
             // A chapter URL with zero parseable images AND zero raw img tags is a JS-rendered
             // page (Next.js, SPA) where the static HTML carries only the shell. The
             // bodyNonEmpty heuristic that follows is correct for novel text pages but would
@@ -1185,13 +1215,41 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         }.getOrDefault(emptyList())
         val hasImageTags = document.select("img[src], image[href], image[xlink|href], source[srcset]").isNotEmpty()
         val bodyNonEmpty = document.body()?.html()?.isNotBlank() == true
+        val hasMangaReaderHints = detectMangaReaderHints(document)
         return ParsedImageMemo(
             mtime = htmlFile?.lastModified() ?: 0L,
             length = htmlFile?.length() ?: 0L,
             imageUrls = urls,
             hasImageTags = hasImageTags,
-            bodyNonEmpty = bodyNonEmpty
+            bodyNonEmpty = bodyNonEmpty,
+            hasMangaReaderHints = hasMangaReaderHints
         )
+    }
+
+    // A chapter page intends to show manga even if the static HTML hasn't rendered the
+    // page list yet (JS-rendered). Presence of any of these selectors is a strong signal
+    // the page should not be treated as a "novel-style text page" for completeness.
+    private fun detectMangaReaderHints(document: Document): Boolean {
+        val selector = listOf(
+            ".container-chapter-reader",
+            ".reader-content",
+            ".chapter-content",
+            ".chapter-img",
+            ".read-content",
+            ".container-reading",
+            ".vung-doc",
+            "div.page-break",
+            "img[data-page-index]",
+            "div[data-page]",
+            "[class*=\"chapter-reader\"]",
+            "[class*=\"manga-reader\"]"
+        ).joinToString(", ")
+        if (document.selectFirst(selector) != null) return true
+        // Astro / SSR page-island payloads embed `pages:[...]` lists for the reader.
+        val raw = document.html()
+        if (raw.contains("\"pages\"") && raw.contains("\"url\"") && raw.contains("/chapters/")) return true
+        if (raw.contains("chapterImages") && raw.contains("[\"")) return true
+        return false
     }
 
     private fun groupSimilarElements(elements: List<ContentElement>): List<ContentElement> {

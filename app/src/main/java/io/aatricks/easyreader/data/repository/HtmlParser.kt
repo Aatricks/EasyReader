@@ -50,10 +50,24 @@ class HtmlParser @Inject constructor() {
     fun parse(document: Document, url: String): List<ContentElement> {
         cleanDocument(document)
 
-        val images = parseImages(document, url)
+        var images = parseImages(document, url)
         val paragraphs = parseParagraphs(document)
 
         val filteredParagraphs = filterParagraphs(paragraphs, document.title())
+
+        // Some manga sites (Mangabat, Asura) embed the chapter image list in inline JS
+        // (`chapterImages = [...]`, Astro page-island JSON, etc.) and only hardcode the
+        // cover image as a static <img>. Without this fallback the parser sees 1 image,
+        // the downloader marks the chapter "complete" after fetching the cover, and the
+        // reader shows a single page offline. Merge JS-extracted URLs into the image list
+        // for chapter URLs where the static parse looks suspiciously thin.
+        if (isChapterPage(url) && images.size <= 2) {
+            val jsImages = extractInlineScriptImageUrls(document, url, alreadyKnown = images.map { it.url }.toSet())
+            if (jsImages.isNotEmpty()) {
+                images = (images + jsImages.map { ContentElement.Image(url = it, width = 0, height = 0) })
+                    .distinctBy { it.url }
+            }
+        }
 
         // Chapter pages from manga sites legitimately have many paragraphs of footer text
         // (comments, ads, "if you want to read free manga..."). If any chapter image was
@@ -69,6 +83,72 @@ class HtmlParser @Inject constructor() {
         }
 
         return mergeAndFormatParagraphs(filteredParagraphs)
+    }
+
+    /**
+     * Mangabat / Asura / other JS-rendered chapter pages embed the real page-image list
+     * inside `<script>` blocks. This pulls them out so the parser doesn't have to wait
+     * for a real browser to execute JS. Two patterns covered:
+     *
+     *  - Mangabat-style: `var chapterImages = ["slug/0.webp", ...]` plus `var cdns = ["https://..."]`.
+     *    Each entry is appended to the first CDN to form an absolute URL.
+     *  - Astro/SPA-style: `"url":"https://cdn..."` repeated inside a serialized state blob.
+     *
+     * Both extractors are intentionally narrow — they look for image-y URL strings and
+     * combine them with the prefix the page itself defines. Returned URLs are filtered to
+     * http(s) and to known image extensions to avoid pulling in script/CSS asset URLs.
+     */
+    private fun extractInlineScriptImageUrls(
+        document: Document,
+        pageUrl: String,
+        alreadyKnown: Set<String>
+    ): List<String> {
+        val scriptBlob = document.select("script").joinToString("\n") { it.data() }
+        val raw = document.html()
+        val collected = LinkedHashSet<String>()
+
+        val cdnMatch = Regex("""(?:var\s+)?cdns\s*=\s*\[\s*"([^"]+)"""")
+            .find(scriptBlob)
+            ?.groupValues?.getOrNull(1)
+            ?.replace("\\/", "/")
+            ?.trimEnd('/')
+        Regex("""(?:var\s+)?chapterImages\s*=\s*\[([^\]]+)\]""").find(scriptBlob)?.let { match ->
+            val arr = match.groupValues[1]
+            Regex(""""([^"]+\.(?:webp|jpg|jpeg|png|gif))"""", RegexOption.IGNORE_CASE)
+                .findAll(arr)
+                .forEach { m ->
+                    val path = m.groupValues[1].replace("\\/", "/").trimStart('/')
+                    val abs = when {
+                        path.startsWith("http") -> path
+                        cdnMatch != null -> "$cdnMatch/$path"
+                        else -> resolveImageUrl(path, pageUrl)
+                    }
+                    collected.add(abs)
+                }
+        }
+
+        Regex(""""url"\s*(?::|,)\s*\[?\s*\d*\s*,?\s*"(https?://[^"]+\.(?:webp|jpg|jpeg|png|gif))""""", RegexOption.IGNORE_CASE)
+            .findAll(raw)
+            .forEach { collected.add(it.groupValues[1].replace("\\/", "/")) }
+
+        return collected
+            .asSequence()
+            .filter { it !in alreadyKnown }
+            .filter { it.startsWith("http") }
+            .filter { !isLikelyDecorativeUrl(it) }
+            .toList()
+    }
+
+    private fun isLikelyDecorativeUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains("/thumb/") ||
+            lower.contains("/logo") ||
+            lower.contains("/banner") ||
+            lower.contains("/cover") ||
+            lower.contains("loadingimg") ||
+            lower.contains("og-image") ||
+            lower.contains("ads") ||
+            lower.contains("avatar")
     }
 
     private fun isChapterPage(url: String): Boolean {
