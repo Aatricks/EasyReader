@@ -86,10 +86,14 @@ class ImageCache @Inject constructor(
     fun promoteToDownloads(url: String): File? {
         val key = CacheKeyUtils.keyFor(url)
         val target = File(mediaDownloadsDir, key)
-        if (target.exists()) return target
+        if (target.exists()) {
+            if (target.isCachedImageValid()) return target
+            target.delete()
+        }
         val source = File(mediaCacheDir, key).takeIf { it.exists() }
             ?: File(mediaCacheDir, url.hashCode().toString()).takeIf { it.exists() }
             ?: return null
+        if (!source.isCachedImageValid()) return null
         target.parentFile?.mkdirs()
         if (source.renameTo(target)) return target
         // Cross-filesystem promotions fall back to copy+delete. A copyTo failure
@@ -98,6 +102,10 @@ class ImageCache @Inject constructor(
         // this image as missing and the inspect path drives the correct demotion.
         return runCatching {
             source.copyTo(target, overwrite = true)
+            if (!target.isCachedImageValid()) {
+                target.delete()
+                return@runCatching null
+            }
             source.delete()
             target
         }.getOrNull()

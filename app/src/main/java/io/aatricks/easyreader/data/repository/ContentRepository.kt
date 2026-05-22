@@ -123,19 +123,12 @@ class ContentRepository @Inject constructor(
 
     suspend fun downloadAndCacheImage(
         imageUrl: String,
-        pageUrl: String,
-        tier: StorageTier = StorageTier.CACHE
+        pageUrl: String
     ): File? = withContext(Dispatchers.IO) {
-        webLoader.downloadAndCacheImage(imageUrl, pageUrl, tier).also {
+        webLoader.downloadAndCacheImage(imageUrl, pageUrl).also {
             trimCachesInternal()
         }
     }
-
-    fun isDownloaded(url: String): Boolean = webLoader.isDownloaded(url)
-
-    fun isImageDownloaded(imageUrl: String): Boolean = webLoader.isImageDownloaded(imageUrl)
-
-    fun promoteImageToDownloads(imageUrl: String): File? = webLoader.promoteImageToDownloads(imageUrl)
 
     suspend fun warmImage(imageUrl: String, pageUrl: String): Boolean = withContext(Dispatchers.IO) {
         (webLoader.warmImage(imageUrl, pageUrl) != null).also {

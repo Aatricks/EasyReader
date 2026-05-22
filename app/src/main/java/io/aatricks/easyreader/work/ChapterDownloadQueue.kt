@@ -117,7 +117,7 @@ class WorkManagerChapterDownloadQueue @Inject constructor(
             cachedImages = payload.getInt(ChapterDownloadWorker.KEY_CACHED_IMAGES, 0),
             isComplete = payload.getBoolean(ChapterDownloadWorker.KEY_IS_COMPLETE, false) &&
                 state == WorkInfo.State.SUCCEEDED,
-            isInProgress = inProgress && !payload.getBoolean(ChapterDownloadWorker.KEY_IS_COMPLETE, false),
+            isInProgress = inProgress,
             isRetryable = payload.getBoolean(ChapterDownloadWorker.KEY_IS_RETRYABLE, state != WorkInfo.State.SUCCEEDED),
             isPersistentDownload = payload.getBoolean(ChapterDownloadWorker.KEY_IS_PERSISTENT_DOWNLOAD, true),
             hasPermanentFailures = payload.getBoolean(ChapterDownloadWorker.KEY_HAS_PERMANENT_FAILURES, false)

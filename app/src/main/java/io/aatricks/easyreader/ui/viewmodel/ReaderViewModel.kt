@@ -1061,12 +1061,7 @@ class ReaderViewModel @Inject constructor(
         if (!imageUrl.startsWith("http")) return
 
         viewModelScope.launch {
-            val tier = if (contentRepository.isDownloaded(pageUrl)) {
-                io.aatricks.easyreader.data.repository.content.StorageTier.DOWNLOADS
-            } else {
-                io.aatricks.easyreader.data.repository.content.StorageTier.CACHE
-            }
-            runCatching { contentRepository.downloadAndCacheImage(imageUrl, pageUrl, tier) }
+            runCatching { contentRepository.downloadAndCacheImage(imageUrl, pageUrl) }
         }
     }
 
@@ -1074,12 +1069,7 @@ class ReaderViewModel @Inject constructor(
         if (!imageUrl.startsWith("http")) return
 
         viewModelScope.launch {
-            val tier = if (contentRepository.isDownloaded(pageUrl)) {
-                io.aatricks.easyreader.data.repository.content.StorageTier.DOWNLOADS
-            } else {
-                io.aatricks.easyreader.data.repository.content.StorageTier.CACHE
-            }
-            runCatching { contentRepository.downloadAndCacheImage(imageUrl, pageUrl, tier) }
+            runCatching { contentRepository.downloadAndCacheImage(imageUrl, pageUrl) }
         }
     }
 
@@ -1327,4 +1317,3 @@ class ReaderViewModel @Inject constructor(
         }
     }
 }
-

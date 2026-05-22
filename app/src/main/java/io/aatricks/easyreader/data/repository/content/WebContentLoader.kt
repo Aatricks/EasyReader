@@ -19,9 +19,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -66,7 +64,6 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         private const val USER_REQUEST_ATTEMPTS = 4
         private const val SHORT_REQUEST_ATTEMPTS = 2
         private const val USER_REQUEST_PREFETCH_PASSES = 2
-        private const val FAST_PATH_USER_IMAGE_COUNT = 8
         private const val MAX_SPECULATIVE_PREFETCH_ATTEMPTS = 1
         private const val MAX_USER_PREFETCH_ATTEMPTS = 1
         private const val MAX_DIMENSION_SNIFF_BYTES = 64 * 1024L // 64KB
@@ -325,10 +322,14 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
     suspend fun downloadAndCacheImage(
         imageUrl: String,
-        pageUrl: String,
-        tier: StorageTier = StorageTier.CACHE
+        pageUrl: String
     ): File? = withContext(Dispatchers.IO) {
-        val result = downloadAndCacheImageInternal(imageUrl, pageUrl, ImageRequestPriority.USER_REQUESTED, tier)
+        val result = downloadAndCacheImageInternal(
+            imageUrl,
+            pageUrl,
+            ImageRequestPriority.USER_REQUESTED,
+            StorageTier.CACHE
+        )
         (result as? ImageDownloadResult.Success)?.file
     }
 
@@ -354,8 +355,6 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     fun isDownloaded(url: String): Boolean = primaryCachedFile(url, StorageTier.DOWNLOADS).exists()
 
     fun isImageDownloaded(imageUrl: String): Boolean = imageCache.isDownloaded(imageUrl)
-
-    fun promoteImageToDownloads(imageUrl: String): File? = imageCache.promoteToDownloads(imageUrl)
 
     fun clearCache(url: String) {
         val cachedFile = findExistingCachedFile(url)
@@ -799,8 +798,6 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
         var allImagesRetryable = true
         val permanentFailuresAccumulated = mutableListOf<String>()
-        val backgroundJobs = mutableListOf<Job>()
-
         val emitProgress: (suspend () -> Unit)? = if (onProgress != null) {
             {
                 val cached = imageUrls.count { imageUrl ->
@@ -845,16 +842,12 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                         break
                     }
 
-                    val isFirstPass = pass == 0
-                    val fastPath = if (isFirstPass) missingImages.take(FAST_PATH_USER_IMAGE_COUNT) else missingImages
-                    val backgroundRest = if (isFirstPass) missingImages.drop(FAST_PATH_USER_IMAGE_COUNT) else emptyList()
-
                     Log.d(
                         TAG,
-                        "USER_REQUESTED prefetch pass=$pass fastPath=${fastPath.size} bgRest=${backgroundRest.size} url=$safeUrl"
+                        "USER_REQUESTED prefetch pass=$pass missing=${missingImages.size} url=$safeUrl"
                     )
                     val report = cacheImages(
-                        imageUrls = fastPath,
+                        imageUrls = missingImages,
                         pageUrl = url,
                         priority = ImageRequestPriority.USER_REQUESTED,
                         writeTier = StorageTier.DOWNLOADS,
@@ -863,28 +856,12 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                     )
                     permanentFailuresAccumulated.addAll(report.permanentFailures)
 
-                    if (backgroundRest.isNotEmpty()) {
-                        backgroundJobs += repositoryScope.launch {
-                            val bgReport = cacheImages(
-                                imageUrls = backgroundRest,
-                                pageUrl = url,
-                                priority = ImageRequestPriority.USER_REQUESTED,
-                                writeTier = StorageTier.DOWNLOADS,
-                                maxConcurrency = MAX_CONCURRENT_DOWNLOADS,
-                                onImageCached = emitProgress
-                            )
-                            if (bgReport.permanentFailures.isNotEmpty()) {
-                                recordPermanentFailures(url, bgReport.permanentFailures)
-                            }
-                        }
-                    }
-
                     allImagesRetryable = report.isRetryable
                     if (report.retryableFailures.isEmpty() && report.permanentFailures.isNotEmpty()) {
                         Log.d(TAG, "USER_REQUESTED prefetch stop url=$safeUrl - all remaining failures are permanent")
                         break
                     }
-                    if (report.isComplete && backgroundRest.isEmpty()) break
+                    if (report.isComplete) break
 
                     if (pass < USER_REQUEST_PREFETCH_PASSES - 1) {
                         delay(250L * (pass + 1))
@@ -900,10 +877,6 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
         if (permanentFailuresAccumulated.isNotEmpty()) {
             recordPermanentFailures(url, permanentFailuresAccumulated)
-        }
-
-        if (backgroundJobs.isNotEmpty()) {
-            backgroundJobs.joinAll()
         }
 
         val inspected = inspectCacheInternal(
@@ -986,7 +959,11 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         imageCache.findExistingCachedMediaFile(imageUrl)?.let { existingFile ->
             if (writeTier == StorageTier.DOWNLOADS && !imageCache.isDownloaded(imageUrl)) {
                 val promoted = imageCache.promoteToDownloads(imageUrl)
-                return@withContext ImageDownloadResult.Success(promoted ?: existingFile)
+                return@withContext if (promoted != null) {
+                    ImageDownloadResult.Success(promoted)
+                } else {
+                    ImageDownloadResult.Failure(true)
+                }
             }
             return@withContext ImageDownloadResult.Success(existingFile)
         }

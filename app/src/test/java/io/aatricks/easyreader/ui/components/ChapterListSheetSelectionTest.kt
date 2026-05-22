@@ -108,13 +108,33 @@ class ChapterListSheetSelectionTest {
                 htmlCached = true,
                 totalImages = 5,
                 cachedImages = 5,
-                isComplete = true
+                isComplete = true,
+                isPersistentDownload = true
             ),
             isInLibrary = true,
             isDownloaded = true
         )
 
         assertEquals("Downloaded", status)
+    }
+
+    @Test
+    fun `chapter cache status does not trust non-persistent complete cache as downloaded`() {
+        val status = chapterCacheStatusText(
+            isCurrent = false,
+            cacheState = PrefetchResult(
+                url = "url-1",
+                htmlCached = true,
+                totalImages = 5,
+                cachedImages = 5,
+                isComplete = true,
+                isPersistentDownload = false
+            ),
+            isInLibrary = true,
+            isDownloaded = true
+        )
+
+        assertEquals("In library", status)
     }
 
     @Test

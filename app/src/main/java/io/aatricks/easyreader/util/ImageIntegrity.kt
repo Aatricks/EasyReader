@@ -17,11 +17,20 @@ object ImageIntegrity {
     // alone is 8 bytes, JPEG SOI is 2 bytes, WebP needs 12 bytes for the RIFF+WEBP brand.
     private const val MIN_VALID_IMAGE_BYTES = 16L
     private const val SNIFF_BYTES = 32
+    private const val TAIL_BYTES = 64 * 1024
 
     fun isValidImageFile(file: File): Boolean {
         if (!file.exists() || file.length() < MIN_VALID_IMAGE_BYTES) return false
         val header = readHeader(file) ?: return false
-        return classifyFormat(header) != null
+        return when (classifyFormat(header) ?: return false) {
+            ImageFormat.JPEG -> hasJpegEndMarker(file)
+            ImageFormat.PNG -> hasPngEndChunk(file)
+            ImageFormat.GIF -> hasGifTrailer(file)
+            ImageFormat.WEBP -> hasCompleteRiffPayload(header, file.length())
+            ImageFormat.BMP -> hasCompleteBmpPayload(header, file.length())
+            ImageFormat.AVIF_HEIF,
+            ImageFormat.SVG -> true
+        }
     }
 
     private enum class ImageFormat { JPEG, PNG, GIF, WEBP, BMP, AVIF_HEIF, SVG }
@@ -78,4 +87,62 @@ object ImageIntegrity {
             if (read <= 0) null else bytes.copyOf(read)
         }
     }.getOrNull()
+
+    private fun hasJpegEndMarker(file: File): Boolean =
+        readTail(file)?.containsSequence(byteArrayOf(0xFF.toByte(), 0xD9.toByte())) == true
+
+    private fun hasPngEndChunk(file: File): Boolean =
+        readTail(file)?.containsSequence(
+            byteArrayOf(
+                0x00, 0x00, 0x00, 0x00,
+                'I'.code.toByte(), 'E'.code.toByte(), 'N'.code.toByte(), 'D'.code.toByte()
+            )
+        ) == true
+
+    private fun hasGifTrailer(file: File): Boolean =
+        readTail(file)?.contains(0x3B.toByte()) == true
+
+    private fun hasCompleteRiffPayload(header: ByteArray, fileLength: Long): Boolean {
+        if (header.size < 8) return false
+        val declaredPayloadSize =
+            (header[4].toLong() and 0xFF) or
+                ((header[5].toLong() and 0xFF) shl 8) or
+                ((header[6].toLong() and 0xFF) shl 16) or
+                ((header[7].toLong() and 0xFF) shl 24)
+        return fileLength >= declaredPayloadSize + 8L
+    }
+
+    private fun hasCompleteBmpPayload(header: ByteArray, fileLength: Long): Boolean {
+        if (header.size < 6) return false
+        val declaredFileSize =
+            (header[2].toLong() and 0xFF) or
+                ((header[3].toLong() and 0xFF) shl 8) or
+                ((header[4].toLong() and 0xFF) shl 16) or
+                ((header[5].toLong() and 0xFF) shl 24)
+        return declaredFileSize >= 14L && fileLength >= declaredFileSize
+    }
+
+    private fun readTail(file: File): ByteArray? = runCatching {
+        file.inputStream().use { stream ->
+            val skip = (file.length() - TAIL_BYTES).coerceAtLeast(0L)
+            if (skip > 0) stream.skip(skip)
+            stream.readBytes()
+        }
+    }.getOrNull()
+
+    private fun ByteArray.containsSequence(needle: ByteArray): Boolean {
+        if (needle.isEmpty()) return true
+        if (size < needle.size) return false
+        for (start in 0..(size - needle.size)) {
+            var matched = true
+            for (offset in needle.indices) {
+                if (this[start + offset] != needle[offset]) {
+                    matched = false
+                    break
+                }
+            }
+            if (matched) return true
+        }
+        return false
+    }
 }

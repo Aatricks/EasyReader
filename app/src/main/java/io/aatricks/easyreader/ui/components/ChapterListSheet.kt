@@ -481,8 +481,10 @@ internal fun chapterCacheStatusKind(
         // images ended up as permanent failures (404/403/etc.) are reported as incomplete so
         // the user sees the missing-image count and a retry control instead of a misleading
         // "Downloaded" badge that would then surface "Image unavailable" on open.
-        if (cacheState.isComplete && !cacheState.hasPermanentFailures) return ChapterStatus.Downloaded
-        if (cacheState.totalImages > 0) {
+        if (cacheState.isPersistentDownload && cacheState.isComplete && !cacheState.hasPermanentFailures) {
+            return ChapterStatus.Downloaded
+        }
+        if (cacheState.isPersistentDownload && cacheState.totalImages > 0) {
             return ChapterStatus.DownloadIncomplete(cacheState.cachedImages, cacheState.totalImages)
         }
     }

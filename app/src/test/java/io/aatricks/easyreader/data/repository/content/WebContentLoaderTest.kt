@@ -4,6 +4,7 @@ import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.ContentResult
 import io.aatricks.easyreader.data.model.ImageRequestPriority
 import io.aatricks.easyreader.data.model.PrefetchMode
+import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.repository.HtmlParser
 import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
 import kotlinx.coroutines.async
@@ -241,7 +242,7 @@ class WebContentLoaderTest {
                 if (request.url.toString() == imageUrl && request.header("Range") == null) {
                     imageRequests.incrementAndGet()
                     Thread.sleep(150)
-                    buildResponse(request, "fake-image-binary", "image/jpeg")
+                    buildByteResponse(request, tinyPng(width = 2, height = 3), "image/png")
                 } else {
                     buildResponse(request, "", "text/plain", code = 404)
                 }
@@ -282,7 +283,7 @@ class WebContentLoaderTest {
                 when (url) {
                     userUrl -> buildResponse(request, "<html><head><title>User</title></head><body></body></html>", "text/html")
                     speculativeUrl -> buildResponse(request, "<html><head><title>Spec</title></head><body></body></html>", "text/html")
-                    userImages[0] -> buildResponse(request, "img-1", "image/jpeg")
+                    userImages[0] -> buildByteResponse(request, tinyPng(width = 2, height = 3), "image/png")
                     userImages[1] -> buildResponse(request, "", "text/plain", code = 500)
                     else -> {
                         if (url in speculativeImages && request.header("Range") == null) {
@@ -382,7 +383,7 @@ class WebContentLoaderTest {
                         "<html><head><title>Reader Cache</title></head><body><img src=\"$imageUrl\"></body></html>",
                         "text/html"
                     )
-                    imageUrl -> buildResponse(chain.request(), "image-body", "image/jpeg")
+                    imageUrl -> buildByteResponse(chain.request(), tinyPng(width = 2, height = 3), "image/png")
                     else -> buildResponse(chain.request(), "", "text/plain", code = 404)
                 }
             }
@@ -417,7 +418,7 @@ class WebContentLoaderTest {
                         "<html><head><title>Download</title></head><body><img src=\"$imageUrl\"></body></html>",
                         "text/html"
                     )
-                    imageUrl -> buildResponse(chain.request(), "image-body", "image/jpeg")
+                    imageUrl -> buildByteResponse(chain.request(), tinyPng(width = 2, height = 3), "image/png")
                     else -> buildResponse(chain.request(), "", "text/plain", code = 404)
                 }
             }
@@ -433,6 +434,94 @@ class WebContentLoaderTest {
         assertTrue(loader.isDownloaded(chapterUrl))
         assertTrue(downloadState.isComplete)
         assertTrue(downloadState.isPersistentDownload)
+    }
+
+    @Test
+    fun `user requested prefetch returns only after all images are durable downloads`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-download-many"
+        val imageUrls = (1..12).map { "https://example.com/download-many-$it.png" }
+        val htmlParser = mock<HtmlParser>()
+        val imageRequests = AtomicInteger(0)
+        val progress = java.util.Collections.synchronizedList(mutableListOf<PrefetchResult>())
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                when (val url = request.url.toString()) {
+                    chapterUrl -> buildResponse(
+                        request,
+                        "<html><head><title>Download Many</title></head><body></body></html>",
+                        "text/html"
+                    )
+
+                    in imageUrls -> {
+                        imageRequests.incrementAndGet()
+                        if (url == imageUrls.last()) Thread.sleep(150)
+                        buildByteResponse(request, tinyPng(width = 2, height = 3), "image/png")
+                    }
+
+                    else -> buildResponse(request, "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(imageUrls.map { ContentElement.Image(it) })
+
+        val result = loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED) { progress += it }
+        val downloadState = loader.inspectDownload(chapterUrl)
+
+        assertEquals(imageUrls.size, imageRequests.get())
+        assertTrue(result.isComplete)
+        assertTrue(result.isPersistentDownload)
+        assertEquals(imageUrls.size, result.cachedImages)
+        assertTrue(downloadState.isComplete)
+        assertEquals(imageUrls.size, downloadState.cachedImages)
+        assertTrue(imageUrls.all { loader.isImageDownloaded(it) })
+        assertTrue(progress.none { it.isComplete })
+    }
+
+    @Test
+    fun `user requested prefetch does not complete when an image payload is structurally incomplete`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-truncated-image"
+        val goodImageUrl = "https://example.com/good.png"
+        val truncatedImageUrl = "https://example.com/truncated.jpg"
+        val htmlParser = mock<HtmlParser>()
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                when (request.url.toString()) {
+                    chapterUrl -> buildResponse(
+                        request,
+                        "<html><head><title>Truncated</title></head><body></body></html>",
+                        "text/html"
+                    )
+
+                    goodImageUrl -> buildByteResponse(request, tinyPng(width = 2, height = 3), "image/png")
+                    truncatedImageUrl -> buildByteResponse(
+                        request,
+                        VALID_JPEG_HEADER + ByteArray(80),
+                        "image/jpeg"
+                    )
+
+                    else -> buildResponse(request, "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(
+            listOf(ContentElement.Image(goodImageUrl), ContentElement.Image(truncatedImageUrl))
+        )
+
+        val result = loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
+        val downloadState = loader.inspectDownload(chapterUrl)
+
+        assertFalse(result.isComplete)
+        assertTrue(result.isRetryable)
+        assertEquals(2, result.totalImages)
+        assertEquals(1, result.cachedImages)
+        assertFalse(loader.isImageDownloaded(truncatedImageUrl))
+        assertFalse(downloadState.isComplete)
     }
 
     @Test

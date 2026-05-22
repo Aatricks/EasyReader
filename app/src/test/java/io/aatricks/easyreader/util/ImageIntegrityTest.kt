@@ -60,13 +60,11 @@ class ImageIntegrityTest {
     }
 
     @Test
-    fun `accepts JPEG by magic bytes without requiring EOI trailer`() {
-        // CDN JPEGs are not always spec-pure at EOF. The integrity check stays shallow and
-        // lets the decoder decide structural completeness.
+    fun `rejects JPEG without EOI trailer`() {
         val payload = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()) +
             ByteArray(60)
         val file = tempFolder.newFile("truncated.jpg").apply { writeBytes(payload) }
-        assertTrue(ImageIntegrity.isValidImageFile(file))
+        assertFalse(ImageIntegrity.isValidImageFile(file))
     }
 
     @Test
@@ -85,12 +83,12 @@ class ImageIntegrityTest {
     }
 
     @Test
-    fun `accepts PNG by signature without requiring IEND chunk`() {
+    fun `rejects PNG without IEND chunk`() {
         val signature = byteArrayOf(
             0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A
         )
         val file = tempFolder.newFile("truncated.png").apply { writeBytes(signature + ByteArray(32)) }
-        assertTrue(ImageIntegrity.isValidImageFile(file))
+        assertFalse(ImageIntegrity.isValidImageFile(file))
     }
 
     @Test
@@ -106,16 +104,14 @@ class ImageIntegrityTest {
     }
 
     @Test
-    fun `accepts WebP by RIFF WEBP magic without enforcing declared chunk size`() {
-        // Extended/animated WebPs and CDN transformations are handled by the platform
-        // decoder; cache integrity only rejects obvious non-images.
+    fun `rejects WebP whose declared chunk size exceeds file length`() {
         val webp = byteArrayOf(
             'R'.code.toByte(), 'I'.code.toByte(), 'F'.code.toByte(), 'F'.code.toByte(),
             200.toByte(), 0, 0, 0,
             'W'.code.toByte(), 'E'.code.toByte(), 'B'.code.toByte(), 'P'.code.toByte()
         ) + ByteArray(20)
         val file = tempFolder.newFile("truncated.webp").apply { writeBytes(webp) }
-        assertTrue(ImageIntegrity.isValidImageFile(file))
+        assertFalse(ImageIntegrity.isValidImageFile(file))
     }
 
     @Test

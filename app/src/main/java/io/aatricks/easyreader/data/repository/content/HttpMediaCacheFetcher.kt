@@ -7,10 +7,12 @@ import coil3.decode.ImageSource
 import coil3.fetch.FetchResult
 import coil3.fetch.Fetcher
 import coil3.fetch.SourceFetchResult
+import android.util.Log
 import coil3.network.httpHeaders
 import coil3.request.Options
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.util.ImageIntegrity
+import io.aatricks.easyreader.util.UrlSanitizer
 import okio.Path.Companion.toPath
 import java.io.File
 
@@ -24,25 +26,36 @@ class HttpMediaCacheFetcher(
 
     override suspend fun fetch(): FetchResult? {
         val pageUrl = options.extras[ChapterPageUrlExtra]?.takeIf { it.isNotBlank() }
-        val chapterDownloaded = pageUrl != null && contentRepository.isDownloaded(pageUrl)
-        val tier = if (chapterDownloaded) StorageTier.DOWNLOADS else StorageTier.CACHE
+        val safeUrl = UrlSanitizer.sanitize(url)
 
         val cachedFile = contentRepository.getCachedMediaFile(url)
-        val file = if (cachedFile.isUsableCachedMedia()) {
-            if (chapterDownloaded && !contentRepository.isImageDownloaded(url)) {
-                contentRepository.promoteImageToDownloads(url) ?: cachedFile
-            } else {
-                cachedFile
-            }
+        val cacheFileExists = cachedFile.exists()
+        val cacheFileLength = if (cacheFileExists) cachedFile.length() else 0L
+        val cacheFileValid = cacheFileExists && cachedFile.isUsableCachedMedia()
+        Log.w(
+            "HttpMediaCacheFetcher",
+            "fetch img=$safeUrl cachedAt=${cachedFile.absolutePath} exists=$cacheFileExists len=$cacheFileLength valid=$cacheFileValid"
+        )
+
+        val file = if (cacheFileValid) {
+            cachedFile
         } else {
             if (cachedFile.exists()) {
                 cachedFile.delete()
             }
             val referer = pageUrl ?: requestReferer()
-            contentRepository.downloadAndCacheImage(url, referer, tier) ?: return null
+            val refetched = contentRepository.downloadAndCacheImage(url, referer)
+            if (refetched == null) {
+                Log.w("HttpMediaCacheFetcher", "refetch FAILED img=$safeUrl (offline or network error)")
+                return null
+            }
+            refetched
         }
 
-        if (!file.exists() || file.length() <= 0L) return null
+        if (!file.exists() || file.length() <= 0L || !file.isUsableCachedMedia()) {
+            Log.w("HttpMediaCacheFetcher", "final file missing img=$safeUrl path=${file.absolutePath} exists=${file.exists()} len=${file.length()}")
+            return null
+        }
 
         return SourceFetchResult(
             source = ImageSource(file.absolutePath.toPath(), options.fileSystem),

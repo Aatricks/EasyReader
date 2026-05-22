@@ -32,6 +32,7 @@ import io.aatricks.easyreader.ui.util.ImageDimensions
 import io.aatricks.easyreader.ui.util.effectiveImageDimensions
 import io.aatricks.easyreader.ui.util.imageAspectRatio
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
+import java.io.File
 
 internal fun shouldUseLightweightImageContainer(enableZoom: Boolean): Boolean = !enableZoom
 
@@ -43,6 +44,35 @@ internal fun shouldSubsampleReaderImage(enableZoom: Boolean, dynamicHeight: Bool
 
 internal fun readerImageRefererSource(imageUrl: String, pageUrl: String): String =
     pageUrl.takeIf { it.isNotBlank() } ?: imageUrl
+
+internal fun readerImageLocalMediaState(
+    imageUrl: String,
+    cachedMediaFile: (String) -> File
+): String {
+    if (!imageUrl.startsWith("http")) return ""
+
+    val file = cachedMediaFile(imageUrl)
+    return if (file.exists()) {
+        "${file.absolutePath}:${file.length()}:${file.lastModified()}"
+    } else {
+        "missing"
+    }
+}
+
+internal fun readerImageRequestCacheKey(
+    imageUrl: String,
+    localMediaState: String,
+    retryTrigger: Long
+): String? =
+    if (imageUrl.startsWith("http")) "$imageUrl|$localMediaState|$retryTrigger" else null
+
+internal fun shouldAutoRetryReaderImage(
+    isError: Boolean,
+    imageUrl: String,
+    attemptCount: Int,
+    maxAttempts: Int = 3
+): Boolean =
+    isError && imageUrl.startsWith("http") && attemptCount < maxAttempts
 
 @Composable
 fun ReaderImageView(
@@ -165,16 +195,25 @@ fun ReaderImageView(
         isCached = isInitiallyCached
     )
 
-    var retryTrigger by remember { mutableStateOf(0L) }
+    var retryTrigger by remember(imageUrl, pageUrl) { mutableStateOf(0L) }
+    val localMediaState = remember(imageUrl, retryTrigger) {
+        readerImageLocalMediaState(imageUrl) {
+            readerViewModel.contentRepository.getCachedMediaFile(it)
+        }
+    }
     // Keys are only the inputs that actually change the request. isInitiallyCached is stable
     // for the lifetime of the composition, so it does not need to be a key — capturing the
     // value once avoids the re-fetch loop that previously fired when the success handler
     // flipped a cached-state flag.
-    val imageRequest = remember(imageUrl, pageUrl, retryTrigger) {
+    val imageRequest = remember(imageUrl, pageUrl, retryTrigger, localMediaState) {
         ImageRequest.Builder(context)
             .data(imageUrl)
             .apply {
                 if (imageUrl.startsWith("http")) {
+                    readerImageRequestCacheKey(imageUrl, localMediaState, retryTrigger)?.let { cacheKey ->
+                        memoryCacheKey(cacheKey)
+                        diskCacheKey(cacheKey)
+                    }
                     extras.set(ChapterPageUrlExtra, pageUrl)
                     httpHeaders(
                         NetworkHeaders.Builder()
@@ -200,6 +239,18 @@ fun ReaderImageView(
             .build()
     }
     var isError by remember(imageRequest) { mutableStateOf(false) }
+    var autoRetryCount by remember(imageUrl, pageUrl) { mutableIntStateOf(0) }
+
+    LaunchedEffect(isError, imageUrl, pageUrl, autoRetryCount) {
+        if (shouldAutoRetryReaderImage(isError, imageUrl, autoRetryCount)) {
+            val nextAttempt = autoRetryCount + 1
+            kotlinx.coroutines.delay(750L * nextAttempt)
+            autoRetryCount = nextAttempt
+            isError = false
+            isLoadingHoisted = true
+            retryTrigger = System.currentTimeMillis()
+        }
+    }
 
     Box(
         modifier = containerModifier

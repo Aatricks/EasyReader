@@ -6,7 +6,6 @@ import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.model.ChapterInfo
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.ExploreItem
-import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.model.SortMode
 import io.aatricks.easyreader.data.model.SeriesReadingStatus
@@ -19,18 +18,13 @@ import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.util.TextUtils
 import io.aatricks.easyreader.util.normalizeChapterList
 import io.aatricks.easyreader.work.ChapterDownloadQueue
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import android.util.Log
 
@@ -73,12 +67,12 @@ class LibraryViewModel @Inject constructor(
 
     companion object {
         private const val UNDO_DELETE_WINDOW_MS = 5000L
-        private const val LIBRARY_PREFETCH_CONCURRENCY = 2
     }
 
     init {
         _collapsedSources.value = repository.loadCollapsedSources()
         observeLibraryChanges()
+        observeDownloadQueue()
         verifyDownloadedItemsOnStartup()
     }
 
@@ -114,37 +108,15 @@ class LibraryViewModel @Inject constructor(
         }
         if (targets.isEmpty()) return
         Log.d(TAG, "Auto-resuming ${targets.size} incomplete downloads")
-        targets.forEach { contentRepository.beginUserDownload(it.url) }
-        targets.forEach { downloadQueue.enqueue(it.url) }
-        val gate = Semaphore(LIBRARY_PREFETCH_CONCURRENCY)
-        viewModelScope.launch {
-            supervisorScope {
-                targets.map { state ->
-                    async {
-                        try {
-                            gate.withPermit {
-                                setCacheState(state.copy(isInProgress = true, isRetryable = false))
-                                runCatchingExceptCancel {
-                                    val result = contentRepository.prefetchWithProgress(
-                                        state.url,
-                                        PrefetchMode.USER_REQUESTED
-                                    ) { setCacheState(it) }
-                                    withContext(NonCancellable) {
-                                        setCacheState(result)
-                                        downloadStatusReconciler.reconcile(
-                                            state.url,
-                                            result,
-                                            wasUserInspect = true
-                                        )
-                                    }
-                                }
-                            }
-                        } finally {
-                            contentRepository.endUserDownload(state.url)
-                        }
-                    }
-                }.awaitAll()
-            }
+        targets.forEach { state ->
+            setCacheState(
+                state.copy(
+                    isInProgress = true,
+                    isRetryable = false,
+                    isPersistentDownload = true
+                )
+            )
+            downloadQueue.enqueue(state.url)
         }
     }
 
@@ -208,6 +180,15 @@ class LibraryViewModel @Inject constructor(
                 )
             }.collect { newState ->
                 updateState { newState }
+            }
+        }
+    }
+
+    private fun observeDownloadQueue(): Unit {
+        viewModelScope.launch {
+            downloadQueue.observeAll().collect { results ->
+                if (results.isEmpty()) return@collect
+                _chapterCacheStates.update { current -> current + results }
             }
         }
     }
@@ -405,70 +386,39 @@ class LibraryViewModel @Inject constructor(
         baseNovelUrl: String,
         sourceName: String
     ): Unit {
-        chapters.forEach { contentRepository.beginUserDownload(it.url) }
-        // Dual-path: the in-process prefetch below drives the UI in the foreground session.
-        // The WorkManager enqueue is resilience-only — if the app/process dies before the
-        // in-process prefetch finishes, the worker resumes the download in the background.
-        // The worker short-circuits via inspectDownload when the in-process side already
-        // completed, so this is not a 2x cost for typical sessions.
-        chapters.forEach { downloadQueue.enqueue(it.url) }
         viewModelScope.launch {
-            try {
-                chapters.forEach { chapter ->
-                    try {
-                        runCatchingExceptCancel {
-                            val libraryItem = repository.getItemByUrl(chapter.url)
-                            ?: repository.addItem(
-                                title = chapter.title,
-                                url = chapter.url,
-                                contentType = ContentType.WEB,
-                                currentChapter = TextUtils.extractChapterLabel(chapter.title)
-                                    ?: TextUtils.extractChapterLabelFromUrl(chapter.url)
-                                    ?: chapter.title,
-                                baseTitle = baseTitle,
-                                baseNovelUrl = baseNovelUrl,
-                                sourceName = sourceName
-                            )
-                        setCacheState(
-                            PrefetchResult(
-                                url = chapter.url,
-                                htmlCached = false,
-                                totalImages = 0,
-                                cachedImages = 0,
-                                isComplete = false,
-                                isInProgress = true,
-                                isPersistentDownload = true
-                            )
+            chapters.forEach { chapter ->
+                runCatching {
+                    repository.getItemByUrl(chapter.url)
+                        ?: repository.addItem(
+                            title = chapter.title,
+                            url = chapter.url,
+                            contentType = ContentType.WEB,
+                            currentChapter = TextUtils.extractChapterLabel(chapter.title)
+                                ?: TextUtils.extractChapterLabelFromUrl(chapter.url)
+                                ?: chapter.title,
+                            baseTitle = baseTitle,
+                            baseNovelUrl = baseNovelUrl,
+                            sourceName = sourceName
                         )
-                        val result = contentRepository.prefetchWithProgress(
-                            chapter.url,
-                            PrefetchMode.USER_REQUESTED
-                        ) { setCacheState(it) }
-                        // Cancellation between the inspect-driven final result and the DB
-                        // write would leave the flag silently un-promoted (and the worker's
-                        // duplicate path may not run for in-process flows). Lock this final
-                        // commit out of cancellation; the prefetch itself was already
-                        // cancellable above.
-                        withContext(NonCancellable) {
-                            setCacheState(result)
-                            downloadStatusReconciler.reconcile(
-                                libraryItem,
-                                result,
-                                wasUserInspect = true
-                            )
-                        }
-                        }
-                    } finally {
-                        contentRepository.endUserDownload(chapter.url)
+                }.onSuccess {
+                    setCacheState(
+                        PrefetchResult(
+                            url = chapter.url,
+                            htmlCached = false,
+                            totalImages = 0,
+                            cachedImages = 0,
+                            isComplete = false,
+                            isInProgress = true,
+                            isRetryable = false,
+                            isPersistentDownload = true
+                        )
+                    )
+                    downloadQueue.enqueue(chapter.url)
+                }.onFailure { e ->
+                    updateState { state ->
+                        state.copy(error = "Failed to queue chapter download: ${e.message}")
                     }
-                }
-            } finally {
-                // If cancellation tore the loop down before reaching every chapter, drain
-                // the upfront beginUserDownload calls so userDownloadsInFlight doesn't keep
-                // suppressing auto-delete checks until the WorkManager workers eventually
-                // catch up. Set.remove is idempotent so re-entering is harmless.
-                withContext(NonCancellable) {
-                    chapters.forEach { contentRepository.endUserDownload(it.url) }
                 }
             }
         }
@@ -573,45 +523,20 @@ class LibraryViewModel @Inject constructor(
                 } else {
                     repository.libraryItems.value
                 }
-                items.forEach { contentRepository.beginUserDownload(it.url) }
-                items.forEach { downloadQueue.enqueue(it.url) }
-                val gate = Semaphore(LIBRARY_PREFETCH_CONCURRENCY)
-                supervisorScope {
-                    items.map { item ->
-                        async {
-                            try {
-                                setCacheState(
-                                    PrefetchResult(
-                                        url = item.url,
-                                        htmlCached = false,
-                                        totalImages = 0,
-                                        cachedImages = 0,
-                                        isComplete = false,
-                                        isInProgress = true,
-                                        isPersistentDownload = true
-                                    )
-                                )
-                                gate.withPermit {
-                                    runCatchingExceptCancel {
-                                        val result = contentRepository.prefetchWithProgress(
-                                            item.url,
-                                            PrefetchMode.USER_REQUESTED
-                                        ) { setCacheState(it) }
-                                        withContext(NonCancellable) {
-                                            setCacheState(result)
-                                            downloadStatusReconciler.reconcile(
-                                                item,
-                                                result,
-                                                wasUserInspect = true
-                                            )
-                                        }
-                                    }
-                                }
-                            } finally {
-                                contentRepository.endUserDownload(item.url)
-                            }
-                        }
-                    }.awaitAll()
+                items.forEach { item ->
+                    setCacheState(
+                        PrefetchResult(
+                            url = item.url,
+                            htmlCached = false,
+                            totalImages = 0,
+                            cachedImages = 0,
+                            isComplete = false,
+                            isInProgress = true,
+                            isRetryable = false,
+                            isPersistentDownload = true
+                        )
+                    )
+                    downloadQueue.enqueue(item.url)
                 }
                 updateState { it.copy(isLoading = false) }
             }.onFailure { e ->
@@ -621,27 +546,16 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun retryDownload(url: String): Unit {
-        contentRepository.beginUserDownload(url)
-        // Replace any in-flight worker so the retry runs on a fresh attempt with the
-        // permanent-failure cleanup reflected.
-        downloadQueue.enqueue(url, replaceExisting = true)
         viewModelScope.launch {
-            try {
-                runCatching { contentRepository.clearPermanentFailures(url) }
-                setCacheState(
-                    (uiState.value.chapterCacheStates[url] ?: PrefetchResult(url, false, 0, 0, false))
-                        .copy(isInProgress = true, isRetryable = false, isPersistentDownload = true)
-                )
-                runCatchingExceptCancel {
-                    val result = contentRepository.prefetchWithProgress(url, PrefetchMode.USER_REQUESTED) { setCacheState(it) }
-                    withContext(NonCancellable) {
-                        setCacheState(result)
-                        downloadStatusReconciler.reconcile(url, result, wasUserInspect = true)
-                    }
-                }
-            } finally {
-                contentRepository.endUserDownload(url)
-            }
+            runCatching { contentRepository.clearPermanentFailures(url) }
+                .onFailure { e -> Log.w(TAG, "failed to clear permanent failures before retry: ${e.message}") }
+            setCacheState(
+                (uiState.value.chapterCacheStates[url] ?: PrefetchResult(url, false, 0, 0, false))
+                    .copy(isInProgress = true, isRetryable = false, isPersistentDownload = true)
+            )
+            // Replace any in-flight worker so the retry runs on a fresh attempt with the
+            // permanent-failure cleanup reflected.
+            downloadQueue.enqueue(url, replaceExisting = true)
         }
     }
 
@@ -856,20 +770,6 @@ class LibraryViewModel @Inject constructor(
     private fun setCacheState(result: PrefetchResult): Unit {
         _chapterCacheStates.update { current ->
             current + (result.url to result)
-        }
-    }
-
-    // kotlin.runCatching catches Throwable including CancellationException, which silently
-    // breaks coroutine cancellation propagation. This variant rethrows cancellation so the
-    // enclosing scope tears down as intended; other failures are still swallowed (the
-    // contract of these prefetch lambdas is "best-effort, never crash the bulk run").
-    private suspend inline fun runCatchingExceptCancel(block: () -> Unit) {
-        try {
-            block()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            Log.w(TAG, "prefetch block failed: ${e.message}")
         }
     }
 

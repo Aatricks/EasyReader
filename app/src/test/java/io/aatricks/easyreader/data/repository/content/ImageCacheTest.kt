@@ -4,6 +4,7 @@ import io.aatricks.easyreader.util.CacheKeyUtils
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -95,5 +96,23 @@ class ImageCacheTest {
         val url = "https://example.com/non-existent.jpg"
         val result = imageCache.findExistingCachedMediaFile(url)
         assertEquals(null, result)
+    }
+
+    @Test
+    fun `promoteToDownloads replaces invalid existing download target`() {
+        val url = "https://example.com/promote.jpg"
+        val key = CacheKeyUtils.keyFor(url)
+        val source = File(cacheDir, key).apply { writeBytes(validJpegBytes()) }
+        val invalidTarget = File(downloadsDir, key).apply {
+            writeBytes(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()) + ByteArray(60))
+        }
+
+        val promoted = imageCache.promoteToDownloads(url)
+
+        assertNotNull(promoted)
+        assertEquals(invalidTarget.absolutePath, promoted!!.absolutePath)
+        assertFalse(source.exists())
+        assertTrue(imageCache.isDownloaded(url))
+        assertEquals(validJpegBytes().size.toLong(), invalidTarget.length())
     }
 }

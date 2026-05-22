@@ -176,6 +176,45 @@ class ChapterDownloadWorkerTest {
     }
 
     @Test
+    fun `worker does not promote DB flag when terminal result has permanent failures`(): Unit = runBlocking {
+        val chapterUrl = "https://example.com/work-permanent-failures"
+        val contentRepository = mock<ContentRepository>()
+        val libraryRepository = mock<LibraryRepository>()
+        whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(
+            PrefetchResult(url = chapterUrl, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+        )
+        whenever(contentRepository.prefetchWithProgress(eq(chapterUrl), eq(PrefetchMode.USER_REQUESTED), any()))
+            .thenReturn(
+                PrefetchResult(
+                    url = chapterUrl,
+                    htmlCached = true,
+                    totalImages = 4,
+                    cachedImages = 3,
+                    isComplete = true,
+                    isPersistentDownload = true,
+                    hasPermanentFailures = true
+                )
+            )
+        whenever(libraryRepository.getItemByUrl(chapterUrl)).thenReturn(
+            io.aatricks.easyreader.data.model.LibraryItem(
+                id = "lib-permanent",
+                title = "Chapter permanent",
+                url = chapterUrl,
+                isDownloaded = false
+            )
+        )
+
+        val worker = TestListenableWorkerBuilder<ChapterDownloadWorker>(context)
+            .setInputData(workDataOf(ChapterDownloadWorker.KEY_CHAPTER_URL to chapterUrl))
+            .setWorkerFactory(workerFactoryWith(contentRepository, libraryRepository))
+            .build()
+
+        val result = worker.doWork()
+        assertTrue("expected Success, got $result", result is ListenableWorker.Result.Success)
+        verify(libraryRepository, org.mockito.kotlin.never()).markDownloaded("lib-permanent", true)
+    }
+
+    @Test
     fun `worker short-circuit still reconciles flag for orphaned downloads`(): Unit = runBlocking {
         val chapterUrl = "https://example.com/work-shortcircuit-promote"
         val contentRepository = mock<ContentRepository>()
