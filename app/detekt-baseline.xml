@@ -2,18 +2,24 @@
 <SmellBaseline>
   <ManuallySuppressedIssues></ManuallySuppressedIssues>
   <CurrentIssues>
+    <ID>ComplexCondition:HtmlParser.kt$HtmlParser$images.isNotEmpty() &amp;&amp; (images.size &gt; 5 || isChapterPage(url) || filteredParagraphs.size &lt; 10)</ID>
+    <ID>ComplexCondition:ImageIntegrity.kt$ImageIntegrity$header.size &gt;= 12 &amp;&amp; header[0] == 'R'.code.toByte() &amp;&amp; header[1] == 'I'.code.toByte() &amp;&amp; header[2] == 'F'.code.toByte() &amp;&amp; header[3] == 'F'.code.toByte() &amp;&amp; header[8] == 'W'.code.toByte() &amp;&amp; header[9] == 'E'.code.toByte() &amp;&amp; header[10] == 'B'.code.toByte() &amp;&amp; header[11] == 'P'.code.toByte()</ID>
+    <ID>ComplexCondition:ImageIntegrity.kt$ImageIntegrity$header.size &gt;= 12 &amp;&amp; header[4] == 'f'.code.toByte() &amp;&amp; header[5] == 't'.code.toByte() &amp;&amp; header[6] == 'y'.code.toByte() &amp;&amp; header[7] == 'p'.code.toByte()</ID>
+    <ID>ComplexCondition:ImageIntegrity.kt$ImageIntegrity$header.size &gt;= 6 &amp;&amp; header[0] == 'G'.code.toByte() &amp;&amp; header[1] == 'I'.code.toByte() &amp;&amp; header[2] == 'F'.code.toByte() &amp;&amp; header[3] == '8'.code.toByte() &amp;&amp; (header[4] == '7'.code.toByte() || header[4] == '9'.code.toByte()) &amp;&amp; header[5] == 'a'.code.toByte()</ID>
+    <ID>ComplexCondition:ImageIntegrity.kt$ImageIntegrity$header.size &gt;= 8 &amp;&amp; header[0] == 0x89.toByte() &amp;&amp; header[1] == 0x50.toByte() &amp;&amp; header[2] == 0x4E.toByte() &amp;&amp; header[3] == 0x47.toByte() &amp;&amp; header[4] == 0x0D.toByte() &amp;&amp; header[5] == 0x0A.toByte() &amp;&amp; header[6] == 0x1A.toByte() &amp;&amp; header[7] == 0x0A.toByte()</ID>
     <ID>ComplexCondition:SummaryService.kt$SummaryService$text.contains("\"") || text.contains("'") || lowerText.contains("said") || lowerText.contains("asked")</ID>
     <ID>ComplexCondition:UrlSanitizer.kt$UrlSanitizer$scheme.all { it.isLetterOrDigit() || it == '-' || it == '+' || it == '.' }</ID>
     <ID>ComplexCondition:UrlSecurity.kt$UrlSecurity$address.isLoopbackAddress || address.isAnyLocalAddress || address.isLinkLocalAddress || address.isSiteLocalAddress || address.isMulticastAddress</ID>
-    <ID>ComplexCondition:WebContentLoader.kt$WebContentLoader$attempt == attempts - 1 || (e is Exception &amp;&amp; e.message?.startsWith("HTTP") == true &amp;&amp; !shouldRetryException(e))</ID>
     <ID>CyclomaticComplexMethod:ChapterListSheet.kt$@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class) @Composable fun ChapterListSheet( uiState: ReaderViewModel.ReaderUiState, libraryViewModel: LibraryViewModel, onDismiss: () -&gt; Unit, onNavigateToChapter: (String, String) -&gt; Unit, sheetState: SheetState )</ID>
-    <ID>CyclomaticComplexMethod:EpubContentLoader.kt$EpubContentLoader$private fun loadEpubChapter(filePath: String, book: EpubBook, href: String): EpubChapter</ID>
+    <ID>CyclomaticComplexMethod:ChapterListSheet.kt$internal fun chapterCacheStatusKind( isCurrent: Boolean, cacheState: PrefetchResult?, isInLibrary: Boolean, isDownloaded: Boolean = false ): ChapterStatus?</ID>
+    <ID>CyclomaticComplexMethod:EpubContentLoader.kt$EpubContentLoader$private suspend fun enrichEpubImageDimensionsFromCache( els: List&lt;ContentElement&gt; ): List&lt;ContentElement&gt;</ID>
     <ID>CyclomaticComplexMethod:ErrorMessages.kt$ErrorMessages$fun fromRaw(raw: String?): Friendly</ID>
     <ID>CyclomaticComplexMethod:ExploreDetailSheet.kt$@OptIn(ExperimentalLayoutApi::class) @Composable fun ExploreItemDetailSheet( item: ExploreItem, isLoading: Boolean = false, isInLibrary: Boolean = false, onAddToLibrary: () -&gt; Unit, onRead: () -&gt; Unit ): Unit</ID>
     <ID>CyclomaticComplexMethod:ExploreGridSection.kt$@Composable internal fun ExploreGrid( gridState: LazyGridState, modifier: Modifier = Modifier, uiState: ExploreViewModel.ExploreUiState, hasActiveFilters: Boolean, onItemSelect: (ExploreItem) -&gt; Unit, onLoadMore: () -&gt; Unit, onClearFilters: () -&gt; Unit, onRetryFailedSource: (String) -&gt; Unit ): Unit</ID>
     <ID>CyclomaticComplexMethod:HtmlParser.kt$HtmlParser$private fun parseImages(document: Document, url: String): List&lt;ContentElement.Image&gt;</ID>
     <ID>CyclomaticComplexMethod:ImageBoundsParser.kt$ImageBoundsParser$private fun parseJpeg(bytes: ByteArray): Pair&lt;Int, Int&gt;?</ID>
     <ID>CyclomaticComplexMethod:ImageDownloader.kt$ImageDownloader$private fun parseImageResponse( response: Response, destinationFile: File? = null ): ImageFetchResult</ID>
+    <ID>CyclomaticComplexMethod:ImageIntegrity.kt$ImageIntegrity$private fun classifyFormat(header: ByteArray): ImageFormat?</ID>
     <ID>CyclomaticComplexMethod:LibraryItemCard.kt$@OptIn(ExperimentalFoundationApi::class) @Composable fun LibraryItemCard( item: LibraryItem, isSelected: Boolean, isCurrent: Boolean, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, onNewTagClick: (() -&gt; Unit)? = null, onDelete: (() -&gt; Unit)? = null, onResetProgress: (() -&gt; Unit)? = null, onMarkFinished: (() -&gt; Unit)? = null )</ID>
     <ID>CyclomaticComplexMethod:LibraryRepository.kt$LibraryRepository$suspend fun refreshLibraryUpdates(exploreRepository: ExploreRepository): Unit</ID>
     <ID>CyclomaticComplexMethod:LibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun LibraryScreen( libraryViewModel: LibraryViewModel, readerViewModel: ReaderViewModel, navController: NavController, onOpenFilePicker: () -&gt; Unit, onNavigateBack: () -&gt; Unit ): Unit</ID>
@@ -26,19 +32,25 @@
     <ID>CyclomaticComplexMethod:ReaderContentRenderers.kt$@Composable internal fun ScrollingReaderView( content: ChapterContent, listState: LazyListState, uiState: ReaderViewModel.ReaderUiState, isManhwa: Boolean, fontFamily: FontFamily, bgColor: Color, textColor: Color, readerViewModel: ReaderViewModel ): Unit</ID>
     <ID>CyclomaticComplexMethod:ReaderContentRenderers.kt$@OptIn(ExperimentalFoundationApi::class) @Composable internal fun PagedReaderView( content: ChapterContent, pagerState: PagerState, uiState: ReaderViewModel.ReaderUiState, fontFamily: FontFamily, bgColor: Color, textColor: Color, readerViewModel: ReaderViewModel, isZoomable: Boolean ): Unit</ID>
     <ID>CyclomaticComplexMethod:ReaderImageView.kt$@Composable fun ReaderImageView( imageUrl: String, altText: String?, readerViewModel: ReaderViewModel, pageUrl: String, contentScale: ContentScale = ContentScale.Fit, backgroundColor: Color = Color.Black, width: Int = 0, height: Int = 0, resolvedWidth: Int = 0, resolvedHeight: Int = 0, side: ContentElement.Image.Side = ContentElement.Image.Side.FULL, enableZoom: Boolean = false, dynamicHeight: Boolean = false, zoomStateKey: Any? = null, onZoomChanged: ((Boolean) -&gt; Unit)? = null, onDimensionsResolved: ((String, Int, Int) -&gt; Unit)? = null, lockTapWhileZoomed: Boolean = false, onTap: (() -&gt; Unit)? = null )</ID>
-    <ID>CyclomaticComplexMethod:ReaderProgressController.kt$ReaderProgressController$fun calculateInitialScroll( content: ChapterContent, libraryItem: LibraryItem?, fromBottom: Boolean, isExplicitNavigation: Boolean ): ScrollState</ID>
-    <ID>CyclomaticComplexMethod:ReaderProgressController.kt$ReaderProgressController$suspend fun updateReadingProgress( progress: Int, scrollPosition: Float? = null, index: Int? = null, offset: Int? = null, offsetFraction: Float? = null, currentChapterUrl: String? = null, content: ChapterContent? = null )</ID>
-    <ID>CyclomaticComplexMethod:ReaderScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun ReaderScreen( readerViewModel: ReaderViewModel, libraryViewModel: LibraryViewModel, navController: NavController, onOpenFilePicker: () -&gt; Unit, modifier: Modifier = Modifier ): Unit</ID>
+    <ID>CyclomaticComplexMethod:ReaderProgressController.kt$ReaderProgressController$fun calculateInitialPosition( content: ChapterContent, libraryItem: LibraryItem?, fromBottom: Boolean, isExplicitNavigation: Boolean ): ReaderProgressState</ID>
+    <ID>CyclomaticComplexMethod:ReaderProgressController.kt$ReaderProgressController$fun updateScrollPosition( scrollOffset: Float, maxScrollOffset: Float, viewportHeight: Float, index: Int, offsetFraction: Float, elementKey: String, content: ChapterContent?, canScrollForward: Boolean = true, firstVisibleItemSize: Int = 0 )</ID>
+    <ID>CyclomaticComplexMethod:ReaderScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun ReaderScreen( readerViewModel: ReaderViewModel, libraryViewModelProvider: () -&gt; LibraryViewModel, navController: NavController, onOpenFilePicker: () -&gt; Unit, modifier: Modifier = Modifier ): Unit</ID>
     <ID>CyclomaticComplexMethod:ReaderViewModel.kt$ReaderViewModel$fun loadEpubChapter( epubPath: String, href: String, libraryItemId: String? = null, fromBottom: Boolean = false, isSilent: Boolean = false ): Unit</ID>
     <ID>CyclomaticComplexMethod:ReaderViewModel.kt$ReaderViewModel$private suspend fun handleLoadSuccess( result: ContentResult.Success, libraryItemId: String?, fromBottom: Boolean ): Unit</ID>
+    <ID>CyclomaticComplexMethod:ReaderViewModel.kt$ReaderViewModel$suspend fun persistLifecycleProgress(): Unit</ID>
+    <ID>CyclomaticComplexMethod:SettingsScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsScreen( readerViewModel: ReaderViewModel, libraryViewModel: LibraryViewModel, onNavigateBack: () -&gt; Unit, backupViewModel: BackupViewModel = hiltViewModel() )</ID>
     <ID>CyclomaticComplexMethod:TextFormattingPipeline.kt$TextFormattingPipeline$private fun replaceSpacesPlusNewline(text: String, replacementChar: Char): String</ID>
     <ID>CyclomaticComplexMethod:UrlSecurity.kt$UrlSecurity$fun isSafeInetAddress(address: InetAddress): Boolean</ID>
     <ID>CyclomaticComplexMethod:WebContentLoader.kt$WebContentLoader$private suspend fun downloadAndCacheImageInternal( imageUrl: String, pageUrl: String, priority: ImageRequestPriority, writeTier: StorageTier = tierForPriority(priority) ): ImageDownloadResult</ID>
+    <ID>CyclomaticComplexMethod:WebContentLoader.kt$WebContentLoader$private suspend fun enrichParsedCacheDimensions(elements: List&lt;ContentElement&gt;): List&lt;ContentElement&gt;</ID>
     <ID>CyclomaticComplexMethod:WebContentLoader.kt$WebContentLoader$private suspend fun executePrefetch( url: String, mode: PrefetchMode, onProgress: (suspend (PrefetchResult) -&gt; Unit)? = null ): PrefetchResult</ID>
+    <ID>CyclomaticComplexMethod:WebContentLoader.kt$WebContentLoader$private suspend fun inspectCacheInternal( url: String, cachedDocument: Document? = null, persistentOnly: Boolean = false ): PrefetchResult</ID>
+    <ID>CyclomaticComplexMethod:WebContentLoader.kt$WebContentLoader$private suspend fun migrateLegacySidecarIfPresent(url: String, now: Long)</ID>
+    <ID>CyclomaticComplexMethod:WebContentLoader.kt$WebContentLoader$suspend fun prefetch( url: String, mode: PrefetchMode, onProgress: (suspend (PrefetchResult) -&gt; Unit)? ): PrefetchResult</ID>
     <ID>CyclomaticComplexMethod:ZoomableBox.kt$@Composable fun ZoomableBox( modifier: Modifier = Modifier, minScale: Float = 1f, maxScale: Float = 3f, enableZoom: Boolean = false, dynamicHeight: Boolean = false, zoomStateKey: Any? = null, onZoomChanged: ((Boolean) -&gt; Unit)? = null, lockTapWhileZoomed: Boolean = false, onTap: (() -&gt; Unit)? = null, content: @Composable BoxScope.() -&gt; Unit )</ID>
     <ID>EmptyFunctionBlock:HtmlParser.kt$HtmlParser.&lt;no name provided&gt;${}</ID>
     <ID>FunctionNaming:ChapterListSheet.kt$@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class) @Composable fun ChapterListSheet( uiState: ReaderViewModel.ReaderUiState, libraryViewModel: LibraryViewModel, onDismiss: () -&gt; Unit, onNavigateToChapter: (String, String) -&gt; Unit, sheetState: SheetState )</ID>
-    <ID>FunctionNaming:ChapterSummaryDropdown.kt$@Composable fun ChapterSummaryDropdown( summary: String?, isGenerating: Boolean, onGenerateSummary: () -&gt; Unit, onCancel: (() -&gt; Unit)? = null, isAvailable: Boolean = true, modifier: Modifier = Modifier )</ID>
+    <ID>FunctionNaming:ChapterSummaryDropdown.kt$@Composable fun ChapterSummaryDropdown( summary: String?, isGenerating: Boolean, onGenerateSummary: () -&gt; Unit, onCancel: (() -&gt; Unit)? = null, aiSupportedInBuild: Boolean = true, aiOptedIn: Boolean = true, onEnableAi: (() -&gt; Unit)? = null, isInitializing: Boolean = false, isReady: Boolean = aiSupportedInBuild &amp;&amp; aiOptedIn, modifier: Modifier = Modifier )</ID>
     <ID>FunctionNaming:ContentRenderer.kt$@Composable fun AsyncImageElement( url: String, altText: String?, side: ContentElement.Image.Side = ContentElement.Image.Side.FULL, width: Int = 0, height: Int = 0, pageUrl: String = "" )</ID>
     <ID>FunctionNaming:ContentRenderer.kt$@Composable fun ContentRenderer( elements: List&lt;ContentElement&gt;, modifier: Modifier = Modifier, backgroundColor: Color = Color.Black, textColor: Color = Color.White, pageUrl: String = "" )</ID>
     <ID>FunctionNaming:ExploreDetailSheet.kt$@OptIn(ExperimentalLayoutApi::class) @Composable fun ExploreItemDetailSheet( item: ExploreItem, isLoading: Boolean = false, isInLibrary: Boolean = false, onAddToLibrary: () -&gt; Unit, onRead: () -&gt; Unit ): Unit</ID>
@@ -83,7 +95,7 @@
     <ID>FunctionNaming:LibraryScreenListSections.kt$@OptIn(ExperimentalFoundationApi::class) @Composable private fun NovelGroupCard( title: String, items: List&lt;LibraryItem&gt;, uiState: LibraryViewModel.LibraryUiState, readerUiState: ReaderViewModel.ReaderUiState, summaryUiState: SummaryViewModel.SummaryUiState, isExpanded: Boolean, showFullChapters: Boolean, onToggleExpand: () -&gt; Unit, onToggleShowFull: () -&gt; Unit, libraryViewModel: LibraryViewModel, readerViewModel: ReaderViewModel, summaryViewModel: SummaryViewModel, onCloseLibrary: () -&gt; Unit ): Unit</ID>
     <ID>FunctionNaming:LibraryScreenListSections.kt$@OptIn(ExperimentalFoundationApi::class) @Composable private fun NovelGroupHeader( title: String, items: List&lt;LibraryItem&gt;, isExpanded: Boolean, isSelectionMode: Boolean, isGroupSelected: Boolean, hasGroupSelection: Boolean, readerUiState: ReaderViewModel.ReaderUiState, onToggleExpand: () -&gt; Unit, onToggleSelection: () -&gt; Unit, onOpenItem: (LibraryItem) -&gt; Unit, onOpenNewChapter: (LibraryItem) -&gt; Unit, onResetProgress: () -&gt; Unit, onRemoveGroup: () -&gt; Unit ): Unit</ID>
     <ID>FunctionNaming:LibraryScreenListSections.kt$@OptIn(ExperimentalFoundationApi::class) @Composable private fun SelectableClickBox( modifier: Modifier = Modifier, onClick: (() -&gt; Unit)? = null, onLongClick: (() -&gt; Unit)? = null, content: @Composable BoxScope.() -&gt; Unit )</ID>
-    <ID>FunctionNaming:ReaderContentArea.kt$@Composable private fun EdgeHintChip( text: String, icon: androidx.compose.ui.graphics.vector.ImageVector )</ID>
+    <ID>FunctionNaming:ReaderContentArea.kt$@Composable private fun EdgeHintChip( text: String, icon: ImageVector )</ID>
     <ID>FunctionNaming:ReaderContentArea.kt$@Composable private fun EdgeNavigationHint(atTop: Boolean, atBottom: Boolean)</ID>
     <ID>FunctionNaming:ReaderContentArea.kt$@Composable private fun ReaderBottomNavigationBar( readerViewModel: ReaderViewModel, canNavigatePrevious: Boolean, canNavigateNext: Boolean, onPreviousClick: () -&gt; Unit, onNextClick: () -&gt; Unit, onProgressChange: (Float) -&gt; Unit )</ID>
     <ID>FunctionNaming:ReaderContentArea.kt$@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class) @Composable internal fun ContentArea( uiState: ReaderViewModel.ReaderUiState, content: ChapterContent, readerViewModel: ReaderViewModel, onLibraryClick: () -&gt; Unit, onShowChapterList: () -&gt; Unit, onShowSettings: () -&gt; Unit ): Unit</ID>
@@ -98,7 +110,7 @@
     <ID>FunctionNaming:ReaderScreen.kt$@Composable private fun CloudflareDialog( url: String, onDismiss: () -&gt; Unit, onRetry: () -&gt; Unit ): Unit</ID>
     <ID>FunctionNaming:ReaderScreen.kt$@Composable private fun NavigationOverlay(): Unit</ID>
     <ID>FunctionNaming:ReaderScreen.kt$@Composable private fun ReaderContent( uiState: ReaderViewModel.ReaderUiState, readerViewModel: ReaderViewModel, onOpenLibrary: () -&gt; Unit, onOpenLibraryScreen: () -&gt; Unit, onShowChapterList: () -&gt; Unit, onShowSettings: () -&gt; Unit ): Unit</ID>
-    <ID>FunctionNaming:ReaderScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun ReaderScreen( readerViewModel: ReaderViewModel, libraryViewModel: LibraryViewModel, navController: NavController, onOpenFilePicker: () -&gt; Unit, modifier: Modifier = Modifier ): Unit</ID>
+    <ID>FunctionNaming:ReaderScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun ReaderScreen( readerViewModel: ReaderViewModel, libraryViewModelProvider: () -&gt; LibraryViewModel, navController: NavController, onOpenFilePicker: () -&gt; Unit, modifier: Modifier = Modifier ): Unit</ID>
     <ID>FunctionNaming:ReaderSettingsSheet.kt$@Composable fun SettingSlider( label: String, value: Float, onValueChange: (Float) -&gt; Unit, valueRange: ClosedFloatingPointRange&lt;Float&gt;, steps: Int, displayValue: String )</ID>
     <ID>FunctionNaming:ReaderSettingsSheet.kt$@Composable private fun AccentThemeChip( accentTheme: AccentTheme, isSelected: Boolean, onClick: () -&gt; Unit )</ID>
     <ID>FunctionNaming:ReaderSettingsSheet.kt$@Composable private fun FontFamilyChip( font: String, isSelected: Boolean, onClick: () -&gt; Unit )</ID>
@@ -117,7 +129,6 @@
     <ID>ImplicitDefaultLocale:ReaderSettingsSheet.kt$String.format("%.1f", uiState.lineHeight)</ID>
     <ID>ImplicitDefaultLocale:ReaderSettingsSheet.kt$String.format("%.1f", uiState.paragraphSpacing)</ID>
     <ID>ImplicitDefaultLocale:SettingsScreen.kt$String.format("%.1f %s", value, units[unit])</ID>
-    <ID>InstanceOfCheckForException:WebContentLoader.kt$WebContentLoader$e is Exception</ID>
     <ID>InvalidPackageDeclaration:LibraryDrawerContent.kt$package io.aatricks.easyreader.ui.screens</ID>
     <ID>InvalidPackageDeclaration:LibraryNovelHelpers.kt$package io.aatricks.easyreader.ui.screens</ID>
     <ID>InvalidPackageDeclaration:LibraryScreen.kt$package io.aatricks.easyreader.ui.screens</ID>
@@ -130,7 +141,7 @@
     <ID>LargeClass:ReaderViewModel.kt$ReaderViewModel : BaseViewModel</ID>
     <ID>LargeClass:WebContentLoader.kt$WebContentLoader</ID>
     <ID>LongMethod:ChapterListSheet.kt$@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class) @Composable fun ChapterListSheet( uiState: ReaderViewModel.ReaderUiState, libraryViewModel: LibraryViewModel, onDismiss: () -&gt; Unit, onNavigateToChapter: (String, String) -&gt; Unit, sheetState: SheetState )</ID>
-    <ID>LongMethod:ChapterSummaryDropdown.kt$@Composable fun ChapterSummaryDropdown( summary: String?, isGenerating: Boolean, onGenerateSummary: () -&gt; Unit, onCancel: (() -&gt; Unit)? = null, isAvailable: Boolean = true, modifier: Modifier = Modifier )</ID>
+    <ID>LongMethod:ChapterSummaryDropdown.kt$@Composable fun ChapterSummaryDropdown( summary: String?, isGenerating: Boolean, onGenerateSummary: () -&gt; Unit, onCancel: (() -&gt; Unit)? = null, aiSupportedInBuild: Boolean = true, aiOptedIn: Boolean = true, onEnableAi: (() -&gt; Unit)? = null, isInitializing: Boolean = false, isReady: Boolean = aiSupportedInBuild &amp;&amp; aiOptedIn, modifier: Modifier = Modifier )</ID>
     <ID>LongMethod:ContentRenderer.kt$@Composable fun ContentRenderer( elements: List&lt;ContentElement&gt;, modifier: Modifier = Modifier, backgroundColor: Color = Color.Black, textColor: Color = Color.White, pageUrl: String = "" )</ID>
     <ID>LongMethod:ExploreDetailSheet.kt$@OptIn(ExperimentalLayoutApi::class) @Composable fun ExploreItemDetailSheet( item: ExploreItem, isLoading: Boolean = false, isInLibrary: Boolean = false, onAddToLibrary: () -&gt; Unit, onRead: () -&gt; Unit ): Unit</ID>
     <ID>LongMethod:ExploreGridSection.kt$@Composable fun ExploreItemCard( item: ExploreItem, onClick: () -&gt; Unit ): Unit</ID>
@@ -161,8 +172,9 @@
     <ID>LongMethod:ReaderControls.kt$@Composable fun TopInfoBar( novelName: String, chapterTitle: String, onLibraryClick: () -&gt; Unit, onShowChapterList: () -&gt; Unit, onShowSettings: () -&gt; Unit )</ID>
     <ID>LongMethod:ReaderControls.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun BottomNavigationBar( progress: Float, canNavigatePrevious: Boolean, canNavigateNext: Boolean, onPreviousClick: () -&gt; Unit, onNextClick: () -&gt; Unit, onProgressChange: (Float) -&gt; Unit )</ID>
     <ID>LongMethod:ReaderImageView.kt$@Composable fun ReaderImageView( imageUrl: String, altText: String?, readerViewModel: ReaderViewModel, pageUrl: String, contentScale: ContentScale = ContentScale.Fit, backgroundColor: Color = Color.Black, width: Int = 0, height: Int = 0, resolvedWidth: Int = 0, resolvedHeight: Int = 0, side: ContentElement.Image.Side = ContentElement.Image.Side.FULL, enableZoom: Boolean = false, dynamicHeight: Boolean = false, zoomStateKey: Any? = null, onZoomChanged: ((Boolean) -&gt; Unit)? = null, onDimensionsResolved: ((String, Int, Int) -&gt; Unit)? = null, lockTapWhileZoomed: Boolean = false, onTap: (() -&gt; Unit)? = null )</ID>
+    <ID>LongMethod:ReaderProgressController.kt$ReaderProgressController$fun updateScrollPosition( scrollOffset: Float, maxScrollOffset: Float, viewportHeight: Float, index: Int, offsetFraction: Float, elementKey: String, content: ChapterContent?, canScrollForward: Boolean = true, firstVisibleItemSize: Int = 0 )</ID>
     <ID>LongMethod:ReaderScreen.kt$@Composable private fun CloudflareDialog( url: String, onDismiss: () -&gt; Unit, onRetry: () -&gt; Unit ): Unit</ID>
-    <ID>LongMethod:ReaderScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun ReaderScreen( readerViewModel: ReaderViewModel, libraryViewModel: LibraryViewModel, navController: NavController, onOpenFilePicker: () -&gt; Unit, modifier: Modifier = Modifier ): Unit</ID>
+    <ID>LongMethod:ReaderScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun ReaderScreen( readerViewModel: ReaderViewModel, libraryViewModelProvider: () -&gt; LibraryViewModel, navController: NavController, onOpenFilePicker: () -&gt; Unit, modifier: Modifier = Modifier ): Unit</ID>
     <ID>LongMethod:ReaderSettingsSheet.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ReaderSettingsSheet( uiState: ReaderViewModel.ReaderUiState, onDismiss: () -&gt; Unit, onUpdatePagedMode: (Boolean) -&gt; Unit, onUpdateRtl: (Boolean) -&gt; Unit, onUpdateFontSize: (Float) -&gt; Unit, onUpdateLineHeight: (Float) -&gt; Unit, onUpdateFontFamily: (String) -&gt; Unit, onUpdateMargins: (Int) -&gt; Unit, onUpdateParagraphSpacing: (Float) -&gt; Unit, onUpdateReaderTheme: (ReaderTheme) -&gt; Unit, onUpdateAccentTheme: (AccentTheme) -&gt; Unit, sheetState: SheetState )</ID>
     <ID>LongMethod:ReaderViewModel.kt$ReaderViewModel$fun loadEpubChapter( epubPath: String, href: String, libraryItemId: String? = null, fromBottom: Boolean = false, isSilent: Boolean = false ): Unit</ID>
     <ID>LongMethod:ReaderViewModel.kt$ReaderViewModel$private suspend fun handleLoadSuccess( result: ContentResult.Success, libraryItemId: String?, fromBottom: Boolean ): Unit</ID>
@@ -170,15 +182,15 @@
     <ID>LongMethod:WebContentLoader.kt$WebContentLoader$private suspend fun downloadAndCacheImageInternal( imageUrl: String, pageUrl: String, priority: ImageRequestPriority, writeTier: StorageTier = tierForPriority(priority) ): ImageDownloadResult</ID>
     <ID>LongMethod:WebContentLoader.kt$WebContentLoader$private suspend fun executePrefetch( url: String, mode: PrefetchMode, onProgress: (suspend (PrefetchResult) -&gt; Unit)? = null ): PrefetchResult</ID>
     <ID>LongMethod:ZoomableBox.kt$@Composable fun ZoomableBox( modifier: Modifier = Modifier, minScale: Float = 1f, maxScale: Float = 3f, enableZoom: Boolean = false, dynamicHeight: Boolean = false, zoomStateKey: Any? = null, onZoomChanged: ((Boolean) -&gt; Unit)? = null, lockTapWhileZoomed: Boolean = false, onTap: (() -&gt; Unit)? = null, content: @Composable BoxScope.() -&gt; Unit )</ID>
-    <ID>LongParameterList:ChapterSummaryDropdown.kt$( summary: String?, isGenerating: Boolean, onGenerateSummary: () -&gt; Unit, onCancel: (() -&gt; Unit)? = null, isAvailable: Boolean = true, modifier: Modifier = Modifier )</ID>
+    <ID>LongParameterList:ChapterSummaryDropdown.kt$( summary: String?, isGenerating: Boolean, onGenerateSummary: () -&gt; Unit, onCancel: (() -&gt; Unit)? = null, aiSupportedInBuild: Boolean = true, aiOptedIn: Boolean = true, onEnableAi: (() -&gt; Unit)? = null, isInitializing: Boolean = false, isReady: Boolean = aiSupportedInBuild &amp;&amp; aiOptedIn, modifier: Modifier = Modifier )</ID>
     <ID>LongParameterList:ContentRenderer.kt$( url: String, altText: String?, side: ContentElement.Image.Side = ContentElement.Image.Side.FULL, width: Int = 0, height: Int = 0, pageUrl: String = "" )</ID>
     <ID>LongParameterList:ContentRepository.kt$ContentRepository$( private val webLoader: WebContentLoader, private val pdfLoader: PdfContentLoader, private val epubLoader: EpubContentLoader, private val localLoader: LocalContentLoader, private val contentUriTypeResolver: ContentUriTypeResolver, @ApplicationContext private val context: Context, private val okHttpClient: OkHttpClient )</ID>
     <ID>LongParameterList:ExploreGridSection.kt$( gridState: LazyGridState, modifier: Modifier = Modifier, uiState: ExploreViewModel.ExploreUiState, hasActiveFilters: Boolean, onItemSelect: (ExploreItem) -&gt; Unit, onLoadMore: () -&gt; Unit, onClearFilters: () -&gt; Unit, onRetryFailedSource: (String) -&gt; Unit )</ID>
     <ID>LongParameterList:ExploreScreen.kt$( uiState: ExploreViewModel.ExploreUiState, hasActiveFilters: Boolean, onOpenFilters: () -&gt; Unit, onSourceSelect: (String?) -&gt; Unit, onTagToggle: (String) -&gt; Unit, onClearFilters: () -&gt; Unit )</ID>
     <ID>LongParameterList:ExploreScreen.kt$( uiState: ExploreViewModel.ExploreUiState, modifier: Modifier = Modifier, hasActiveFilters: Boolean, onSearchQueryChange: (String) -&gt; Unit, onPerformSearch: () -&gt; Unit, onOpenFilters: () -&gt; Unit, onClearFilters: () -&gt; Unit, onSetBrowseMode: (BrowseMode) -&gt; Unit, onSourceSelect: (String?) -&gt; Unit, onTagToggle: (String) -&gt; Unit, onItemSelect: (ExploreItem) -&gt; Unit, onLoadMore: () -&gt; Unit, onRetryFailedSource: (String) -&gt; Unit )</ID>
     <ID>LongParameterList:LibraryItemCard.kt$( item: LibraryItem, isSelected: Boolean, isCurrent: Boolean, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, onNewTagClick: (() -&gt; Unit)? = null, onDelete: (() -&gt; Unit)? = null, onResetProgress: (() -&gt; Unit)? = null, onMarkFinished: (() -&gt; Unit)? = null )</ID>
-    <ID>LongParameterList:LibraryRepository.kt$LibraryRepository$( itemId: String, currentChapter: String = "", progress: FieldUpdate&lt;Int&gt; = FieldUpdate.Unchanged, currentChapterUrl: FieldUpdate&lt;String&gt; = FieldUpdate.Unchanged, lastScrollProgress: FieldUpdate&lt;Float&gt; = FieldUpdate.Unchanged, lastReadIndex: FieldUpdate&lt;Int&gt; = FieldUpdate.Unchanged, lastReadOffset: FieldUpdate&lt;Int&gt; = FieldUpdate.Unchanged, lastReadOffsetFraction: FieldUpdate&lt;Float?&gt; = FieldUpdate.Unchanged )</ID>
-    <ID>LongParameterList:LibraryRepository.kt$LibraryRepository$( itemId: String, currentChapter: String, progress: Int, currentChapterUrl: String? = null, lastScrollProgress: Float? = null, lastReadIndex: Int? = null, lastReadOffset: Int? = null, lastReadOffsetFraction: Float? = null )</ID>
+    <ID>LongParameterList:LibraryRepository.kt$LibraryRepository$( itemId: String, currentChapter: String = "", progress: FieldUpdate&lt;Int&gt; = FieldUpdate.Unchanged, currentChapterUrl: FieldUpdate&lt;String&gt; = FieldUpdate.Unchanged, lastScrollProgress: FieldUpdate&lt;Float&gt; = FieldUpdate.Unchanged, lastReadIndex: FieldUpdate&lt;Int&gt; = FieldUpdate.Unchanged, lastReadElementKey: FieldUpdate&lt;String&gt; = FieldUpdate.Unchanged, lastReadOffsetFraction: FieldUpdate&lt;Float&gt; = FieldUpdate.Unchanged )</ID>
+    <ID>LongParameterList:LibraryRepository.kt$LibraryRepository$( itemId: String, currentChapter: String, progress: Int, currentChapterUrl: String? = null, lastScrollProgress: Float? = null, lastReadIndex: Int? = null, lastReadElementKey: String? = null, lastReadOffsetFraction: Float? = null )</ID>
     <ID>LongParameterList:LibraryRepository.kt$LibraryRepository$( title: String, url: String, contentType: ContentType, currentChapter: String = "Chapter 1", baseTitle: String = title, baseNovelUrl: String = "", sourceName: String = "", totalChapters: Int = 0 )</ID>
     <ID>LongParameterList:LibraryScreen.kt$( query: String, totalCount: Int, visibleCount: Int, isSelectionMode: Boolean, selectedCount: Int, onSelectionClick: () -&gt; Unit )</ID>
     <ID>LongParameterList:LibraryScreenEpubSections.kt$( item: LibraryItem, uiState: LibraryViewModel.LibraryUiState, contentRepository: ContentRepository, readerViewModel: ReaderViewModel, libraryViewModel: LibraryViewModel, onCloseLibrary: () -&gt; Unit )</ID>
@@ -188,7 +200,6 @@
     <ID>LongParameterList:LibraryScreenListSections.kt$( title: String, items: List&lt;LibraryItem&gt;, uiState: LibraryViewModel.LibraryUiState, readerUiState: ReaderViewModel.ReaderUiState, summaryUiState: SummaryViewModel.SummaryUiState, isExpanded: Boolean, showFullChapters: Boolean, onToggleExpand: () -&gt; Unit, onToggleShowFull: () -&gt; Unit, libraryViewModel: LibraryViewModel, readerViewModel: ReaderViewModel, summaryViewModel: SummaryViewModel, onCloseLibrary: () -&gt; Unit )</ID>
     <ID>LongParameterList:LibraryScreenListSections.kt$( uiState: LibraryViewModel.LibraryUiState, readerUiState: ReaderViewModel.ReaderUiState, summaryUiState: SummaryViewModel.SummaryUiState, libraryViewModel: LibraryViewModel, readerViewModel: ReaderViewModel, summaryViewModel: SummaryViewModel, onCloseLibrary: () -&gt; Unit )</ID>
     <ID>LongParameterList:PreferencesManager.kt$PreferencesManager$( fontSize: Float? = null, lineHeight: Float? = null, fontFamily: String? = null, margins: Int? = null, paragraphSpacing: Float? = null, readerTheme: String? = null, accentTheme: String? = null )</ID>
-    <ID>LongParameterList:ReaderContentArea.kt$( firstVisibleItemIndex: Int, firstVisibleItemMeasuredIndex: Int, firstVisibleItemScrollOffset: Int, canScrollForward: Boolean, totalItemsCount: Int, viewportHeightPx: Int, firstVisibleItemSize: Int )</ID>
     <ID>LongParameterList:ReaderContentArea.kt$( readerViewModel: ReaderViewModel, canNavigatePrevious: Boolean, canNavigateNext: Boolean, onPreviousClick: () -&gt; Unit, onNextClick: () -&gt; Unit, onProgressChange: (Float) -&gt; Unit )</ID>
     <ID>LongParameterList:ReaderContentArea.kt$( uiState: ReaderViewModel.ReaderUiState, content: ChapterContent, readerViewModel: ReaderViewModel, onLibraryClick: () -&gt; Unit, onShowChapterList: () -&gt; Unit, onShowSettings: () -&gt; Unit )</ID>
     <ID>LongParameterList:ReaderContentGestures.kt$( uiState: ReaderViewModel.ReaderUiState, pagerState: PagerState, listState: LazyListState, content: ChapterContent, threshold: Float, onHideControls: () -&gt; Unit, onUserInteraction: () -&gt; Unit, onPullAmountChange: (Float) -&gt; Unit, onNavigatePrevious: () -&gt; Unit, onNavigateNext: () -&gt; Unit )</ID>
@@ -197,16 +208,14 @@
     <ID>LongParameterList:ReaderContentRenderers.kt$( images: List&lt;ContentElement.Image&gt;, pageUrl: String, pageIndex: Int, backgroundColor: Color, readerViewModel: ReaderViewModel, enableZoom: Boolean, onPageZoomChanged: (Boolean) -&gt; Unit )</ID>
     <ID>LongParameterList:ReaderControls.kt$( progress: Float, canNavigatePrevious: Boolean, canNavigateNext: Boolean, onPreviousClick: () -&gt; Unit, onNextClick: () -&gt; Unit, onProgressChange: (Float) -&gt; Unit )</ID>
     <ID>LongParameterList:ReaderImageView.kt$( imageUrl: String, altText: String?, readerViewModel: ReaderViewModel, pageUrl: String, contentScale: ContentScale = ContentScale.Fit, backgroundColor: Color = Color.Black, width: Int = 0, height: Int = 0, resolvedWidth: Int = 0, resolvedHeight: Int = 0, side: ContentElement.Image.Side = ContentElement.Image.Side.FULL, enableZoom: Boolean = false, dynamicHeight: Boolean = false, zoomStateKey: Any? = null, onZoomChanged: ((Boolean) -&gt; Unit)? = null, onDimensionsResolved: ((String, Int, Int) -&gt; Unit)? = null, lockTapWhileZoomed: Boolean = false, onTap: (() -&gt; Unit)? = null )</ID>
-    <ID>LongParameterList:ReaderProgressController.kt$ReaderProgressController$( progress: Int, scrollPosition: Float? = null, index: Int? = null, offset: Int? = null, offsetFraction: Float? = null, currentChapterUrl: String? = null, content: ChapterContent? = null )</ID>
-    <ID>LongParameterList:ReaderProgressController.kt$ReaderProgressController$( scrollOffset: Float, maxScrollOffset: Float, viewportHeight: Float, index: Int, offset: Int, content: ChapterContent?, canScrollForward: Boolean = true, firstVisibleItemSize: Int = 0 )</ID>
-    <ID>LongParameterList:ReaderProgressController.kt$ReaderProgressController$( scrollPosition: Float, scrollProgress: Int, scrollIndex: Int, scrollOffset: Int, scrollOffsetFraction: Float? = _progressState.value.scrollOffsetFraction, firstVisibleItemSize: Int = _progressState.value.firstVisibleItemSize, seekTrigger: Long = _progressState.value.seekTrigger, targetScrollPosition: Float? = _progressState.value.targetScrollPosition )</ID>
+    <ID>LongParameterList:ReaderProgressController.kt$ReaderProgressController$( progress: Int, scrollPosition: Float? = null, index: Int? = null, elementKey: String? = null, offsetFraction: Float? = null, currentChapterUrl: String? = null, content: ChapterContent? = null, forcePersist: Boolean = false )</ID>
+    <ID>LongParameterList:ReaderProgressController.kt$ReaderProgressController$( scrollOffset: Float, maxScrollOffset: Float, viewportHeight: Float, index: Int, offsetFraction: Float, elementKey: String, content: ChapterContent?, canScrollForward: Boolean = true, firstVisibleItemSize: Int = 0 )</ID>
     <ID>LongParameterList:ReaderScreen.kt$( uiState: ReaderViewModel.ReaderUiState, readerViewModel: ReaderViewModel, onOpenLibrary: () -&gt; Unit, onOpenLibraryScreen: () -&gt; Unit, onShowChapterList: () -&gt; Unit, onShowSettings: () -&gt; Unit )</ID>
     <ID>LongParameterList:ReaderSettingsSheet.kt$( label: String, value: Float, onValueChange: (Float) -&gt; Unit, valueRange: ClosedFloatingPointRange&lt;Float&gt;, steps: Int, displayValue: String )</ID>
     <ID>LongParameterList:ReaderSettingsSheet.kt$( uiState: ReaderViewModel.ReaderUiState, onDismiss: () -&gt; Unit, onUpdatePagedMode: (Boolean) -&gt; Unit, onUpdateRtl: (Boolean) -&gt; Unit, onUpdateFontSize: (Float) -&gt; Unit, onUpdateLineHeight: (Float) -&gt; Unit, onUpdateFontFamily: (String) -&gt; Unit, onUpdateMargins: (Int) -&gt; Unit, onUpdateParagraphSpacing: (Float) -&gt; Unit, onUpdateReaderTheme: (ReaderTheme) -&gt; Unit, onUpdateAccentTheme: (AccentTheme) -&gt; Unit, sheetState: SheetState )</ID>
     <ID>LongParameterList:ReaderStates.kt$( icon: ImageVector, iconTint: androidx.compose.ui.graphics.Color, iconDescription: String, title: String, body: String, action: @Composable (() -&gt; Unit)? = null )</ID>
-    <ID>LongParameterList:ReaderViewModel.kt$ReaderViewModel$( progress: Int, scrollPosition: Float? = null, index: Int? = null, offset: Int? = null, offsetFraction: Float? = null, currentChapterUrl: String? = null )</ID>
-    <ID>LongParameterList:ReaderViewModel.kt$ReaderViewModel$( scrollOffset: Float, maxScrollOffset: Float, viewportHeight: Float, index: Int, offset: Int, canScrollForward: Boolean = true, firstVisibleItemSize: Int = 0 )</ID>
-    <ID>LongParameterList:ReaderViewModel.kt$ReaderViewModel$( scrollPosition: Float, scrollProgress: Int, scrollIndex: Int, scrollOffset: Int, scrollOffsetFraction: Float? = progressController.progressState.value.scrollOffsetFraction, firstVisibleItemSize: Int = progressController.progressState.value.firstVisibleItemSize, seekTrigger: Long = progressController.progressState.value.seekTrigger, targetScrollPosition: Float? = progressController.progressState.value.targetScrollPosition )</ID>
+    <ID>LongParameterList:ReaderViewModel.kt$ReaderViewModel$( progress: Int, scrollPosition: Float? = null, index: Int? = null, elementKey: String? = null, offsetFraction: Float? = null, currentChapterUrl: String? = null, forcePersist: Boolean = false )</ID>
+    <ID>LongParameterList:ReaderViewModel.kt$ReaderViewModel$( scrollOffset: Float, maxScrollOffset: Float, viewportHeight: Float, index: Int, offsetFraction: Float, elementKey: String, canScrollForward: Boolean = true, firstVisibleItemSize: Int = 0 )</ID>
     <ID>LongParameterList:ReaderViewModel.kt$ReaderViewModel$( url: String, libraryItemId: String? = null, fromBottom: Boolean = false, isSilent: Boolean = false, isExplicitNavigation: Boolean = false, resetWebStateBeforeLoad: Boolean = false )</ID>
     <ID>LongParameterList:ReaderViewModel.kt$ReaderViewModel$( url: String, libraryItemId: String?, fromBottom: Boolean, isSilent: Boolean, isExplicitNavigation: Boolean, preloadedResult: ContentResult.Success? = null, resetWebStateBeforeLoad: Boolean = false )</ID>
     <ID>LongParameterList:WebContentLoader.kt$WebContentLoader$( imageUrls: List&lt;String&gt;, pageUrl: String, priority: ImageRequestPriority, writeTier: StorageTier, maxConcurrency: Int, onImageCached: (suspend () -&gt; Unit)? = null )</ID>
@@ -215,6 +224,7 @@
     <ID>LoopWithTooManyJumpStatements:ContentRepository.kt$ContentRepository$for</ID>
     <ID>LoopWithTooManyJumpStatements:HtmlParser.kt$HtmlParser$while</ID>
     <ID>LoopWithTooManyJumpStatements:MangaBatSource.kt$MangaBatSource$for</ID>
+    <ID>LoopWithTooManyJumpStatements:ReaderContentGestures.kt$for</ID>
     <ID>LoopWithTooManyJumpStatements:SafeRedirectInterceptor.kt$SafeRedirectInterceptor$while</ID>
     <ID>LoopWithTooManyJumpStatements:SmartSource.kt$SmartSource$for</ID>
     <ID>LoopWithTooManyJumpStatements:TextFormattingPipeline.kt$TextFormattingPipeline$while</ID>
@@ -290,10 +300,17 @@
     <ID>MagicNumber:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$4</ID>
     <ID>MagicNumber:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$5</ID>
     <ID>MagicNumber:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$6</ID>
+    <ID>MagicNumber:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$7</ID>
+    <ID>MagicNumber:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$8</ID>
+    <ID>MagicNumber:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$9</ID>
     <ID>MagicNumber:AutoDeletionPolicy.kt$100</ID>
     <ID>MagicNumber:BaseJsoupSource.kt$BaseJsoupSource$15000L</ID>
     <ID>MagicNumber:CacheKeyUtils.kt$CacheKeyUtils$0xff</ID>
     <ID>MagicNumber:CacheKeyUtils.kt$CacheKeyUtils$4</ID>
+    <ID>MagicNumber:ChapterDownloadQueue.kt$WorkManagerChapterDownloadQueue$3</ID>
+    <ID>MagicNumber:ChapterDownloadQueue.kt$WorkManagerChapterDownloadQueue$30</ID>
+    <ID>MagicNumber:ChapterDownloadQueue.kt$WorkManagerChapterDownloadQueue$4</ID>
+    <ID>MagicNumber:ChapterDownloadQueue.kt$WorkManagerChapterDownloadQueue$5</ID>
     <ID>MagicNumber:ChapterListSheet.kt$100</ID>
     <ID>MagicNumber:EasyReaderApplication.kt$EasyReaderApplication$0.25</ID>
     <ID>MagicNumber:EpubContentLoader.kt$EpubContentLoader$1024</ID>
@@ -310,6 +327,8 @@
     <ID>MagicNumber:ExploreGridSection.kt$950</ID>
     <ID>MagicNumber:ExploreViewModel.kt$ExploreViewModel$500L</ID>
     <ID>MagicNumber:FileUtils.kt$FileUtils$1024</ID>
+    <ID>MagicNumber:HostThrottle.kt$HostThrottle.&lt;no name provided&gt;$0.75f</ID>
+    <ID>MagicNumber:HostThrottle.kt$HostThrottle.&lt;no name provided&gt;$16</ID>
     <ID>MagicNumber:HtmlParser.kt$HtmlParser$10</ID>
     <ID>MagicNumber:HtmlParser.kt$HtmlParser$5</ID>
     <ID>MagicNumber:HtmlParser.kt$HtmlParser$80</ID>
@@ -364,8 +383,6 @@
     <ID>MagicNumber:ImageBoundsParser.kt$ImageBoundsParser$9</ID>
     <ID>MagicNumber:ImageDownloader.kt$ImageDownloader$429</ID>
     <ID>MagicNumber:ImageDownloader.kt$ImageDownloader$8192</ID>
-    <ID>MagicNumber:ImageDownloader.kt$ImageDownloader.&lt;no name provided&gt;$0.75f</ID>
-    <ID>MagicNumber:ImageDownloader.kt$ImageDownloader.&lt;no name provided&gt;$16</ID>
     <ID>MagicNumber:LibraryItem.kt$LibraryItem$100</ID>
     <ID>MagicNumber:LibraryItemCard.kt$0.992f</ID>
     <ID>MagicNumber:LibraryItemCard.kt$100</ID>
@@ -397,18 +414,20 @@
     <ID>MagicNumber:PreferencesManager.kt$PreferencesManager$1.5f</ID>
     <ID>MagicNumber:PreferencesManager.kt$PreferencesManager$16</ID>
     <ID>MagicNumber:PreferencesManager.kt$PreferencesManager$18f</ID>
+    <ID>MagicNumber:ReaderContentArea.kt$0.0001f</ID>
     <ID>MagicNumber:ReaderContentArea.kt$100f</ID>
     <ID>MagicNumber:ReaderContentGestures.kt$0.4f</ID>
     <ID>MagicNumber:ReaderContentGestures.kt$0xFF4CAF50</ID>
-    <ID>MagicNumber:ReaderContentGestures.kt$10</ID>
     <ID>MagicNumber:ReaderContentGestures.kt$180f</ID>
-    <ID>MagicNumber:ReaderContentGestures.kt$3</ID>
+    <ID>MagicNumber:ReaderContentGestures.kt$6</ID>
     <ID>MagicNumber:ReaderContentGestures.kt$&lt;no name provided&gt;$0.5f</ID>
     <ID>MagicNumber:ReaderContentRenderers.kt$10000000</ID>
     <ID>MagicNumber:ReaderContentRenderers.kt$100f</ID>
-    <ID>MagicNumber:ReaderContentRenderers.kt$64</ID>
     <ID>MagicNumber:ReaderImageView.kt$200</ID>
+    <ID>MagicNumber:ReaderImageView.kt$750L</ID>
+    <ID>MagicNumber:ReaderProgressController.kt$64</ID>
     <ID>MagicNumber:ReaderProgressController.kt$ReaderProgressController$100</ID>
+    <ID>MagicNumber:ReaderProgressController.kt$ReaderProgressController$1000f</ID>
     <ID>MagicNumber:ReaderProgressController.kt$ReaderProgressController$100f</ID>
     <ID>MagicNumber:ReaderScreen.kt$0.85f</ID>
     <ID>MagicNumber:ReaderScreen.kt$0.95f</ID>
@@ -424,7 +443,6 @@
     <ID>MagicNumber:ReaderTheme.kt$ReaderTheme.SEPIA$0xFF5B4636</ID>
     <ID>MagicNumber:ReaderTheme.kt$ReaderTheme.SEPIA$0xFFF4ECD8</ID>
     <ID>MagicNumber:ReaderViewModel.kt$ReaderViewModel$1000</ID>
-    <ID>MagicNumber:ReaderViewModel.kt$ReaderViewModel$10000000</ID>
     <ID>MagicNumber:ReaderViewModel.kt$ReaderViewModel$100f</ID>
     <ID>MagicNumber:ReaderViewModel.kt$ReaderViewModel$12f</ID>
     <ID>MagicNumber:ReaderViewModel.kt$ReaderViewModel$2.5f</ID>
@@ -497,6 +515,7 @@
     <ID>MagicNumber:WebContentLoader.kt$WebContentLoader$1.6</ID>
     <ID>MagicNumber:WebContentLoader.kt$WebContentLoader$1600</ID>
     <ID>MagicNumber:WebContentLoader.kt$WebContentLoader$250L</ID>
+    <ID>MagicNumber:WebContentLoader.kt$WebContentLoader$429</ID>
     <ID>MagicNumber:WebContentLoader.kt$WebContentLoader.&lt;no name provided&gt;$0.75f</ID>
     <ID>MagicNumber:ZipUtils.kt$ZipUtils$10</ID>
     <ID>MagicNumber:ZipUtils.kt$ZipUtils$1024</ID>
@@ -508,21 +527,17 @@
     <ID>MagicNumber:ZoomableBox.kt$300L</ID>
     <ID>MagicNumber:ZoomableBox.kt$4f</ID>
     <ID>MatchingDeclarationName:ReaderImageSizing.kt$ImageDimensions</ID>
+    <ID>MaxLineLength:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$db.execSQL("CREATE INDEX IF NOT EXISTS index_chapter_image_state_chapterUrl ON chapter_image_state (chapterUrl)")</ID>
+    <ID>MaxLineLength:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$db.execSQL("CREATE INDEX IF NOT EXISTS index_chapter_image_state_status ON chapter_image_state (status)")</ID>
     <ID>MaxLineLength:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$db.execSQL("CREATE INDEX index_library_items_isCurrentlyReading ON library_items_new (isCurrentlyReading)")</ID>
     <ID>MaxLineLength:BaseJsoupSource.kt$BaseJsoupSource$protected open val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"</ID>
     <ID>MaxLineLength:ChapterListSheet.kt$colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)</ID>
     <ID>MaxLineLength:ChapterListSheet.kt$contentDescription = stringResource(R.string.chapter_action_remove_download)</ID>
     <ID>MaxLineLength:ChapterListSheet.kt$text = if (isDeleteMode) stringResource(R.string.common_delete) else stringResource(R.string.download_button)</ID>
-    <ID>MaxLineLength:ContentRepository.kt$ContentRepository$ContentKind.UNKNOWN -&gt; PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = false)</ID>
     <ID>MaxLineLength:ContentRepository.kt$ContentRepository$PrefetchResult(url, htmlCached = cached, totalImages = 0, cachedImages = 0, isComplete = cached, isRetryable = !cached)</ID>
     <ID>MaxLineLength:ContentRepository.kt$ContentRepository$PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = true)</ID>
-    <ID>MaxLineLength:ContentRepository.kt$ContentRepository$PrefetchResult(url, htmlCached = true, totalImages = 0, cachedImages = 0, isComplete = true, isRetryable = false)</ID>
-    <ID>MaxLineLength:ContentRepository.kt$ContentRepository$return PrefetchResult(url, htmlCached = exists, totalImages = 0, cachedImages = 0, isComplete = exists, isRetryable = !exists)</ID>
-    <ID>MaxLineLength:EpubContentLoader.kt$EpubContentLoader$els.add(ContentElement.Image("$filePath#img:${resolveEpubPath(href, src)}", element.attr("alt")))</ID>
-    <ID>MaxLineLength:EpubContentLoader.kt$EpubContentLoader$els.add(ContentElement.Image("$filePath#img:${resolveEpubPath(href, src)}", img.attr("alt")))</ID>
-    <ID>MaxLineLength:EpubContentLoader.kt$EpubContentLoader$if</ID>
+    <ID>MaxLineLength:ContentRepository.kt$ContentRepository$suspend</ID>
     <ID>MaxLineLength:EpubContentLoader.kt$EpubContentLoader$suspend</ID>
-    <ID>MaxLineLength:EpubContentLoader.kt$EpubContentLoader$val opfPath = Jsoup.parse(String(cont), "", org.jsoup.parser.Parser.xmlParser()).select("rootfile").attr("full-path")</ID>
     <ID>MaxLineLength:ErrorMessages.kt$ErrorMessages$body = "The source is blocking automated access. Solve the challenge in the browser pop-up to continue."</ID>
     <ID>MaxLineLength:ExploreGridSection.kt$modifier = Modifier.padding(horizontal = EasyReaderSpacing.xs, vertical = EasyReaderSpacing.xxs)</ID>
     <ID>MaxLineLength:ExploreGridSection.kt$val shouldLoadMore = uiState.canLoadMore &amp;&amp; !uiState.isLoading &amp;&amp; uiState.items.isNotEmpty() &amp;&amp; lastVisible &gt;= totalItems - 4</ID>
@@ -531,14 +546,18 @@
     <ID>MaxLineLength:ExploreViewModel.kt$ExploreViewModel$val novels = exploreRepository.getNovels(_uiState.value.browseMode, 1, _uiState.value.selectedSource, _uiState.value.selectedTags.toList())</ID>
     <ID>MaxLineLength:ExploreViewModel.kt$ExploreViewModel$val novels = exploreRepository.getNovels(_uiState.value.browseMode, 1, _uiState.value.selectedSource, emptyList())</ID>
     <ID>MaxLineLength:ExploreViewModel.kt$ExploreViewModel$val novels = exploreRepository.getNovels(_uiState.value.browseMode, 1, _uiState.value.selectedSource, newTags.toList())</ID>
+    <ID>MaxLineLength:HtmlParser.kt$HtmlParser$Regex(""""url"\s*(?::|,)\s*\[?\s*\d*\s*,?\s*"(https?://[^"]+\.(?:webp|jpg|jpeg|png|gif))""""", RegexOption.IGNORE_CASE)</ID>
     <ID>MaxLineLength:HtmlParser.kt$HtmlParser$document.select("img[alt*='credit'], img[alt*='recommend'], img[src*='credit'], img[src*='recommend'], img[alt*='ei0qg'], img[title*='ei0qg']").remove()</ID>
     <ID>MaxLineLength:HtmlParser.kt$HtmlParser$if (p.isEmpty() || p.matches(DIGIT_ONLY_REGEX) || CHAPTER_CLEANUP_PATTERN.containsMatchIn(p)) return@filter false</ID>
     <ID>MaxLineLength:HtmlParser.kt$HtmlParser$private</ID>
     <ID>MaxLineLength:HtmlParser.kt$HtmlParser$val height = if (isMangaSite) 0 else element.attr("height").toIntOrNull() ?: element.attr("data-height").toIntOrNull() ?: 0</ID>
     <ID>MaxLineLength:HtmlParser.kt$HtmlParser$val width = if (isMangaSite) 0 else element.attr("width").toIntOrNull() ?: element.attr("data-width").toIntOrNull() ?: 0</ID>
+    <ID>MaxLineLength:HttpMediaCacheFetcher.kt$HttpMediaCacheFetcher$Log.w("HttpMediaCacheFetcher", "final file missing img=$safeUrl path=${file.absolutePath} exists=${file.exists()} len=${file.length()}")</ID>
+    <ID>MaxLineLength:ImageIntegrity.kt$ImageIntegrity$if (header[0] == 0xFF.toByte() &amp;&amp; header[1] == 0xD8.toByte() &amp;&amp; header[2] == 0xFF.toByte()) return ImageFormat.JPEG</ID>
+    <ID>MaxLineLength:LibraryBackupManager.kt$lastReadOffsetFraction = lastReadOffsetFraction.takeUnless { it == io.aatricks.easyreader.data.model.FRACTION_UNKNOWN }</ID>
     <ID>MaxLineLength:LibraryDao.kt$LibraryDao$@Query("UPDATE library_items SET baseNovelUrl = :baseNovelUrl, sourceName = :sourceName WHERE baseTitle = (SELECT baseTitle FROM library_items WHERE id = :itemId)")</ID>
-    <ID>MaxLineLength:LibraryDao.kt$LibraryDao$@Query("UPDATE library_items SET progress = 0, lastScrollPosition = 0, lastReadIndex = 0, lastReadOffset = 0, lastReadOffsetFraction = NULL WHERE baseTitle = :baseTitle")</ID>
-    <ID>MaxLineLength:LibraryDao.kt$LibraryDao$@Query("UPDATE library_items SET progress = 0, lastScrollPosition = 0, lastReadIndex = 0, lastReadOffset = 0, lastReadOffsetFraction = NULL, lastRead = :timestamp WHERE id = :id")</ID>
+    <ID>MaxLineLength:LibraryDao.kt$LibraryDao$@Query("UPDATE library_items SET progress = 0, lastScrollPosition = 0, lastReadIndex = 0, lastReadElementKey = '', lastReadOffsetFraction = -1 WHERE baseTitle = :baseTitle")</ID>
+    <ID>MaxLineLength:LibraryDao.kt$LibraryDao$@Query("UPDATE library_items SET progress = 0, lastScrollPosition = 0, lastReadIndex = 0, lastReadElementKey = '', lastReadOffsetFraction = -1, lastRead = :timestamp WHERE id = :id")</ID>
     <ID>MaxLineLength:LibraryItemCard.kt$color = if (item.progress == 100) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant</ID>
     <ID>MaxLineLength:LibraryItemCard.kt$val isLastChapter = chapterNumber != null &amp;&amp; item.totalChapters &gt; 0 &amp;&amp; chapterNumber.toInt() &gt;= item.totalChapters</ID>
     <ID>MaxLineLength:LibraryRepository.kt$LibraryRepository$?:</ID>
@@ -553,8 +572,6 @@
     <ID>MaxLineLength:LibraryScreenListSections.kt$val loadUrl = if (chapter.currentChapterUrl.isNotBlank()) chapter.currentChapterUrl else chapter.url</ID>
     <ID>MaxLineLength:LibraryScreenListSections.kt$val streamingSummary = if (summaryUiState.activeChapterUrl == chapterUrl) summaryUiState.currentSummary else cachedSummary</ID>
     <ID>MaxLineLength:LibraryViewModel.kt$LibraryViewModel$val readingUrl = item.readingUrl ?: exploreRepository.getNovelDetails(item.url, item.source)?.readingUrl ?: item.url</ID>
-    <ID>MaxLineLength:LibraryViewModel.kt$LibraryViewModel$val result = contentRepository.prefetchWithProgress(item.url, PrefetchMode.USER_REQUESTED) { setCacheState(it) }</ID>
-    <ID>MaxLineLength:LibraryViewModel.kt$LibraryViewModel$val result = contentRepository.prefetchWithProgress(url, PrefetchMode.USER_REQUESTED) { setCacheState(it) }</ID>
     <ID>MaxLineLength:LocalContentLoader.kt$LocalContentLoader$mime.contains("epub", ignoreCase = true) || mime.contains("application/epub+zip", ignoreCase = true) -&gt; epubLoader.loadEpubContent(url)</ID>
     <ID>MaxLineLength:MangaBatSource.kt$MangaBatSource$.</ID>
     <ID>MaxLineLength:NovelFireSource.kt$NovelFireSource$"Sci-fi"</ID>
@@ -570,43 +587,35 @@
     <ID>MaxLineLength:ReaderContentRenderers.kt$zoomStateKey = "${content.url}_${page}_${subElement.url}_${subElement.side}"</ID>
     <ID>MaxLineLength:ReaderImageView.kt$// When dynamicHeight is true (scrolling mode zoom - though now disabled), we don't apply aspect ratio to the outer container.</ID>
     <ID>MaxLineLength:ReaderImageView.kt$// When enableZoom is true and dynamicHeight is false (Paged Manga mode), we fillMaxSize so zoom can cover black bars.</ID>
-    <ID>MaxLineLength:ReaderProgressController.kt$ReaderProgressController$"saveProgress url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(resolvedChapterUrl)} index=$lastIndex offset=$lastOffset offsetFraction=$lastOffsetFraction firstVisibleItemSize=${latest.firstVisibleItemSize} anchor=${if (elementAnchor != null) "&lt;elt&gt;" else "null"}"</ID>
-    <ID>MaxLineLength:ReaderProgressController.kt$ReaderProgressController$lastReadOffsetFraction = progressSnapshot.scrollOffsetFraction?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Clear</ID>
+    <ID>MaxLineLength:ReaderProgressController.kt$ReaderProgressController$"saveProgress url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(resolvedChapterUrl)} index=$lastIndex elementKey=${if (lastElementKey.isNotEmpty()) "&lt;set&gt;" else "&lt;empty&gt;"} fraction=$lastFraction firstVisibleItemSize=${latest.firstVisibleItemSize}"</ID>
+    <ID>MaxLineLength:ReaderProgressController.kt$ReaderProgressController$maxScrollOffset &gt; viewportHeight -&gt; ((scrollOffset / (maxScrollOffset - viewportHeight)) * 100f).coerceIn(0f, 100f)</ID>
+    <ID>MaxLineLength:ReaderProgressController.kt$ReaderProgressController$val nextUiPendingRestoreOffsetFraction = if (uiPendingRestoreOffsetFraction != null) null else uiPendingRestoreOffsetFraction</ID>
     <ID>MaxLineLength:ReaderViewModel.kt$ReaderViewModel$"persistLifecycleProgress skip snap-to-top url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(currentChapterUrl)} dbProgress=${existing.progress}"</ID>
-    <ID>MaxLineLength:ReaderViewModel.kt$ReaderViewModel$"persistLifecycleProgress url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(currentChapterUrl)} index=${latest.scrollIndex} offset=${latest.scrollOffset} offsetFraction=${latest.scrollOffsetFraction} firstVisibleItemSize=${latest.firstVisibleItemSize}"</ID>
+    <ID>MaxLineLength:ReaderViewModel.kt$ReaderViewModel$"persistLifecycleProgress skip unstable url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(currentChapterUrl)} firstVisibleItemSize=${latest.firstVisibleItemSize} fraction=${latest.scrollOffsetFraction}"</ID>
+    <ID>MaxLineLength:ReaderViewModel.kt$ReaderViewModel$"persistLifecycleProgress url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(currentChapterUrl)} index=${latest.scrollIndex} fraction=${latest.scrollOffsetFraction} firstVisibleItemSize=${latest.firstVisibleItemSize}"</ID>
     <ID>MaxLineLength:ReaderViewModel.kt$ReaderViewModel$effectiveId = existing?.id ?: addChapterToLibrary(result.url, result.title, isNext = !fromBottom) ?: effectiveId</ID>
-    <ID>MaxLineLength:ReaderViewModel.kt$ReaderViewModel$lastReadOffsetFraction = progressToPersist.scrollOffsetFraction?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Clear</ID>
     <ID>MaxLineLength:ReaderViewModel.kt$ReaderViewModel$libraryItem?.readingMode == ReadingMode.PAGED</ID>
-    <ID>MaxLineLength:ReaderViewModel.kt$ReaderViewModel$updateState { it.copy(targetScrollPosition = targetScrollPosition, pendingRestoreOffsetFraction = pendingRestoreOffsetFraction) }</ID>
-    <ID>MaxLineLength:ReaderViewModel.kt$ReaderViewModel$val initialScroll = progressController.calculateInitialScroll(content, libraryItem, fromBottom, isExplicitNavigation)</ID>
+    <ID>MaxLineLength:ReaderViewModel.kt$ReaderViewModel$val initialPosition = progressController.calculateInitialPosition(content, libraryItem, fromBottom, isExplicitNavigation)</ID>
     <ID>MaxLineLength:SummaryService.kt$SummaryService$Log.d(TAG, "Generating summary (${selectedContent.split(WHITESPACE_REGEX).size} words, ~${(selectedContent.length + prompt.length) / 4 + 200} tokens)")</ID>
     <ID>MaxLineLength:SummaryService.kt$SummaryService$val keywords = listOf("suddenly", "realized", "discovered", "decided", "arrived", "died", "killed", "attacked", "revealed", "secret", "important", "finally", "however", "shocked", "surprised")</ID>
     <ID>MaxLineLength:SummaryService.kt$SummaryService$val verbs = listOf("ran", "fought", "grabbed", "rushed", "jumped", "fell", "screamed", "whispered", "turned", "opened")</ID>
     <ID>MaxLineLength:TextFormattingPipeline.kt$TextFormattingPipeline$if</ID>
-    <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$"USER_REQUESTED prefetch pass=$pass fastPath=${fastPath.size} bgRest=${backgroundRest.size} url=$safeUrl"</ID>
-    <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$"cache/html fetch complete url=$safeUrl fromCache=${cachedDocument.fromCache} elapsedMs=${System.currentTimeMillis() - startedAtMs}"</ID>
-    <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$"dimension enrichment start url=$safeUrl diskOnly=$useDiskOnlyDimensions elapsedMs=${System.currentTimeMillis() - startedAtMs}"</ID>
-    <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$"image extraction count url=$safeUrl imageCount=$imageCount elapsedMs=${System.currentTimeMillis() - startedAtMs}"</ID>
-    <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$Log.d(TAG, "prefetch final result url=$safeUrl complete=${finalResult.isComplete} cached=${finalResult.cachedImages}/${finalResult.totalImages}")</ID>
+    <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$Log.d(TAG, "Invalid image payload, deleting and retrying: ${UrlSanitizer.sanitize(imageUrl)}")</ID>
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$finalElements.add(ContentElement.ImageGroup(element.images.map { it.copy(side = ContentElement.Image.Side.LEFT) }))</ID>
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$finalElements.add(ContentElement.ImageGroup(element.images.map { it.copy(side = ContentElement.Image.Side.RIGHT) }))</ID>
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$if</ID>
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$private suspend</ID>
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$processed[processed.size - 1] = ContentElement.ImageGroup(listOf(last as ContentElement.Image, element))</ID>
-    <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$val backgroundRest = if (isFirstPass) missingImages.drop(FAST_PATH_USER_IMAGE_COUNT) else emptyList()</ID>
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$val isManga = url.contains("manga", ignoreCase = true) &amp;&amp; !url.contains("manhwa", ignoreCase = true)</ID>
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$val lastImages = if (last is ContentElement.ImageGroup) last.images else listOf(last as ContentElement.Image)</ID>
-    <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$val maxAttempts = if (mode == PrefetchMode.USER_REQUESTED) MAX_USER_PREFETCH_ATTEMPTS else MAX_SPECULATIVE_PREFETCH_ATTEMPTS</ID>
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$val priority = if (mode == PrefetchMode.SPECULATIVE) ImageRequestPriority.SPECULATIVE else ImageRequestPriority.USER_REQUESTED</ID>
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$val result = downloadAndCacheImageInternal(imageUrl, pageUrl, ImageRequestPriority.SPECULATIVE, StorageTier.CACHE)</ID>
-    <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$val result = downloadAndCacheImageInternal(imageUrl, pageUrl, ImageRequestPriority.USER_REQUESTED, StorageTier.CACHE)</ID>
     <ID>MaxLineLength:WebViewUtils.kt$WebViewUtils$userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"</ID>
     <ID>MaxLineLength:ZoomableBox.kt$// In dynamic mode, the container grows with the content, but the viewable area is still constrained by the screen/parent</ID>
     <ID>MaxLineLength:ZoomableBox.kt$if</ID>
     <ID>MaxLineLength:ZoomableBox.kt$offsetY = clampOffset(-deltaY * (targetScale - 1f), height, targetScale, isDynamic = dynamicHeight)</ID>
-    <ID>NestedBlockDepth:EpubContentLoader.kt$EpubContentLoader$private fun loadEpubChapter(filePath: String, book: EpubBook, href: String): EpubChapter</ID>
-    <ID>NestedBlockDepth:EpubContentLoader.kt$EpubContentLoader$private fun parseEpubFile(filePath: String): EpubBook</ID>
     <ID>NestedBlockDepth:EpubContentLoader.kt$EpubContentLoader$private fun resolveEpubFile(path: String, writeTier: StorageTier = StorageTier.CACHE): File</ID>
+    <ID>NestedBlockDepth:EpubContentLoader.kt$EpubContentLoader$private suspend fun enrichEpubImageDimensionsFromCache( els: List&lt;ContentElement&gt; ): List&lt;ContentElement&gt;</ID>
     <ID>NestedBlockDepth:HtmlParser.kt$HtmlParser$private fun mergeAndFormatParagraphs(paragraphs: List&lt;String&gt;): List&lt;ContentElement.Text&gt;</ID>
     <ID>NestedBlockDepth:ImageDownloader.kt$ImageDownloader$private fun parseImageResponse( response: Response, destinationFile: File? = null ): ImageFetchResult</ID>
     <ID>NestedBlockDepth:MainActivity.kt$MainActivity$private fun handleIntent(intent: Intent?): Unit</ID>
@@ -618,14 +627,15 @@
     <ID>NestedBlockDepth:TextFormattingPipeline.kt$TextFormattingPipeline$private fun replaceFourPlusNewlines(text: String): String</ID>
     <ID>NestedBlockDepth:TextFormattingPipeline.kt$TextFormattingPipeline$private fun replaceSpacesPlusNewline(text: String, replacementChar: Char): String</ID>
     <ID>NestedBlockDepth:WebContentLoader.kt$WebContentLoader$private fun expandWideElements( groupedElements: List&lt;ContentElement&gt;, url: String ): List&lt;ContentElement&gt;</ID>
+    <ID>NestedBlockDepth:WebContentLoader.kt$WebContentLoader$private fun fetchHtmlOnce(client: OkHttpClient, url: String): HtmlFetchOutcome</ID>
     <ID>NestedBlockDepth:WebContentLoader.kt$WebContentLoader$private fun groupSimilarElements(elements: List&lt;ContentElement&gt;): List&lt;ContentElement&gt;</ID>
-    <ID>NewLineAtEndOfFile:SummaryViewModel.kt$io.aatricks.easyreader.ui.viewmodel.SummaryViewModel.kt</ID>
     <ID>NewLineAtEndOfFile:TextHeuristics.kt$io.aatricks.easyreader.util.TextHeuristics.kt</ID>
     <ID>RethrowCaughtException:EpubContentLoader.kt$EpubContentLoader$throw e</ID>
     <ID>ReturnCount:ChapterListCache.kt$ChapterListCache$fun load(baseNovelUrl: String, sourceName: String): Entry?</ID>
     <ID>ReturnCount:ChapterListSheet.kt$internal fun chapterCacheStatusKind( isCurrent: Boolean, cacheState: PrefetchResult?, isInLibrary: Boolean, isDownloaded: Boolean = false ): ChapterStatus?</ID>
     <ID>ReturnCount:ContentRepository.kt$ContentRepository$private fun adjustChapterUrl(url: String, delta: Int): String?</ID>
     <ID>ReturnCount:EpubContentLoader.kt$EpubContentLoader$private fun promoteEpubToDownloads(path: String): File?</ID>
+    <ID>ReturnCount:EpubContentLoader.kt$EpubContentLoader$private suspend fun enrichEpubImageDimensionsFromCache( els: List&lt;ContentElement&gt; ): List&lt;ContentElement&gt;</ID>
     <ID>ReturnCount:EpubModels.kt$EpubTocItem$fun findByHref(href: String): EpubTocItem?</ID>
     <ID>ReturnCount:HtmlParser.kt$HtmlParser$fun parse(document: Document, url: String): List&lt;ContentElement&gt;</ID>
     <ID>ReturnCount:HttpMediaCacheFetcher.kt$HttpMediaCacheFetcher$override suspend fun fetch(): FetchResult?</ID>
@@ -633,8 +643,15 @@
     <ID>ReturnCount:ImageBoundsParser.kt$ImageBoundsParser$private fun parsePng(bytes: ByteArray): Pair&lt;Int, Int&gt;?</ID>
     <ID>ReturnCount:ImageBoundsParser.kt$ImageBoundsParser$private fun parseWebP(bytes: ByteArray): Pair&lt;Int, Int&gt;?</ID>
     <ID>ReturnCount:ImageCache.kt$ImageCache$fun promoteToDownloads(url: String): File?</ID>
+    <ID>ReturnCount:ImageCache.kt$ImageCache$private fun File.isCachedImageValid(): Boolean</ID>
     <ID>ReturnCount:ImageDownloader.kt$ImageDownloader$private fun parseImageResponse( response: Response, destinationFile: File? = null ): ImageFetchResult</ID>
     <ID>ReturnCount:ImageDownloader.kt$ImageDownloader$suspend fun executeImageRequest( imageUrl: String, pageUrl: String, priority: ImageRequestPriority, rangeHeader: String? = null, destinationFile: File? = null ): ImageFetchResult</ID>
+    <ID>ReturnCount:ImageIntegrity.kt$ImageIntegrity$fun isValidImageFile(file: File): Boolean</ID>
+    <ID>ReturnCount:ImageIntegrity.kt$ImageIntegrity$private fun ByteArray.containsSequence(needle: ByteArray): Boolean</ID>
+    <ID>ReturnCount:ImageIntegrity.kt$ImageIntegrity$private fun classifyFormat(header: ByteArray): ImageFormat?</ID>
+    <ID>ReturnCount:ImageIntegrity.kt$ImageIntegrity$private fun looksLikeHtml(header: ByteArray): Boolean</ID>
+    <ID>ReturnCount:LibraryBackupManager.kt$LibraryBackupManager$private fun convertBackupItem( backupItem: LibraryItemBackup, tempDir: File, epubsDir: File, existingUrls: Set&lt;String&gt; ): LibraryItem?</ID>
+    <ID>ReturnCount:LibraryBackupManager.kt$LibraryBackupManager$private fun resolveItemUrl(item: LibraryItemBackup, tempDir: File, epubsDir: File): ResolvedItem?</ID>
     <ID>ReturnCount:LibraryNovelHelpers.kt$internal fun isNovelFinished(item: LibraryItem, latestKnownChapterCount: Int): Boolean</ID>
     <ID>ReturnCount:LibraryRepository.kt$LibraryRepository$private fun parseChapterNumberOrNull(item: LibraryItem): Double?</ID>
     <ID>ReturnCount:LibraryStatus.kt$fun seriesReadingStatus(items: List&lt;LibraryItem&gt;): SeriesReadingStatus</ID>
@@ -644,13 +661,17 @@
     <ID>ReturnCount:PdfContentLoader.kt$PdfContentLoader$private suspend fun preloadPageContent( filePath: String, pageCount: Int, preloadPageIndex: Int? ): Map&lt;Int, ContentElement&gt;</ID>
     <ID>ReturnCount:PdfContentLoader.kt$PdfContentLoader.CombinedExtractionStrategy$override fun eventOccurred(data: IEventData?, type: EventType)</ID>
     <ID>ReturnCount:PdfContentLoader.kt$PdfContentLoader.PdfLazyList$private suspend fun acquireHandle(): PdfDocumentHandle?</ID>
+    <ID>ReturnCount:ReaderContentArea.kt$private fun buildScrollSnapshot(listState: LazyListState, content: ChapterContent): ReaderScrollSnapshot?</ID>
+    <ID>ReturnCount:ReaderContentArea.kt$private fun computeVisiblePercent(listState: LazyListState, totalItems: Int): Float?</ID>
     <ID>ReturnCount:ReaderContentGestures.kt$&lt;no name provided&gt;$override fun onPostScroll( consumed: Offset, available: Offset, source: NestedScrollSource ): Offset</ID>
     <ID>ReturnCount:ReaderContentGestures.kt$&lt;no name provided&gt;$override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset</ID>
-    <ID>ReturnCount:ReaderProgressController.kt$ReaderProgressController$fun updateScrollPosition( scrollOffset: Float, maxScrollOffset: Float, viewportHeight: Float, index: Int, offset: Int, content: ChapterContent?, canScrollForward: Boolean = true, firstVisibleItemSize: Int = 0 )</ID>
-    <ID>ReturnCount:ReaderProgressController.kt$ReaderProgressController$private fun shouldSkipPersistForUnstableManhwaSample( content: ChapterContent?, index: Int, firstVisibleItemSize: Int ): Boolean</ID>
+    <ID>ReturnCount:ReaderProgressController.kt$ReaderProgressController$fun isSnapshotPersistable(content: ChapterContent?, snapshot: ReaderProgressState): Boolean</ID>
+    <ID>ReturnCount:ReaderProgressController.kt$ReaderProgressController$fun updateScrollPosition( scrollOffset: Float, maxScrollOffset: Float, viewportHeight: Float, index: Int, offsetFraction: Float, elementKey: String, content: ChapterContent?, canScrollForward: Boolean = true, firstVisibleItemSize: Int = 0 )</ID>
+    <ID>ReturnCount:ReaderProgressController.kt$ReaderProgressController$private fun resolveRestoredIndex(content: ChapterContent, libraryItem: LibraryItem): ResolvedPosition</ID>
     <ID>ReturnCount:ReaderProgressController.kt$ReaderProgressController$suspend fun saveCurrentProgress(content: ChapterContent?)</ID>
     <ID>ReturnCount:ReaderViewModel.kt$ReaderViewModel$private fun updateNavigationUrls(): Unit</ID>
     <ID>ReturnCount:ReaderViewModel.kt$ReaderViewModel$private suspend fun resolvePdfResumeIndex( url: String, libraryItemId: String?, isExplicitNavigation: Boolean ): Int?</ID>
+    <ID>ReturnCount:ReaderViewModel.kt$ReaderViewModel$suspend fun persistLifecycleProgress(): Unit</ID>
     <ID>ReturnCount:SmartSource.kt$SmartSource$private fun absolutize(value: String, pageUrl: String): String</ID>
     <ID>ReturnCount:SmartSource.kt$SmartSource$private fun extractAuthor(document: Document): String?</ID>
     <ID>ReturnCount:SmartSource.kt$SmartSource$private fun extractCover(document: Document, pageUrl: String): String?</ID>
@@ -665,13 +686,20 @@
     <ID>ReturnCount:UrlSecurity.kt$UrlSecurity$fun isSafeUrlSynchronous(httpUrl: okhttp3.HttpUrl): Boolean</ID>
     <ID>ReturnCount:UrlSecurity.kt$UrlSecurity$fun isUnsafeHostLiteral(host: String): Boolean</ID>
     <ID>ReturnCount:UrlSecurity.kt$UrlSecurity$private fun isIpv4MappedIpv6(bytes: ByteArray): Boolean</ID>
-    <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun promoteHtmlToDownloads(url: String): File?</ID>
+    <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun detectMangaReaderHints(document: Document): Boolean</ID>
+    <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun ensureResultForTier( result: ImageDownloadResult, imageUrl: String, writeTier: StorageTier ): ImageDownloadResult</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun shouldGroupWithLastGroup(last: ContentElement, current: ContentElement.Image): Boolean</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun shouldGroupWithLastImage(last: ContentElement, current: ContentElement.Image): Boolean</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun shouldRetryException(e: Exception): Boolean</ID>
+    <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private suspend fun enrichParsedCacheDimensions(elements: List&lt;ContentElement&gt;): List&lt;ContentElement&gt;</ID>
+    <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private suspend fun executePrefetch( url: String, mode: PrefetchMode, onProgress: (suspend (PrefetchResult) -&gt; Unit)? = null ): PrefetchResult</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private suspend fun getDocumentFromCacheOrNetwork( url: String, priority: ImageRequestPriority = ImageRequestPriority.USER_REQUESTED, writeTier: StorageTier? = null ): CachedDocument</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private suspend fun processChapterElements( elements: List&lt;ContentElement&gt;, url: String, diskOnly: Boolean ): List&lt;ContentElement&gt;</ID>
+    <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private suspend fun tryLoadFromParsedCache( url: String, safeUrl: String, startedAtMs: Long ): ContentResult.Success?</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$suspend fun prefetch( url: String, mode: PrefetchMode, onProgress: (suspend (PrefetchResult) -&gt; Unit)? ): PrefetchResult</ID>
+    <ID>ReturnCount:WebOfflineChapterStore.kt$WebOfflineChapterStore$fun hasImage(url: String, imageUrl: String): Boolean</ID>
+    <ID>ReturnCount:WebOfflineChapterStore.kt$WebOfflineChapterStore$fun loadContent(url: String): ContentResult.Success?</ID>
+    <ID>ReturnCount:WebOfflineChapterStore.kt$WebOfflineChapterStore$private suspend fun downloadImage(pageUrl: String, record: ImageRecord): ImageRecord?</ID>
     <ID>ReturnCount:WebViewUtils.kt$WebViewUtils$fun shouldAllowCloudflareNavigation(url: String?, expectedHost: String? = null): Boolean</ID>
     <ID>SwallowedException:ContentRenderer.kt$ex: Exception</ID>
     <ID>SwallowedException:ContentRepository.kt$ContentRepository$e: TimeoutCancellationException</ID>
@@ -680,6 +708,7 @@
     <ID>SwallowedException:PreferencesManager.kt$PreferencesManager$e: Exception</ID>
     <ID>ThrowsCount:EpubContentLoader.kt$EpubContentLoader$private fun resolveEpubFile(path: String, writeTier: StorageTier = StorageTier.CACHE): File</ID>
     <ID>ThrowsCount:WebContentLoader.kt$WebContentLoader$private suspend fun downloadHtml(url: String, priority: ImageRequestPriority = ImageRequestPriority.USER_REQUESTED): String</ID>
+    <ID>TooGenericExceptionCaught:ChapterDownloadWorker.kt$ChapterDownloadWorker$t: Throwable</ID>
     <ID>TooGenericExceptionCaught:ContentRenderer.kt$ex: Exception</ID>
     <ID>TooGenericExceptionCaught:ContentRepository.kt$ContentRepository$e: Exception</ID>
     <ID>TooGenericExceptionCaught:Converters.kt$Converters$e: Exception</ID>
@@ -710,8 +739,6 @@
     <ID>TooGenericExceptionThrown:LocalContentLoader.kt$LocalContentLoader$throw Exception("Unable to read $filePath")</ID>
     <ID>TooGenericExceptionThrown:PdfContentLoader.kt$PdfContentLoader$throw Exception("No text in PDF")</ID>
     <ID>TooGenericExceptionThrown:PdfContentLoader.kt$PdfContentLoader$throw Exception("PDF not found")</ID>
-    <ID>TooGenericExceptionThrown:WebContentLoader.kt$WebContentLoader$throw Exception("Empty body")</ID>
-    <ID>TooGenericExceptionThrown:WebContentLoader.kt$WebContentLoader$throw Exception("HTTP ${response.code}")</ID>
     <ID>TooGenericExceptionThrown:ZipUtils.kt$ZipUtils$throw Exception("File too large")</ID>
     <ID>TooManyFunctions:AsuraScansSource.kt$AsuraScansSource : BaseJsoupSource</ID>
     <ID>TooManyFunctions:ContentRepository.kt$ContentRepository</ID>
@@ -721,21 +748,24 @@
     <ID>TooManyFunctions:FileUtils.kt$FileUtils</ID>
     <ID>TooManyFunctions:HtmlParser.kt$HtmlParser</ID>
     <ID>TooManyFunctions:ImageCache.kt$ImageCache</ID>
+    <ID>TooManyFunctions:ImageIntegrity.kt$ImageIntegrity</ID>
     <ID>TooManyFunctions:LibraryDao.kt$LibraryDao</ID>
     <ID>TooManyFunctions:LibraryRepository.kt$LibraryRepository</ID>
     <ID>TooManyFunctions:LibraryViewModel.kt$LibraryViewModel : BaseViewModel</ID>
+    <ID>TooManyFunctions:MainActivity.kt$MainActivity : ComponentActivity</ID>
     <ID>TooManyFunctions:MangaBatSource.kt$MangaBatSource : BaseJsoupSource</ID>
     <ID>TooManyFunctions:NovelFireSource.kt$NovelFireSource : BaseJsoupSource</ID>
     <ID>TooManyFunctions:PdfContentLoader.kt$PdfContentLoader</ID>
     <ID>TooManyFunctions:ReaderProgressController.kt$ReaderProgressController</ID>
     <ID>TooManyFunctions:ReaderViewModel.kt$ReaderViewModel : BaseViewModel</ID>
     <ID>TooManyFunctions:SmartSource.kt$SmartSource : BaseJsoupSource</ID>
+    <ID>TooManyFunctions:SummaryService.kt$SummaryService</ID>
     <ID>TooManyFunctions:TextFormattingPipeline.kt$TextFormattingPipeline</ID>
     <ID>TooManyFunctions:TextUtils.kt$TextUtils</ID>
     <ID>TooManyFunctions:WebContentLoader.kt$WebContentLoader</ID>
+    <ID>TooManyFunctions:WebOfflineChapterStore.kt$WebOfflineChapterStore</ID>
     <ID>UnusedParameter:AsuraScansSource.kt$AsuraScansSource$seriesUrl: String</ID>
     <ID>UnusedParameter:ComposeUtils.kt$height: Int</ID>
-    <ID>UnusedParameter:EpubContentLoader.kt$EpubContentLoader$manifest: Map&lt;String, String&gt;</ID>
     <ID>UnusedParameter:LibraryScreen.kt$isSearchEmpty: Boolean = false</ID>
     <ID>UnusedParameter:NovelFireSource.kt$NovelFireSource$chaptersUrl: String</ID>
     <ID>UnusedParameter:SummaryService.kt$SummaryService$selectedContent: String</ID>
@@ -744,12 +774,10 @@
     <ID>UnusedParameter:ZoomableBox.kt$isDynamic: Boolean = false</ID>
     <ID>UnusedPrivateMember:MangaBatSource.kt$MangaBatSource$private suspend fun fetchChaptersFromApi(slug: String): List&lt;ChapterInfo&gt;</ID>
     <ID>UnusedPrivateMember:ReaderViewModel.kt$ReaderViewModel$private fun isPlaceholderAtCurrentPosition(index: Int? = null): Boolean</ID>
-    <ID>UnusedPrivateMember:WebContentLoader.kt$WebContentLoader$private fun tierForMode(mode: PrefetchMode): StorageTier</ID>
     <ID>UnusedPrivateProperty:ExploreRepository.kt$ExploreRepository$@ApplicationContext private val context: android.content.Context</ID>
     <ID>UnusedPrivateProperty:HtmlParser.kt$HtmlParser.Companion$private val WHITESPACE_REGEX = Regex("\\s+")</ID>
     <ID>UnusedPrivateProperty:LibraryRepository.kt$LibraryRepository$val semaphore = Semaphore(5)</ID>
     <ID>UnusedPrivateProperty:LlmEdgeSummaryEngine.kt$LlmEdgeSummaryEngine.Companion$private const val MODEL_FILENAME = "Qwen3-0.6B-Q4_K_M.gguf"</ID>
-    <ID>UnusedPrivateProperty:ReaderProgressController.kt$ReaderProgressController$val deltaRaw = if (lastRawScrollOffset &lt; 0f) 0f else scrollOffset - lastRawScrollOffset</ID>
     <ID>UnusedPrivateProperty:ReaderViewModel.kt$ReaderViewModel.Companion$private const val MIN_SCROLL_OFFSET_DELTA_PX = 8</ID>
     <ID>UnusedPrivateProperty:TextFormattingPipeline.kt$TextFormattingPipeline$k</ID>
     <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val FOUR_PLUS_NEWLINES_REGEX = Regex("\\n{4,}")</ID>

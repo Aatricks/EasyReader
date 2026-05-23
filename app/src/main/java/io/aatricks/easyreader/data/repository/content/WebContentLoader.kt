@@ -622,22 +622,6 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         )
     }
 
-    private fun promoteHtmlToDownloads(url: String): File? {
-        val target = primaryCachedFile(url, StorageTier.DOWNLOADS)
-        if (target.exists()) return target
-        val src = legacyCachedFile(url).takeIf(File::exists)
-            ?: primaryCachedFile(url, StorageTier.CACHE).takeIf(File::exists)
-            ?: return null
-        target.parentFile?.mkdirs()
-        val moved = if (src.renameTo(target)) target else runCatching {
-            src.copyTo(target, overwrite = true)
-            src.delete()
-            target
-        }.getOrNull()
-        moved?.let { parsedContentCache.moveAlongside(src, it) }
-        return moved
-    }
-
     private fun extractImageUrls(elements: List<ContentElement>): List<String> {
         return elements.flatMap { element ->
             when (element) {

@@ -32,6 +32,7 @@ class ChapterDownloadWorker @AssistedInject constructor(
     private val downloadStatusReconciler: DownloadStatusReconciler
 ) : CoroutineWorker(appContext, params) {
 
+    @Suppress("ReturnCount")
     override suspend fun doWork(): Result {
         val url = inputData.getString(KEY_CHAPTER_URL)
         if (url.isNullOrBlank()) {
