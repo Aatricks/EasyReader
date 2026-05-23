@@ -773,6 +773,42 @@ class WebContentLoaderTest {
         assertTrue("imageUrl2 must be in downloads tier", loader.isImageDownloaded(imageUrl2))
     }
 
+    @Test
+    fun `download chapter promotes shared cache-tier in-flight image into downloads tier`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-shared-inflight"
+        val imageUrl = "https://example.com/shared-inflight.png"
+        val imageRequests = AtomicInteger(0)
+        val htmlParser = mock<HtmlParser>()
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                when (request.url.toString()) {
+                    imageUrl -> {
+                        imageRequests.incrementAndGet()
+                        Thread.sleep(150)
+                        buildByteResponse(request, tinyPng(width = 2, height = 3), "image/png")
+                    }
+                    else -> buildResponse(request, "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Image(imageUrl)))
+        loader.getCachedFile(chapterUrl).writeText("<html><body><img src=\"$imageUrl\"/></body></html>")
+
+        val readerJob = async { loader.downloadAndCacheImage(imageUrl, chapterUrl) }
+        delay(20)
+        val result = loader.downloadChapter(chapterUrl)
+
+        assertTrue(readerJob.await() != null)
+        assertEquals(1, imageRequests.get())
+        assertTrue(result.isComplete)
+        assertTrue(result.isPersistentDownload)
+        assertEquals(1, result.cachedImages)
+        assertTrue("shared image must be promoted into downloads tier", loader.isImageDownloaded(imageUrl))
+    }
+
     private fun createLoader(
         htmlParser: HtmlParser,
         interceptor: Interceptor

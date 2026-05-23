@@ -84,7 +84,16 @@ class WorkManagerChapterDownloadQueue @Inject constructor(
                 infos.asSequence()
                     .mapNotNull { info ->
                         val url = info.chapterUrl() ?: return@mapNotNull null
-                        url to info.toPrefetchResult(url)
+                        url to info
+                    }
+                    .groupBy(keySelector = { it.first }, valueTransform = { it.second })
+                    .mapValues { (url, urlInfos) ->
+                        urlInfos.maxWithOrNull(compareBy<WorkInfo> { it.downloadObservationRank() })
+                            ?.toPrefetchResult(url)
+                    }
+                    .entries
+                    .mapNotNull { (url, result) ->
+                        result?.let { url to it }
                     }
                     .toMap()
             }
@@ -122,6 +131,15 @@ class WorkManagerChapterDownloadQueue @Inject constructor(
             isPersistentDownload = payload.getBoolean(ChapterDownloadWorker.KEY_IS_PERSISTENT_DOWNLOAD, true),
             hasPermanentFailures = payload.getBoolean(ChapterDownloadWorker.KEY_HAS_PERMANENT_FAILURES, false)
         )
+    }
+
+    private fun WorkInfo.downloadObservationRank(): Int = when (state) {
+        WorkInfo.State.RUNNING -> 5
+        WorkInfo.State.ENQUEUED,
+        WorkInfo.State.BLOCKED -> 4
+        WorkInfo.State.SUCCEEDED -> 3
+        WorkInfo.State.FAILED -> 2
+        WorkInfo.State.CANCELLED -> 1
     }
 
     companion object {

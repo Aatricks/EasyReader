@@ -57,7 +57,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     companion object {
         private const val TAG = "WebContentLoader"
         private val DIMENSION_SEMAPHORE = Semaphore(20)
-        private const val MAX_CONCURRENT_DOWNLOADS = 8
+        private const val MAX_CONCURRENT_DOWNLOADS = 4
         private const val NON_ESSENTIAL_TIMEOUT_SECONDS = 5L
         private const val MAX_IMAGES_PER_GROUP = 3
         private const val MAX_GROUPED_STRIP_RATIO = 4.0f
@@ -65,7 +65,6 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         private const val SHORT_REQUEST_ATTEMPTS = 2
         private const val USER_REQUEST_PREFETCH_PASSES = 2
         private const val MAX_SPECULATIVE_PREFETCH_ATTEMPTS = 1
-        private const val MAX_USER_PREFETCH_ATTEMPTS = 1
         private const val MAX_DIMENSION_SNIFF_BYTES = 64 * 1024L // 64KB
         private const val FETCH_REMOTE_DIMENSIONS_DURING_INITIAL_LOAD = false
         private const val USER_HTML_TIMEOUT_SECONDS = 15L
@@ -96,6 +95,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
     private data class InFlightImageDownload(
         val priority: ImageRequestPriority,
+        val writeTier: StorageTier,
         val deferred: Deferred<ImageDownloadResult>
     )
 
@@ -297,7 +297,11 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         mode: PrefetchMode,
         onProgress: (suspend (PrefetchResult) -> Unit)?
     ): PrefetchResult {
-        val maxAttempts = if (mode == PrefetchMode.USER_REQUESTED) MAX_USER_PREFETCH_ATTEMPTS else MAX_SPECULATIVE_PREFETCH_ATTEMPTS
+        if (mode == PrefetchMode.USER_REQUESTED) {
+            return downloadChapter(url, onProgress)
+        }
+
+        val maxAttempts = MAX_SPECULATIVE_PREFETCH_ATTEMPTS
         var lastResult: PrefetchResult? = null
 
         repeat(maxAttempts) {
@@ -361,6 +365,39 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             lastResult = result
         }
         return lastResult ?: inspectCache(url)
+    }
+
+    suspend fun downloadChapter(
+        url: String,
+        onProgress: (suspend (PrefetchResult) -> Unit)? = null
+    ): PrefetchResult = supervisorScope {
+        val deferred = async(start = CoroutineStart.LAZY) {
+            executePrefetch(url, PrefetchMode.USER_REQUESTED, onProgress)
+        }.also { created ->
+            created.invokeOnCompletion {
+                repositoryScope.launch {
+                    chapterPrefetchMutex.withLock {
+                        if (inFlightChapterPrefetches[url]?.deferred === created) {
+                            inFlightChapterPrefetches.remove(url)
+                        }
+                    }
+                }
+            }
+        }
+
+        val active = chapterPrefetchMutex.withLock {
+            val current = inFlightChapterPrefetches[url]
+            if (current?.mode == PrefetchMode.USER_REQUESTED) {
+                deferred.cancel()
+                current.deferred
+            } else {
+                current?.deferred?.cancel()
+                inFlightChapterPrefetches[url] = InFlightChapterPrefetch(PrefetchMode.USER_REQUESTED, deferred)
+                deferred
+            }
+        }
+
+        active.await().copy(isInProgress = false)
     }
 
     suspend fun fetchTitle(url: String): String? = withContext(Dispatchers.IO) {
@@ -1128,19 +1165,40 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                             }
                         }
                     }
-                    inFlightImageDownloads[imageUrl] = InFlightImageDownload(priority, created)
+                    inFlightImageDownloads[imageUrl] = InFlightImageDownload(priority, writeTier, created)
                 }
             }
         }
 
         return@withContext try {
-            deferred.await()
+            ensureResultForTier(
+                result = deferred.await(),
+                imageUrl = imageUrl,
+                writeTier = writeTier
+            )
         } catch (e: CancellationException) {
             if (currentCoroutineContext().isActive) {
                 ImageDownloadResult.Failure(true)
             } else {
                 throw e
             }
+        }
+    }
+
+    private fun ensureResultForTier(
+        result: ImageDownloadResult,
+        imageUrl: String,
+        writeTier: StorageTier
+    ): ImageDownloadResult {
+        if (result !is ImageDownloadResult.Success || writeTier != StorageTier.DOWNLOADS) {
+            return result
+        }
+        if (imageCache.isDownloaded(imageUrl)) return result
+        val promoted = imageCache.promoteToDownloads(imageUrl)
+        return if (promoted != null) {
+            ImageDownloadResult.Success(promoted)
+        } else {
+            ImageDownloadResult.Failure(true)
         }
     }
 

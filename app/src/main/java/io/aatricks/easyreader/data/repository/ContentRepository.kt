@@ -192,6 +192,10 @@ class ContentRepository @Inject constructor(
         mode: PrefetchMode,
         onProgress: (suspend (PrefetchResult) -> Unit)?
     ): PrefetchResult = withContext(Dispatchers.IO) {
+        if (mode == PrefetchMode.USER_REQUESTED) {
+            return@withContext downloadChapter(url, onProgress)
+        }
+
         invalidateInspect(url)
         val result = runCatching {
             when (resolveContentKind(url)) {
@@ -233,6 +237,64 @@ class ContentRepository @Inject constructor(
             }
         }.getOrElse {
             PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = true)
+        }
+        trimCachesInternal(force = true)
+        result
+    }
+
+    suspend fun downloadChapter(
+        url: String,
+        onProgress: (suspend (PrefetchResult) -> Unit)? = null
+    ): PrefetchResult = withContext(Dispatchers.IO) {
+        invalidateInspect(url)
+        val result = runCatching {
+            when (resolveContentKind(url)) {
+                ContentKind.WEB -> webLoader.downloadChapter(url, onProgress)
+                ContentKind.EPUB -> {
+                    if (epubLoader.prefetchEpub(url, StorageTier.DOWNLOADS)) {
+                        PrefetchResult(
+                            url,
+                            htmlCached = true,
+                            totalImages = 0,
+                            cachedImages = 0,
+                            isComplete = true,
+                            isRetryable = false,
+                            isPersistentDownload = true
+                        )
+                    } else {
+                        PrefetchResult(
+                            url,
+                            htmlCached = false,
+                            totalImages = 0,
+                            cachedImages = 0,
+                            isComplete = false,
+                            isRetryable = true,
+                            isPersistentDownload = true
+                        )
+                    }
+                }
+                ContentKind.PDF, ContentKind.HTML, ContentKind.LOCAL ->
+                    localContentResult(url, isPersistentDownload = true)
+                ContentKind.UNKNOWN -> PrefetchResult(
+                    url,
+                    htmlCached = false,
+                    totalImages = 0,
+                    cachedImages = 0,
+                    isComplete = false,
+                    isRetryable = false,
+                    isPersistentDownload = true
+                )
+            }
+        }.getOrElse {
+            PrefetchResult(
+                url,
+                htmlCached = false,
+                totalImages = 0,
+                cachedImages = 0,
+                isComplete = false,
+                isRetryable = true,
+                isPersistentDownload = true
+            )
         }
         trimCachesInternal(force = true)
         result

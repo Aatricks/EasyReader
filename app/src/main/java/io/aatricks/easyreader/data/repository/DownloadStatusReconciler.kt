@@ -3,6 +3,7 @@ package io.aatricks.easyreader.data.repository
 import android.util.Log
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.PrefetchResult
+import io.aatricks.easyreader.data.model.isStrictOfflineReady
 import io.aatricks.easyreader.util.UrlSanitizer
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,9 +31,7 @@ class DownloadStatusReconciler @Inject constructor(
     private val libraryRepository: LibraryRepository
 ) {
     fun isFullyDownloaded(result: PrefetchResult): Boolean =
-        result.isPersistentDownload &&
-            result.isComplete &&
-            !result.hasPermanentFailures
+        result.isStrictOfflineReady()
 
     suspend fun reconcile(
         item: LibraryItem,

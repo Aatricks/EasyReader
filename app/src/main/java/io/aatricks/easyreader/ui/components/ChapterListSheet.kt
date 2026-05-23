@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.ChapterInfo
 import io.aatricks.easyreader.data.model.PrefetchResult
+import io.aatricks.easyreader.data.model.isStrictOfflineReady
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
@@ -482,7 +483,7 @@ internal fun chapterCacheStatusKind(
         // images ended up as permanent failures (404/403/etc.) are reported as incomplete so
         // the user sees the missing-image count and a retry control instead of a misleading
         // "Downloaded" badge that would then surface "Image unavailable" on open.
-        if (cacheState.isPersistentDownload && cacheState.isComplete && !cacheState.hasPermanentFailures) {
+        if (cacheState.isStrictOfflineReady()) {
             return ChapterStatus.Downloaded
         }
         if (cacheState.isPersistentDownload && cacheState.totalImages > 0) {

@@ -21,3 +21,6 @@ data class PrefetchResult(
     // appear when isComplete && !hasPermanentFailures.
     val hasPermanentFailures: Boolean = false
 )
+
+fun PrefetchResult.isStrictOfflineReady(): Boolean =
+    isPersistentDownload && isComplete && !hasPermanentFailures

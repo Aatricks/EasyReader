@@ -3,9 +3,7 @@ package io.aatricks.easyreader.work
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Configuration
-import androidx.work.ExistingWorkPolicy
 import androidx.work.ListenableWorker
-import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -13,7 +11,6 @@ import androidx.work.testing.SynchronousExecutor
 import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.testing.WorkManagerTestInitHelper
 import androidx.work.workDataOf
-import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.DownloadStatusReconciler
@@ -56,7 +53,7 @@ class ChapterDownloadWorkerTest {
         whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(
             PrefetchResult(url = chapterUrl, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
         )
-        whenever(contentRepository.prefetchWithProgress(eq(chapterUrl), eq(PrefetchMode.USER_REQUESTED), any()))
+        whenever(contentRepository.downloadChapter(eq(chapterUrl), any()))
             .thenReturn(
                 PrefetchResult(
                     url = chapterUrl,
@@ -104,7 +101,7 @@ class ChapterDownloadWorkerTest {
         assertTrue("expected Success, got $result", result is ListenableWorker.Result.Success)
         // Confirm we did NOT run the prefetch — in-process call had already finished it.
         verify(contentRepository, org.mockito.kotlin.never())
-            .prefetchWithProgress(eq(chapterUrl), eq(PrefetchMode.USER_REQUESTED), any())
+            .downloadChapter(eq(chapterUrl), any())
         verify(contentRepository, org.mockito.kotlin.never()).beginUserDownload(chapterUrl)
     }
 
@@ -115,7 +112,7 @@ class ChapterDownloadWorkerTest {
         whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(
             PrefetchResult(url = chapterUrl, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
         )
-        whenever(contentRepository.prefetchWithProgress(eq(chapterUrl), eq(PrefetchMode.USER_REQUESTED), any()))
+        whenever(contentRepository.downloadChapter(eq(chapterUrl), any()))
             .thenReturn(
                 PrefetchResult(
                     url = chapterUrl,
@@ -145,7 +142,7 @@ class ChapterDownloadWorkerTest {
         whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(
             PrefetchResult(url = chapterUrl, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
         )
-        whenever(contentRepository.prefetchWithProgress(eq(chapterUrl), eq(PrefetchMode.USER_REQUESTED), any()))
+        whenever(contentRepository.downloadChapter(eq(chapterUrl), any()))
             .thenReturn(
                 PrefetchResult(
                     url = chapterUrl,
@@ -183,7 +180,7 @@ class ChapterDownloadWorkerTest {
         whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(
             PrefetchResult(url = chapterUrl, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
         )
-        whenever(contentRepository.prefetchWithProgress(eq(chapterUrl), eq(PrefetchMode.USER_REQUESTED), any()))
+        whenever(contentRepository.downloadChapter(eq(chapterUrl), any()))
             .thenReturn(
                 PrefetchResult(
                     url = chapterUrl,

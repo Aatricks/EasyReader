@@ -8,8 +8,8 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
-import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.model.PrefetchResult
+import io.aatricks.easyreader.data.model.isStrictOfflineReady
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.DownloadStatusReconciler
 import io.aatricks.easyreader.data.repository.LibraryRepository
@@ -47,7 +47,7 @@ class ChapterDownloadWorker @AssistedInject constructor(
         // full re-inspect, re-record permanent failures, or churn the chapterPrefetchMutex
         // for chapters that are already complete.
         val existing = runCatching { contentRepository.inspectDownload(url) }.getOrNull()
-        if (existing != null && existing.isComplete && !existing.hasPermanentFailures) {
+        if (existing?.isStrictOfflineReady() == true) {
             Log.d(TAG, "already complete, skipping worker url=$safeUrl")
             publishProgress(existing)
             // Reconcile so an orphaned isDownloaded=false (e.g. VM was cancelled before its
@@ -58,10 +58,9 @@ class ChapterDownloadWorker @AssistedInject constructor(
 
         contentRepository.beginUserDownload(url)
         return try {
-            val result = contentRepository.prefetchWithProgress(
-                url = url,
-                mode = PrefetchMode.USER_REQUESTED
-            ) { progress -> publishProgress(progress) }
+            val result = ChapterDownloadLimiter.withPermit {
+                contentRepository.downloadChapter(url) { progress -> publishProgress(progress) }
+            }
 
             publishProgress(result)
             // Worker is the durable second writer for the DB flag. Even if the VM call
