@@ -20,6 +20,14 @@ class ImageCache @Inject constructor(
     fun getCachedMediaFile(url: String): File =
         findExistingCachedMediaFile(url) ?: primaryCachedMediaFile(url)
 
+    fun getLikelyCachedMediaFile(url: String): File? =
+        candidateFiles(url).firstOrNull { it.exists() && it.length() > 0L }
+
+    fun getLikelyMediaState(url: String): String {
+        val file = getLikelyCachedMediaFile(url) ?: return "missing"
+        return "${file.absolutePath}:${file.length()}:${file.lastModified()}"
+    }
+
     fun getRootDir(): File = mediaCacheDir
 
     fun getCacheSize(): Long = FileSizeUtils.calculateDirectorySize(mediaCacheDir)

@@ -11,10 +11,8 @@ import android.util.Log
 import coil3.network.httpHeaders
 import coil3.request.Options
 import io.aatricks.easyreader.data.repository.ContentRepository
-import io.aatricks.easyreader.util.ImageIntegrity
 import io.aatricks.easyreader.util.UrlSanitizer
 import okio.Path.Companion.toPath
-import java.io.File
 
 val ChapterPageUrlExtra: Extras.Key<String?> = Extras.Key(default = null)
 
@@ -28,21 +26,16 @@ class HttpMediaCacheFetcher(
         val pageUrl = options.extras[ChapterPageUrlExtra]?.takeIf { it.isNotBlank() }
         val safeUrl = UrlSanitizer.sanitize(url)
 
-        val cachedFile = contentRepository.getCachedMediaFile(url)
-        val cacheFileExists = cachedFile.exists()
-        val cacheFileLength = if (cacheFileExists) cachedFile.length() else 0L
-        val cacheFileValid = cacheFileExists && cachedFile.isUsableCachedMedia()
-        Log.w(
+        val cachedFile = contentRepository.findUsableCachedMediaFile(url)
+        Log.d(
             "HttpMediaCacheFetcher",
-            "fetch img=$safeUrl cachedAt=${cachedFile.absolutePath} exists=$cacheFileExists len=$cacheFileLength valid=$cacheFileValid"
+            "fetch img=$safeUrl cacheHit=${cachedFile != null}"
         )
 
-        val file = if (cacheFileValid) {
+        val file = if (cachedFile != null) {
             cachedFile
         } else {
-            if (cachedFile.exists()) {
-                cachedFile.delete()
-            }
+            contentRepository.invalidateCachedMediaFile(url, pageUrl)
             val referer = pageUrl ?: requestReferer()
             val refetched = contentRepository.downloadAndCacheImage(url, referer)
             if (refetched == null) {
@@ -52,7 +45,7 @@ class HttpMediaCacheFetcher(
             refetched
         }
 
-        if (!file.exists() || file.length() <= 0L || !file.isUsableCachedMedia()) {
+        if (!file.exists() || file.length() <= 0L) {
             Log.w("HttpMediaCacheFetcher", "final file missing img=$safeUrl path=${file.absolutePath} exists=${file.exists()} len=${file.length()}")
             return null
         }
@@ -82,9 +75,4 @@ class HttpMediaCacheFetcher(
         }
     }
 
-    // Reuse the same integrity rule the inspect path uses so a file inspect counts as
-    // "downloaded" is also a file the fetcher will serve from disk. If the cached file is
-    // truncated or an HTML challenge, return false here and the caller redownloads instead
-    // of handing Coil a broken file that would surface as "Image unavailable".
-    private fun File.isUsableCachedMedia(): Boolean = ImageIntegrity.isValidImageFile(this)
 }

@@ -16,6 +16,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Singleton
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -39,6 +40,7 @@ class ContentRepository @Inject constructor(
         private const val WEB_CHAPTER_LOAD_TIMEOUT_MS = 25_000L
         private const val MAX_MEDIA_CACHE_BYTES = 512L * 1024L * 1024L
         private const val MAX_HTML_CACHE_BYTES = 64L * 1024L * 1024L
+        private const val CACHE_TRIM_INTERVAL_MS = 30_000L
         private const val INSPECT_MEMO_TTL_MS = 3_000L
         private val CHAPTER_URL_PATTERNS = listOf(
             Regex("(chapter[-_/])(\\d+)", RegexOption.IGNORE_CASE),
@@ -48,6 +50,7 @@ class ContentRepository @Inject constructor(
 
     private data class InspectMemo(val result: PrefetchResult, val storedAt: Long)
     private val inspectMemo = java.util.concurrent.ConcurrentHashMap<String, InspectMemo>()
+    private val lastCacheTrimAtMs = AtomicLong(0L)
 
     private val userDownloadsInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
@@ -101,7 +104,7 @@ class ContentRepository @Inject constructor(
                 ContentKind.UNKNOWN -> ContentResult.Error("Unsupported file type")
             }
             if (resolveContentKind(url) == ContentKind.WEB) {
-                trimCachesInternal()
+                trimCachesInternal(force = true)
             }
             result
         } catch (e: TimeoutCancellationException) {
@@ -137,6 +140,10 @@ class ContentRepository @Inject constructor(
     }
 
     fun getCachedMediaFile(url: String): File = webLoader.getCachedMediaFile(url)
+
+    fun findUsableCachedMediaFile(url: String): File? = webLoader.findUsableCachedMediaFile(url)
+
+    fun getLikelyMediaState(url: String): String = webLoader.getLikelyMediaState(url)
 
     suspend fun invalidateCachedMediaFile(imageUrl: String, pageUrl: String? = null): Unit = withContext(Dispatchers.IO) {
         webLoader.invalidateCachedMediaFile(imageUrl)
@@ -227,7 +234,7 @@ class ContentRepository @Inject constructor(
         }.getOrElse {
             PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = true)
         }
-        trimCachesInternal()
+        trimCachesInternal(force = true)
         result
     }
 
@@ -428,7 +435,7 @@ class ContentRepository @Inject constructor(
     }
 
     suspend fun trimCaches(): Unit = withContext(Dispatchers.IO) {
-        trimCachesInternal()
+        trimCachesInternal(force = true)
     }
 
     private fun localContentResult(url: String, isPersistentDownload: Boolean = false): PrefetchResult {
@@ -486,7 +493,15 @@ class ContentRepository @Inject constructor(
             .getOrElse { FileSizeUtils.calculateDirectorySize(httpCacheDir) }
     }
 
-    private fun trimCachesInternal() {
+    private fun trimCachesInternal(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force) {
+            val previous = lastCacheTrimAtMs.get()
+            if (now - previous < CACHE_TRIM_INTERVAL_MS) return
+            if (!lastCacheTrimAtMs.compareAndSet(previous, now)) return
+        } else {
+            lastCacheTrimAtMs.set(now)
+        }
         webLoader.trimCaches(
             maxHtmlBytes = MAX_HTML_CACHE_BYTES,
             maxMediaBytes = MAX_MEDIA_CACHE_BYTES

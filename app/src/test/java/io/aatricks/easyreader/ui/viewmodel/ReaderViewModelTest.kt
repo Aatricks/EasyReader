@@ -1024,14 +1024,14 @@ class ReaderViewModelTest {
     }
 
     @Test
-    fun `prefetchVisibleImage delegates to user-priority download`() = runTest {
+    fun `prefetchVisibleImage delegates to speculative warm`() = runTest {
         val imageUrl = "https://example.com/image.jpg"
         val pageUrl = "https://example.com/chapter-1"
 
         viewModel.prefetchVisibleImage(imageUrl, pageUrl)
         advanceUntilIdle()
 
-        verify(contentRepository).downloadAndCacheImage(imageUrl, pageUrl)
+        verify(contentRepository).warmImage(imageUrl, pageUrl)
     }
 
     @Test

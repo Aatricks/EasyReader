@@ -136,7 +136,7 @@ fun ReaderImageView(
         when {
             imageUrl.startsWith("file") -> true
             imageUrl.startsWith("http") ->
-                readerViewModel.contentRepository.getCachedMediaFile(imageUrl).exists()
+                readerViewModel.contentRepository.getLikelyMediaState(imageUrl) != "missing"
             else -> false
         }
     }
@@ -211,8 +211,10 @@ fun ReaderImageView(
 
     var retryTrigger by remember(imageUrl, pageUrl) { mutableStateOf(0L) }
     val localMediaState = remember(imageUrl, retryTrigger) {
-        readerImageLocalMediaState(imageUrl) {
-            readerViewModel.contentRepository.getCachedMediaFile(it)
+        if (imageUrl.startsWith("http")) {
+            readerViewModel.contentRepository.getLikelyMediaState(imageUrl)
+        } else {
+            ""
         }
     }
     // Keys are only the inputs that actually change the request. isInitiallyCached is stable

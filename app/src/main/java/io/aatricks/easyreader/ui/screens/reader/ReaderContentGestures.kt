@@ -286,12 +286,14 @@ internal fun prefetchImages(
     requestedIndices: MutableSet<Int>,
     onEnqueue: (String) -> Unit
 ) {
-    val prefetchRange = 10
+    val prefetchAhead = 6
+    val prefetchBehind = 2
 
-    val startRange = (currentIndex - 3).coerceAtLeast(0)
-    val endRange = (currentIndex + prefetchRange).coerceAtMost(content.paragraphs.size - 1)
+    val startRange = (currentIndex - prefetchBehind).coerceAtLeast(0)
+    val endRange = (currentIndex + prefetchAhead).coerceAtMost(content.paragraphs.size - 1)
 
     for (i in startRange..endRange) {
+        if (i == currentIndex) continue
         if (i in requestedIndices) continue
 
         content.paragraphs.getOrNull(i)?.let { element ->

@@ -176,22 +176,72 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
     // Fast path: HTML already on disk and parsed sidecar matches its mtime/length.
     // Skips Jsoup parse + dimension enrichment entirely. Falls through on any miss.
-    private fun tryLoadFromParsedCache(
+    private suspend fun tryLoadFromParsedCache(
         url: String,
         safeUrl: String,
         startedAtMs: Long
     ): ContentResult.Success? {
-        val parsed = findExistingCachedFile(url)?.let { parsedContentCache.load(it) } ?: return null
+        val htmlFile = findExistingCachedFile(url) ?: return null
+        val parsed = parsedContentCache.load(htmlFile) ?: return null
+        val elements = enrichParsedCacheDimensions(parsed.elements)
+        if (elements != parsed.elements) {
+            parsedContentCache.save(htmlFile, parsed.title, elements)
+        }
         Log.d(
             TAG,
-            "parsed cache hit url=$safeUrl elements=${parsed.elements.size} " +
+            "parsed cache hit url=$safeUrl elements=${elements.size} " +
                 "elapsedMs=${System.currentTimeMillis() - startedAtMs}"
         )
         return ContentResult.Success(
-            elements = parsed.elements,
+            elements = elements,
             title = parsed.title,
             url = url
         )
+    }
+
+    private suspend fun enrichParsedCacheDimensions(elements: List<ContentElement>): List<ContentElement> {
+        val missingUrls = elements
+            .flatMap { element ->
+                when (element) {
+                    is ContentElement.Image ->
+                        if (element.width <= 0 || element.height <= 0) listOf(element.url) else emptyList()
+                    is ContentElement.ImageGroup ->
+                        element.images.filter { it.width <= 0 || it.height <= 0 }.map { it.url }
+                    else -> emptyList()
+                }
+            }
+            .distinct()
+        if (missingUrls.isEmpty()) return elements
+
+        val cached = imageDimensionCache.getMany(missingUrls)
+        if (cached.isEmpty()) return elements
+
+        return elements.map { element ->
+            when (element) {
+                is ContentElement.Image -> {
+                    val hit = cached[element.url]
+                    if (hit != null && (element.width <= 0 || element.height <= 0)) {
+                        element.copy(width = hit.width, height = hit.height)
+                    } else {
+                        element
+                    }
+                }
+
+                is ContentElement.ImageGroup -> {
+                    val updated = element.images.map { image ->
+                        val hit = cached[image.url]
+                        if (hit != null && (image.width <= 0 || image.height <= 0)) {
+                            image.copy(width = hit.width, height = hit.height)
+                        } else {
+                            image
+                        }
+                    }
+                    if (updated == element.images) element else element.copy(images = updated)
+                }
+
+                else -> element
+            }
+        }
     }
 
     private suspend fun buildSuccessResult(
@@ -347,6 +397,10 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     }
 
     fun getCachedMediaFile(url: String): File = imageCache.getCachedMediaFile(url)
+
+    fun findUsableCachedMediaFile(url: String): File? = imageCache.findExistingCachedMediaFile(url)
+
+    fun getLikelyMediaState(url: String): String = imageCache.getLikelyMediaState(url)
 
     fun invalidateCachedMediaFile(url: String) {
         imageCache.deleteCachedMediaFiles(url)

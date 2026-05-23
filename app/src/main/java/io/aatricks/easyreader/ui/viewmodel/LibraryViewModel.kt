@@ -25,6 +25,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 import android.util.Log
 
@@ -64,20 +66,22 @@ class LibraryViewModel @Inject constructor(
     val pendingDeletion: StateFlow<Set<String>> = _pendingDeletion.asStateFlow()
     private var pendingDeleteJob: Job? = null
     private var pendingDeleteUrls: List<String> = emptyList()
+    private var downloadedReconciliationJob: Job? = null
 
     companion object {
         private const val UNDO_DELETE_WINDOW_MS = 5000L
+        private const val CACHE_STATE_REFRESH_CONCURRENCY = 6
     }
 
     init {
         _collapsedSources.value = repository.loadCollapsedSources()
         observeLibraryChanges()
         observeDownloadQueue()
-        verifyDownloadedItemsOnStartup()
     }
 
-    private fun verifyDownloadedItemsOnStartup() {
-        viewModelScope.launch {
+    fun reconcileDownloadedItemsOnDemand(): Unit {
+        if (downloadedReconciliationJob?.isActive == true) return
+        downloadedReconciliationJob = viewModelScope.launch {
             val snapshot = runCatching {
                 @Suppress("USELESS_ELVIS")
                 repository.getAllItemsSnapshot() ?: emptyList()
@@ -679,28 +683,31 @@ class LibraryViewModel @Inject constructor(
             .associateBy { it.url }
 
         val results = supervisorScope {
+            val semaphore = Semaphore(CACHE_STATE_REFRESH_CONCURRENCY)
             targetUrls.map { url ->
                 async {
-                    val item = libraryItemsByUrl[url]
-                    val downloadResult = if (item != null) {
-                        runCatching { contentRepository.inspectDownload(url) }.getOrNull()
-                    } else {
-                        null
+                    semaphore.withPermit {
+                        val item = libraryItemsByUrl[url]
+                        val downloadResult = if (item != null) {
+                            runCatching { contentRepository.inspectDownload(url) }.getOrNull()
+                        } else {
+                            null
+                        }
+                        val useDownloadResult = item?.isDownloaded == true || downloadResult.hasDownloadEvidence()
+                        val result = if (useDownloadResult) {
+                            downloadResult
+                        } else {
+                            runCatching { contentRepository.inspectCache(url) }.getOrNull()
+                        }
+                        if (item != null && result != null && !result.isInProgress) {
+                            downloadStatusReconciler.reconcile(
+                                item,
+                                result,
+                                wasUserInspect = useDownloadResult
+                            )
+                        }
+                        result
                     }
-                    val useDownloadResult = item?.isDownloaded == true || downloadResult.hasDownloadEvidence()
-                    val result = if (useDownloadResult) {
-                        downloadResult
-                    } else {
-                        runCatching { contentRepository.inspectCache(url) }.getOrNull()
-                    }
-                    if (item != null && result != null && !result.isInProgress) {
-                        downloadStatusReconciler.reconcile(
-                            item,
-                            result,
-                            wasUserInspect = useDownloadResult
-                        )
-                    }
-                    result
                 }
             }.awaitAll().filterNotNull()
         }

@@ -38,6 +38,7 @@ import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import io.aatricks.easyreader.util.FileUtils
 import io.aatricks.easyreader.util.UrlSecurity
 import io.aatricks.easyreader.work.LibraryUpdateWorker
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -49,6 +50,7 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         private const val TAG = "MainActivity"
+        private const val DEFERRED_STARTUP_WORK_DELAY_MS = 2_000L
         private val URL_REGEX = Regex("https?://[^\\s]+")
     }
 
@@ -80,8 +82,6 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
-        LibraryUpdateWorker.schedule(applicationContext)
 
         setContent {
             val readerUiState by readerViewModel.uiState.collectAsState()
@@ -129,7 +129,7 @@ class MainActivity : ComponentActivity() {
                     composable<ReaderRoute> {
                         ReaderScreen(
                             readerViewModel = readerViewModel,
-                            libraryViewModel = libraryViewModel,
+                            libraryViewModelProvider = { libraryViewModel },
                             navController = navController,
                             onOpenFilePicker = { checkPermissionsAndOpenFilePicker() },
                             modifier = Modifier.fillMaxSize()
@@ -168,7 +168,17 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        scheduleLibraryUpdatesAfterReaderLaunch()
         handleIntent(intent)
+    }
+
+    private fun scheduleLibraryUpdatesAfterReaderLaunch() {
+        lifecycleScope.launch {
+            // WorkManager setup can touch disk and build more of the app graph. Keep it out
+            // of the first reader frame; the periodic job is best-effort maintenance.
+            delay(DEFERRED_STARTUP_WORK_DELAY_MS)
+            LibraryUpdateWorker.schedule(applicationContext)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

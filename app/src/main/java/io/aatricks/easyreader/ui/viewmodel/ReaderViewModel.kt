@@ -48,6 +48,7 @@ class ReaderViewModel @Inject constructor(
         private const val TAG = "ReaderViewModel"
         private val DOUBLE_NEWLINE_REGEX = Regex("""\n\s*\n""")
         private const val MIN_SCROLL_OFFSET_DELTA_PX = 8
+        private const val IMAGE_DIMENSION_FLUSH_DELAY_MS = 100L
     }
 
     // Current library item ID being read
@@ -88,17 +89,31 @@ class ReaderViewModel @Inject constructor(
 
     fun persistImageDimensions(imageUrl: String, width: Int, height: Int) {
         if (imageUrl.isBlank() || width <= 0 || height <= 0) return
-        updateCurrentContentImageDimensions(imageUrl, width, height)
-        viewModelScope.launch {
-            imageDimensionCache.persist(imageUrl, width, height)
+        pendingImageDimensions[imageUrl] = width to height
+        if (dimensionFlushJob?.isActive == true) return
+        dimensionFlushJob = viewModelScope.launch {
+            delay(IMAGE_DIMENSION_FLUSH_DELAY_MS)
+            while (pendingImageDimensions.isNotEmpty()) {
+                flushPendingImageDimensions()
+            }
         }
     }
 
-    private fun updateCurrentContentImageDimensions(imageUrl: String, width: Int, height: Int) {
+    private suspend fun flushPendingImageDimensions() {
+        val updates = pendingImageDimensions.toMap()
+        pendingImageDimensions.clear()
+        if (updates.isEmpty()) return
+        updateCurrentContentImageDimensions(updates)
+        imageDimensionCache.persistAll(updates.map { (url, dimensions) ->
+            Triple(url, dimensions.first, dimensions.second)
+        })
+    }
+
+    private fun updateCurrentContentImageDimensions(updates: Map<String, Pair<Int, Int>>) {
         updateState { state ->
             val content = state.content ?: return@updateState state
             val updatedParagraphs = content.paragraphs.map { element ->
-                element.withResolvedImageDimensions(imageUrl, width, height)
+                element.withResolvedImageDimensions(updates)
             }
             if (updatedParagraphs == content.paragraphs) {
                 state
@@ -108,14 +123,11 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    private fun ContentElement.withResolvedImageDimensions(
-        imageUrl: String,
-        width: Int,
-        height: Int
-    ): ContentElement {
+    private fun ContentElement.withResolvedImageDimensions(updates: Map<String, Pair<Int, Int>>): ContentElement {
         return when (this) {
             is ContentElement.Image -> {
-                if (url == imageUrl && (this.width <= 0 || this.height <= 0)) {
+                val (width, height) = updates[url] ?: return this
+                if (this.width <= 0 || this.height <= 0) {
                     copy(width = width, height = height)
                 } else {
                     this
@@ -124,7 +136,8 @@ class ReaderViewModel @Inject constructor(
 
             is ContentElement.ImageGroup -> {
                 val updatedImages = images.map { img ->
-                    if (img.url == imageUrl && (img.width <= 0 || img.height <= 0)) {
+                    val (width, height) = updates[img.url] ?: return@map img
+                    if (img.width <= 0 || img.height <= 0) {
                         img.copy(width = width, height = height)
                     } else {
                         img
@@ -134,7 +147,7 @@ class ReaderViewModel @Inject constructor(
             }
 
             is ContentElement.PageContent -> {
-                val updatedElements = elements.map { it.withResolvedImageDimensions(imageUrl, width, height) }
+                val updatedElements = elements.map { it.withResolvedImageDimensions(updates) }
                 if (updatedElements == elements) this else copy(elements = updatedElements)
             }
 
@@ -154,6 +167,8 @@ class ReaderViewModel @Inject constructor(
 
     // Job for tracking content loading
     private var loadJob: Job? = null
+    private var dimensionFlushJob: Job? = null
+    private val pendingImageDimensions = LinkedHashMap<String, Pair<Int, Int>>()
 
     init {
         // Load initial settings
@@ -1117,7 +1132,7 @@ class ReaderViewModel @Inject constructor(
         if (!imageUrl.startsWith("http")) return
 
         viewModelScope.launch {
-            runCatching { contentRepository.downloadAndCacheImage(imageUrl, pageUrl) }
+            runCatching { contentRepository.warmImage(imageUrl, pageUrl) }
         }
     }
 
