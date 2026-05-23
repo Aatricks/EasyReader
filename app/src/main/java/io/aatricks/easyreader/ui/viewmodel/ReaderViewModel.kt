@@ -15,6 +15,7 @@ import io.aatricks.easyreader.ui.theme.AccentTheme
 import io.aatricks.easyreader.util.normalizeChapterList
 import io.aatricks.easyreader.util.TextUtils
 import io.aatricks.easyreader.util.UrlSecurity
+import io.aatricks.easyreader.ui.viewmodel.ReaderProgressController.Companion.PAGED_POSITION_ITEM_SIZE_PX
 import io.aatricks.easyreader.util.FieldUpdate
 import io.aatricks.easyreader.util.computeAutoDeleteCandidates
 import kotlinx.coroutines.CancellationException
@@ -1082,7 +1083,8 @@ class ReaderViewModel @Inject constructor(
         index: Int? = null,
         elementKey: String? = null,
         offsetFraction: Float? = null,
-        currentChapterUrl: String? = null
+        currentChapterUrl: String? = null,
+        forcePersist: Boolean = false
     ): Unit {
         progressController.updateReadingProgress(
             progress = progress,
@@ -1091,7 +1093,8 @@ class ReaderViewModel @Inject constructor(
             elementKey = elementKey,
             offsetFraction = offsetFraction,
             currentChapterUrl = currentChapterUrl,
-            content = _uiState.value.content
+            content = _uiState.value.content,
+            forcePersist = forcePersist
         )
     }
 
@@ -1228,11 +1231,17 @@ class ReaderViewModel @Inject constructor(
                 scrollElementKey = targetElementKey,
                 scrollOffsetFraction = targetFraction,
                 isPreciseRestore = false,
-                firstVisibleItemSize = progressController.progressState.value.firstVisibleItemSize,
+                firstVisibleItemSize = PAGED_POSITION_ITEM_SIZE_PX,
                 seekTrigger = System.currentTimeMillis(),
                 targetScrollPosition = if (targetPercent == 100f) 100f else null
             )
         )
+
+        // Seek-bar drag is explicit user intent. Mark it before scheduling the write so
+        // the restore loop triggered by seekTrigger does not later suppress saves, and
+        // pass forcePersist=true to bypass the upstream-layout-stability gate (which
+        // would otherwise reject seeks into chapters with unmeasured images).
+        progressController.markUserDragged()
 
         viewModelScope.launch {
             updateReadingProgress(
@@ -1240,7 +1249,8 @@ class ReaderViewModel @Inject constructor(
                 scrollPosition = targetPercent,
                 index = roughIndex,
                 elementKey = targetElementKey,
-                offsetFraction = targetFraction
+                offsetFraction = targetFraction,
+                forcePersist = true
             )
         }
     }
