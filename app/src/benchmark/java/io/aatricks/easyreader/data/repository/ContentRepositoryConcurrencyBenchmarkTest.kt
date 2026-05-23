@@ -11,6 +11,10 @@ import io.aatricks.easyreader.data.repository.content.PdfDocumentOpener
 import io.aatricks.easyreader.data.repository.content.WebContentLoader
 import io.aatricks.easyreader.data.repository.content.ImageCache
 import io.aatricks.easyreader.data.repository.content.ImageDownloader
+import io.aatricks.easyreader.data.repository.content.InMemoryPermanentFailureStore
+import io.aatricks.easyreader.data.repository.content.ParsedContentCache
+import io.aatricks.easyreader.data.repository.content.WebOfflineChapterStore
+import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -112,7 +116,23 @@ class ContentRepositoryConcurrencyBenchmarkTest {
             .addInterceptor(interceptor)
             .build()
 
-        val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, ImageCache(mediaCacheDir), ImageDownloader(okHttpClient), cacheDir)
+        val htmlDownloadsDir = File(cacheDir, "html_downloads").apply { mkdirs() }
+        val mediaDownloadsDir = File(cacheDir, "media_downloads").apply { mkdirs() }
+        val webOfflineDir = File(cacheDir, "web_offline").apply { mkdirs() }
+        val imageCache = ImageCache(mediaCacheDir, mediaDownloadsDir)
+        val imageDownloader = ImageDownloader(okHttpClient)
+        val webLoader = WebContentLoader(
+            mockHtmlParser,
+            okHttpClient,
+            imageCache,
+            imageDownloader,
+            ParsedContentCache(),
+            cacheDir,
+            htmlDownloadsDir,
+            InMemoryPermanentFailureStore(),
+            fakeImageDimensionCacheRepository(),
+            WebOfflineChapterStore(webOfflineDir, mockHtmlParser, imageDownloader, imageCache)
+        )
         val pdfLoader = PdfContentLoader(mockContext, DefaultPdfDocumentOpener(mockContext))
         val epubLoader = EpubContentLoader(mockContext, epubCacheDir)
         val localLoader = LocalContentLoader(mockContext, mockHtmlParser, pdfLoader, epubLoader, contentUriTypeResolver)

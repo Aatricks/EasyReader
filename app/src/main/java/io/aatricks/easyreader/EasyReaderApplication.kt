@@ -11,11 +11,14 @@ import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import io.aatricks.easyreader.data.local.PreferencesManager
+import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
+import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.data.repository.content.EpubImageFetcher
 import io.aatricks.easyreader.data.repository.content.HttpMediaCacheFetcher
 import io.aatricks.easyreader.util.CrashRecorder
+import io.aatricks.easyreader.work.ChapterDownloadQueue
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +32,8 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
 
     @Inject lateinit var okHttpClient: OkHttpClient
     @Inject lateinit var contentRepository: ContentRepository
+    @Inject lateinit var libraryRepository: LibraryRepository
+    @Inject lateinit var chapterDownloadQueue: ChapterDownloadQueue
     @Inject lateinit var preferencesManager: PreferencesManager
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var imageDimensionCache: ImageDimensionCacheRepository
@@ -47,8 +52,31 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
     override fun onCreate() {
         super.onCreate()
         CrashRecorder.install(this)
-        prewarmLastReadChapter()
+        if (!resetLegacyWebOfflinePipelineIfNeeded()) {
+            prewarmLastReadChapter()
+        }
         pruneImageDimensionCache()
+    }
+
+    private fun resetLegacyWebOfflinePipelineIfNeeded(): Boolean {
+        if (preferencesManager.webOfflinePipelineVersion >= WEB_OFFLINE_PIPELINE_VERSION) return false
+        warmupScope.launch {
+            runCatching {
+                val previouslyDownloadedWeb = libraryRepository.getDownloadedItems()
+                    .filter { it.contentType == ContentType.WEB }
+                contentRepository.resetWebOfflinePipelineData()
+                previouslyDownloadedWeb.forEach { item ->
+                    libraryRepository.markDownloaded(item.id, false)
+                    chapterDownloadQueue.enqueue(item.url, replaceExisting = true)
+                }
+                preferencesManager.webOfflinePipelineVersion = WEB_OFFLINE_PIPELINE_VERSION
+                Log.i(TAG, "reset legacy web offline data and requeued ${previouslyDownloadedWeb.size} chapters")
+            }.onFailure {
+                Log.w(TAG, "web offline reset failed message=${it.message}")
+            }
+            prewarmLastReadChapter()
+        }
+        return true
     }
 
     private fun pruneImageDimensionCache() {
@@ -94,5 +122,6 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
 
     companion object {
         private const val TAG = "EasyReaderApplication"
+        private const val WEB_OFFLINE_PIPELINE_VERSION = 2
     }
 }

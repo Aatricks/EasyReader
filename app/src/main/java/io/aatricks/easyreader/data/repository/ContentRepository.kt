@@ -485,6 +485,14 @@ class ContentRepository @Inject constructor(
         epubLoader.clearAllDownloads()
     }
 
+    suspend fun resetWebOfflinePipelineData(): Unit = withContext(Dispatchers.IO) {
+        inspectMemo.clear()
+        webLoader.clearAllCache()
+        webLoader.clearAllDownloads()
+        clearHttpCache()
+        clearImageCache()
+    }
+
     suspend fun getCacheSize(): Long = withContext(Dispatchers.IO) {
         webLoader.getCacheSize() +
             epubLoader.getCacheSize() +

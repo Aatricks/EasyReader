@@ -54,6 +54,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     @HtmlDownloadsDir private val downloadsDir: File,
     private val permanentFailureStore: PermanentFailureStore,
     private val imageDimensionCache: ImageDimensionCacheRepository,
+    private val offlineChapterStore: WebOfflineChapterStore,
     private val hostThrottle: HostThrottle = HostThrottle()
 ) {
     companion object {
@@ -158,6 +159,13 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         val safeUrl = UrlSanitizer.sanitize(url)
         Log.d(TAG, "start load url=$safeUrl")
         try {
+            offlineChapterStore.loadContent(url)?.let { offline ->
+                Log.d(TAG, "offline manifest hit url=$safeUrl elapsedMs=${System.currentTimeMillis() - startedAtMs}")
+                return@withContext offline
+            }
+            if (offlineChapterStore.hasCompleteManifestRecord(url)) {
+                return@withContext ContentResult.Error("Downloaded chapter files are missing or corrupt")
+            }
             tryLoadFromParsedCache(url, safeUrl, startedAtMs)?.let { return@withContext it }
 
             val cachedDocument = getDocumentFromCacheOrNetwork(url, writeTier = StorageTier.CACHE)
@@ -434,7 +442,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     }
 
     suspend fun inspectDownload(url: String): PrefetchResult = withContext(Dispatchers.IO) {
-        inspectCacheInternal(url, persistentOnly = true)
+        offlineChapterStore.inspect(url)
     }
 
     fun getCachedMediaFile(url: String): File = imageCache.getCachedMediaFile(url)
@@ -451,7 +459,10 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
     fun isCached(url: String): Boolean = findExistingCachedFile(url) != null
 
-    fun isDownloaded(url: String): Boolean = primaryCachedFile(url, StorageTier.DOWNLOADS).exists()
+    fun isDownloaded(url: String): Boolean = offlineChapterStore.hasCompleteChapter(url)
+
+    fun isImageDownloaded(chapterUrl: String, imageUrl: String): Boolean =
+        offlineChapterStore.hasImage(chapterUrl, imageUrl) || imageCache.isDownloaded(imageUrl)
 
     fun isImageDownloaded(imageUrl: String): Boolean = imageCache.isDownloaded(imageUrl)
 
@@ -475,6 +486,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     }
 
     suspend fun clearDownload(url: String) {
+        offlineChapterStore.clear(url)
         val sourceForImageList = primaryCachedFile(url, StorageTier.DOWNLOADS)
             .takeIf(File::exists)
             ?: findExistingCachedFile(url)
@@ -514,6 +526,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     }
 
     fun clearAllDownloads() {
+        offlineChapterStore.clearAll()
         downloadsDir.deleteRecursively()
         imageCache.clearAllDownloads()
         downloadsDir.mkdirs()
@@ -525,7 +538,9 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     }
 
     fun getDownloadsSize(): Long {
-        return FileSizeUtils.calculateDirectorySize(downloadsDir) + imageCache.getDownloadsSize()
+        return FileSizeUtils.calculateDirectorySize(downloadsDir) +
+            imageCache.getDownloadsSize() +
+            offlineChapterStore.sizeBytes()
     }
 
     fun trimCaches(maxHtmlBytes: Long, maxMediaBytes: Long) {
@@ -931,6 +946,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         onProgress: (suspend (PrefetchResult) -> Unit)? = null
     ): PrefetchResult {
         val priority = if (mode == PrefetchMode.SPECULATIVE) ImageRequestPriority.SPECULATIVE else ImageRequestPriority.USER_REQUESTED
+        val safeUrl = UrlSanitizer.sanitize(url)
         val cachedDocument = try {
             getDocumentFromCacheOrNetwork(
                 url = url,
@@ -938,14 +954,26 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                 writeTier = tierForMode(mode)
             )
         } catch (e: Exception) {
-            return inspectCacheInternal(
-                url = url,
-                persistentOnly = mode == PrefetchMode.USER_REQUESTED
-            ).copy(isRetryable = shouldRetryException(e))
+            val inspected = if (mode == PrefetchMode.USER_REQUESTED) {
+                offlineChapterStore.inspect(url)
+            } else {
+                inspectCacheInternal(url = url, persistentOnly = false)
+            }
+            return inspected.copy(isRetryable = shouldRetryException(e))
         }
 
         if (mode == PrefetchMode.USER_REQUESTED) {
-            promoteHtmlToDownloads(url)
+            val result = offlineChapterStore.downloadChapter(
+                url = url,
+                document = cachedDocument.document,
+                onProgress = onProgress
+            )
+            Log.d(
+                TAG,
+                "offline download final url=$safeUrl complete=${result.isComplete} " +
+                    "cached=${result.cachedImages}/${result.totalImages}"
+            )
+            return result.copy(isInProgress = false)
         }
 
         val imageUrls = extractImageUrls(htmlParser.parse(cachedDocument.document, url))
@@ -983,7 +1011,6 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             }
         } else null
 
-        val safeUrl = UrlSanitizer.sanitize(url)
         when (mode) {
             PrefetchMode.USER_REQUESTED -> {
                 Log.d(TAG, "USER_REQUESTED prefetch start url=$safeUrl totalImages=${imageUrls.size}")

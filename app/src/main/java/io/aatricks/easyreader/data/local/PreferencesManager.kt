@@ -151,6 +151,10 @@ class PreferencesManager @Inject constructor(
         get() = prefs.getBoolean(KEY_AI_SUMMARY_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_AI_SUMMARY_ENABLED, value).apply()
 
+    var webOfflinePipelineVersion: Int
+        get() = prefs.getInt(KEY_WEB_OFFLINE_PIPELINE_VERSION, 0)
+        set(value) = prefs.edit().putInt(KEY_WEB_OFFLINE_PIPELINE_VERSION, value).apply()
+
     // Clear all preferences
     fun clearAll() {
         prefs.edit().clear().apply()
@@ -210,5 +214,6 @@ class PreferencesManager @Inject constructor(
         private const val KEY_ACCENT_THEME = "accent_theme"
 
         private const val KEY_AI_SUMMARY_ENABLED = "ai_summary_enabled"
+        private const val KEY_WEB_OFFLINE_PIPELINE_VERSION = "web_offline_pipeline_version"
     }
 }

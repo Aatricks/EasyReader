@@ -4,7 +4,6 @@ import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.repository.HtmlParser
 import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
-import io.aatricks.easyreader.util.CacheKeyUtils
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import okhttp3.Interceptor
@@ -28,7 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class WebContentLoaderPrefetchRetryTest {
 
     @Test
-    fun `prefetch stops immediately on 404 permanent image failure`() = runBlocking {
+    fun `prefetch leaves chapter incomplete on 404 image failure`() = runBlocking {
         val chapterUrl = "https://example.com/permanent-fail"
         val imageUrl = "https://example.com/404.jpg"
         val htmlParser = mock<HtmlParser>()
@@ -55,12 +54,7 @@ class WebContentLoaderPrefetchRetryTest {
             loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
         }
 
-        // Permanent failures (4xx) are accounted for via the .failed sidecar so the chapter
-        // counts as complete and we don't keep hammering the dead URL during this pass —
-        // hence only one network request. However the user-facing retry button stays
-        // available (isRetryable=true) because a 4xx can be a transient CDN response that
-        // clears on a manual retry; clearing the sidecar will trigger a fresh attempt.
-        assertTrue(result.isComplete)
+        assertFalse(result.isComplete)
         assertTrue(result.isRetryable)
         assertEquals(1, imageRequests.get())
     }
@@ -102,13 +96,12 @@ class WebContentLoaderPrefetchRetryTest {
     }
 
     @Test
-    fun `legacy sidecar with valid timestamp is imported into store and deleted`() = runBlocking {
-        val chapterUrl = "https://example.com/legacy-with-ts"
-        val imageUrl = "https://example.com/legacy-ts.jpg"
+    fun `failed manifest retry attempts the missing image again`() = runBlocking {
+        val chapterUrl = "https://example.com/retry-failed-manifest"
+        val imageUrl = "https://example.com/retry-failed.jpg"
         val htmlParser = mock<HtmlParser>()
         val imageRequests = AtomicInteger(0)
 
-        val store = InMemoryPermanentFailureStore()
         val harness = createLoaderWithDirs(
             htmlParser = htmlParser,
             interceptor = Interceptor { chain ->
@@ -121,71 +114,40 @@ class WebContentLoaderPrefetchRetryTest {
                     }
                     else -> buildResponse(request, "", "text/plain", code = 404)
                 }
-            },
-            store = store
+            }
         )
 
         whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Image(imageUrl)))
 
-        // Pre-populate the chapter HTML cache so the sidecar location is meaningful, then
-        // write a legacy timestamped sidecar file to model the pre-Room-migration state.
         harness.loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
-        store.clear(chapterUrl)
-        val sidecar = File(harness.htmlDownloadsDir, "${CacheKeyUtils.keyFor(chapterUrl)}.html.failed")
-        val freshTimestamp = System.currentTimeMillis()
-        sidecar.writeText("$imageUrl|$freshTimestamp")
-
         val attemptsBefore = imageRequests.get()
         harness.loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
 
-        // After migration the sidecar should be gone and the store should hold the entry.
-        assertFalse("sidecar must be removed after migration import", sidecar.exists())
-        assertTrue(
-            "imported sidecar entry must suppress further requests during the same pass",
-            imageRequests.get() == attemptsBefore
-        )
-        assertEquals(setOf(imageUrl), store.load(chapterUrl, freshAfterMs = freshTimestamp - 1))
+        assertTrue("retry should attempt the missing image again", imageRequests.get() > attemptsBefore)
     }
 
     @Test
-    fun `legacy sidecar without timestamp is dropped on migration`() = runBlocking {
-        val chapterUrl = "https://example.com/legacy-no-ts"
-        val imageUrl = "https://example.com/legacy-no-ts.jpg"
+    fun `zero image web chapter is not marked downloaded`() = runBlocking {
+        val chapterUrl = "https://example.com/no-images"
         val htmlParser = mock<HtmlParser>()
-        val imageRequests = AtomicInteger(0)
 
-        val store = InMemoryPermanentFailureStore()
         val harness = createLoaderWithDirs(
             htmlParser = htmlParser,
             interceptor = Interceptor { chain ->
                 val request = chain.request()
                 when (request.url.toString()) {
-                    chapterUrl -> buildResponse(request, "<html><body></body></html>", "text/html")
-                    imageUrl -> {
-                        imageRequests.incrementAndGet()
-                        buildResponse(request, "Not Found", "text/plain", code = 404)
-                    }
+                    chapterUrl -> buildResponse(request, "<html><body><p>Novel text</p></body></html>", "text/html")
                     else -> buildResponse(request, "", "text/plain", code = 404)
                 }
-            },
-            store = store
+            }
         )
 
-        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Image(imageUrl)))
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Text("Novel text")))
 
-        harness.loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
-        store.clear(chapterUrl)
-        val sidecar = File(harness.htmlDownloadsDir, "${CacheKeyUtils.keyFor(chapterUrl)}.html.failed")
-        sidecar.writeText(imageUrl) // plain url, no timestamp — pre-migration format
+        val result = harness.loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
 
-        val attemptsBefore = imageRequests.get()
-        harness.loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
-
-        assertFalse("sidecar must be removed after migration", sidecar.exists())
-        assertTrue(
-            "legacy entry without timestamp must trigger a fresh attempt",
-            imageRequests.get() > attemptsBefore
-        )
+        assertFalse(result.isComplete)
+        assertFalse(result.isPersistentDownload)
     }
 
     @Test
@@ -218,8 +180,7 @@ class WebContentLoaderPrefetchRetryTest {
 
         assertFalse(result.isComplete)
         assertTrue(result.isRetryable)
-        // Expected: USER_REQUEST_PREFETCH_PASSES (2) * USER_REQUEST_ATTEMPTS (3) = 6
-        assertEquals("Should retry 6 times total (2 passes * 3 image attempts)", 6, imageRequests.get())
+        assertEquals("Should retry once through ImageDownloader user attempts", 3, imageRequests.get())
     }
 
     private fun createLoader(
@@ -243,13 +204,17 @@ class WebContentLoaderPrefetchRetryTest {
         val mediaCacheDir = File(root, "media_cache").apply { mkdirs() }
         val htmlDownloadsDir = File(root, "html_downloads").apply { mkdirs() }
         val mediaDownloadsDir = File(root, "media_downloads").apply { mkdirs() }
+        val webOfflineDir = File(root, "web_offline").apply { mkdirs() }
         val client = OkHttpClient.Builder()
             .addInterceptor(interceptor)
             .build()
+        val imageDownloader = ImageDownloader(client)
+        val imageCache = ImageCache(mediaCacheDir, mediaDownloadsDir)
         val loader = WebContentLoader(
-            htmlParser, client, ImageCache(mediaCacheDir, mediaDownloadsDir),
-            ImageDownloader(client), ParsedContentCache(), htmlCacheDir, htmlDownloadsDir,
-            store, fakeImageDimensionCacheRepository()
+            htmlParser, client, imageCache,
+            imageDownloader, ParsedContentCache(), htmlCacheDir, htmlDownloadsDir,
+            store, fakeImageDimensionCacheRepository(),
+            WebOfflineChapterStore(webOfflineDir, htmlParser, imageDownloader, imageCache)
         )
         return LoaderHarness(loader, htmlDownloadsDir, store)
     }
