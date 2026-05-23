@@ -76,6 +76,10 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
             .components {
                 add(EpubImageFetcher.Factory(contentRepository))
                 add(HttpMediaCacheFetcher.Factory(contentRepository))
+                // Fallback only: HttpMediaCacheFetcher owns the disk-cached HTTP path and
+                // matches every http(s) URL. OkHttp's fetcher runs only if that one returns
+                // null (offline + cache miss, or a Factory.create bug). Keep it so a
+                // regression in our fetcher doesn't render images unfetchable.
                 add(OkHttpNetworkFetcherFactory(okHttpClient))
             }
             .crossfade(false)

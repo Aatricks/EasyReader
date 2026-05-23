@@ -12,6 +12,7 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.aatricks.easyreader.data.model.PrefetchResult
+import io.aatricks.easyreader.util.CacheKeyUtils
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -102,7 +103,7 @@ class WorkManagerChapterDownloadQueue @Inject constructor(
 
     private fun uniqueName(url: String): String = "$UNIQUE_PREFIX${urlKey(url)}"
     private fun tagFor(url: String): String = "$URL_TAG_PREFIX${urlKey(url)}"
-    private fun urlKey(url: String): String = url.hashCode().toString()
+    private fun urlKey(url: String): String = CacheKeyUtils.keyFor(url)
 
     private fun WorkInfo.chapterUrl(): String? {
         progress.getString(ChapterDownloadWorker.KEY_CHAPTER_URL)

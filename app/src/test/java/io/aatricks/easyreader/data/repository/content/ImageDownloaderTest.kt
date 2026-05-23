@@ -253,10 +253,14 @@ class ImageDownloaderTest {
             )
         }
 
-        val field = ImageDownloader::class.java.getDeclaredField("hostThrottleStates").apply {
+        val throttleField = ImageDownloader::class.java.getDeclaredField("hostThrottle").apply {
             isAccessible = true
         }
-        val states = field.get(downloader) as Map<*, *>
+        val throttle = throttleField.get(downloader)
+        val statesField = throttle.javaClass.getDeclaredField("states").apply {
+            isAccessible = true
+        }
+        val states = statesField.get(throttle) as Map<*, *>
         assertTrue(states.size <= 256)
     }
 

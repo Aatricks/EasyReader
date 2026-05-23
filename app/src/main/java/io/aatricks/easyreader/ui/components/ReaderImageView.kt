@@ -228,7 +228,6 @@ fun ReaderImageView(
                 if (imageUrl.startsWith("http")) {
                     readerImageRequestCacheKey(imageUrl, localMediaState, retryTrigger)?.let { cacheKey ->
                         memoryCacheKey(cacheKey)
-                        diskCacheKey(cacheKey)
                     }
                     extras.set(ChapterPageUrlExtra, pageUrl)
                     httpHeaders(

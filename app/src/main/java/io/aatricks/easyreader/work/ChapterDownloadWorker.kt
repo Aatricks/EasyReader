@@ -42,10 +42,10 @@ class ChapterDownloadWorker @AssistedInject constructor(
         val safeUrl = UrlSanitizer.sanitize(url)
         Log.d(TAG, "starting download url=$safeUrl runAttempt=$runAttemptCount")
 
-        // Dual-path with the in-process VM call means the in-process side often finishes the
-        // download before the worker dispatches. Short-circuit here so we don't trigger a
-        // full re-inspect, re-record permanent failures, or churn the chapterPrefetchMutex
-        // for chapters that are already complete.
+        // Skip when a previous worker run (or a foreground request that already finished)
+        // has already completed the download — avoids re-inspect, re-record of permanent
+        // failures, and churn on the chapterPrefetchMutex for chapters that are already
+        // complete.
         val existing = runCatching { contentRepository.inspectDownload(url) }.getOrNull()
         if (existing?.isStrictOfflineReady() == true) {
             Log.d(TAG, "already complete, skipping worker url=$safeUrl")

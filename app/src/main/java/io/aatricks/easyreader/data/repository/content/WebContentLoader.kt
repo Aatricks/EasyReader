@@ -11,6 +11,7 @@ import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
 import io.aatricks.easyreader.util.CacheKeyUtils
 import io.aatricks.easyreader.util.FileSizeUtils
 import io.aatricks.easyreader.util.HttpRetry
+import io.aatricks.easyreader.util.HttpTimeouts
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -52,13 +53,13 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     @HtmlCacheDir private val cacheDir: File,
     @HtmlDownloadsDir private val downloadsDir: File,
     private val permanentFailureStore: PermanentFailureStore,
-    private val imageDimensionCache: ImageDimensionCacheRepository
+    private val imageDimensionCache: ImageDimensionCacheRepository,
+    private val hostThrottle: HostThrottle = HostThrottle()
 ) {
     companion object {
         private const val TAG = "WebContentLoader"
         private val DIMENSION_SEMAPHORE = Semaphore(20)
         private const val MAX_CONCURRENT_DOWNLOADS = 4
-        private const val NON_ESSENTIAL_TIMEOUT_SECONDS = 5L
         private const val MAX_IMAGES_PER_GROUP = 3
         private const val MAX_GROUPED_STRIP_RATIO = 4.0f
         private const val USER_REQUEST_ATTEMPTS = 4
@@ -67,8 +68,11 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         private const val MAX_SPECULATIVE_PREFETCH_ATTEMPTS = 1
         private const val MAX_DIMENSION_SNIFF_BYTES = 64 * 1024L // 64KB
         private const val FETCH_REMOTE_DIMENSIONS_DURING_INITIAL_LOAD = false
-        private const val USER_HTML_TIMEOUT_SECONDS = 15L
         private const val MAX_PARSED_IMAGE_MEMO = 128
+        // Hard cap for HTML page bodies. Real chapter pages are < 1MB; anything larger is a
+        // misbehaving scraper, a CDN error page, or a hostile response — fail loud rather
+        // than allocate it whole into memory via `body.string()`.
+        private const val MAX_HTML_BODY_BYTES = 4L * 1024L * 1024L
         // Permanent failures (4xx images recorded in the `.failed` sidecar) get a TTL so we
         // re-attempt them after a day. Some CDNs return 404 transiently when overloaded; an
         // entry that's still 404 after the TTL gets re-recorded with a fresh timestamp.
@@ -81,14 +85,14 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     // cleanup happens in the finally blocks of the inFlight* maps.
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val shortTimeoutClient = okHttpClient.newBuilder()
-        .callTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .connectTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .readTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(HttpTimeouts.NON_ESSENTIAL_SECONDS, TimeUnit.SECONDS)
+        .connectTimeout(HttpTimeouts.NON_ESSENTIAL_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(HttpTimeouts.NON_ESSENTIAL_SECONDS, TimeUnit.SECONDS)
         .build()
     private val userHtmlClient = okHttpClient.newBuilder()
-        .callTimeout(USER_HTML_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .connectTimeout(USER_HTML_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .readTimeout(USER_HTML_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(HttpTimeouts.USER_REQUEST_SECONDS, TimeUnit.SECONDS)
+        .connectTimeout(HttpTimeouts.USER_REQUEST_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(HttpTimeouts.USER_REQUEST_SECONDS, TimeUnit.SECONDS)
         .build()
     private val imageDownloadMutex = Mutex()
     private val chapterPrefetchMutex = Mutex()
@@ -635,6 +639,22 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             .all { imageCache.findExistingCachedMediaFile(it) != null }
     }
 
+    private sealed interface HtmlFetchOutcome {
+        data class Body(val text: String) : HtmlFetchOutcome
+        data class HttpError(val code: Int, val retryAfterMs: Long?) : HtmlFetchOutcome
+        data class NetworkError(val cause: Exception) : HtmlFetchOutcome
+    }
+
+    private fun classifyHtmlOutcome(outcome: HtmlFetchOutcome): HostThrottle.Outcome = when (outcome) {
+        is HtmlFetchOutcome.Body -> HostThrottle.Outcome.Success
+        is HtmlFetchOutcome.HttpError -> when {
+            outcome.code == 429 -> HostThrottle.Outcome.RateLimited(outcome.retryAfterMs)
+            HttpRetry.shouldRetryResponseCode(outcome.code) -> HostThrottle.Outcome.RetryableError
+            else -> HostThrottle.Outcome.Success
+        }
+        is HtmlFetchOutcome.NetworkError -> HostThrottle.Outcome.NetworkError
+    }
+
     private suspend fun downloadHtml(url: String, priority: ImageRequestPriority = ImageRequestPriority.USER_REQUESTED): String {
         val useShortTimeout = priority == ImageRequestPriority.SPECULATIVE
         val attempts = if (useShortTimeout) SHORT_REQUEST_ATTEMPTS else USER_REQUEST_ATTEMPTS
@@ -643,33 +663,74 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         var lastException: Exception? = null
 
         repeat(attempts) { attempt ->
-            try {
-                val request = Request.Builder()
-                    .url(url)
-                    .addHeader("User-Agent", "Mozilla/5.0")
-                    .addHeader("Referer", getReferer(url))
-                    .build()
+            val outcome = runCatching {
+                hostThrottle.execute(
+                    url = url,
+                    block = { fetchHtmlOnce(client, url) },
+                    classify = ::classifyHtmlOutcome
+                )
+            }.getOrElse { t -> HtmlFetchOutcome.NetworkError(t as? Exception ?: Exception(t)) }
 
-                client.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) {
-                        return response.body?.string() ?: throw Exception("Empty body")
-                    } else {
-                        val retryAfter = HttpRetry.parseRetryAfterMs(response.header("Retry-After"))
-                        if (!HttpRetry.shouldRetryResponseCode(response.code) || attempt == attempts - 1) {
-                            throw Exception("HTTP ${response.code}")
-                        }
-                        delay(HttpRetry.nextRetryDelayMs(retryAfter, url, attempt))
-                    }
+            when (outcome) {
+                is HtmlFetchOutcome.Body -> return outcome.text
+                is HtmlFetchOutcome.HttpError -> {
+                    val e = Exception("HTTP ${outcome.code}")
+                    lastException = e
+                    if (!HttpRetry.shouldRetryResponseCode(outcome.code) || attempt == attempts - 1) throw e
+                    delay(HttpRetry.nextRetryDelayMs(outcome.retryAfterMs, url, attempt))
                 }
-            } catch (e: Exception) {
-                lastException = e
-                if (attempt == attempts - 1 || (e.message?.startsWith("HTTP") == true && !shouldRetryException(e))) {
-                    throw e
+                is HtmlFetchOutcome.NetworkError -> {
+                    lastException = outcome.cause
+                    if (attempt == attempts - 1) throw outcome.cause
+                    delay(HttpRetry.nextRetryDelayMs(null, url, attempt))
                 }
-                delay(HttpRetry.nextRetryDelayMs(null, url, attempt))
             }
         }
         throw lastException ?: Exception("Failed to download HTML")
+    }
+
+    private fun fetchHtmlOnce(client: OkHttpClient, url: String): HtmlFetchOutcome {
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("User-Agent", "Mozilla/5.0")
+            .addHeader("Referer", getReferer(url))
+            .build()
+        return try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@use HtmlFetchOutcome.HttpError(
+                        code = response.code,
+                        retryAfterMs = HttpRetry.parseRetryAfterMs(response.header("Retry-After"))
+                    )
+                }
+                val body = response.body ?: return@use HtmlFetchOutcome.NetworkError(IOException("Empty body"))
+                val contentLength = body.contentLength()
+                if (contentLength > MAX_HTML_BODY_BYTES) {
+                    return@use HtmlFetchOutcome.NetworkError(
+                        IOException("HTML body too large: $contentLength bytes")
+                    )
+                }
+                body.source().use { source ->
+                    val buffer = okio.Buffer()
+                    val readLimit = MAX_HTML_BODY_BYTES + 1
+                    var totalRead = 0L
+                    while (totalRead < readLimit) {
+                        val read = source.read(buffer, readLimit - totalRead)
+                        if (read == -1L) break
+                        totalRead += read
+                    }
+                    if (totalRead > MAX_HTML_BODY_BYTES) {
+                        HtmlFetchOutcome.NetworkError(
+                            IOException("HTML body exceeded $MAX_HTML_BODY_BYTES bytes")
+                        )
+                    } else {
+                        HtmlFetchOutcome.Body(buffer.readUtf8())
+                    }
+                }
+            }
+        } catch (e: IOException) {
+            HtmlFetchOutcome.NetworkError(e)
+        }
     }
 
     private fun shouldRetryException(e: Exception): Boolean {
