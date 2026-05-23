@@ -7,19 +7,20 @@ import io.aatricks.easyreader.data.model.ImageRequestPriority
 import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.repository.HtmlParser
+import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
 import io.aatricks.easyreader.util.CacheKeyUtils
 import io.aatricks.easyreader.util.FileSizeUtils
 import io.aatricks.easyreader.util.HttpRetry
+import io.aatricks.easyreader.util.HttpTimeouts
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -50,25 +51,33 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     private val imageDownloader: ImageDownloader,
     private val parsedContentCache: ParsedContentCache,
     @HtmlCacheDir private val cacheDir: File,
-    @HtmlDownloadsDir private val downloadsDir: File
+    @HtmlDownloadsDir private val downloadsDir: File,
+    private val permanentFailureStore: PermanentFailureStore,
+    private val imageDimensionCache: ImageDimensionCacheRepository,
+    private val offlineChapterStore: WebOfflineChapterStore,
+    private val hostThrottle: HostThrottle = HostThrottle()
 ) {
     companion object {
         private const val TAG = "WebContentLoader"
         private val DIMENSION_SEMAPHORE = Semaphore(20)
-        private const val MAX_CONCURRENT_DOWNLOADS = 8
-        private const val NON_ESSENTIAL_TIMEOUT_SECONDS = 5L
+        private const val MAX_CONCURRENT_DOWNLOADS = 4
         private const val MAX_IMAGES_PER_GROUP = 3
         private const val MAX_GROUPED_STRIP_RATIO = 4.0f
         private const val USER_REQUEST_ATTEMPTS = 4
         private const val SHORT_REQUEST_ATTEMPTS = 2
         private const val USER_REQUEST_PREFETCH_PASSES = 2
-        private const val FAST_PATH_USER_IMAGE_COUNT = 8
         private const val MAX_SPECULATIVE_PREFETCH_ATTEMPTS = 1
-        private const val MAX_USER_PREFETCH_ATTEMPTS = 1
         private const val MAX_DIMENSION_SNIFF_BYTES = 64 * 1024L // 64KB
         private const val FETCH_REMOTE_DIMENSIONS_DURING_INITIAL_LOAD = false
-        private const val USER_HTML_TIMEOUT_SECONDS = 15L
         private const val MAX_PARSED_IMAGE_MEMO = 128
+        // Hard cap for HTML page bodies. Real chapter pages are < 1MB; anything larger is a
+        // misbehaving scraper, a CDN error page, or a hostile response — fail loud rather
+        // than allocate it whole into memory via `body.string()`.
+        private const val MAX_HTML_BODY_BYTES = 4L * 1024L * 1024L
+        // Permanent failures (4xx images recorded in the `.failed` sidecar) get a TTL so we
+        // re-attempt them after a day. Some CDNs return 404 transiently when overloaded; an
+        // entry that's still 404 after the TTL gets re-recorded with a fresh timestamp.
+        private const val PERMANENT_FAILURE_TTL_MS = 24L * 60L * 60L * 1000L
     }
 
     // Process-lifetime scope for background image prefetches that intentionally
@@ -77,20 +86,21 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     // cleanup happens in the finally blocks of the inFlight* maps.
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val shortTimeoutClient = okHttpClient.newBuilder()
-        .callTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .connectTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .readTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(HttpTimeouts.NON_ESSENTIAL_SECONDS, TimeUnit.SECONDS)
+        .connectTimeout(HttpTimeouts.NON_ESSENTIAL_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(HttpTimeouts.NON_ESSENTIAL_SECONDS, TimeUnit.SECONDS)
         .build()
     private val userHtmlClient = okHttpClient.newBuilder()
-        .callTimeout(USER_HTML_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .connectTimeout(USER_HTML_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .readTimeout(USER_HTML_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(HttpTimeouts.USER_REQUEST_SECONDS, TimeUnit.SECONDS)
+        .connectTimeout(HttpTimeouts.USER_REQUEST_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(HttpTimeouts.USER_REQUEST_SECONDS, TimeUnit.SECONDS)
         .build()
     private val imageDownloadMutex = Mutex()
     private val chapterPrefetchMutex = Mutex()
 
     private data class InFlightImageDownload(
         val priority: ImageRequestPriority,
+        val writeTier: StorageTier,
         val deferred: Deferred<ImageDownloadResult>
     )
 
@@ -100,15 +110,26 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     )
 
     private val inFlightImageDownloads = mutableMapOf<String, InFlightImageDownload>()
-    private val inFlightChapterPrefetches = mutableMapOf<String, Deferred<PrefetchResult>>()
+    private val inFlightChapterPrefetches = mutableMapOf<String, InFlightChapterPrefetch>()
     private val inFlightHtmlFetches = mutableMapOf<String, InFlightHtmlFetch>()
+
+    private data class InFlightChapterPrefetch(
+        val mode: PrefetchMode,
+        val deferred: Deferred<PrefetchResult>
+    )
 
     private data class ParsedImageMemo(
         val mtime: Long,
         val length: Long,
         val imageUrls: List<String>,
         val hasImageTags: Boolean,
-        val bodyNonEmpty: Boolean
+        val bodyNonEmpty: Boolean,
+        // True when the HTML carries any of the well-known manga-reader CSS hooks (empty
+        // .container-chapter-reader, img[data-page-index], Astro page-island markers, etc).
+        // Used by inspectCacheInternal to refuse the "novel text page" completeness branch
+        // when the page is clearly a manga reader whose pages are JS-rendered — those would
+        // otherwise be marked Downloaded with zero images on disk.
+        val hasMangaReaderHints: Boolean
     )
 
     // Bounded LRU so chapter-load memos do not grow unboundedly across long sessions.
@@ -138,6 +159,13 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         val safeUrl = UrlSanitizer.sanitize(url)
         Log.d(TAG, "start load url=$safeUrl")
         try {
+            offlineChapterStore.loadContent(url)?.let { offline ->
+                Log.d(TAG, "offline manifest hit url=$safeUrl elapsedMs=${System.currentTimeMillis() - startedAtMs}")
+                return@withContext offline
+            }
+            if (offlineChapterStore.hasCompleteManifestRecord(url)) {
+                return@withContext ContentResult.Error("Downloaded chapter files are missing or corrupt")
+            }
             tryLoadFromParsedCache(url, safeUrl, startedAtMs)?.let { return@withContext it }
 
             val cachedDocument = getDocumentFromCacheOrNetwork(url, writeTier = StorageTier.CACHE)
@@ -160,22 +188,72 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
     // Fast path: HTML already on disk and parsed sidecar matches its mtime/length.
     // Skips Jsoup parse + dimension enrichment entirely. Falls through on any miss.
-    private fun tryLoadFromParsedCache(
+    private suspend fun tryLoadFromParsedCache(
         url: String,
         safeUrl: String,
         startedAtMs: Long
     ): ContentResult.Success? {
-        val parsed = findExistingCachedFile(url)?.let { parsedContentCache.load(it) } ?: return null
+        val htmlFile = findExistingCachedFile(url) ?: return null
+        val parsed = parsedContentCache.load(htmlFile) ?: return null
+        val elements = enrichParsedCacheDimensions(parsed.elements)
+        if (elements != parsed.elements) {
+            parsedContentCache.save(htmlFile, parsed.title, elements)
+        }
         Log.d(
             TAG,
-            "parsed cache hit url=$safeUrl elements=${parsed.elements.size} " +
+            "parsed cache hit url=$safeUrl elements=${elements.size} " +
                 "elapsedMs=${System.currentTimeMillis() - startedAtMs}"
         )
         return ContentResult.Success(
-            elements = parsed.elements,
+            elements = elements,
             title = parsed.title,
             url = url
         )
+    }
+
+    private suspend fun enrichParsedCacheDimensions(elements: List<ContentElement>): List<ContentElement> {
+        val missingUrls = elements
+            .flatMap { element ->
+                when (element) {
+                    is ContentElement.Image ->
+                        if (element.width <= 0 || element.height <= 0) listOf(element.url) else emptyList()
+                    is ContentElement.ImageGroup ->
+                        element.images.filter { it.width <= 0 || it.height <= 0 }.map { it.url }
+                    else -> emptyList()
+                }
+            }
+            .distinct()
+        if (missingUrls.isEmpty()) return elements
+
+        val cached = imageDimensionCache.getMany(missingUrls)
+        if (cached.isEmpty()) return elements
+
+        return elements.map { element ->
+            when (element) {
+                is ContentElement.Image -> {
+                    val hit = cached[element.url]
+                    if (hit != null && (element.width <= 0 || element.height <= 0)) {
+                        element.copy(width = hit.width, height = hit.height)
+                    } else {
+                        element
+                    }
+                }
+
+                is ContentElement.ImageGroup -> {
+                    val updated = element.images.map { image ->
+                        val hit = cached[image.url]
+                        if (hit != null && (image.width <= 0 || image.height <= 0)) {
+                            image.copy(width = hit.width, height = hit.height)
+                        } else {
+                            image
+                        }
+                    }
+                    if (updated == element.images) element else element.copy(images = updated)
+                }
+
+                else -> element
+            }
+        }
     }
 
     private suspend fun buildSuccessResult(
@@ -231,13 +309,21 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         mode: PrefetchMode,
         onProgress: (suspend (PrefetchResult) -> Unit)?
     ): PrefetchResult {
-        val maxAttempts = if (mode == PrefetchMode.USER_REQUESTED) MAX_USER_PREFETCH_ATTEMPTS else MAX_SPECULATIVE_PREFETCH_ATTEMPTS
+        if (mode == PrefetchMode.USER_REQUESTED) {
+            return downloadChapter(url, onProgress)
+        }
+
+        val maxAttempts = MAX_SPECULATIVE_PREFETCH_ATTEMPTS
         var lastResult: PrefetchResult? = null
 
         repeat(maxAttempts) {
             val existing = chapterPrefetchMutex.withLock { inFlightChapterPrefetches[url] }
-            if (existing != null) {
-                val result = runCatching { existing.await() }
+            // A USER_REQUESTED caller must NOT reuse an in-flight SPECULATIVE prefetch:
+            // SPECULATIVE only downloads HTML and would return isComplete=false without
+            // ever fetching images. Awaiting it makes the user's tap "finish" without
+            // doing the work. Cancel the SPECULATIVE and run a real USER_REQUESTED.
+            if (existing != null && (mode == PrefetchMode.SPECULATIVE || existing.mode == PrefetchMode.USER_REQUESTED)) {
+                val result = runCatching { existing.deferred.await() }
                     .getOrElse { inspectCache(url) }
                     .copy(isInProgress = chapterPrefetchMutex.withLock { url in inFlightChapterPrefetches })
 
@@ -245,14 +331,29 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                 lastResult = result
                 return@repeat
             }
+            if (existing != null) {
+                // USER_REQUESTED arriving while a SPECULATIVE is in flight: drop the
+                // speculative reservation so our fresh deferred can register and run.
+                chapterPrefetchMutex.withLock {
+                    if (inFlightChapterPrefetches[url]?.deferred === existing.deferred) {
+                        inFlightChapterPrefetches.remove(url)
+                    }
+                }
+                existing.deferred.cancel()
+            }
 
-            val deferred = repositoryScope.async {
+            // CoroutineStart.LAZY so the deferred is created but not yet running until the
+            // first .await() / .start(). Registering the URL in the inFlight map before
+            // starting closes the race where a concurrent inspect could observe
+            // isInProgress=false during a prefetch that has begun executing but hasn't yet
+            // been added to the map.
+            val deferred = repositoryScope.async(start = CoroutineStart.LAZY) {
                 executePrefetch(url, mode, onProgress)
             }.also { created ->
                 created.invokeOnCompletion {
                     repositoryScope.launch {
                         chapterPrefetchMutex.withLock {
-                            if (inFlightChapterPrefetches[url] === created) {
+                            if (inFlightChapterPrefetches[url]?.deferred === created) {
                                 inFlightChapterPrefetches.remove(url)
                             }
                         }
@@ -262,11 +363,11 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
             val active = chapterPrefetchMutex.withLock {
                 val current = inFlightChapterPrefetches[url]
-                if (current != null) {
+                if (current != null && current.mode == PrefetchMode.USER_REQUESTED) {
                     deferred.cancel()
-                    current
+                    current.deferred
                 } else {
-                    inFlightChapterPrefetches[url] = deferred
+                    inFlightChapterPrefetches[url] = InFlightChapterPrefetch(mode, deferred)
                     deferred
                 }
             }
@@ -278,6 +379,39 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         return lastResult ?: inspectCache(url)
     }
 
+    suspend fun downloadChapter(
+        url: String,
+        onProgress: (suspend (PrefetchResult) -> Unit)? = null
+    ): PrefetchResult = supervisorScope {
+        val deferred = async(start = CoroutineStart.LAZY) {
+            executePrefetch(url, PrefetchMode.USER_REQUESTED, onProgress)
+        }.also { created ->
+            created.invokeOnCompletion {
+                repositoryScope.launch {
+                    chapterPrefetchMutex.withLock {
+                        if (inFlightChapterPrefetches[url]?.deferred === created) {
+                            inFlightChapterPrefetches.remove(url)
+                        }
+                    }
+                }
+            }
+        }
+
+        val active = chapterPrefetchMutex.withLock {
+            val current = inFlightChapterPrefetches[url]
+            if (current?.mode == PrefetchMode.USER_REQUESTED) {
+                deferred.cancel()
+                current.deferred
+            } else {
+                current?.deferred?.cancel()
+                inFlightChapterPrefetches[url] = InFlightChapterPrefetch(PrefetchMode.USER_REQUESTED, deferred)
+                deferred
+            }
+        }
+
+        active.await().copy(isInProgress = false)
+    }
+
     suspend fun fetchTitle(url: String): String? = withContext(Dispatchers.IO) {
         runCatching {
             val doc = getDocumentFromCacheOrNetwork(url, writeTier = StorageTier.CACHE).document
@@ -287,10 +421,14 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
     suspend fun downloadAndCacheImage(
         imageUrl: String,
-        pageUrl: String,
-        tier: StorageTier = StorageTier.CACHE
+        pageUrl: String
     ): File? = withContext(Dispatchers.IO) {
-        val result = downloadAndCacheImageInternal(imageUrl, pageUrl, ImageRequestPriority.USER_REQUESTED, tier)
+        val result = downloadAndCacheImageInternal(
+            imageUrl,
+            pageUrl,
+            ImageRequestPriority.USER_REQUESTED,
+            StorageTier.CACHE
+        )
         (result as? ImageDownloadResult.Success)?.file
     }
 
@@ -304,20 +442,29 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     }
 
     suspend fun inspectDownload(url: String): PrefetchResult = withContext(Dispatchers.IO) {
-        inspectCacheInternal(url, persistentOnly = true)
+        offlineChapterStore.inspect(url)
     }
 
     fun getCachedMediaFile(url: String): File = imageCache.getCachedMediaFile(url)
+
+    fun findUsableCachedMediaFile(url: String): File? = imageCache.findExistingCachedMediaFile(url)
+
+    fun getLikelyMediaState(url: String): String = imageCache.getLikelyMediaState(url)
+
+    fun invalidateCachedMediaFile(url: String) {
+        imageCache.deleteCachedMediaFiles(url)
+    }
 
     fun getCachedFile(url: String): File = findExistingCachedFile(url) ?: primaryCachedFile(url, StorageTier.CACHE)
 
     fun isCached(url: String): Boolean = findExistingCachedFile(url) != null
 
-    fun isDownloaded(url: String): Boolean = primaryCachedFile(url, StorageTier.DOWNLOADS).exists()
+    fun isDownloaded(url: String): Boolean = offlineChapterStore.hasCompleteChapter(url)
+
+    fun isImageDownloaded(chapterUrl: String, imageUrl: String): Boolean =
+        offlineChapterStore.hasImage(chapterUrl, imageUrl) || imageCache.isDownloaded(imageUrl)
 
     fun isImageDownloaded(imageUrl: String): Boolean = imageCache.isDownloaded(imageUrl)
-
-    fun promoteImageToDownloads(imageUrl: String): File? = imageCache.promoteToDownloads(imageUrl)
 
     fun clearCache(url: String) {
         val cachedFile = findExistingCachedFile(url)
@@ -333,11 +480,13 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         parsedImageMemo.remove(url)
     }
 
-    fun clearPermanentFailures(url: String) {
+    suspend fun clearPermanentFailures(url: String) {
         sidecarFileVariants(url).forEach { it.delete() }
+        permanentFailureStore.clear(url)
     }
 
-    fun clearDownload(url: String) {
+    suspend fun clearDownload(url: String) {
+        offlineChapterStore.clear(url)
         val sourceForImageList = primaryCachedFile(url, StorageTier.DOWNLOADS)
             .takeIf(File::exists)
             ?: findExistingCachedFile(url)
@@ -354,6 +503,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         primaryCachedFile(url, StorageTier.DOWNLOADS).delete()
         File(downloadsDir, "${CacheKeyUtils.keyFor(url)}.html.failed").delete()
         parsedImageMemo.remove(url)
+        permanentFailureStore.clear(url)
     }
 
     suspend fun resetInFlightState(url: String) {
@@ -376,6 +526,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     }
 
     fun clearAllDownloads() {
+        offlineChapterStore.clearAll()
         downloadsDir.deleteRecursively()
         imageCache.clearAllDownloads()
         downloadsDir.mkdirs()
@@ -387,7 +538,9 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     }
 
     fun getDownloadsSize(): Long {
-        return FileSizeUtils.calculateDirectorySize(downloadsDir) + imageCache.getDownloadsSize()
+        return FileSizeUtils.calculateDirectorySize(downloadsDir) +
+            imageCache.getDownloadsSize() +
+            offlineChapterStore.sizeBytes()
     }
 
     fun trimCaches(maxHtmlBytes: Long, maxMediaBytes: Long) {
@@ -501,6 +654,22 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             .all { imageCache.findExistingCachedMediaFile(it) != null }
     }
 
+    private sealed interface HtmlFetchOutcome {
+        data class Body(val text: String) : HtmlFetchOutcome
+        data class HttpError(val code: Int, val retryAfterMs: Long?) : HtmlFetchOutcome
+        data class NetworkError(val cause: Exception) : HtmlFetchOutcome
+    }
+
+    private fun classifyHtmlOutcome(outcome: HtmlFetchOutcome): HostThrottle.Outcome = when (outcome) {
+        is HtmlFetchOutcome.Body -> HostThrottle.Outcome.Success
+        is HtmlFetchOutcome.HttpError -> when {
+            outcome.code == 429 -> HostThrottle.Outcome.RateLimited(outcome.retryAfterMs)
+            HttpRetry.shouldRetryResponseCode(outcome.code) -> HostThrottle.Outcome.RetryableError
+            else -> HostThrottle.Outcome.Success
+        }
+        is HtmlFetchOutcome.NetworkError -> HostThrottle.Outcome.NetworkError
+    }
+
     private suspend fun downloadHtml(url: String, priority: ImageRequestPriority = ImageRequestPriority.USER_REQUESTED): String {
         val useShortTimeout = priority == ImageRequestPriority.SPECULATIVE
         val attempts = if (useShortTimeout) SHORT_REQUEST_ATTEMPTS else USER_REQUEST_ATTEMPTS
@@ -509,33 +678,74 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         var lastException: Exception? = null
 
         repeat(attempts) { attempt ->
-            try {
-                val request = Request.Builder()
-                    .url(url)
-                    .addHeader("User-Agent", "Mozilla/5.0")
-                    .addHeader("Referer", getReferer(url))
-                    .build()
+            val outcome = runCatching {
+                hostThrottle.execute(
+                    url = url,
+                    block = { fetchHtmlOnce(client, url) },
+                    classify = ::classifyHtmlOutcome
+                )
+            }.getOrElse { t -> HtmlFetchOutcome.NetworkError(t as? Exception ?: Exception(t)) }
 
-                client.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) {
-                        return response.body?.string() ?: throw Exception("Empty body")
-                    } else {
-                        val retryAfter = HttpRetry.parseRetryAfterMs(response.header("Retry-After"))
-                        if (!HttpRetry.shouldRetryResponseCode(response.code) || attempt == attempts - 1) {
-                            throw Exception("HTTP ${response.code}")
-                        }
-                        delay(HttpRetry.nextRetryDelayMs(retryAfter, url, attempt))
-                    }
+            when (outcome) {
+                is HtmlFetchOutcome.Body -> return outcome.text
+                is HtmlFetchOutcome.HttpError -> {
+                    val e = Exception("HTTP ${outcome.code}")
+                    lastException = e
+                    if (!HttpRetry.shouldRetryResponseCode(outcome.code) || attempt == attempts - 1) throw e
+                    delay(HttpRetry.nextRetryDelayMs(outcome.retryAfterMs, url, attempt))
                 }
-            } catch (e: Exception) {
-                lastException = e
-                if (attempt == attempts - 1 || (e.message?.startsWith("HTTP") == true && !shouldRetryException(e))) {
-                    throw e
+                is HtmlFetchOutcome.NetworkError -> {
+                    lastException = outcome.cause
+                    if (attempt == attempts - 1) throw outcome.cause
+                    delay(HttpRetry.nextRetryDelayMs(null, url, attempt))
                 }
-                delay(HttpRetry.nextRetryDelayMs(null, url, attempt))
             }
         }
         throw lastException ?: Exception("Failed to download HTML")
+    }
+
+    private fun fetchHtmlOnce(client: OkHttpClient, url: String): HtmlFetchOutcome {
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("User-Agent", "Mozilla/5.0")
+            .addHeader("Referer", getReferer(url))
+            .build()
+        return try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@use HtmlFetchOutcome.HttpError(
+                        code = response.code,
+                        retryAfterMs = HttpRetry.parseRetryAfterMs(response.header("Retry-After"))
+                    )
+                }
+                val body = response.body ?: return@use HtmlFetchOutcome.NetworkError(IOException("Empty body"))
+                val contentLength = body.contentLength()
+                if (contentLength > MAX_HTML_BODY_BYTES) {
+                    return@use HtmlFetchOutcome.NetworkError(
+                        IOException("HTML body too large: $contentLength bytes")
+                    )
+                }
+                body.source().use { source ->
+                    val buffer = okio.Buffer()
+                    val readLimit = MAX_HTML_BODY_BYTES + 1
+                    var totalRead = 0L
+                    while (totalRead < readLimit) {
+                        val read = source.read(buffer, readLimit - totalRead)
+                        if (read == -1L) break
+                        totalRead += read
+                    }
+                    if (totalRead > MAX_HTML_BODY_BYTES) {
+                        HtmlFetchOutcome.NetworkError(
+                            IOException("HTML body exceeded $MAX_HTML_BODY_BYTES bytes")
+                        )
+                    } else {
+                        HtmlFetchOutcome.Body(buffer.readUtf8())
+                    }
+                }
+            }
+        } catch (e: IOException) {
+            HtmlFetchOutcome.NetworkError(e)
+        }
     }
 
     private fun shouldRetryException(e: Exception): Boolean {
@@ -616,10 +826,21 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         pageUrl: String,
         diskOnly: Boolean
     ): List<ContentElement.Image> = withContext(Dispatchers.IO) {
+        val needsLookup = imageElements
+            .filter { it.width <= 0 || it.height <= 0 }
+            .map { it.url }
+        val cached = imageDimensionCache.getMany(needsLookup)
+
         imageElements.map { img ->
+            if (img.width > 0 && img.height > 0) return@map async { img }
+            val hit = cached[img.url]
+            if (hit != null) {
+                return@map async { img.copy(width = hit.width, height = hit.height) }
+            }
             async {
                 DIMENSION_SEMAPHORE.withPermit {
                     fetchImageDimensions(img.url, pageUrl, diskOnly = diskOnly)?.let { (w, h) ->
+                        imageDimensionCache.persist(img.url, w, h)
                         img.copy(width = w, height = h)
                     } ?: img
                 }
@@ -725,6 +946,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         onProgress: (suspend (PrefetchResult) -> Unit)? = null
     ): PrefetchResult {
         val priority = if (mode == PrefetchMode.SPECULATIVE) ImageRequestPriority.SPECULATIVE else ImageRequestPriority.USER_REQUESTED
+        val safeUrl = UrlSanitizer.sanitize(url)
         val cachedDocument = try {
             getDocumentFromCacheOrNetwork(
                 url = url,
@@ -732,14 +954,26 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                 writeTier = tierForMode(mode)
             )
         } catch (e: Exception) {
-            return inspectCacheInternal(
-                url = url,
-                persistentOnly = mode == PrefetchMode.USER_REQUESTED
-            ).copy(isRetryable = shouldRetryException(e))
+            val inspected = if (mode == PrefetchMode.USER_REQUESTED) {
+                offlineChapterStore.inspect(url)
+            } else {
+                inspectCacheInternal(url = url, persistentOnly = false)
+            }
+            return inspected.copy(isRetryable = shouldRetryException(e))
         }
 
         if (mode == PrefetchMode.USER_REQUESTED) {
-            promoteHtmlToDownloads(url)
+            val result = offlineChapterStore.downloadChapter(
+                url = url,
+                document = cachedDocument.document,
+                onProgress = onProgress
+            )
+            Log.d(
+                TAG,
+                "offline download final url=$safeUrl complete=${result.isComplete} " +
+                    "cached=${result.cachedImages}/${result.totalImages}"
+            )
+            return result.copy(isInProgress = false)
         }
 
         val imageUrls = extractImageUrls(htmlParser.parse(cachedDocument.document, url))
@@ -748,8 +982,6 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
         var allImagesRetryable = true
         val permanentFailuresAccumulated = mutableListOf<String>()
-        val backgroundJobs = mutableListOf<Job>()
-
         val emitProgress: (suspend () -> Unit)? = if (onProgress != null) {
             {
                 val cached = imageUrls.count { imageUrl ->
@@ -759,14 +991,19 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                         imageCache.findExistingCachedMediaFile(imageUrl) != null
                     }
                 }
+                // Never claim isComplete=true from a progress emission. Mid-flight we don't
+                // yet know whether permanent failures will appear, and emitting Downloaded
+                // before the final inspectCacheInternal produces a UI badge that contradicts
+                // what the reader is about to display. The terminal PrefetchResult returned
+                // by executePrefetch is the only authoritative "complete" emission.
                 onProgress(
                     PrefetchResult(
                         url = url,
                         htmlCached = true,
                         totalImages = imageUrls.size,
                         cachedImages = cached,
-                        isComplete = cached == imageUrls.size && imageUrls.isNotEmpty(),
-                        isInProgress = cached < imageUrls.size,
+                        isComplete = false,
+                        isInProgress = true,
                         isRetryable = true,
                         isPersistentDownload = mode == PrefetchMode.USER_REQUESTED
                     )
@@ -774,7 +1011,6 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             }
         } else null
 
-        val safeUrl = UrlSanitizer.sanitize(url)
         when (mode) {
             PrefetchMode.USER_REQUESTED -> {
                 Log.d(TAG, "USER_REQUESTED prefetch start url=$safeUrl totalImages=${imageUrls.size}")
@@ -789,16 +1025,12 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                         break
                     }
 
-                    val isFirstPass = pass == 0
-                    val fastPath = if (isFirstPass) missingImages.take(FAST_PATH_USER_IMAGE_COUNT) else missingImages
-                    val backgroundRest = if (isFirstPass) missingImages.drop(FAST_PATH_USER_IMAGE_COUNT) else emptyList()
-
                     Log.d(
                         TAG,
-                        "USER_REQUESTED prefetch pass=$pass fastPath=${fastPath.size} bgRest=${backgroundRest.size} url=$safeUrl"
+                        "USER_REQUESTED prefetch pass=$pass missing=${missingImages.size} url=$safeUrl"
                     )
                     val report = cacheImages(
-                        imageUrls = fastPath,
+                        imageUrls = missingImages,
                         pageUrl = url,
                         priority = ImageRequestPriority.USER_REQUESTED,
                         writeTier = StorageTier.DOWNLOADS,
@@ -807,28 +1039,12 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                     )
                     permanentFailuresAccumulated.addAll(report.permanentFailures)
 
-                    if (backgroundRest.isNotEmpty()) {
-                        backgroundJobs += repositoryScope.launch {
-                            val bgReport = cacheImages(
-                                imageUrls = backgroundRest,
-                                pageUrl = url,
-                                priority = ImageRequestPriority.USER_REQUESTED,
-                                writeTier = StorageTier.DOWNLOADS,
-                                maxConcurrency = MAX_CONCURRENT_DOWNLOADS,
-                                onImageCached = emitProgress
-                            )
-                            if (bgReport.permanentFailures.isNotEmpty()) {
-                                recordPermanentFailures(url, bgReport.permanentFailures)
-                            }
-                        }
-                    }
-
                     allImagesRetryable = report.isRetryable
                     if (report.retryableFailures.isEmpty() && report.permanentFailures.isNotEmpty()) {
                         Log.d(TAG, "USER_REQUESTED prefetch stop url=$safeUrl - all remaining failures are permanent")
                         break
                     }
-                    if (report.isComplete && backgroundRest.isEmpty()) break
+                    if (report.isComplete) break
 
                     if (pass < USER_REQUEST_PREFETCH_PASSES - 1) {
                         delay(250L * (pass + 1))
@@ -846,10 +1062,6 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             recordPermanentFailures(url, permanentFailuresAccumulated)
         }
 
-        if (backgroundJobs.isNotEmpty()) {
-            backgroundJobs.joinAll()
-        }
-
         val inspected = inspectCacheInternal(
             url = url,
             cachedDocument = cachedDocument.document,
@@ -857,9 +1069,18 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         )
         val finalResult = inspected.copy(
             isInProgress = false,
-            isRetryable = allImagesRetryable && !inspected.isComplete
+            // Retry is useful when there's missing content (incomplete) OR we accepted
+            // permanent failures into the sidecar — clearing the sidecar and re-attempting
+            // can recover transient errors that were misclassified as permanent (e.g. a 404
+            // returned by an overloaded CDN).
+            isRetryable = (allImagesRetryable && !inspected.isComplete) || inspected.hasPermanentFailures
         )
-        Log.d(TAG, "prefetch final result url=$safeUrl complete=${finalResult.isComplete} cached=${finalResult.cachedImages}/${finalResult.totalImages}")
+        Log.d(
+            TAG,
+            "prefetch final result url=$safeUrl complete=${finalResult.isComplete} " +
+                "cached=${finalResult.cachedImages}/${finalResult.totalImages} " +
+                "permanentFailures=${finalResult.hasPermanentFailures}"
+        )
         return finalResult
     }
 
@@ -921,13 +1142,24 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         imageCache.findExistingCachedMediaFile(imageUrl)?.let { existingFile ->
             if (writeTier == StorageTier.DOWNLOADS && !imageCache.isDownloaded(imageUrl)) {
                 val promoted = imageCache.promoteToDownloads(imageUrl)
-                return@withContext ImageDownloadResult.Success(promoted ?: existingFile)
+                return@withContext if (promoted != null) {
+                    ImageDownloadResult.Success(promoted)
+                } else {
+                    ImageDownloadResult.Failure(true)
+                }
             }
             return@withContext ImageDownloadResult.Success(existingFile)
         }
 
         val cachedFile = imageCache.destinationFile(imageUrl, writeTier)
-        val tempFile = File(cachedFile.parent, "${cachedFile.name}.tmp")
+        // Unique per attempt: a SPECULATIVE download that gets cancelled mid-write by an
+        // arriving USER_REQUESTED would otherwise race on the same `.tmp` path and
+        // interleave bytes. Random suffix isolates the two writers so the new attempt
+        // never observes partial data from the cancelled one.
+        val tempFile = File(
+            cachedFile.parent,
+            "${cachedFile.name}.${java.util.UUID.randomUUID()}.tmp"
+        )
 
         if (priority == ImageRequestPriority.USER_REQUESTED) {
             val toCancel = imageDownloadMutex.withLock {
@@ -963,14 +1195,35 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
                         when (result) {
                             is ImageFetchResult.Success -> {
-                                if (tempFile.renameTo(cachedFile)) {
-                                    ImageDownloadResult.Success(cachedFile)
-                                } else if (cachedFile.exists()) {
-                                    tempFile.delete()
-                                    ImageDownloadResult.Success(cachedFile)
-                                } else {
+                                val finalFile = when {
+                                    tempFile.renameTo(cachedFile) -> cachedFile
+                                    // Fallback: rename failed but a file already sits at the
+                                    // target path. Only trust it if it actually decodes; a stale
+                                    // truncated/HTML file from a pre-fix download would otherwise
+                                    // get cemented in place and the fresh tempFile thrown away.
+                                    cachedFile.exists() && imageCache.isValidImageFile(cachedFile) -> {
+                                        tempFile.delete()
+                                        cachedFile
+                                    }
+                                    else -> {
+                                        // Either nothing at target, or what's there is corrupt.
+                                        // Force the freshly-downloaded tempFile into place.
+                                        cachedFile.delete()
+                                        if (tempFile.renameTo(cachedFile)) cachedFile else null
+                                    }
+                                }
+                                if (finalFile == null) {
                                     tempFile.delete()
                                     ImageDownloadResult.Failure(false)
+                                } else if (!imageCache.isValidImageFile(finalFile)) {
+                                    // Server returned non-image bytes (HTML challenge, truncated
+                                    // payload). Treat as retryable so the next pass tries again
+                                    // and only escalates to a permanent failure on real HTTP 4xx.
+                                    Log.d(TAG, "Invalid image payload, deleting and retrying: ${UrlSanitizer.sanitize(imageUrl)}")
+                                    finalFile.delete()
+                                    ImageDownloadResult.Failure(true)
+                                } else {
+                                    ImageDownloadResult.Success(finalFile)
                                 }
                             }
                             is ImageFetchResult.HttpError -> {
@@ -1000,19 +1253,40 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                             }
                         }
                     }
-                    inFlightImageDownloads[imageUrl] = InFlightImageDownload(priority, created)
+                    inFlightImageDownloads[imageUrl] = InFlightImageDownload(priority, writeTier, created)
                 }
             }
         }
 
         return@withContext try {
-            deferred.await()
+            ensureResultForTier(
+                result = deferred.await(),
+                imageUrl = imageUrl,
+                writeTier = writeTier
+            )
         } catch (e: CancellationException) {
             if (currentCoroutineContext().isActive) {
                 ImageDownloadResult.Failure(true)
             } else {
                 throw e
             }
+        }
+    }
+
+    private fun ensureResultForTier(
+        result: ImageDownloadResult,
+        imageUrl: String,
+        writeTier: StorageTier
+    ): ImageDownloadResult {
+        if (result !is ImageDownloadResult.Success || writeTier != StorageTier.DOWNLOADS) {
+            return result
+        }
+        if (imageCache.isDownloaded(imageUrl)) return result
+        val promoted = imageCache.promoteToDownloads(imageUrl)
+        return if (promoted != null) {
+            ImageDownloadResult.Success(promoted)
+        } else {
+            ImageDownloadResult.Failure(true)
         }
     }
 
@@ -1029,11 +1303,12 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
         val imageUrls = memo?.imageUrls.orEmpty()
         // Permanent failures (4xx that the fetcher gave up on) are tracked in the .failed
-        // sidecar. The download flow already treats them as accounted-for; the inspect flow
-        // must do the same when judging downloads-tier completeness, otherwise any chapter
-        // with a 404 image can never reach isComplete=true and the isDownloaded flag never
-        // sticks. Restricted to persistentOnly so cache-tier inspect can't be falsely
-        // completed by a stale sidecar from a never-finished download.
+        // sidecar. They count toward isComplete so the download loop and the auto-resume
+        // path don't keep retrying URLs we've already concluded are dead — but they are
+        // NOT actually on disk, so cachedImages reflects only the on-disk count and
+        // hasPermanentFailures signals the gap. The DB isDownloaded flag and the
+        // "Downloaded" UI label require isComplete && !hasPermanentFailures so chapters
+        // that can't be read offline don't masquerade as fully downloaded.
         val knownPermanent = if (persistentOnly) loadPermanentFailures(url) else emptySet()
         val downloadedCount = imageUrls.count { imageUrl ->
             if (persistentOnly) {
@@ -1042,7 +1317,9 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                 imageCache.findExistingCachedMediaFile(imageUrl) != null
             }
         }
-        val accountedPermanent = if (persistentOnly) imageUrls.count { it in knownPermanent } else 0
+        val accountedPermanent = if (persistentOnly) {
+            imageUrls.count { it in knownPermanent && !imageCache.isDownloaded(it) }
+        } else 0
         val effectiveCached = downloadedCount + accountedPermanent
 
         val isInProgress = chapterPrefetchMutex.withLock { url in inFlightChapterPrefetches }
@@ -1050,19 +1327,40 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             !htmlCached -> false
             imageUrls.isNotEmpty() -> effectiveCached == imageUrls.size
             memo?.hasImageTags == true -> false
+            // The page carries manga-reader CSS hooks but the parser found zero images —
+            // typically a JS-rendered chapter where static HTML is just the shell. Refuse
+            // to claim Downloaded; the user would otherwise see a 1-second tap that ends
+            // with a chapter that has nothing to render offline.
+            memo?.hasMangaReaderHints == true -> false
+            // A chapter URL with zero parseable images AND zero raw img tags is a JS-rendered
+            // page (Next.js, SPA) where the static HTML carries only the shell. The
+            // bodyNonEmpty heuristic that follows is correct for novel text pages but would
+            // falsely mark these as Downloaded — refuse to claim complete for chapter URLs
+            // until we actually see images.
+            isChapterPageUrl(url) -> false
             else -> memo?.bodyNonEmpty == true
         }
+        val hasPermanentFailures = imageUrls.isNotEmpty() && accountedPermanent > 0
 
         return PrefetchResult(
             url = url,
             htmlCached = htmlCached,
             totalImages = imageUrls.size,
-            cachedImages = effectiveCached,
+            cachedImages = downloadedCount,
             isComplete = finalComplete,
             isInProgress = isInProgress,
-            isRetryable = !finalComplete,
-            isPersistentDownload = persistentOnly && htmlCached
+            isRetryable = !finalComplete || hasPermanentFailures,
+            isPersistentDownload = persistentOnly && htmlCached,
+            hasPermanentFailures = hasPermanentFailures
         )
+    }
+
+    private fun isChapterPageUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains("/chapter/") ||
+            lower.contains("/chapter-") ||
+            lower.contains("-chapter-") ||
+            (lower.contains("/manga/") && lower.contains("chapter"))
     }
 
     private fun resolveParsedImageMemo(
@@ -1098,13 +1396,41 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         }.getOrDefault(emptyList())
         val hasImageTags = document.select("img[src], image[href], image[xlink|href], source[srcset]").isNotEmpty()
         val bodyNonEmpty = document.body()?.html()?.isNotBlank() == true
+        val hasMangaReaderHints = detectMangaReaderHints(document)
         return ParsedImageMemo(
             mtime = htmlFile?.lastModified() ?: 0L,
             length = htmlFile?.length() ?: 0L,
             imageUrls = urls,
             hasImageTags = hasImageTags,
-            bodyNonEmpty = bodyNonEmpty
+            bodyNonEmpty = bodyNonEmpty,
+            hasMangaReaderHints = hasMangaReaderHints
         )
+    }
+
+    // A chapter page intends to show manga even if the static HTML hasn't rendered the
+    // page list yet (JS-rendered). Presence of any of these selectors is a strong signal
+    // the page should not be treated as a "novel-style text page" for completeness.
+    private fun detectMangaReaderHints(document: Document): Boolean {
+        val selector = listOf(
+            ".container-chapter-reader",
+            ".reader-content",
+            ".chapter-content",
+            ".chapter-img",
+            ".read-content",
+            ".container-reading",
+            ".vung-doc",
+            "div.page-break",
+            "img[data-page-index]",
+            "div[data-page]",
+            "[class*=\"chapter-reader\"]",
+            "[class*=\"manga-reader\"]"
+        ).joinToString(", ")
+        if (document.selectFirst(selector) != null) return true
+        // Astro / SSR page-island payloads embed `pages:[...]` lists for the reader.
+        val raw = document.html()
+        if (raw.contains("\"pages\"") && raw.contains("\"url\"") && raw.contains("/chapters/")) return true
+        if (raw.contains("chapterImages") && raw.contains("[\"")) return true
+        return false
     }
 
     private fun groupSimilarElements(elements: List<ContentElement>): List<ContentElement> {
@@ -1216,23 +1542,50 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     private fun sidecarFileVariants(url: String): List<File> =
         cacheFileVariants(url).map { File(it.parent, "${it.name}.failed") }
 
-    private fun loadPermanentFailures(url: String): Set<String> {
-        val files = sidecarFileVariants(url).filter(File::exists)
-        if (files.isEmpty()) return emptySet()
-        return files.flatMap { f ->
-            runCatching { f.readLines().filter { it.isNotBlank() } }.getOrDefault(emptyList())
-        }.toSet()
+    // Permanent failures are persisted in the chapter_image_state Room table via
+    // PermanentFailureStore. TTL filtering lives in the store (load takes freshAfterMs).
+    // Legacy `.failed` sidecar files from before the Room migration are imported on first
+    // read and then deleted, so existing installs upgrade losslessly.
+    private suspend fun loadPermanentFailures(
+        url: String,
+        now: Long = System.currentTimeMillis()
+    ): Set<String> {
+        migrateLegacySidecarIfPresent(url, now)
+        return permanentFailureStore.load(url, freshAfterMs = now - PERMANENT_FAILURE_TTL_MS)
     }
 
-    private fun recordPermanentFailures(url: String, failures: List<String>) {
+    private suspend fun recordPermanentFailures(url: String, failures: List<String>) {
         if (failures.isEmpty()) return
-        val htmlFile = findExistingCachedFile(url) ?: return
-        val sidecar = File(htmlFile.parent, "${htmlFile.name}.failed")
-        val existing = loadPermanentFailures(url)
-        val combined = (existing + failures).distinct()
-        runCatching {
-            sidecar.parentFile?.mkdirs()
-            sidecar.writeText(combined.joinToString("\n"))
+        permanentFailureStore.record(url, failures, recordedAtMs = System.currentTimeMillis())
+    }
+
+    // Reads any pre-migration sidecar entries, imports the still-fresh ones (those that
+    // already have a timestamp younger than the TTL) into the store, and removes the sidecar
+    // file. Legacy entries that pre-date the timestamp format are dropped — they'd be
+    // immediately expired by the TTL anyway, and dropping them gives the URL one fresh
+    // attempt which is the safer post-upgrade behavior.
+    private suspend fun migrateLegacySidecarIfPresent(url: String, now: Long) {
+        val sidecarFiles = sidecarFileVariants(url).filter(File::exists)
+        if (sidecarFiles.isEmpty()) return
+        val parsed = LinkedHashMap<String, Long>()
+        for (f in sidecarFiles) {
+            val lines = runCatching { f.readLines() }.getOrDefault(emptyList())
+            for (line in lines) {
+                val trimmed = line.trim()
+                if (trimmed.isEmpty()) continue
+                val sep = trimmed.lastIndexOf('|')
+                if (sep <= 0) continue
+                val imageUrl = trimmed.substring(0, sep)
+                val ts = trimmed.substring(sep + 1).toLongOrNull() ?: continue
+                if (imageUrl.isEmpty()) continue
+                if (now - ts >= PERMANENT_FAILURE_TTL_MS) continue
+                val prev = parsed[imageUrl]
+                if (prev == null || ts > prev) parsed[imageUrl] = ts
+            }
         }
+        if (parsed.isNotEmpty()) {
+            permanentFailureStore.record(url, parsed.keys, recordedAtMs = now)
+        }
+        sidecarFiles.forEach { it.delete() }
     }
 }

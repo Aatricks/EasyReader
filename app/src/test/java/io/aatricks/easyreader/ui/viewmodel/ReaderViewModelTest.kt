@@ -7,6 +7,7 @@ import io.aatricks.easyreader.data.model.ReadingMode
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
+import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
 import io.aatricks.easyreader.util.FieldUpdate
 import io.aatricks.easyreader.util.computeAutoDeleteCandidates
 import kotlinx.coroutines.CancellationException
@@ -21,6 +22,7 @@ import org.junit.Assert.*
 import org.mockito.Mock
 import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.*
+import java.io.File
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReaderViewModelTest {
@@ -88,7 +90,8 @@ class ReaderViewModelTest {
             libraryRepository,
             exploreRepository,
             preferencesManager,
-            chapterListCache
+            chapterListCache,
+            fakeImageDimensionCacheRepository()
         )
     }
 
@@ -106,22 +109,20 @@ class ReaderViewModelTest {
 
     @Test
     fun `loadContent saves current progress before loading new`() = runTest {
-        // Setup initial item
         val initialItemId = "item-1"
         val initialUrl = "https://example.com/1"
 
-        // Mock success for first load
         val result1 = ContentResult.Success(
-            elements = emptyList(),
+            elements = listOf(ContentElement.Text("Initial body")),
             title = "Title 1",
             url = initialUrl
         )
         whenever(contentRepository.loadContent(initialUrl)).thenReturn(result1)
         whenever(libraryRepository.getItemByUrl(initialUrl)).thenReturn(
-            LibraryItem(id = initialItemId, title = "Title 1", url = initialUrl)
+            LibraryItem(id = initialItemId, title = "Title 1", url = initialUrl, progress = 30, lastScrollPosition = 30f)
         )
         whenever(libraryRepository.getItemById(initialItemId)).thenReturn(
-            LibraryItem(id = initialItemId, title = "Title 1", url = initialUrl)
+            LibraryItem(id = initialItemId, title = "Title 1", url = initialUrl, progress = 30, lastScrollPosition = 30f)
         )
 
         viewModel.loadContent(initialUrl)
@@ -129,16 +130,14 @@ class ReaderViewModelTest {
 
         assertEquals(initialUrl, viewModel.uiState.value.content?.url)
 
-        // Now load a second item
         val nextUrl = "https://example.com/2"
         whenever(contentRepository.loadContent(nextUrl)).thenReturn(
-            ContentResult.Success(emptyList(), "Title 2", nextUrl)
+            ContentResult.Success(listOf(ContentElement.Text("Next body")), "Title 2", nextUrl)
         )
 
         viewModel.loadContent(nextUrl)
         advanceUntilIdle()
 
-        // Verify updateProgress was called for the INITIAL item
         verify(libraryRepository).updateProgressExplicit(
             itemId = eq(initialItemId),
             currentChapter = any(),
@@ -146,7 +145,7 @@ class ReaderViewModelTest {
             currentChapterUrl = eq(FieldUpdate.Set(initialUrl)),
             lastScrollProgress = any(),
             lastReadIndex = any(),
-            lastReadOffset = any(),
+            lastReadElementKey = any(),
             lastReadOffsetFraction = any()
         )
     }
@@ -163,7 +162,6 @@ class ReaderViewModelTest {
             contentType = ContentType.PDF,
             progress = 55,
             lastReadIndex = savedPageIndex,
-            lastReadOffset = 18,
             lastScrollPosition = 55f
         )
         val preloadedPages = List(savedPageIndex) { index ->
@@ -193,7 +191,7 @@ class ReaderViewModelTest {
             url = url,
             progress = 55,
             lastReadIndex = 4,
-            lastReadOffset = 18,
+            lastReadOffsetFraction = 0.3f,
             lastScrollPosition = 55f
         )
 
@@ -206,7 +204,6 @@ class ReaderViewModelTest {
         advanceUntilIdle()
 
         assertEquals(0, viewModel.uiState.value.scrollIndex)
-        assertEquals(0, viewModel.uiState.value.scrollOffset)
         assertEquals(0, viewModel.uiState.value.scrollProgress)
         assertEquals(0f, viewModel.uiState.value.scrollPosition, 0.001f)
     }
@@ -221,12 +218,12 @@ class ReaderViewModelTest {
             url = url,
             progress = 55,
             lastReadIndex = 4,
-            lastReadOffset = 18,
+            lastReadOffsetFraction = 0.6f,
             lastScrollPosition = 55f
         )
 
         whenever(contentRepository.loadContent(url)).thenReturn(
-            ContentResult.Success(listOf(ContentElement.Text("Chapter content")), "Chapter 10", url)
+            ContentResult.Success(List(10) { ContentElement.Text("Paragraph $it") }, "Chapter 10", url)
         )
         whenever(libraryRepository.getItemById(itemId)).thenReturn(savedItem)
 
@@ -234,39 +231,42 @@ class ReaderViewModelTest {
         advanceUntilIdle()
 
         assertEquals(4, viewModel.uiState.value.scrollIndex)
-        assertEquals(18, viewModel.uiState.value.scrollOffset)
         assertEquals(55, viewModel.uiState.value.scrollProgress)
         assertEquals(55f, viewModel.uiState.value.scrollPosition, 0.001f)
+        assertEquals(0.6f, viewModel.uiState.value.restoreOffsetFraction, 0.001f)
     }
 
     @Test
-    fun `loadContent defers raw offset when saved normalized anchor exists`() = runTest {
+    fun `loadContent restores via element key when content is reparsed`() = runTest {
         val itemId = "web-item"
         val url = "https://example.com/chapter-10"
+        val paragraphs = List(10) { ContentElement.Text("Paragraph $it") }
+        val targetIndex = 6
+        val targetKey = stableContentElementKey(url, targetIndex, paragraphs[targetIndex])
+
         val savedItem = LibraryItem(
             id = itemId,
             title = "Chapter 10",
             url = url,
             progress = 55,
-            lastReadIndex = 4,
-            lastReadOffset = 180,
-            lastReadOffsetFraction = 0.3f,
+            // Wrong index — element key must override.
+            lastReadIndex = 2,
+            lastReadElementKey = targetKey,
+            lastReadOffsetFraction = 0.4f,
             lastScrollPosition = 55f
         )
 
         whenever(contentRepository.loadContent(url)).thenReturn(
-            ContentResult.Success(listOf(ContentElement.Text("Chapter content")), "Chapter 10", url)
+            ContentResult.Success(paragraphs, "Chapter 10", url)
         )
         whenever(libraryRepository.getItemById(itemId)).thenReturn(savedItem)
 
         viewModel.loadContent(url, itemId)
         advanceUntilIdle()
 
-        assertEquals(4, viewModel.uiState.value.scrollIndex)
-        assertEquals(0, viewModel.uiState.value.scrollOffset)
-        assertEquals(0.3f, viewModel.uiState.value.pendingRestoreOffsetFraction ?: 0f, 0.001f)
-        assertEquals(55, viewModel.uiState.value.scrollProgress)
-        assertEquals(55f, viewModel.uiState.value.scrollPosition, 0.001f)
+        assertEquals(targetIndex, viewModel.uiState.value.scrollIndex)
+        assertEquals(targetKey, viewModel.uiState.value.restoreElementKey)
+        assertEquals(0.4f, viewModel.uiState.value.restoreOffsetFraction, 0.001f)
     }
 
     @Test
@@ -278,9 +278,9 @@ class ReaderViewModelTest {
             title = "Chapter 11",
             url = url,
             progress = 0,
-            lastReadIndex = 2,
-            lastReadOffset = 24,
-            lastScrollPosition = 5f
+            lastReadIndex = 0,
+            lastReadOffsetFraction = FRACTION_UNKNOWN,
+            lastScrollPosition = 0f
         )
 
         whenever(contentRepository.loadContent(url)).thenReturn(
@@ -292,9 +292,50 @@ class ReaderViewModelTest {
         advanceUntilIdle()
 
         assertEquals(0, viewModel.uiState.value.scrollIndex)
-        assertEquals(0, viewModel.uiState.value.scrollOffset)
         assertEquals(0, viewModel.uiState.value.scrollProgress)
         assertEquals(0f, viewModel.uiState.value.scrollPosition, 0.001f)
+    }
+
+    @Test
+    fun `lifecycle save preserves zero-progress precise anchor`() = runTest {
+        val itemId = "web-item"
+        val url = "https://example.com/chapter-12"
+        val paragraphs = List(6) { ContentElement.Text("Paragraph $it") }
+        val anchorIndex = 3
+        val anchorKey = stableContentElementKey(url, anchorIndex, paragraphs[anchorIndex])
+        val savedItem = LibraryItem(
+            id = itemId,
+            title = "Chapter 12",
+            url = url,
+            progress = 0,
+            lastReadIndex = anchorIndex,
+            lastReadElementKey = anchorKey,
+            lastReadOffsetFraction = 0.25f,
+            lastScrollPosition = 0f
+        )
+
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(paragraphs, "Chapter 12", url)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(savedItem)
+
+        viewModel.loadContent(url, itemId)
+        advanceUntilIdle()
+        clearInvocations(libraryRepository)
+
+        viewModel.persistLifecycleProgress()
+        advanceUntilIdle()
+
+        verify(libraryRepository).updateProgressExplicit(
+            itemId = eq(itemId),
+            currentChapter = any(),
+            progress = eq(FieldUpdate.Set(0)),
+            currentChapterUrl = eq(FieldUpdate.Set(url)),
+            lastScrollProgress = eq(FieldUpdate.Set(0f)),
+            lastReadIndex = eq(FieldUpdate.Set(anchorIndex)),
+            lastReadElementKey = eq(FieldUpdate.Set(anchorKey)),
+            lastReadOffsetFraction = eq(FieldUpdate.Set(0.25f))
+        )
     }
 
     @Test
@@ -302,7 +343,6 @@ class ReaderViewModelTest {
         val itemId = "item-1"
         val url = "https://example.com/1"
 
-        // Set up current item
         whenever(contentRepository.loadContent(url)).thenReturn(
             ContentResult.Success(listOf(ContentElement.Text("Test")), "Test", url)
         )
@@ -315,21 +355,24 @@ class ReaderViewModelTest {
 
         viewModel.loadContent(url)
         advanceUntilIdle()
-
         viewModel.onUserInteraction()
 
-        // Update scroll
-        viewModel.updateScrollPosition(50f, 100f, 10f, 5, 10)
+        viewModel.updateScrollPosition(
+            scrollOffset = 50f,
+            maxScrollOffset = 100f,
+            viewportHeight = 10f,
+            index = 5,
+            offsetFraction = 0.1f,
+            elementKey = "txt:$url:5:foo",
+            firstVisibleItemSize = 200
+        )
 
-        // Should NOT have saved yet (debounced)
         verify(libraryRepository, never()).updateProgressExplicit(any(), any(), any(), any(), any(), any(), any(), any())
 
-        // Advance time
         advanceTimeBy(200)
         runCurrent()
         advanceUntilIdle()
 
-        // Now it should have saved
         verify(libraryRepository).updateProgressExplicit(
             itemId = eq(itemId),
             currentChapter = any(),
@@ -337,8 +380,8 @@ class ReaderViewModelTest {
             currentChapterUrl = eq(FieldUpdate.Set(url)),
             lastScrollProgress = any(),
             lastReadIndex = eq(FieldUpdate.Set(5)),
-            lastReadOffset = eq(FieldUpdate.Set(10)),
-            lastReadOffsetFraction = any()
+            lastReadElementKey = eq(FieldUpdate.Set("txt:$url:5:foo")),
+            lastReadOffsetFraction = eq(FieldUpdate.Set(0.1f))
         )
     }
 
@@ -366,23 +409,25 @@ class ReaderViewModelTest {
             maxScrollOffset = 100f,
             viewportHeight = 10f,
             index = 2,
-            offset = 100,
+            offsetFraction = 1.0f,
+            elementKey = "txt:$url:2:foo",
             firstVisibleItemSize = 100
         )
-        val stateAfterFirstUpdate = viewModel.uiState.value
+        val progressAfterFirst = viewModel.progressState.value
 
+        // Same index, fraction barely changes — should not write again.
         viewModel.updateScrollPosition(
             scrollOffset = 30.1f,
             maxScrollOffset = 100f,
             viewportHeight = 10f,
             index = 2,
-            offset = 103,
+            offsetFraction = 1.001f,
+            elementKey = "txt:$url:2:foo",
             firstVisibleItemSize = 100
         )
 
-        val stateAfterSecondUpdate = viewModel.uiState.value
-        assertEquals(stateAfterFirstUpdate.scrollOffset, stateAfterSecondUpdate.scrollOffset)
-        assertEquals(stateAfterFirstUpdate.scrollPosition, stateAfterSecondUpdate.scrollPosition, 0.001f)
+        val progressAfterSecond = viewModel.progressState.value
+        assertEquals(progressAfterFirst.scrollPosition, progressAfterSecond.scrollPosition, 0.001f)
 
         advanceTimeBy(200)
         runCurrent()
@@ -395,7 +440,7 @@ class ReaderViewModelTest {
             currentChapterUrl = eq(FieldUpdate.Set(url)),
             lastScrollProgress = any(),
             lastReadIndex = eq(FieldUpdate.Set(2)),
-            lastReadOffset = eq(FieldUpdate.Set(100)),
+            lastReadElementKey = eq(FieldUpdate.Set("txt:$url:2:foo")),
             lastReadOffsetFraction = eq(FieldUpdate.Set(1f))
         )
     }
@@ -426,22 +471,24 @@ class ReaderViewModelTest {
             maxScrollOffset = 100f,
             viewportHeight = 10f,
             index = 5,
-            offset = 10,
+            offsetFraction = 0.1f,
+            elementKey = "txt:$url:5:abc",
             firstVisibleItemSize = 100
         )
 
         val uiStateAfterScroll = viewModel.uiState.value
         val progressState = viewModel.progressState.value
 
+        // Scroll updates push into progressState only — uiState's position-display fields stay
+        // as the per-load initial values so the bottom bar doesn't fight active scrolling.
         assertEquals(uiStateBeforeScroll.scrollPosition, uiStateAfterScroll.scrollPosition, 0.001f)
         assertEquals(uiStateBeforeScroll.scrollProgress, uiStateAfterScroll.scrollProgress)
         assertEquals(uiStateBeforeScroll.scrollIndex, uiStateAfterScroll.scrollIndex)
-        assertEquals(uiStateBeforeScroll.scrollOffset, uiStateAfterScroll.scrollOffset)
         assertEquals(55, progressState.scrollProgress)
         assertEquals(55.555f, progressState.scrollPosition, 0.01f)
         assertEquals(5, progressState.scrollIndex)
-        assertEquals(10, progressState.scrollOffset)
-        assertEquals(0.1f, progressState.scrollOffsetFraction ?: 0f, 0.001f)
+        assertEquals("txt:$url:5:abc", progressState.scrollElementKey)
+        assertEquals(0.1f, progressState.scrollOffsetFraction, 0.001f)
     }
 
     @Test
@@ -462,15 +509,7 @@ class ReaderViewModelTest {
         viewModel.loadContent(url)
         advanceUntilIdle()
 
-        viewModel.updateScrollPosition(
-            scrollOffset = 5f,
-            maxScrollOffset = 100f,
-            viewportHeight = 0f,
-            index = 1,
-            offset = 15,
-            firstVisibleItemSize = 100
-        )
-
+        // Note: no user interaction → restoredProgressSnapshot wins. Initial position = top.
         viewModel.persistLifecycleProgress()
         advanceUntilIdle()
 
@@ -481,7 +520,7 @@ class ReaderViewModelTest {
             currentChapterUrl = eq(FieldUpdate.Set(url)),
             lastScrollProgress = eq(FieldUpdate.Set(0f)),
             lastReadIndex = eq(FieldUpdate.Set(0)),
-            lastReadOffset = eq(FieldUpdate.Set(0)),
+            lastReadElementKey = eq(FieldUpdate.Set("")),
             lastReadOffsetFraction = eq(FieldUpdate.Set(0f))
         )
     }
@@ -490,19 +529,21 @@ class ReaderViewModelTest {
     fun `persistLifecycleProgress preserves restored anchor before user interaction`() = runTest {
         val itemId = "item-1"
         val url = "https://example.com/manwha/1"
+        val paragraphs = List(10) { ContentElement.Text("Paragraph $it") }
+        val anchorKey = stableContentElementKey(url, 3, paragraphs[3])
         val savedItem = LibraryItem(
             id = itemId,
             title = "Chapter 1",
             url = url,
             progress = 57,
             lastReadIndex = 3,
-            lastReadOffset = 140,
+            lastReadElementKey = anchorKey,
             lastReadOffsetFraction = 0.35f,
             lastScrollPosition = 57f
         )
 
         whenever(contentRepository.loadContent(url)).thenReturn(
-            ContentResult.Success(listOf(ContentElement.Text("Test")), "Test", url)
+            ContentResult.Success(paragraphs, "Test", url)
         )
         whenever(libraryRepository.getItemById(itemId)).thenReturn(savedItem)
 
@@ -510,12 +551,14 @@ class ReaderViewModelTest {
         advanceUntilIdle()
         clearInvocations(libraryRepository)
 
+        // Simulate a placeholder-sized measurement after restore — should NOT pollute persistence.
         viewModel.updateScrollPosition(
             scrollOffset = 60f,
             maxScrollOffset = 100f,
             viewportHeight = 0f,
             index = 4,
-            offset = 320,
+            offsetFraction = 0.4f,
+            elementKey = "txt:other",
             firstVisibleItemSize = 800
         )
 
@@ -529,7 +572,7 @@ class ReaderViewModelTest {
             currentChapterUrl = eq(FieldUpdate.Set(url)),
             lastScrollProgress = eq(FieldUpdate.Set(57f)),
             lastReadIndex = eq(FieldUpdate.Set(3)),
-            lastReadOffset = eq(FieldUpdate.Set(140)),
+            lastReadElementKey = eq(FieldUpdate.Set(anchorKey)),
             lastReadOffsetFraction = eq(FieldUpdate.Set(0.35f))
         )
     }
@@ -558,7 +601,8 @@ class ReaderViewModelTest {
             maxScrollOffset = 100f,
             viewportHeight = 0f,
             index = 2,
-            offset = 30,
+            offsetFraction = 0.25f,
+            elementKey = "txt:live-anchor",
             firstVisibleItemSize = 120
         )
         advanceTimeBy(200)
@@ -575,7 +619,7 @@ class ReaderViewModelTest {
             currentChapterUrl = eq(FieldUpdate.Set(url)),
             lastScrollProgress = eq(FieldUpdate.Set(12f)),
             lastReadIndex = eq(FieldUpdate.Set(2)),
-            lastReadOffset = eq(FieldUpdate.Set(30)),
+            lastReadElementKey = eq(FieldUpdate.Set("txt:live-anchor")),
             lastReadOffsetFraction = eq(FieldUpdate.Set(0.25f))
         )
     }
@@ -586,7 +630,13 @@ class ReaderViewModelTest {
         val url = "https://example.com/manhwa/10"
 
         whenever(contentRepository.loadContent(url)).thenReturn(
-            ContentResult.Success(listOf(ContentElement.Image("https://cdn.example.com/1.jpg")), "Chapter 10", url)
+            ContentResult.Success(
+                // Declared dims so the lifecycle-save dim-known gate lets this through:
+                // an unknown-dim image is treated as mid-reflow and rightly drops the save.
+                listOf(ContentElement.Image(url = "https://cdn.example.com/1.jpg", width = 800, height = 1200)),
+                "Chapter 10",
+                url
+            )
         )
         whenever(libraryRepository.getItemByUrl(url)).thenReturn(
             LibraryItem(id = itemId, title = "Chapter 10", url = url)
@@ -604,8 +654,9 @@ class ReaderViewModelTest {
             scrollOffset = 33f,
             maxScrollOffset = 100f,
             viewportHeight = 0f,
-            index = 5,
-            offset = 120,
+            index = 0,
+            offsetFraction = 0.4f,
+            elementKey = "img:https://cdn.example.com/1.jpg",
             firstVisibleItemSize = 300
         )
 
@@ -620,8 +671,8 @@ class ReaderViewModelTest {
             progress = eq(FieldUpdate.Set(33)),
             currentChapterUrl = eq(FieldUpdate.Set(url)),
             lastScrollProgress = eq(FieldUpdate.Set(33f)),
-            lastReadIndex = eq(FieldUpdate.Set(5)),
-            lastReadOffset = eq(FieldUpdate.Set(120)),
+            lastReadIndex = eq(FieldUpdate.Set(0)),
+            lastReadElementKey = eq(FieldUpdate.Set("img:https://cdn.example.com/1.jpg")),
             lastReadOffsetFraction = eq(FieldUpdate.Set(0.4f))
         )
     }
@@ -636,7 +687,7 @@ class ReaderViewModelTest {
             url = url,
             progress = 64,
             lastReadIndex = 5,
-            lastReadOffset = 220,
+            lastReadElementKey = "img:https://cdn.example.com/panel-6.jpg",
             lastReadOffsetFraction = 0.4f,
             lastScrollPosition = 64f
         )
@@ -663,14 +714,106 @@ class ReaderViewModelTest {
         viewModel.loadContent(url, itemId)
         advanceUntilIdle()
         assertEquals(5, viewModel.uiState.value.scrollIndex)
-        assertEquals(0.4f, viewModel.uiState.value.pendingRestoreOffsetFraction ?: 0f, 0.001f)
-        assertEquals("https://cdn.example.com/panel-6.jpg", (viewModel.uiState.value.content?.paragraphs?.get(5) as ContentElement.Image).url)
+        assertEquals(0.4f, viewModel.uiState.value.restoreOffsetFraction, 0.001f)
 
         viewModel.loadContent(url, itemId)
         advanceUntilIdle()
         assertEquals(5, viewModel.uiState.value.scrollIndex)
-        assertEquals(0.4f, viewModel.uiState.value.pendingRestoreOffsetFraction ?: 0f, 0.001f)
-        assertEquals("https://cdn.example.com/panel-6.jpg", (viewModel.uiState.value.content?.paragraphs?.get(5) as ContentElement.Image).url)
+        assertEquals(0.4f, viewModel.uiState.value.restoreOffsetFraction, 0.001f)
+    }
+
+    @Test
+    fun `persistImageDimensions updates current chapter content`() = runTest {
+        val itemId = "item-1"
+        val url = "https://example.com/webtoon/chapter-10"
+        val imageUrl = "https://cdn.example.com/panel-1.jpg"
+
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(
+                elements = listOf(ContentElement.Image(imageUrl)),
+                title = "Chapter 10",
+                url = url
+            )
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(
+            LibraryItem(id = itemId, title = "Chapter 10", url = url)
+        )
+
+        viewModel.loadContent(url, itemId)
+        advanceUntilIdle()
+        assertEquals(0, (viewModel.uiState.value.content?.paragraphs?.single() as ContentElement.Image).width)
+
+        viewModel.persistImageDimensions(imageUrl, 1080, 1920)
+        advanceUntilIdle()
+
+        val image = viewModel.uiState.value.content?.paragraphs?.single() as ContentElement.Image
+        assertEquals(1080, image.width)
+        assertEquals(1920, image.height)
+    }
+
+    @Test
+    fun `scroll progress is saved only after preceding image dimensions resolve`() = runTest {
+        val itemId = "item-1"
+        val url = "https://example.com/webtoon/chapter-11"
+        val imageUrl = "https://cdn.example.com/panel-1.jpg"
+        val textKey = "txt:$url:1:after-image"
+
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(
+                elements = listOf(
+                    ContentElement.Image(imageUrl),
+                    ContentElement.Text("Text after image")
+                ),
+                title = "Chapter 11",
+                url = url
+            )
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(
+            LibraryItem(id = itemId, title = "Chapter 11", url = url)
+        )
+
+        viewModel.loadContent(url, itemId)
+        advanceUntilIdle()
+        viewModel.onUserInteraction()
+        clearInvocations(libraryRepository)
+
+        viewModel.updateScrollPosition(
+            scrollOffset = 1.3f,
+            maxScrollOffset = 10f,
+            viewportHeight = 1f,
+            index = 1,
+            offsetFraction = 0.3f,
+            elementKey = textKey,
+            firstVisibleItemSize = 500
+        )
+        advanceTimeBy(200)
+        runCurrent()
+        verify(libraryRepository, never()).updateProgressExplicit(any(), any(), any(), any(), any(), any(), any(), any())
+
+        viewModel.persistImageDimensions(imageUrl, 1080, 1920)
+        advanceUntilIdle()
+        viewModel.updateScrollPosition(
+            scrollOffset = 1.6f,
+            maxScrollOffset = 10f,
+            viewportHeight = 1f,
+            index = 1,
+            offsetFraction = 0.6f,
+            elementKey = textKey,
+            firstVisibleItemSize = 500
+        )
+        advanceTimeBy(200)
+        runCurrent()
+
+        verify(libraryRepository).updateProgressExplicit(
+            itemId = eq(itemId),
+            currentChapter = any(),
+            progress = any(),
+            currentChapterUrl = eq(FieldUpdate.Set(url)),
+            lastScrollProgress = any(),
+            lastReadIndex = eq(FieldUpdate.Set(1)),
+            lastReadElementKey = eq(FieldUpdate.Set(textKey)),
+            lastReadOffsetFraction = eq(FieldUpdate.Set(0.6f))
+        )
     }
 
     @Test
@@ -718,7 +861,6 @@ class ReaderViewModelTest {
         val itemId = "item-1"
         val url = "https://example.com/pdf"
 
-        // Setup item with placeholder content
         val placeholderContent = listOf(ContentElement.Text("Loading page 5..."))
         whenever(contentRepository.loadContent(url)).thenReturn(
             ContentResult.Success(placeholderContent, "PDF", url)
@@ -733,27 +875,22 @@ class ReaderViewModelTest {
         viewModel.loadContent(url)
         advanceUntilIdle()
 
-        // Try to update progress while index 0 is a placeholder
-        viewModel.updateReadingProgress(50, 50f, 0, 0)
+        viewModel.updateReadingProgress(50, 50f, 0, "", 0f)
         advanceUntilIdle()
 
-        // Should NOT have called libraryRepository.updateProgress
         verify(libraryRepository, never()).updateProgressExplicit(any(), any(), any(), any(), any(), any(), any(), any())
 
-        // Now setup item with REAL content
         val realContent = listOf(ContentElement.Text("Real page content"))
         whenever(contentRepository.loadContent(url)).thenReturn(
             ContentResult.Success(realContent, "PDF", url)
         )
-        
+
         viewModel.loadContent(url)
         advanceUntilIdle()
 
-        // Try to update progress while index 0 is real content
-        viewModel.updateReadingProgress(60, 60f, 0, 0)
+        viewModel.updateReadingProgress(60, 60f, 0, "txt:$url:0:abc", 0f)
         advanceUntilIdle()
 
-        // Should HAVE called libraryRepository.updateProgress
         verify(libraryRepository).updateProgressExplicit(
             itemId = eq(itemId),
             currentChapter = any(),
@@ -761,7 +898,7 @@ class ReaderViewModelTest {
             currentChapterUrl = any(),
             lastScrollProgress = eq(FieldUpdate.Set(60f)),
             lastReadIndex = eq(FieldUpdate.Set(0)),
-            lastReadOffset = eq(FieldUpdate.Set(0)),
+            lastReadElementKey = eq(FieldUpdate.Set("txt:$url:0:abc")),
             lastReadOffsetFraction = any()
         )
     }
@@ -818,8 +955,6 @@ class ReaderViewModelTest {
             currentChapterNumber = 5.0
         )
 
-        // Distances from 5: c1=4, c2=3, c3=2. All > 1 → all candidates. Downloaded chapters
-        // are no longer skipped: voluntary downloads also auto-purge once read.
         assertEquals(listOf("1", "2", "3"), toDelete.map { it.id }.sorted())
     }
 
@@ -876,7 +1011,8 @@ class ReaderViewModelTest {
             libraryRepository,
             exploreRepository,
             preferencesManager,
-            chapterListCache
+            chapterListCache,
+            fakeImageDimensionCacheRepository()
         )
 
         viewModel.loadContent(url)
@@ -888,13 +1024,36 @@ class ReaderViewModelTest {
     }
 
     @Test
-    fun `prefetchVisibleImage delegates to user-priority download`() = runTest {
+    fun `prefetchVisibleImage delegates to speculative warm`() = runTest {
         val imageUrl = "https://example.com/image.jpg"
         val pageUrl = "https://example.com/chapter-1"
 
         viewModel.prefetchVisibleImage(imageUrl, pageUrl)
         advanceUntilIdle()
 
+        verify(contentRepository).warmImage(imageUrl, pageUrl)
+    }
+
+    @Test
+    fun `repairVisibleImageNow invalidates local file demotes downloaded chapter and refetches`() = runTest {
+        val imageUrl = "https://example.com/image.jpg"
+        val pageUrl = "https://example.com/chapter-1"
+        val item = LibraryItem(
+            id = "item-1",
+            title = "Chapter 1",
+            url = pageUrl,
+            isDownloaded = true
+        )
+        val repairedFile = File("repaired-image")
+
+        whenever(libraryRepository.getItemByUrl(pageUrl)).thenReturn(item)
+        whenever(libraryRepository.markDownloaded(item.id, false)).thenReturn(true)
+        whenever(contentRepository.downloadAndCacheImage(imageUrl, pageUrl)).thenReturn(repairedFile)
+
+        assertTrue(viewModel.repairVisibleImageNow(imageUrl, pageUrl))
+
+        verify(contentRepository).invalidateCachedMediaFile(imageUrl, pageUrl)
+        verify(libraryRepository).markDownloaded(item.id, false)
         verify(contentRepository).downloadAndCacheImage(imageUrl, pageUrl)
     }
 

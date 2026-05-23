@@ -29,6 +29,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -51,6 +52,7 @@ import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.BackupViewModel
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
+import io.aatricks.easyreader.ui.viewmodel.SummaryViewModel
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -69,10 +71,13 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val libraryState by libraryViewModel.uiState.collectAsState()
     val backupStatus by backupViewModel.status.collectAsState()
+    val summaryViewModel: SummaryViewModel = hiltViewModel()
+    val summaryUiState by summaryViewModel.uiState.collectAsState()
 
     var cacheBytes by remember { mutableLongStateOf(-1L) }
     var showClearCacheDialog by remember { mutableStateOf(false) }
     var showClearLibraryDialog by remember { mutableStateOf(false) }
+    var showEnableAiDialog by remember { mutableStateOf(false) }
     var pendingSettingsImportUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var pendingLibraryImportUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var refreshKey by remember { mutableStateOf(0) }
@@ -169,6 +174,49 @@ fun SettingsScreen(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
+            if (summaryUiState.supportsAi) {
+                SettingsSection(title = "AI features") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Chapter summaries",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = if (summaryUiState.isEnabled) {
+                                    "Model runs on-device. Disable to free memory."
+                                } else {
+                                    "Downloads a small on-device model (a few hundred MB)."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.size(EasyReaderSpacing.sm))
+                        Switch(
+                            checked = summaryUiState.isEnabled,
+                            onCheckedChange = { wantEnabled ->
+                                if (wantEnabled && !summaryUiState.isEnabled) {
+                                    showEnableAiDialog = true
+                                } else if (!wantEnabled) {
+                                    summaryViewModel.setAiSummaryEnabled(false)
+                                }
+                            }
+                        )
+                    }
+                    if (summaryUiState.isInitializing) {
+                        SettingsRow(title = "Status", subtitle = "Downloading model…")
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            }
+
             SettingsSection(title = "Backup & restore") {
                 val inProgress = backupStatus is BackupViewModel.OpStatus.InProgress
                 SettingsRow(
@@ -264,6 +312,33 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showClearCacheDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showEnableAiDialog) {
+        AlertDialog(
+            onDismissRequest = { showEnableAiDialog = false },
+            title = { Text("Enable AI summaries?") },
+            text = {
+                Text(
+                    "This downloads a small on-device language model (a few hundred MB) " +
+                        "the first time it is needed. After that it runs offline. " +
+                        "You can disable AI summaries at any time."
+                )
+            },
+            confirmButton = {
+                FilledTonalButton(onClick = {
+                    summaryViewModel.setAiSummaryEnabled(true)
+                    showEnableAiDialog = false
+                }) {
+                    Text("Download and enable")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEnableAiDialog = false }) {
                     Text("Cancel")
                 }
             }

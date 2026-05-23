@@ -10,7 +10,6 @@ import io.aatricks.easyreader.data.model.ReadingMode
 import io.aatricks.easyreader.data.model.hasFinishedProgress
 import io.aatricks.easyreader.util.FieldUpdate
 import io.aatricks.easyreader.util.resolve
-import io.aatricks.easyreader.util.resolveNullable
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -166,7 +165,7 @@ class LibraryRepository @Inject constructor(
         currentChapterUrl: String? = null,
         lastScrollProgress: Float? = null,
         lastReadIndex: Int? = null,
-        lastReadOffset: Int? = null,
+        lastReadElementKey: String? = null,
         lastReadOffsetFraction: Float? = null
     ): Unit {
         saveProgressExplicitAsync(
@@ -176,7 +175,7 @@ class LibraryRepository @Inject constructor(
             currentChapterUrl = currentChapterUrl?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
             lastScrollProgress = lastScrollProgress?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
             lastReadIndex = lastReadIndex?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
-            lastReadOffset = lastReadOffset?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
+            lastReadElementKey = lastReadElementKey?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
             lastReadOffsetFraction = lastReadOffsetFraction?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged
         )
     }
@@ -188,8 +187,8 @@ class LibraryRepository @Inject constructor(
         currentChapterUrl: FieldUpdate<String> = FieldUpdate.Unchanged,
         lastScrollProgress: FieldUpdate<Float> = FieldUpdate.Unchanged,
         lastReadIndex: FieldUpdate<Int> = FieldUpdate.Unchanged,
-        lastReadOffset: FieldUpdate<Int> = FieldUpdate.Unchanged,
-        lastReadOffsetFraction: FieldUpdate<Float?> = FieldUpdate.Unchanged
+        lastReadElementKey: FieldUpdate<String> = FieldUpdate.Unchanged,
+        lastReadOffsetFraction: FieldUpdate<Float> = FieldUpdate.Unchanged
     ): Unit {
         repositoryScope.launch {
             updateProgressExplicit(
@@ -199,7 +198,7 @@ class LibraryRepository @Inject constructor(
                 currentChapterUrl,
                 lastScrollProgress,
                 lastReadIndex,
-                lastReadOffset,
+                lastReadElementKey,
                 lastReadOffsetFraction
             )
         }
@@ -212,7 +211,7 @@ class LibraryRepository @Inject constructor(
         currentChapterUrl: String? = null,
         lastScrollProgress: Float? = null,
         lastReadIndex: Int? = null,
-        lastReadOffset: Int? = null,
+        lastReadElementKey: String? = null,
         lastReadOffsetFraction: Float? = null
     ): Boolean = updateProgressExplicit(
         itemId = itemId,
@@ -221,7 +220,7 @@ class LibraryRepository @Inject constructor(
         currentChapterUrl = currentChapterUrl?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
         lastScrollProgress = lastScrollProgress?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
         lastReadIndex = lastReadIndex?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
-        lastReadOffset = lastReadOffset?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
+        lastReadElementKey = lastReadElementKey?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged,
         lastReadOffsetFraction = lastReadOffsetFraction?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Unchanged
     )
 
@@ -232,8 +231,8 @@ class LibraryRepository @Inject constructor(
         currentChapterUrl: FieldUpdate<String> = FieldUpdate.Unchanged,
         lastScrollProgress: FieldUpdate<Float> = FieldUpdate.Unchanged,
         lastReadIndex: FieldUpdate<Int> = FieldUpdate.Unchanged,
-        lastReadOffset: FieldUpdate<Int> = FieldUpdate.Unchanged,
-        lastReadOffsetFraction: FieldUpdate<Float?> = FieldUpdate.Unchanged
+        lastReadElementKey: FieldUpdate<String> = FieldUpdate.Unchanged,
+        lastReadOffsetFraction: FieldUpdate<Float> = FieldUpdate.Unchanged
     ): Boolean = progressMutex.withLock {
         runRepoCatching("Failed to update progress", false) {
             libraryDao.getItemById(itemId)?.let { item ->
@@ -243,8 +242,11 @@ class LibraryRepository @Inject constructor(
                     currentChapterUrl = currentChapterUrl.resolve(item.currentChapterUrl, ""),
                     lastScrollPosition = lastScrollProgress.resolve(item.lastScrollPosition, 0f),
                     lastReadIndex = lastReadIndex.resolve(item.lastReadIndex, 0),
-                    lastReadOffset = lastReadOffset.resolve(item.lastReadOffset, 0),
-                    lastReadOffsetFraction = lastReadOffsetFraction.resolveNullable(item.lastReadOffsetFraction),
+                    lastReadElementKey = lastReadElementKey.resolve(item.lastReadElementKey, ""),
+                    lastReadOffsetFraction = lastReadOffsetFraction.resolve(
+                        item.lastReadOffsetFraction,
+                        io.aatricks.easyreader.data.model.FRACTION_UNKNOWN
+                    ),
                     lastRead = System.currentTimeMillis()
                 )
                 libraryDao.insertItem(updated)

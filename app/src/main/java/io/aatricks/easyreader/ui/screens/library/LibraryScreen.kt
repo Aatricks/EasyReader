@@ -81,6 +81,7 @@ fun LibraryScreen(
 
     LaunchedEffect(Unit) {
         summaryViewModel.initializeSummaryService()
+        libraryViewModel.reconcileDownloadedItemsOnDemand()
     }
 
     LaunchedEffect(pendingDeletion) {

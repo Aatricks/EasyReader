@@ -25,7 +25,11 @@ fun ChapterSummaryDropdown(
     isGenerating: Boolean,
     onGenerateSummary: () -> Unit,
     onCancel: (() -> Unit)? = null,
-    isAvailable: Boolean = true,
+    aiSupportedInBuild: Boolean = true,
+    aiOptedIn: Boolean = true,
+    onEnableAi: (() -> Unit)? = null,
+    isInitializing: Boolean = false,
+    isReady: Boolean = aiSupportedInBuild && aiOptedIn,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -48,7 +52,7 @@ fun ChapterSummaryDropdown(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 when {
-                    !isAvailable -> {
+                    !aiSupportedInBuild -> {
                         Text(
                             text = "AI summaries aren't available in this build.",
                             style = MaterialTheme.typography.bodyMedium,
@@ -60,6 +64,44 @@ fun ChapterSummaryDropdown(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+
+                    !aiOptedIn -> {
+                        Text(
+                            text = "Enable AI summaries to generate on-device chapter recaps.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "The AI model is downloaded once (a few hundred MB) and then runs offline.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (onEnableAi != null) {
+                            FilledTonalButton(onClick = onEnableAi) {
+                                Text("Enable AI summaries")
+                            }
+                        }
+                    }
+
+                    isInitializing && !isReady -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Downloading AI model…",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
 
                     isGenerating -> {

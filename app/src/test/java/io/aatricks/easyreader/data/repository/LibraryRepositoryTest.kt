@@ -3,6 +3,7 @@ package io.aatricks.easyreader.data.repository
 import io.aatricks.easyreader.data.local.LibraryDao
 import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.model.ContentType
+import io.aatricks.easyreader.data.model.FRACTION_UNKNOWN
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.util.FieldUpdate
 import kotlinx.coroutines.flow.flowOf
@@ -76,21 +77,23 @@ class LibraryRepositoryTest {
             title = "Test",
             url = "url",
             lastReadOffsetFraction = 0.5f,
-            lastReadIndex = 10
+            lastReadIndex = 10,
+            lastReadElementKey = "img:https://cdn/x.jpg"
         )
         whenever(libraryDao.getItemById(itemId)).thenReturn(item)
 
-        // Set new value for index, clear fraction, keep others unchanged
         repository.updateProgressExplicit(
             itemId = itemId,
             lastReadIndex = FieldUpdate.Set(20),
-            lastReadOffsetFraction = FieldUpdate.Clear
+            lastReadElementKey = FieldUpdate.Set("img:https://cdn/new.jpg"),
+            lastReadOffsetFraction = FieldUpdate.Set(FRACTION_UNKNOWN)
         )
 
         verify(libraryDao).insertItem(check {
             assertEquals(20, it.lastReadIndex)
-            assertNull(it.lastReadOffsetFraction)
-            assertEquals("Test", it.title) // Unchanged
+            assertEquals("img:https://cdn/new.jpg", it.lastReadElementKey)
+            assertEquals(FRACTION_UNKNOWN, it.lastReadOffsetFraction)
+            assertEquals("Test", it.title)
         })
     }
 
@@ -101,15 +104,17 @@ class LibraryRepositoryTest {
             id = itemId,
             title = "Test",
             url = "url",
-            lastReadOffsetFraction = 0.5f
+            lastReadOffsetFraction = 0.5f,
+            lastReadElementKey = "img:abc"
         )
         whenever(libraryDao.getItemById(itemId)).thenReturn(item)
 
-        // Use updateProgress (old method) which should preserve nullable fields if passed as null
-        repository.updateProgress(itemId, "Chapter 1", 10, lastReadOffsetFraction = null)
+        // Passing null for opt-out fields should leave them unchanged.
+        repository.updateProgress(itemId, "Chapter 1", 10, lastReadOffsetFraction = null, lastReadElementKey = null)
 
         verify(libraryDao).insertItem(check {
             assertEquals(0.5f, it.lastReadOffsetFraction)
+            assertEquals("img:abc", it.lastReadElementKey)
         })
     }
 

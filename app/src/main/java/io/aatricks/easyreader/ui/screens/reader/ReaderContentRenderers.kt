@@ -50,14 +50,9 @@ private fun readerContentType(element: ContentElement): String = when (element) 
     is ContentElement.ImageGroup -> CONTENT_TYPE_IMAGE_GROUP
 }
 
+// Element-key generator lives in viewmodel layer so non-UI code (progress restore) shares it.
 internal fun stableContentElementKey(pageUrl: String, index: Int, element: ContentElement): String {
-    return when (element) {
-        is ContentElement.Image -> "img:${element.url}"
-        is ContentElement.ImageGroup -> "group:${element.images.joinToString("|") { it.url }}"
-        is ContentElement.Text -> "txt:$pageUrl:$index:${element.content.take(64).hashCode()}"
-        is ContentElement.Placeholder -> "placeholder:$pageUrl:$index:${element.text}"
-        is ContentElement.PageContent -> "page:$pageUrl:$index"
-    }
+    return io.aatricks.easyreader.ui.viewmodel.stableContentElementKey(pageUrl, index, element)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -165,6 +160,9 @@ internal fun PagedReaderView(
                                             zoomStateKey = "${content.url}_${page}_${subElement.url}_${subElement.side}",
                                             onZoomChanged = if (isZoomable) onPageZoomChanged else null,
                                             lockTapWhileZoomed = isZoomable,
+                                            onDimensionsResolved = { url, w, h ->
+                                                readerViewModel.persistImageDimensions(url, w, h)
+                                            },
                                             onTap = { readerViewModel.toggleControls() }
                                         )
                                     }
@@ -216,6 +214,9 @@ internal fun PagedReaderView(
                             zoomStateKey = "${content.url}_${page}_${el.url}_${el.side}",
                             onZoomChanged = if (isZoomable) onPageZoomChanged else null,
                             lockTapWhileZoomed = isZoomable,
+                            onDimensionsResolved = { url, w, h ->
+                                readerViewModel.persistImageDimensions(url, w, h)
+                            },
                             onTap = { readerViewModel.toggleControls() }
                         )
                     }
@@ -271,6 +272,9 @@ private fun PagedImageGroupView(
                     enableZoom = false,
                     dynamicHeight = true,
                     zoomStateKey = "${pageUrl}_${pageIndex}_group_$index",
+                    onDimensionsResolved = { url, w, h ->
+                        readerViewModel.persistImageDimensions(url, w, h)
+                    },
                     onTap = null
                 )
             }
@@ -400,6 +404,9 @@ internal fun ScrollingReaderView(
                                         side = subElement.side,
                                         enableZoom = false,
                                         dynamicHeight = false,
+                                        onDimensionsResolved = { url, w, h ->
+                                            readerViewModel.persistImageDimensions(url, w, h)
+                                        },
                                         onTap = { readerViewModel.toggleControls() }
                                     )
                                 }
@@ -443,6 +450,9 @@ internal fun ScrollingReaderView(
                         side = element.side,
                         enableZoom = false,
                         dynamicHeight = false,
+                        onDimensionsResolved = { url, w, h ->
+                            readerViewModel.persistImageDimensions(url, w, h)
+                        },
                         onTap = { readerViewModel.toggleControls() }
                     )
                 }
@@ -465,6 +475,9 @@ internal fun ScrollingReaderView(
                                 side = img.side,
                                 enableZoom = false,
                                 dynamicHeight = false,
+                                onDimensionsResolved = { url, w, h ->
+                                    readerViewModel.persistImageDimensions(url, w, h)
+                                },
                                 onTap = { readerViewModel.toggleControls() }
                             )
                         }

@@ -5,6 +5,10 @@ import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.repository.content.WebContentLoader
 import io.aatricks.easyreader.data.repository.content.ImageCache
 import io.aatricks.easyreader.data.repository.content.ImageDownloader
+import io.aatricks.easyreader.data.repository.content.InMemoryPermanentFailureStore
+import io.aatricks.easyreader.data.repository.content.ParsedContentCache
+import io.aatricks.easyreader.data.repository.content.WebOfflineChapterStore
+import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
 import kotlinx.coroutines.runBlocking
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
@@ -53,7 +57,23 @@ class ContentRepositoryBenchmarkTest {
             .addInterceptor(interceptor)
             .build()
 
-        val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, ImageCache(mediaCacheDir), ImageDownloader(okHttpClient), cacheDir)
+        val htmlDownloadsDir = File(cacheDir, "html_downloads").apply { mkdirs() }
+        val mediaDownloadsDir = File(cacheDir, "media_downloads").apply { mkdirs() }
+        val webOfflineDir = File(cacheDir, "web_offline").apply { mkdirs() }
+        val imageCache = ImageCache(mediaCacheDir, mediaDownloadsDir)
+        val imageDownloader = ImageDownloader(okHttpClient)
+        val webLoader = WebContentLoader(
+            mockHtmlParser,
+            okHttpClient,
+            imageCache,
+            imageDownloader,
+            ParsedContentCache(),
+            cacheDir,
+            htmlDownloadsDir,
+            InMemoryPermanentFailureStore(),
+            fakeImageDimensionCacheRepository(),
+            WebOfflineChapterStore(webOfflineDir, mockHtmlParser, imageDownloader, imageCache)
+        )
         
         // Generate images
         val imageUrls = (1..imageCount).map { "http://example.com/img_$it.jpg" }

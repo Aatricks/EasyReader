@@ -2,7 +2,7 @@ package io.aatricks.easyreader.data.backup
 
 import kotlinx.serialization.Serializable
 
-const val BACKUP_SCHEMA_VERSION = 1
+const val BACKUP_SCHEMA_VERSION = 2
 const val MANIFEST_ENTRY = "manifest.json"
 const val EPUB_ENTRY_PREFIX = "epubs/"
 
@@ -50,8 +50,12 @@ data class LibraryItemBackup(
     val isDownloading: Boolean = false,
     val lastScrollPosition: Float,
     val lastReadIndex: Int,
-    val lastReadOffset: Int,
+    val lastReadElementKey: String = "",
     val lastReadOffsetFraction: Float? = null,
+    // Legacy schema-v1 raw-pixel anchor. Kept readable so v1 backups still parse; we use it as a
+    // last-resort hint (the post-unification restore path derives index from percent and ignores
+    // pixel offsets, but recording it lets us spot v1 imports in logs if needed).
+    val lastReadOffset: Int = 0,
     val hasUpdates: Boolean = false,
     val chapterSummaries: Map<String, String> = emptyMap(),
     val baseTitle: String,

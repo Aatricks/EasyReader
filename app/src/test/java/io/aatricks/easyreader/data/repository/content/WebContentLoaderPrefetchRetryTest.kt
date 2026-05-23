@@ -3,6 +3,7 @@ package io.aatricks.easyreader.data.repository.content
 import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.repository.HtmlParser
+import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import okhttp3.Interceptor
@@ -26,7 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class WebContentLoaderPrefetchRetryTest {
 
     @Test
-    fun `prefetch stops immediately on 404 permanent image failure`() = runBlocking {
+    fun `prefetch leaves chapter incomplete on 404 image failure`() = runBlocking {
         val chapterUrl = "https://example.com/permanent-fail"
         val imageUrl = "https://example.com/404.jpg"
         val htmlParser = mock<HtmlParser>()
@@ -53,12 +54,100 @@ class WebContentLoaderPrefetchRetryTest {
             loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
         }
 
-        // Permanent failures (4xx) are accounted for via the .failed sidecar so the chapter
-        // counts as complete offline — there's nothing more we can fetch. The sidecar also
-        // suppresses retries so we only see one network request.
-        assertTrue(result.isComplete)
-        assertFalse(result.isRetryable)
+        assertFalse(result.isComplete)
+        assertTrue(result.isRetryable)
         assertEquals(1, imageRequests.get())
+    }
+
+    @Test
+    fun `permanent failure store entries expire after ttl and trigger fresh retry`() = runBlocking {
+        val chapterUrl = "https://example.com/expiring-permanent"
+        val imageUrl = "https://example.com/expiring.jpg"
+        val htmlParser = mock<HtmlParser>()
+        val imageRequests = AtomicInteger(0)
+
+        val store = InMemoryPermanentFailureStore()
+        val harness = createLoaderWithDirs(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                when (request.url.toString()) {
+                    chapterUrl -> buildResponse(request, "<html><body></body></html>", "text/html")
+                    imageUrl -> {
+                        imageRequests.incrementAndGet()
+                        buildResponse(request, "Not Found", "text/plain", code = 404)
+                    }
+                    else -> buildResponse(request, "", "text/plain", code = 404)
+                }
+            },
+            store = store
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Image(imageUrl)))
+
+        // Pre-seed an expired permanent-failure entry so the loader's TTL filter ignores it
+        // and treats the URL as eligible for a fresh attempt. Models the "CDN was transient"
+        // recovery path users hit a day after a transient 4xx was misclassified.
+        val twoDaysAgo = System.currentTimeMillis() - 48L * 60L * 60L * 1000L
+        store.record(chapterUrl, listOf(imageUrl), recordedAtMs = twoDaysAgo)
+
+        harness.loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
+        assertTrue("expired store entry must trigger a fresh image request", imageRequests.get() >= 1)
+    }
+
+    @Test
+    fun `failed manifest retry attempts the missing image again`() = runBlocking {
+        val chapterUrl = "https://example.com/retry-failed-manifest"
+        val imageUrl = "https://example.com/retry-failed.jpg"
+        val htmlParser = mock<HtmlParser>()
+        val imageRequests = AtomicInteger(0)
+
+        val harness = createLoaderWithDirs(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                when (request.url.toString()) {
+                    chapterUrl -> buildResponse(request, "<html><body></body></html>", "text/html")
+                    imageUrl -> {
+                        imageRequests.incrementAndGet()
+                        buildResponse(request, "Not Found", "text/plain", code = 404)
+                    }
+                    else -> buildResponse(request, "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Image(imageUrl)))
+
+        harness.loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
+        val attemptsBefore = imageRequests.get()
+        harness.loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
+
+        assertTrue("retry should attempt the missing image again", imageRequests.get() > attemptsBefore)
+    }
+
+    @Test
+    fun `zero image web chapter is not marked downloaded`() = runBlocking {
+        val chapterUrl = "https://example.com/no-images"
+        val htmlParser = mock<HtmlParser>()
+
+        val harness = createLoaderWithDirs(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                when (request.url.toString()) {
+                    chapterUrl -> buildResponse(request, "<html><body><p>Novel text</p></body></html>", "text/html")
+                    else -> buildResponse(request, "", "text/plain", code = 404)
+                }
+            }
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Text("Novel text")))
+
+        val result = harness.loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
+
+        assertFalse(result.isComplete)
+        assertFalse(result.isPersistentDownload)
     }
 
     @Test
@@ -91,23 +180,43 @@ class WebContentLoaderPrefetchRetryTest {
 
         assertFalse(result.isComplete)
         assertTrue(result.isRetryable)
-        // Expected: USER_REQUEST_PREFETCH_PASSES (2) * USER_REQUEST_ATTEMPTS (3) = 6
-        assertEquals("Should retry 6 times total (2 passes * 3 image attempts)", 6, imageRequests.get())
+        assertEquals("Should retry once through ImageDownloader user attempts", 3, imageRequests.get())
     }
 
     private fun createLoader(
         htmlParser: HtmlParser,
         interceptor: Interceptor
-    ): WebContentLoader {
+    ): WebContentLoader = createLoaderWithDirs(htmlParser, interceptor).loader
+
+    private data class LoaderHarness(
+        val loader: WebContentLoader,
+        val htmlDownloadsDir: File,
+        val store: InMemoryPermanentFailureStore
+    )
+
+    private fun createLoaderWithDirs(
+        htmlParser: HtmlParser,
+        interceptor: Interceptor,
+        store: InMemoryPermanentFailureStore = InMemoryPermanentFailureStore()
+    ): LoaderHarness {
         val root = Files.createTempDirectory("prefetch-retry-test").toFile()
         val htmlCacheDir = File(root, "html_cache").apply { mkdirs() }
         val mediaCacheDir = File(root, "media_cache").apply { mkdirs() }
         val htmlDownloadsDir = File(root, "html_downloads").apply { mkdirs() }
         val mediaDownloadsDir = File(root, "media_downloads").apply { mkdirs() }
+        val webOfflineDir = File(root, "web_offline").apply { mkdirs() }
         val client = OkHttpClient.Builder()
             .addInterceptor(interceptor)
             .build()
-        return WebContentLoader(htmlParser, client, ImageCache(mediaCacheDir, mediaDownloadsDir), ImageDownloader(client), ParsedContentCache(), htmlCacheDir, htmlDownloadsDir)
+        val imageDownloader = ImageDownloader(client)
+        val imageCache = ImageCache(mediaCacheDir, mediaDownloadsDir)
+        val loader = WebContentLoader(
+            htmlParser, client, imageCache,
+            imageDownloader, ParsedContentCache(), htmlCacheDir, htmlDownloadsDir,
+            store, fakeImageDimensionCacheRepository(),
+            WebOfflineChapterStore(webOfflineDir, htmlParser, imageDownloader, imageCache)
+        )
+        return LoaderHarness(loader, htmlDownloadsDir, store)
     }
 
     private fun buildResponse(

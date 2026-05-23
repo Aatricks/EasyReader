@@ -4,6 +4,7 @@ import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
+import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,7 +62,8 @@ class ReaderViewModelSecurityTest {
             libraryRepository,
             exploreRepository,
             preferencesManager,
-            chapterListCache
+            chapterListCache,
+            fakeImageDimensionCacheRepository()
         )
     }
 

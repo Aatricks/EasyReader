@@ -1,0 +1,280 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 8,
+    "identityHash": "a7814b493bd617a88fe851c538ddd6aa",
+    "entities": [
+      {
+        "tableName": "library_items",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `url` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `progress` INTEGER NOT NULL, `isCurrentlyReading` INTEGER NOT NULL, `currentChapter` TEXT NOT NULL, `currentChapterUrl` TEXT NOT NULL, `totalChapters` INTEGER NOT NULL, `contentType` TEXT NOT NULL, `dateAdded` INTEGER NOT NULL, `lastRead` INTEGER NOT NULL, `isDownloading` INTEGER NOT NULL, `lastScrollPosition` REAL NOT NULL, `lastReadIndex` INTEGER NOT NULL, `lastReadElementKey` TEXT NOT NULL, `lastReadOffsetFraction` REAL NOT NULL, `hasUpdates` INTEGER NOT NULL, `chapterSummaries` TEXT NOT NULL, `baseTitle` TEXT NOT NULL, `readingMode` TEXT NOT NULL, `baseNovelUrl` TEXT NOT NULL, `sourceName` TEXT NOT NULL, `isDownloaded` INTEGER NOT NULL, `downloadedAt` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "url",
+            "columnName": "url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "progress",
+            "columnName": "progress",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isCurrentlyReading",
+            "columnName": "isCurrentlyReading",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currentChapter",
+            "columnName": "currentChapter",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currentChapterUrl",
+            "columnName": "currentChapterUrl",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalChapters",
+            "columnName": "totalChapters",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contentType",
+            "columnName": "contentType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dateAdded",
+            "columnName": "dateAdded",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastRead",
+            "columnName": "lastRead",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isDownloading",
+            "columnName": "isDownloading",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastScrollPosition",
+            "columnName": "lastScrollPosition",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastReadIndex",
+            "columnName": "lastReadIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastReadElementKey",
+            "columnName": "lastReadElementKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastReadOffsetFraction",
+            "columnName": "lastReadOffsetFraction",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hasUpdates",
+            "columnName": "hasUpdates",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chapterSummaries",
+            "columnName": "chapterSummaries",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "baseTitle",
+            "columnName": "baseTitle",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "readingMode",
+            "columnName": "readingMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "baseNovelUrl",
+            "columnName": "baseNovelUrl",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceName",
+            "columnName": "sourceName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isDownloaded",
+            "columnName": "isDownloaded",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "downloadedAt",
+            "columnName": "downloadedAt",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_library_items_url",
+            "unique": true,
+            "columnNames": [
+              "url"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_library_items_url` ON `${TABLE_NAME}` (`url`)"
+          },
+          {
+            "name": "index_library_items_baseTitle",
+            "unique": false,
+            "columnNames": [
+              "baseTitle"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_library_items_baseTitle` ON `${TABLE_NAME}` (`baseTitle`)"
+          },
+          {
+            "name": "index_library_items_isCurrentlyReading",
+            "unique": false,
+            "columnNames": [
+              "isCurrentlyReading"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_library_items_isCurrentlyReading` ON `${TABLE_NAME}` (`isCurrentlyReading`)"
+          },
+          {
+            "name": "index_library_items_lastRead",
+            "unique": false,
+            "columnNames": [
+              "lastRead"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_library_items_lastRead` ON `${TABLE_NAME}` (`lastRead`)"
+          }
+        ]
+      },
+      {
+        "tableName": "chapter_image_state",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`chapterUrl` TEXT NOT NULL, `imageUrl` TEXT NOT NULL, `status` TEXT NOT NULL, `attempts` INTEGER NOT NULL, `lastAttemptMs` INTEGER NOT NULL, `httpStatusCode` INTEGER, PRIMARY KEY(`chapterUrl`, `imageUrl`))",
+        "fields": [
+          {
+            "fieldPath": "chapterUrl",
+            "columnName": "chapterUrl",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imageUrl",
+            "columnName": "imageUrl",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attempts",
+            "columnName": "attempts",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastAttemptMs",
+            "columnName": "lastAttemptMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "httpStatusCode",
+            "columnName": "httpStatusCode",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "chapterUrl",
+            "imageUrl"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_chapter_image_state_chapterUrl",
+            "unique": false,
+            "columnNames": [
+              "chapterUrl"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chapter_image_state_chapterUrl` ON `${TABLE_NAME}` (`chapterUrl`)"
+          },
+          {
+            "name": "index_chapter_image_state_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chapter_image_state_status` ON `${TABLE_NAME}` (`status`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a7814b493bd617a88fe851c538ddd6aa')"
+    ]
+  }
+}

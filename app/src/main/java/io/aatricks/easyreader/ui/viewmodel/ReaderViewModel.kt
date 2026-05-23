@@ -9,10 +9,10 @@ import io.aatricks.easyreader.data.model.*
 import io.aatricks.easyreader.data.repository.ChapterListCache
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.ExploreRepository
+import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.ui.theme.AccentTheme
 import io.aatricks.easyreader.util.normalizeChapterList
-import io.aatricks.easyreader.ui.util.normalizeRestoreOffset
 import io.aatricks.easyreader.util.TextUtils
 import io.aatricks.easyreader.util.UrlSecurity
 import io.aatricks.easyreader.util.FieldUpdate
@@ -38,7 +38,8 @@ class ReaderViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
     private val exploreRepository: ExploreRepository,
     private val preferencesManager: PreferencesManager,
-    private val chapterListCache: ChapterListCache
+    private val chapterListCache: ChapterListCache,
+    private val imageDimensionCache: ImageDimensionCacheRepository
 ) : BaseViewModel<ReaderViewModel.ReaderUiState>(ReaderUiState()) {
     private val progressController = ReaderProgressController(libraryRepository, viewModelScope)
     val progressState: StateFlow<ReaderProgressState> = progressController.progressState
@@ -47,6 +48,7 @@ class ReaderViewModel @Inject constructor(
         private const val TAG = "ReaderViewModel"
         private val DOUBLE_NEWLINE_REGEX = Regex("""\n\s*\n""")
         private const val MIN_SCROLL_OFFSET_DELTA_PX = 8
+        private const val IMAGE_DIMENSION_FLUSH_DELAY_MS = 100L
     }
 
     // Current library item ID being read
@@ -63,9 +65,95 @@ class ReaderViewModel @Inject constructor(
         get() = progressController.restoredScrollPercent
         set(value) { progressController.restoredScrollPercent = value }
 
-    private var hasUserInteractedSinceLoad: Boolean
+    var hasUserInteractedSinceLoad: Boolean
         get() = progressController.hasUserInteractedSinceLoad
-        set(value) { progressController.hasUserInteractedSinceLoad = value }
+        private set(value) { progressController.hasUserInteractedSinceLoad = value }
+
+    val userHasDragged: Boolean
+        get() = progressController.userHasDragged
+
+    val restoreInProgress: Boolean
+        get() = progressController.restoreInProgress
+
+    fun markUserDragged() {
+        progressController.markUserDragged()
+    }
+
+    fun markRestoreDone() {
+        progressController.markRestoreDone()
+    }
+
+    fun beginRestore() {
+        progressController.beginRestore()
+    }
+
+    fun persistImageDimensions(imageUrl: String, width: Int, height: Int) {
+        if (imageUrl.isBlank() || width <= 0 || height <= 0) return
+        pendingImageDimensions[imageUrl] = width to height
+        if (dimensionFlushJob?.isActive == true) return
+        dimensionFlushJob = viewModelScope.launch {
+            delay(IMAGE_DIMENSION_FLUSH_DELAY_MS)
+            while (pendingImageDimensions.isNotEmpty()) {
+                flushPendingImageDimensions()
+            }
+        }
+    }
+
+    private suspend fun flushPendingImageDimensions() {
+        val updates = pendingImageDimensions.toMap()
+        pendingImageDimensions.clear()
+        if (updates.isEmpty()) return
+        updateCurrentContentImageDimensions(updates)
+        imageDimensionCache.persistAll(updates.map { (url, dimensions) ->
+            Triple(url, dimensions.first, dimensions.second)
+        })
+    }
+
+    private fun updateCurrentContentImageDimensions(updates: Map<String, Pair<Int, Int>>) {
+        updateState { state ->
+            val content = state.content ?: return@updateState state
+            val updatedParagraphs = content.paragraphs.map { element ->
+                element.withResolvedImageDimensions(updates)
+            }
+            if (updatedParagraphs == content.paragraphs) {
+                state
+            } else {
+                state.copy(content = content.copy(paragraphs = updatedParagraphs))
+            }
+        }
+    }
+
+    private fun ContentElement.withResolvedImageDimensions(updates: Map<String, Pair<Int, Int>>): ContentElement {
+        return when (this) {
+            is ContentElement.Image -> {
+                val (width, height) = updates[url] ?: return this
+                if (this.width <= 0 || this.height <= 0) {
+                    copy(width = width, height = height)
+                } else {
+                    this
+                }
+            }
+
+            is ContentElement.ImageGroup -> {
+                val updatedImages = images.map { img ->
+                    val (width, height) = updates[img.url] ?: return@map img
+                    if (img.width <= 0 || img.height <= 0) {
+                        img.copy(width = width, height = height)
+                    } else {
+                        img
+                    }
+                }
+                if (updatedImages == images) this else copy(images = updatedImages)
+            }
+
+            is ContentElement.PageContent -> {
+                val updatedElements = elements.map { it.withResolvedImageDimensions(updates) }
+                if (updatedElements == elements) this else copy(elements = updatedElements)
+            }
+
+            else -> this
+        }
+    }
 
     private var restoredProgressSnapshot: ReaderProgressState?
         get() = progressController.restoredProgressSnapshot
@@ -79,6 +167,8 @@ class ReaderViewModel @Inject constructor(
 
     // Job for tracking content loading
     private var loadJob: Job? = null
+    private var dimensionFlushJob: Job? = null
+    private val pendingImageDimensions = LinkedHashMap<String, Pair<Int, Int>>()
 
     init {
         // Load initial settings
@@ -169,8 +259,10 @@ class ReaderViewModel @Inject constructor(
         val scrollPosition: Float = 0f,
         val scrollProgress: Int = 0,
         val scrollIndex: Int = 0,
-        val scrollOffset: Int = 0,
-        val pendingRestoreOffsetFraction: Float? = null,
+        val restoreElementKey: String = "",
+        // Sentinel FRACTION_UNKNOWN (-1f) = no restore pending; 0..1 = pending intra-item fraction.
+        val restoreOffsetFraction: Float = io.aatricks.easyreader.data.model.FRACTION_UNKNOWN,
+        val isPreciseRestore: Boolean = false,
         val isScrollingDown: Boolean = true,
         val hasReachedQuarterScreen: Boolean = false,
         val canNavigateNext: Boolean = false,
@@ -239,34 +331,17 @@ class ReaderViewModel @Inject constructor(
                 scrollPosition = scrollPosition,
                 scrollProgress = scrollProgress,
                 scrollIndex = scrollIndex,
-                scrollOffset = scrollOffset,
-                scrollOffsetFraction = pendingRestoreOffsetFraction,
+                scrollElementKey = restoreElementKey,
+                scrollOffsetFraction = restoreOffsetFraction,
+                isPreciseRestore = isPreciseRestore,
                 firstVisibleItemSize = 0,
                 seekTrigger = seekTrigger,
                 targetScrollPosition = targetScrollPosition
             )
     }
 
-    private fun syncProgressState(
-        scrollPosition: Float,
-        scrollProgress: Int,
-        scrollIndex: Int,
-        scrollOffset: Int,
-        scrollOffsetFraction: Float? = progressController.progressState.value.scrollOffsetFraction,
-        firstVisibleItemSize: Int = progressController.progressState.value.firstVisibleItemSize,
-        seekTrigger: Long = progressController.progressState.value.seekTrigger,
-        targetScrollPosition: Float? = progressController.progressState.value.targetScrollPosition
-    ) {
-        progressController.syncProgressState(
-            scrollPosition = scrollPosition,
-            scrollProgress = scrollProgress,
-            scrollIndex = scrollIndex,
-            scrollOffset = scrollOffset,
-            scrollOffsetFraction = scrollOffsetFraction,
-            firstVisibleItemSize = firstVisibleItemSize,
-            seekTrigger = seekTrigger,
-            targetScrollPosition = targetScrollPosition
-        )
+    private fun syncProgressState(state: ReaderProgressState) {
+        progressController.syncProgressState(state)
     }
 
     fun requestOpenFile(uri: String): Unit {
@@ -476,8 +551,8 @@ class ReaderViewModel @Inject constructor(
         val lastIndex = index ?: _uiState.value.scrollIndex
         val paragraphs = _uiState.value.content?.paragraphs ?: return false
         val currentItem = paragraphs.getOrNull(lastIndex)
-        return currentItem is ContentElement.Placeholder || 
-               (currentItem is ContentElement.Text && currentItem.content.startsWith("Loading page"))
+        return currentItem is ContentElement.Placeholder ||
+            (currentItem is ContentElement.Text && currentItem.content.startsWith("Loading page"))
     }
 
     private suspend fun saveCurrentProgress(): Unit {
@@ -526,7 +601,7 @@ class ReaderViewModel @Inject constructor(
                 content
             ))
 
-        val initialScroll = progressController.calculateInitialScroll(content, libraryItem, fromBottom, isExplicitNavigation)
+        val initialPosition = progressController.calculateInitialPosition(content, libraryItem, fromBottom, isExplicitNavigation)
 
         var currentFullList = _uiState.value.fullChapterList
         // If we switched novels, discard the old list
@@ -559,13 +634,14 @@ class ReaderViewModel @Inject constructor(
                 lastIsExplicitNavigation = false,
                 canNavigateNext = content.hasNextChapter(),
                 canNavigatePrevious = content.hasPreviousChapter(),
-                scrollPosition = initialScroll.position,
-                scrollProgress = initialScroll.progress,
-                scrollIndex = initialScroll.index,
-                scrollOffset = initialScroll.offset,
-                pendingRestoreOffsetFraction = initialScroll.offsetFraction,
-                targetScrollPosition = initialScroll.targetPosition,
-                hasReachedQuarterScreen = fromBottom || initialScroll.progress >= 25,
+                scrollPosition = initialPosition.scrollPosition,
+                scrollProgress = initialPosition.scrollProgress,
+                scrollIndex = initialPosition.scrollIndex,
+                restoreElementKey = initialPosition.scrollElementKey,
+                restoreOffsetFraction = initialPosition.scrollOffsetFraction,
+                isPreciseRestore = initialPosition.isPreciseRestore,
+                targetScrollPosition = initialPosition.targetScrollPosition,
+                hasReachedQuarterScreen = fromBottom || initialPosition.scrollProgress >= 25,
                 novelName = novelName,
                 chapterTitle = chapterTitle,
                 baseTitle = baseTitle,
@@ -575,14 +651,7 @@ class ReaderViewModel @Inject constructor(
                 fullChapterList = currentFullList
             )
         }
-        syncProgressState(
-            scrollPosition = initialScroll.position,
-            scrollProgress = initialScroll.progress,
-            scrollIndex = initialScroll.index,
-            scrollOffset = initialScroll.offset,
-            scrollOffsetFraction = initialScroll.offsetFraction,
-            targetScrollPosition = initialScroll.targetPosition
-        )
+        syncProgressState(initialPosition)
 
         updateNavigationUrls()
         maybeWarmNextChapter(_uiState.value.content?.nextChapterUrl)
@@ -838,7 +907,7 @@ class ReaderViewModel @Inject constructor(
                 libraryItem?.currentChapter ?: ""
             }
 
-            val initialScroll = progressController.calculateInitialScroll(content, libraryItem, fromBottom, isExplicitNavigation)
+            val initialPosition = progressController.calculateInitialPosition(content, libraryItem, fromBottom, isExplicitNavigation)
 
             closeContent(_uiState.value.content)
             updateState {
@@ -849,12 +918,13 @@ class ReaderViewModel @Inject constructor(
                     error = null,
                     canNavigateNext = content.hasNextChapter(),
                     canNavigatePrevious = content.hasPreviousChapter(),
-                    scrollPosition = initialScroll.position,
-                    scrollProgress = initialScroll.progress,
-                    scrollIndex = initialScroll.index,
-                    scrollOffset = initialScroll.offset,
-                    targetScrollPosition = initialScroll.targetPosition,
-                    hasReachedQuarterScreen = fromBottom || initialScroll.progress >= 25,
+                    scrollPosition = initialPosition.scrollPosition,
+                    scrollProgress = initialPosition.scrollProgress,
+                    scrollIndex = initialPosition.scrollIndex,
+                    restoreElementKey = initialPosition.scrollElementKey,
+                    restoreOffsetFraction = initialPosition.scrollOffsetFraction,
+                    targetScrollPosition = initialPosition.targetScrollPosition,
+                    hasReachedQuarterScreen = fromBottom || initialPosition.scrollProgress >= 25,
                     novelName = novelName,
                     chapterTitle = chapterTitle,
                     baseTitle = baseTitle,
@@ -864,13 +934,7 @@ class ReaderViewModel @Inject constructor(
                     fullChapterList = tocChapterList
                 )
             }
-            syncProgressState(
-                scrollPosition = initialScroll.position,
-                scrollProgress = initialScroll.progress,
-                scrollIndex = initialScroll.index,
-                scrollOffset = initialScroll.offset,
-                targetScrollPosition = initialScroll.targetPosition
-            )
+            syncProgressState(initialPosition)
 
             preferencesManager.batchUpdateLastRead(content.url, effectiveLibraryItemId)
 
@@ -879,7 +943,7 @@ class ReaderViewModel @Inject constructor(
                 libraryRepository.saveProgressAsync(
                     itemId = id,
                     currentChapter = chapterTitle,
-                    progress = initialScroll.progress,
+                    progress = initialPosition.scrollProgress,
                     currentChapterUrl = content.url
                 )
             }
@@ -919,20 +983,33 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun onUserInteraction(): Unit {
+        val pendingFraction = _uiState.value.restoreOffsetFraction
+            .takeIf { it >= 0f }
         progressController.onUserInteraction(
             uiTargetScrollPosition = _uiState.value.targetScrollPosition,
-            uiPendingRestoreOffsetFraction = _uiState.value.pendingRestoreOffsetFraction,
+            uiPendingRestoreOffsetFraction = pendingFraction,
             updateUiState = { targetScrollPosition, pendingRestoreOffsetFraction ->
-                updateState { it.copy(targetScrollPosition = targetScrollPosition, pendingRestoreOffsetFraction = pendingRestoreOffsetFraction) }
+                updateState {
+                    it.copy(
+                        targetScrollPosition = targetScrollPosition,
+                        restoreOffsetFraction = pendingRestoreOffsetFraction
+                            ?: io.aatricks.easyreader.data.model.FRACTION_UNKNOWN
+                    )
+                }
             }
         )
     }
 
     suspend fun persistLifecycleProgress(): Unit {
         val currentChapterUrl = _uiState.value.content?.url ?: return
+        val content = _uiState.value.content ?: return
         progressController.cancelProgressUpdate()
         val latest = currentPersistedSnapshot()
-        val shouldSnapToTop = !hasUserInteractedSinceLoad && latest.scrollProgress == 0
+        val shouldSnapToTop = !hasUserInteractedSinceLoad &&
+            latest.scrollProgress == 0 &&
+            !latest.isPreciseRestore &&
+            latest.scrollIndex == 0 &&
+            latest.scrollElementKey.isBlank()
 
         if (shouldSnapToTop) {
             val itemId = currentLibraryItemId
@@ -948,16 +1025,24 @@ class ReaderViewModel @Inject constructor(
             }
         }
 
+        if (!shouldSnapToTop && !progressController.isSnapshotPersistable(content, latest)) {
+            Log.d(
+                TAG,
+                "persistLifecycleProgress skip unstable url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(currentChapterUrl)} firstVisibleItemSize=${latest.firstVisibleItemSize} fraction=${latest.scrollOffsetFraction}"
+            )
+            return
+        }
+
         Log.d(
             TAG,
-            "persistLifecycleProgress url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(currentChapterUrl)} index=${latest.scrollIndex} offset=${latest.scrollOffset} offsetFraction=${latest.scrollOffsetFraction} firstVisibleItemSize=${latest.firstVisibleItemSize}"
+            "persistLifecycleProgress url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(currentChapterUrl)} index=${latest.scrollIndex} fraction=${latest.scrollOffsetFraction} firstVisibleItemSize=${latest.firstVisibleItemSize}"
         )
 
         updateReadingProgress(
             progress = if (shouldSnapToTop) 0 else latest.scrollProgress,
             scrollPosition = if (shouldSnapToTop) 0f else latest.scrollPosition,
             index = if (shouldSnapToTop) 0 else latest.scrollIndex,
-            offset = if (shouldSnapToTop) 0 else latest.scrollOffset,
+            elementKey = if (shouldSnapToTop) "" else latest.scrollElementKey,
             offsetFraction = if (shouldSnapToTop) 0f else latest.scrollOffsetFraction,
             currentChapterUrl = currentChapterUrl
         )
@@ -972,7 +1057,8 @@ class ReaderViewModel @Inject constructor(
         maxScrollOffset: Float,
         viewportHeight: Float,
         index: Int,
-        offset: Int,
+        offsetFraction: Float,
+        elementKey: String,
         canScrollForward: Boolean = true,
         firstVisibleItemSize: Int = 0
     ): Unit {
@@ -981,7 +1067,8 @@ class ReaderViewModel @Inject constructor(
             maxScrollOffset = maxScrollOffset,
             viewportHeight = viewportHeight,
             index = index,
-            offset = offset,
+            offsetFraction = offsetFraction,
+            elementKey = elementKey,
             content = _uiState.value.content,
             canScrollForward = canScrollForward,
             firstVisibleItemSize = firstVisibleItemSize
@@ -993,7 +1080,7 @@ class ReaderViewModel @Inject constructor(
         progress: Int,
         scrollPosition: Float? = null,
         index: Int? = null,
-        offset: Int? = null,
+        elementKey: String? = null,
         offsetFraction: Float? = null,
         currentChapterUrl: String? = null
     ): Unit {
@@ -1001,7 +1088,7 @@ class ReaderViewModel @Inject constructor(
             progress = progress,
             scrollPosition = scrollPosition,
             index = index,
-            offset = offset,
+            elementKey = elementKey,
             offsetFraction = offsetFraction,
             currentChapterUrl = currentChapterUrl,
             content = _uiState.value.content
@@ -1045,12 +1132,7 @@ class ReaderViewModel @Inject constructor(
         if (!imageUrl.startsWith("http")) return
 
         viewModelScope.launch {
-            val tier = if (contentRepository.isDownloaded(pageUrl)) {
-                io.aatricks.easyreader.data.repository.content.StorageTier.DOWNLOADS
-            } else {
-                io.aatricks.easyreader.data.repository.content.StorageTier.CACHE
-            }
-            runCatching { contentRepository.downloadAndCacheImage(imageUrl, pageUrl, tier) }
+            runCatching { contentRepository.warmImage(imageUrl, pageUrl) }
         }
     }
 
@@ -1058,13 +1140,30 @@ class ReaderViewModel @Inject constructor(
         if (!imageUrl.startsWith("http")) return
 
         viewModelScope.launch {
-            val tier = if (contentRepository.isDownloaded(pageUrl)) {
-                io.aatricks.easyreader.data.repository.content.StorageTier.DOWNLOADS
-            } else {
-                io.aatricks.easyreader.data.repository.content.StorageTier.CACHE
-            }
-            runCatching { contentRepository.downloadAndCacheImage(imageUrl, pageUrl, tier) }
+            runCatching { contentRepository.downloadAndCacheImage(imageUrl, pageUrl) }
         }
+    }
+
+    fun repairVisibleImage(imageUrl: String, pageUrl: String): Unit {
+        if (!imageUrl.startsWith("http")) return
+
+        viewModelScope.launch {
+            repairVisibleImageNow(imageUrl, pageUrl)
+        }
+    }
+
+    suspend fun repairVisibleImageNow(imageUrl: String, pageUrl: String): Boolean {
+        if (!imageUrl.startsWith("http")) return false
+
+        return runCatching {
+            contentRepository.invalidateCachedMediaFile(imageUrl, pageUrl)
+            libraryRepository.getItemByUrl(pageUrl)
+                ?.takeIf { it.isDownloaded }
+                ?.let { libraryRepository.markDownloaded(it.id, false) }
+            contentRepository.downloadAndCacheImage(imageUrl, pageUrl) != null
+        }.onFailure { e ->
+            Log.w(TAG, "repairVisibleImage failed", e)
+        }.getOrDefault(false)
     }
 
     fun clearCache(url: String): Unit {
@@ -1086,10 +1185,10 @@ class ReaderViewModel @Inject constructor(
 
     fun saveScrollPosition(position: Float): Unit {
         progressController.syncProgressState(
-            scrollPosition = position,
-            scrollProgress = position.toInt(),
-            scrollIndex = progressController.progressState.value.scrollIndex,
-            scrollOffset = progressController.progressState.value.scrollOffset
+            progressController.progressState.value.copy(
+                scrollPosition = position,
+                scrollProgress = position.toInt()
+            )
         )
     }
 
@@ -1099,29 +1198,40 @@ class ReaderViewModel @Inject constructor(
 
     fun seekToProgress(progress: Float): Unit {
         val targetPercent = progress.coerceIn(0f, 100f)
-        val totalItems = _uiState.value.content?.paragraphs?.size ?: 0
+        val content = _uiState.value.content
+        val totalItems = content?.paragraphs?.size ?: 0
 
         val preciseItemIndex = (targetPercent / 100f) * (totalItems - 1).coerceAtLeast(0)
         val roughIndex = preciseItemIndex.toInt().coerceIn(0, (totalItems - 1).coerceAtLeast(0))
-        val offset = if (targetPercent == 100f) 10000000 else 0
+        val targetFraction = if (targetPercent == 100f) 1f else 0f
+        val targetElementKey = content?.paragraphs?.getOrNull(roughIndex)
+            ?.let { stableContentElementKey(content.url, roughIndex, it) }
+            ?: ""
 
         updateState {
             it.copy(
                 scrollPosition = targetPercent,
                 scrollProgress = targetPercent.toInt(),
                 scrollIndex = roughIndex,
-                scrollOffset = offset,
+                restoreElementKey = targetElementKey,
+                restoreOffsetFraction = targetFraction,
+                isPreciseRestore = false,
                 seekTrigger = System.currentTimeMillis(),
                 targetScrollPosition = if (targetPercent == 100f) 100f else null
             )
         }
         syncProgressState(
-            scrollPosition = targetPercent,
-            scrollProgress = targetPercent.toInt(),
-            scrollIndex = roughIndex,
-            scrollOffset = offset,
-            scrollOffsetFraction = if (targetPercent == 100f) 1f else 0f,
-            targetScrollPosition = if (targetPercent == 100f) 100f else null
+            ReaderProgressState(
+                scrollPosition = targetPercent,
+                scrollProgress = targetPercent.toInt(),
+                scrollIndex = roughIndex,
+                scrollElementKey = targetElementKey,
+                scrollOffsetFraction = targetFraction,
+                isPreciseRestore = false,
+                firstVisibleItemSize = progressController.progressState.value.firstVisibleItemSize,
+                seekTrigger = System.currentTimeMillis(),
+                targetScrollPosition = if (targetPercent == 100f) 100f else null
+            )
         )
 
         viewModelScope.launch {
@@ -1129,8 +1239,8 @@ class ReaderViewModel @Inject constructor(
                 progress = targetPercent.toInt(),
                 scrollPosition = targetPercent,
                 index = roughIndex,
-                offset = offset,
-                offsetFraction = if (targetPercent == 100f) 1f else 0f
+                elementKey = targetElementKey,
+                offsetFraction = targetFraction
             )
         }
     }
@@ -1139,20 +1249,20 @@ class ReaderViewModel @Inject constructor(
         val content = _uiState.value.content
         val progressToPersist = currentPersistedSnapshot()
         val chapterUrl = content?.url
-        
-        chapterUrl?.let { url ->
+
+        if (chapterUrl != null && progressController.isSnapshotPersistable(content, progressToPersist)) {
             libraryRepository.saveProgressExplicitAsync(
                 itemId = currentLibraryItemId ?: "",
                 currentChapter = "",
                 progress = FieldUpdate.Set(progressToPersist.scrollProgress),
-                currentChapterUrl = FieldUpdate.Set(url),
+                currentChapterUrl = FieldUpdate.Set(chapterUrl),
                 lastScrollProgress = FieldUpdate.Set(progressToPersist.scrollPosition),
                 lastReadIndex = FieldUpdate.Set(progressToPersist.scrollIndex),
-                lastReadOffset = FieldUpdate.Set(progressToPersist.scrollOffset),
-                lastReadOffsetFraction = progressToPersist.scrollOffsetFraction?.let { FieldUpdate.Set(it) } ?: FieldUpdate.Clear
+                lastReadElementKey = FieldUpdate.Set(progressToPersist.scrollElementKey),
+                lastReadOffsetFraction = FieldUpdate.Set(progressToPersist.scrollOffsetFraction)
             )
         }
-        
+
         super.onCleared()
         closeContent(content)
     }
@@ -1302,4 +1412,3 @@ class ReaderViewModel @Inject constructor(
         }
     }
 }
-

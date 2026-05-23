@@ -58,10 +58,10 @@ interface LibraryDao {
     @Query("DELETE FROM library_items")
     suspend fun deleteAllItems()
 
-    @Query("UPDATE library_items SET progress = 0, lastScrollPosition = 0, lastReadIndex = 0, lastReadOffset = 0, lastReadOffsetFraction = NULL, lastRead = :timestamp WHERE id = :id")
+    @Query("UPDATE library_items SET progress = 0, lastScrollPosition = 0, lastReadIndex = 0, lastReadElementKey = '', lastReadOffsetFraction = -1, lastRead = :timestamp WHERE id = :id")
     suspend fun resetProgress(id: String, timestamp: Long = System.currentTimeMillis())
 
-    @Query("UPDATE library_items SET progress = 0, lastScrollPosition = 0, lastReadIndex = 0, lastReadOffset = 0, lastReadOffsetFraction = NULL WHERE baseTitle = :baseTitle")
+    @Query("UPDATE library_items SET progress = 0, lastScrollPosition = 0, lastReadIndex = 0, lastReadElementKey = '', lastReadOffsetFraction = -1 WHERE baseTitle = :baseTitle")
     suspend fun resetProgressByBaseTitle(baseTitle: String)
 
     @Transaction

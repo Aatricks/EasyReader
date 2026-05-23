@@ -38,6 +38,10 @@ annotation class EpubDownloadsDir
 
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
+annotation class WebOfflineDownloadsDir
+
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
 annotation class ChapterListCacheDir
 
 @Module
@@ -84,6 +88,13 @@ object ContentModule {
     @EpubDownloadsDir
     fun provideEpubDownloadsDir(@ApplicationContext context: Context): File {
         return File(context.filesDir, "downloads/epub").apply { if (!exists()) mkdirs() }
+    }
+
+    @Provides
+    @Singleton
+    @WebOfflineDownloadsDir
+    fun provideWebOfflineDownloadsDir(@ApplicationContext context: Context): File {
+        return File(context.filesDir, "downloads/web_chapters_v2").apply { if (!exists()) mkdirs() }
     }
 
     @Provides

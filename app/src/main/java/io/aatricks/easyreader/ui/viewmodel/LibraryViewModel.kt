@@ -6,17 +6,18 @@ import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.model.ChapterInfo
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.ExploreItem
-import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.model.SortMode
 import io.aatricks.easyreader.data.model.SeriesReadingStatus
 import io.aatricks.easyreader.data.model.libraryNovelKey
 import io.aatricks.easyreader.data.model.seriesReadingStatus
 import io.aatricks.easyreader.data.repository.ContentRepository
+import io.aatricks.easyreader.data.repository.DownloadStatusReconciler
 import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.util.TextUtils
 import io.aatricks.easyreader.util.normalizeChapterList
+import io.aatricks.easyreader.work.ChapterDownloadQueue
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -34,7 +35,9 @@ import android.util.Log
 class LibraryViewModel @Inject constructor(
     val repository: LibraryRepository,
     private val contentRepository: ContentRepository,
-    private val exploreRepository: ExploreRepository
+    private val exploreRepository: ExploreRepository,
+    private val downloadQueue: ChapterDownloadQueue,
+    private val downloadStatusReconciler: DownloadStatusReconciler
 ) : BaseViewModel<LibraryViewModel.LibraryUiState>(LibraryUiState()) {
 
     private val TAG = "LibraryViewModel"
@@ -63,66 +66,61 @@ class LibraryViewModel @Inject constructor(
     val pendingDeletion: StateFlow<Set<String>> = _pendingDeletion.asStateFlow()
     private var pendingDeleteJob: Job? = null
     private var pendingDeleteUrls: List<String> = emptyList()
+    private var downloadedReconciliationJob: Job? = null
 
     companion object {
         private const val UNDO_DELETE_WINDOW_MS = 5000L
-        private const val LIBRARY_PREFETCH_CONCURRENCY = 2
+        private const val CACHE_STATE_REFRESH_CONCURRENCY = 6
     }
 
     init {
         _collapsedSources.value = repository.loadCollapsedSources()
         observeLibraryChanges()
-        verifyDownloadedItemsOnStartup()
+        observeDownloadQueue()
     }
 
-    private fun verifyDownloadedItemsOnStartup() {
-        viewModelScope.launch {
-            val urls = runCatching {
-                repository.getAllItemsSnapshot()
-                    .map { it.url }
-                    .filter { it.isNotBlank() }
+    fun reconcileDownloadedItemsOnDemand(): Unit {
+        if (downloadedReconciliationJob?.isActive == true) return
+        downloadedReconciliationJob = viewModelScope.launch {
+            val snapshot = runCatching {
+                @Suppress("USELESS_ELVIS")
+                repository.getAllItemsSnapshot() ?: emptyList()
             }.getOrDefault(emptyList())
+            val urls = snapshot.asSequence().map { it.url }.filter { it.isNotBlank() }.toList()
             if (urls.isEmpty()) return@launch
             val results = refreshChapterCacheStatesSuspend(urls)
-            autoResumeIncompleteDownloads(results)
+            val wantedUrls = snapshot.asSequence().filter { it.isDownloaded }.map { it.url }.toSet()
+            autoResumeIncompleteDownloads(results, wantedUrls)
         }
     }
 
-    private fun autoResumeIncompleteDownloads(results: List<PrefetchResult>) {
-        val targets = results.filter {
-            it.isPersistentDownload &&
-                it.htmlCached &&
-                !it.isComplete &&
-                !it.isInProgress &&
-                it.totalImages > 0 &&
-                it.cachedImages < it.totalImages
+    private fun autoResumeIncompleteDownloads(results: List<PrefetchResult>, userWantedUrls: Set<String>) {
+        // Two ways a chapter qualifies as an in-flight-but-incomplete download:
+        //  - inspect reports it as a persistent download with images still missing
+        //  - DB remembers the user asked for it (isDownloaded=true) but html cache was lost
+        //    (cache eviction, manual clear) — these are invisible to the first condition
+        //    because isPersistentDownload requires htmlCached=true.
+        val targets = results.filter { result ->
+            if (result.isInProgress) return@filter false
+            val wanted = result.isPersistentDownload || result.url in userWantedUrls
+            if (!wanted) return@filter false
+            val missingHtml = !result.htmlCached
+            val missingImages = result.htmlCached &&
+                result.totalImages > 0 &&
+                result.cachedImages < result.totalImages
+            missingHtml || missingImages
         }
         if (targets.isEmpty()) return
         Log.d(TAG, "Auto-resuming ${targets.size} incomplete downloads")
-        targets.forEach { contentRepository.beginUserDownload(it.url) }
-        val gate = Semaphore(LIBRARY_PREFETCH_CONCURRENCY)
-        viewModelScope.launch {
-            supervisorScope {
-                targets.map { state ->
-                    async {
-                        try {
-                            gate.withPermit {
-                                setCacheState(state.copy(isInProgress = true, isRetryable = false))
-                                runCatching {
-                                    val result = contentRepository.prefetchWithProgress(
-                                        state.url,
-                                        PrefetchMode.USER_REQUESTED
-                                    ) { setCacheState(it) }
-                                    setCacheState(result)
-                                    syncDownloadedFlag(state.url, result)
-                                }
-                            }
-                        } finally {
-                            contentRepository.endUserDownload(state.url)
-                        }
-                    }
-                }.awaitAll()
-            }
+        targets.forEach { state ->
+            setCacheState(
+                state.copy(
+                    isInProgress = true,
+                    isRetryable = false,
+                    isPersistentDownload = true
+                )
+            )
+            downloadQueue.enqueue(state.url)
         }
     }
 
@@ -186,6 +184,15 @@ class LibraryViewModel @Inject constructor(
                 )
             }.collect { newState ->
                 updateState { newState }
+            }
+        }
+    }
+
+    private fun observeDownloadQueue(): Unit {
+        viewModelScope.launch {
+            downloadQueue.observeAll().collect { results ->
+                if (results.isEmpty()) return@collect
+                _chapterCacheStates.update { current -> current + results }
             }
         }
     }
@@ -383,64 +390,46 @@ class LibraryViewModel @Inject constructor(
         baseNovelUrl: String,
         sourceName: String
     ): Unit {
-        chapters.forEach { contentRepository.beginUserDownload(it.url) }
         viewModelScope.launch {
             chapters.forEach { chapter ->
-                try {
-                    runCatching {
-                        val libraryItem = repository.getItemByUrl(chapter.url)
-                            ?: repository.addItem(
-                                title = chapter.title,
-                                url = chapter.url,
-                                contentType = ContentType.WEB,
-                                currentChapter = TextUtils.extractChapterLabel(chapter.title)
-                                    ?: TextUtils.extractChapterLabelFromUrl(chapter.url)
-                                    ?: chapter.title,
-                                baseTitle = baseTitle,
-                                baseNovelUrl = baseNovelUrl,
-                                sourceName = sourceName
-                            )
-                        setCacheState(
-                            PrefetchResult(
-                                url = chapter.url,
-                                htmlCached = false,
-                                totalImages = 0,
-                                cachedImages = 0,
-                                isComplete = false,
-                                isInProgress = true,
-                                isPersistentDownload = true
-                            )
+                runCatching {
+                    repository.getItemByUrl(chapter.url)
+                        ?: repository.addItem(
+                            title = chapter.title,
+                            url = chapter.url,
+                            contentType = ContentType.WEB,
+                            currentChapter = TextUtils.extractChapterLabel(chapter.title)
+                                ?: TextUtils.extractChapterLabelFromUrl(chapter.url)
+                                ?: chapter.title,
+                            baseTitle = baseTitle,
+                            baseNovelUrl = baseNovelUrl,
+                            sourceName = sourceName
                         )
-                        val result = contentRepository.prefetchWithProgress(
-                            chapter.url,
-                            PrefetchMode.USER_REQUESTED
-                        ) { setCacheState(it) }
-                        setCacheState(result)
-                        syncDownloadedFlag(libraryItem, result)
+                }.onSuccess {
+                    setCacheState(
+                        PrefetchResult(
+                            url = chapter.url,
+                            htmlCached = false,
+                            totalImages = 0,
+                            cachedImages = 0,
+                            isComplete = false,
+                            isInProgress = true,
+                            isRetryable = false,
+                            isPersistentDownload = true
+                        )
+                    )
+                    downloadQueue.enqueue(chapter.url)
+                }.onFailure { e ->
+                    updateState { state ->
+                        state.copy(error = "Failed to queue chapter download: ${e.message}")
                     }
-                } finally {
-                    contentRepository.endUserDownload(chapter.url)
                 }
             }
         }
     }
 
-    private suspend fun syncDownloadedFlag(url: String, result: PrefetchResult) {
-        val item = repository.getItemByUrl(url) ?: return
-        syncDownloadedFlag(item, result)
-    }
-
-    // Promote-only: inspection can confirm a chapter is now downloaded, but must never
-    // demote a previously-downloaded chapter. Demotion belongs to explicit user actions
-    // (removeDownload, library deletion, reader auto-delete) so a transient inspect miss
-    // (e.g. an image that's a permanent 404 outside the sidecar, a file mtime change)
-    // can't silently wipe the badge.
-    private suspend fun syncDownloadedFlag(item: LibraryItem, result: PrefetchResult) {
-        val shouldBeDownloaded = result.isPersistentDownload && result.isComplete
-        if (shouldBeDownloaded && !item.isDownloaded) {
-            repository.markDownloaded(item.id, true)
-        }
-    }
+    // All DB-flag writes go through [downloadStatusReconciler] so the badge, the DB flag,
+    // and on-disk state cannot disagree. See DownloadStatusReconciler for the rule.
 
     fun fetchAndAdd(url: String): Unit {
         viewModelScope.launch {
@@ -538,38 +527,20 @@ class LibraryViewModel @Inject constructor(
                 } else {
                     repository.libraryItems.value
                 }
-                items.forEach { contentRepository.beginUserDownload(it.url) }
-                val gate = Semaphore(LIBRARY_PREFETCH_CONCURRENCY)
-                supervisorScope {
-                    items.map { item ->
-                        async {
-                            try {
-                                setCacheState(
-                                    PrefetchResult(
-                                        url = item.url,
-                                        htmlCached = false,
-                                        totalImages = 0,
-                                        cachedImages = 0,
-                                        isComplete = false,
-                                        isInProgress = true,
-                                        isPersistentDownload = true
-                                    )
-                                )
-                                gate.withPermit {
-                                    runCatching {
-                                        val result = contentRepository.prefetchWithProgress(
-                                            item.url,
-                                            PrefetchMode.USER_REQUESTED
-                                        ) { setCacheState(it) }
-                                        setCacheState(result)
-                                        syncDownloadedFlag(item.url, result)
-                                    }
-                                }
-                            } finally {
-                                contentRepository.endUserDownload(item.url)
-                            }
-                        }
-                    }.awaitAll()
+                items.forEach { item ->
+                    setCacheState(
+                        PrefetchResult(
+                            url = item.url,
+                            htmlCached = false,
+                            totalImages = 0,
+                            cachedImages = 0,
+                            isComplete = false,
+                            isInProgress = true,
+                            isRetryable = false,
+                            isPersistentDownload = true
+                        )
+                    )
+                    downloadQueue.enqueue(item.url)
                 }
                 updateState { it.copy(isLoading = false) }
             }.onFailure { e ->
@@ -579,22 +550,16 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun retryDownload(url: String): Unit {
-        contentRepository.beginUserDownload(url)
         viewModelScope.launch {
-            try {
-                runCatching { contentRepository.clearPermanentFailures(url) }
-                setCacheState(
-                    (uiState.value.chapterCacheStates[url] ?: PrefetchResult(url, false, 0, 0, false))
-                        .copy(isInProgress = true, isRetryable = false, isPersistentDownload = true)
-                )
-                runCatching {
-                    val result = contentRepository.prefetchWithProgress(url, PrefetchMode.USER_REQUESTED) { setCacheState(it) }
-                    setCacheState(result)
-                    syncDownloadedFlag(url, result)
-                }
-            } finally {
-                contentRepository.endUserDownload(url)
-            }
+            runCatching { contentRepository.clearPermanentFailures(url) }
+                .onFailure { e -> Log.w(TAG, "failed to clear permanent failures before retry: ${e.message}") }
+            setCacheState(
+                (uiState.value.chapterCacheStates[url] ?: PrefetchResult(url, false, 0, 0, false))
+                    .copy(isInProgress = true, isRetryable = false, isPersistentDownload = true)
+            )
+            // Replace any in-flight worker so the retry runs on a fresh attempt with the
+            // permanent-failure cleanup reflected.
+            downloadQueue.enqueue(url, replaceExisting = true)
         }
     }
 
@@ -605,6 +570,7 @@ class LibraryViewModel @Inject constructor(
     fun removeDownload(itemId: String): Unit {
         viewModelScope.launch {
             val item = repository.getItemById(itemId) ?: return@launch
+            downloadQueue.cancel(item.url)
             runCatching {
                 contentRepository.clearDownload(item.url)
                 repository.markDownloaded(itemId, false)
@@ -717,23 +683,31 @@ class LibraryViewModel @Inject constructor(
             .associateBy { it.url }
 
         val results = supervisorScope {
+            val semaphore = Semaphore(CACHE_STATE_REFRESH_CONCURRENCY)
             targetUrls.map { url ->
                 async {
-                    val item = libraryItemsByUrl[url]
-                    val downloadResult = if (item != null) {
-                        runCatching { contentRepository.inspectDownload(url) }.getOrNull()
-                    } else {
-                        null
+                    semaphore.withPermit {
+                        val item = libraryItemsByUrl[url]
+                        val downloadResult = if (item != null) {
+                            runCatching { contentRepository.inspectDownload(url) }.getOrNull()
+                        } else {
+                            null
+                        }
+                        val useDownloadResult = item?.isDownloaded == true || downloadResult.hasDownloadEvidence()
+                        val result = if (useDownloadResult) {
+                            downloadResult
+                        } else {
+                            runCatching { contentRepository.inspectCache(url) }.getOrNull()
+                        }
+                        if (item != null && result != null && !result.isInProgress) {
+                            downloadStatusReconciler.reconcile(
+                                item,
+                                result,
+                                wasUserInspect = useDownloadResult
+                            )
+                        }
+                        result
                     }
-                    val result = if (item?.isDownloaded == true || downloadResult.hasDownloadEvidence()) {
-                        downloadResult
-                    } else {
-                        runCatching { contentRepository.inspectCache(url) }.getOrNull()
-                    }
-                    if (item != null && result != null && !result.isInProgress) {
-                        syncDownloadedFlag(item, result)
-                    }
-                    result
                 }
             }.awaitAll().filterNotNull()
         }

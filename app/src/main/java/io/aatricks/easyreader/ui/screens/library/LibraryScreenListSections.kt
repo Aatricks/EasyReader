@@ -559,7 +559,11 @@ private fun NovelChapterList(
                     ChapterSummaryDropdown(
                         summary = streamingSummary,
                         isGenerating = summaryUiState.isGenerating && summaryUiState.activeChapterUrl == chapterUrl,
-                        isAvailable = summaryViewModel.isServiceReady() || summaryUiState.isInitializing,
+                        aiSupportedInBuild = summaryUiState.supportsAi,
+                        aiOptedIn = summaryUiState.isEnabled,
+                        onEnableAi = { summaryViewModel.setAiSummaryEnabled(true) },
+                        isInitializing = summaryUiState.isInitializing,
+                        isReady = summaryViewModel.isServiceReady(),
                         onGenerateSummary = {
                             scope.launch {
                                 val result = readerViewModel.contentRepository.loadContent(chapterUrl)

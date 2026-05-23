@@ -15,6 +15,8 @@ import io.aatricks.easyreader.data.repository.content.WebContentLoader
 import io.aatricks.easyreader.data.repository.content.ImageCache
 import io.aatricks.easyreader.data.repository.content.ImageDownloader
 import io.aatricks.easyreader.data.repository.content.ParsedContentCache
+import io.aatricks.easyreader.data.repository.content.WebOfflineChapterStore
+import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -89,9 +91,28 @@ class ContentRepositoryEpubTest {
         // Use anyString() for Uri.parse
         mockedUriStatic.`when`<Uri> { Uri.parse(org.mockito.ArgumentMatchers.anyString()) }.thenReturn(mockUri)
 
-        val webLoader = WebContentLoader(mockHtmlParser, okHttpClient, ImageCache(mediaCache, mediaDownloads), ImageDownloader(okHttpClient), ParsedContentCache(), htmlCache, htmlDownloads)
+        val imageDimCache = fakeImageDimensionCacheRepository()
+        val imageDownloader = ImageDownloader(okHttpClient)
+        val imageCache = ImageCache(mediaCache, mediaDownloads)
+        val webLoader = WebContentLoader(
+            mockHtmlParser,
+            okHttpClient,
+            imageCache,
+            imageDownloader,
+            ParsedContentCache(),
+            htmlCache,
+            htmlDownloads,
+            io.aatricks.easyreader.data.repository.content.InMemoryPermanentFailureStore(),
+            imageDimCache,
+            WebOfflineChapterStore(
+                File(tempDir, "web_offline").apply { mkdirs() },
+                mockHtmlParser,
+                imageDownloader,
+                imageCache
+            )
+        )
         val pdfLoader = PdfContentLoader(mockContext, DefaultPdfDocumentOpener(mockContext))
-        val epubLoader = EpubContentLoader(mockContext, epubCache, epubDownloads)
+        val epubLoader = EpubContentLoader(mockContext, epubCache, epubDownloads, imageDimCache)
         val localLoader = LocalContentLoader(mockContext, mockHtmlParser, pdfLoader, epubLoader, contentUriTypeResolver)
 
         repository = ContentRepository(webLoader, pdfLoader, epubLoader, localLoader, contentUriTypeResolver, mockContext, okHttpClient)

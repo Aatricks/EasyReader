@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.ChapterInfo
 import io.aatricks.easyreader.data.model.PrefetchResult
+import io.aatricks.easyreader.data.model.isStrictOfflineReady
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
@@ -463,6 +464,7 @@ internal sealed class ChapterStatus {
     data object CurrentlyReading : ChapterStatus()
     data object Downloaded : ChapterStatus()
     data object Caching : ChapterStatus()
+    data object VerifyingDownload : ChapterStatus()
     data class DownloadIncomplete(val cached: Int, val total: Int) : ChapterStatus()
     data object InLibrary : ChapterStatus()
 }
@@ -477,11 +479,21 @@ internal fun chapterCacheStatusKind(
     val hasManagedDownload = isDownloaded || (isInLibrary && cacheState?.isPersistentDownload == true)
     if (cacheState?.isInProgress == true && (isInLibrary || hasManagedDownload)) return ChapterStatus.Caching
     if (hasManagedDownload && cacheState != null) {
-        if (cacheState.isComplete) return ChapterStatus.Downloaded
-        if (cacheState.totalImages > 0) {
+        // "Downloaded" requires the chapter to be fully present on disk. Chapters where some
+        // images ended up as permanent failures (404/403/etc.) are reported as incomplete so
+        // the user sees the missing-image count and a retry control instead of a misleading
+        // "Downloaded" badge that would then surface "Image unavailable" on open.
+        if (cacheState.isStrictOfflineReady()) {
+            return ChapterStatus.Downloaded
+        }
+        if (cacheState.isPersistentDownload && cacheState.totalImages > 0) {
             return ChapterStatus.DownloadIncomplete(cacheState.cachedImages, cacheState.totalImages)
         }
     }
+    // Device transfer / old installs can restore the DB flag without the corresponding
+    // files. Until a downloads-tier inspect proves the files are present, do not show the
+    // chapter as Downloaded.
+    if (isDownloaded && cacheState == null) return ChapterStatus.VerifyingDownload
     if (isInLibrary) return ChapterStatus.InLibrary
     return null
 }
@@ -500,6 +512,7 @@ internal fun chapterCacheStatusText(
     ChapterStatus.CurrentlyReading -> "Currently reading"
     ChapterStatus.Downloaded -> "Downloaded"
     ChapterStatus.Caching -> "Downloading..."
+    ChapterStatus.VerifyingDownload -> "Verifying download..."
     is ChapterStatus.DownloadIncomplete -> "Download incomplete: ${kind.cached}/${kind.total} images"
     ChapterStatus.InLibrary -> "In library"
     null -> null
@@ -510,6 +523,7 @@ internal fun chapterCacheStatusLabel(status: ChapterStatus?): String? = when (st
     ChapterStatus.CurrentlyReading -> stringResource(R.string.chapter_status_currently_reading)
     ChapterStatus.Downloaded -> stringResource(R.string.chapter_status_downloaded)
     ChapterStatus.Caching -> stringResource(R.string.chapter_status_caching)
+    ChapterStatus.VerifyingDownload -> stringResource(R.string.chapter_status_verifying_download)
     is ChapterStatus.DownloadIncomplete -> stringResource(
         R.string.chapter_status_download_incomplete,
         status.cached,

@@ -3,13 +3,20 @@
     Cloud backup is intentionally empty: SharedPreferences and the Room database hold
     chapter URLs, last-read positions, and the library list. Sending those to a
     Google Drive account that may differ from the device owner is a privacy leak,
-    and SharedPreferences backup has no key-level granularity. Settings rebuild on a
-    fresh install.
+    and SharedPreferences backup has no key-level granularity. App-private files are
+    excluded too because persistent chapter downloads live under filesDir/downloads;
+    stale image files should not be restored after uninstall/reinstall.
 
     Device-to-device transfer (same user, physically migrated) keeps the full dataset.
 -->
 <data-extraction-rules>
-    <cloud-backup disableIfNoEncryptionCapabilities="true" />
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
     <device-transfer>
         <include domain="sharedpref" path="." />
         <include domain="database" path="." />

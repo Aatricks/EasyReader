@@ -108,13 +108,33 @@ class ChapterListSheetSelectionTest {
                 htmlCached = true,
                 totalImages = 5,
                 cachedImages = 5,
-                isComplete = true
+                isComplete = true,
+                isPersistentDownload = true
             ),
             isInLibrary = true,
             isDownloaded = true
         )
 
         assertEquals("Downloaded", status)
+    }
+
+    @Test
+    fun `chapter cache status does not trust non-persistent complete cache as downloaded`() {
+        val status = chapterCacheStatusText(
+            isCurrent = false,
+            cacheState = PrefetchResult(
+                url = "url-1",
+                htmlCached = true,
+                totalImages = 5,
+                cachedImages = 5,
+                isComplete = true,
+                isPersistentDownload = false
+            ),
+            isInLibrary = true,
+            isDownloaded = true
+        )
+
+        assertEquals("In library", status)
     }
 
     @Test
@@ -165,5 +185,37 @@ class ChapterListSheetSelectionTest {
         )
 
         assertNull(status)
+    }
+
+    @Test
+    fun `chapter cache status surfaces permanent failures as download incomplete not downloaded`() {
+        val status = chapterCacheStatusText(
+            isCurrent = false,
+            cacheState = PrefetchResult(
+                url = "url-1",
+                htmlCached = true,
+                totalImages = 5,
+                cachedImages = 3,
+                isComplete = true,
+                isPersistentDownload = true,
+                hasPermanentFailures = true
+            ),
+            isInLibrary = true,
+            isDownloaded = true
+        )
+
+        assertEquals("Download incomplete: 3/5 images", status)
+    }
+
+    @Test
+    fun `chapter cache status verifies db remembered download when cache state is missing`() {
+        val status = chapterCacheStatusText(
+            isCurrent = false,
+            cacheState = null,
+            isInLibrary = true,
+            isDownloaded = true
+        )
+
+        assertEquals("Verifying download...", status)
     }
 }

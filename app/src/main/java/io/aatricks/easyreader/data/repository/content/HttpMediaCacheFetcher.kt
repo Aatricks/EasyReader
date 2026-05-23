@@ -7,11 +7,12 @@ import coil3.decode.ImageSource
 import coil3.fetch.FetchResult
 import coil3.fetch.Fetcher
 import coil3.fetch.SourceFetchResult
+import android.util.Log
 import coil3.network.httpHeaders
 import coil3.request.Options
 import io.aatricks.easyreader.data.repository.ContentRepository
+import io.aatricks.easyreader.util.UrlSanitizer
 import okio.Path.Companion.toPath
-import java.io.File
 
 val ChapterPageUrlExtra: Extras.Key<String?> = Extras.Key(default = null)
 
@@ -20,31 +21,34 @@ class HttpMediaCacheFetcher(
     private val contentRepository: ContentRepository,
     private val options: Options
 ) : Fetcher {
-    private companion object {
-        const val HTML_SIGNATURE_SNIFF_BYTES = 512
-    }
 
     override suspend fun fetch(): FetchResult? {
         val pageUrl = options.extras[ChapterPageUrlExtra]?.takeIf { it.isNotBlank() }
-        val chapterDownloaded = pageUrl != null && contentRepository.isDownloaded(pageUrl)
-        val tier = if (chapterDownloaded) StorageTier.DOWNLOADS else StorageTier.CACHE
+        val safeUrl = UrlSanitizer.sanitize(url)
 
-        val cachedFile = contentRepository.getCachedMediaFile(url)
-        val file = if (cachedFile.isUsableCachedMedia()) {
-            if (chapterDownloaded && !contentRepository.isImageDownloaded(url)) {
-                contentRepository.promoteImageToDownloads(url) ?: cachedFile
-            } else {
-                cachedFile
-            }
+        val cachedFile = contentRepository.findUsableCachedMediaFile(url)
+        Log.d(
+            "HttpMediaCacheFetcher",
+            "fetch img=$safeUrl cacheHit=${cachedFile != null}"
+        )
+
+        val file = if (cachedFile != null) {
+            cachedFile
         } else {
-            if (cachedFile.exists()) {
-                cachedFile.delete()
-            }
+            contentRepository.invalidateCachedMediaFile(url, pageUrl)
             val referer = pageUrl ?: requestReferer()
-            contentRepository.downloadAndCacheImage(url, referer, tier) ?: return null
+            val refetched = contentRepository.downloadAndCacheImage(url, referer)
+            if (refetched == null) {
+                Log.w("HttpMediaCacheFetcher", "refetch FAILED img=$safeUrl (offline or network error)")
+                return null
+            }
+            refetched
         }
 
-        if (!file.exists() || file.length() <= 0L) return null
+        if (!file.exists() || file.length() <= 0L) {
+            Log.w("HttpMediaCacheFetcher", "final file missing img=$safeUrl path=${file.absolutePath} exists=${file.exists()} len=${file.length()}")
+            return null
+        }
 
         return SourceFetchResult(
             source = ImageSource(file.absolutePath.toPath(), options.fileSystem),
@@ -71,28 +75,4 @@ class HttpMediaCacheFetcher(
         }
     }
 
-    private fun File.isUsableCachedMedia(): Boolean {
-        if (!exists() || length() <= 0L) return false
-        return !isLikelyHtmlPayload()
-    }
-
-    private fun File.isLikelyHtmlPayload(): Boolean {
-        return runCatching {
-            inputStream().use { stream ->
-                val bytes = ByteArray(HTML_SIGNATURE_SNIFF_BYTES)
-                val read = stream.read(bytes)
-                if (read <= 0) return@runCatching false
-                val prefix = bytes.decodeToString(endIndex = read)
-                    .trimStart()
-                    .lowercase()
-                when {
-                    prefix.startsWith("<svg") -> false
-                    prefix.startsWith("<!doctype") -> true
-                    prefix.startsWith("<html") -> true
-                    prefix.startsWith("<") && prefix.contains("cloudflare") -> true
-                    else -> false
-                }
-            }
-        }.getOrDefault(false)
-    }
 }

@@ -3,6 +3,7 @@ package io.aatricks.easyreader.data.repository.content
 import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.repository.HtmlParser
+import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
@@ -124,12 +125,26 @@ class WebContentLoaderBenchmarkTest {
         val root = Files.createTempDirectory("web-loader-bench").toFile()
         val htmlCacheDir = File(root, "html_cache").apply { mkdirs() }
         val mediaCacheDir = File(root, "media_cache").apply { mkdirs() }
+        val htmlDownloadsDir = File(root, "html_downloads").apply { mkdirs() }
+        val mediaDownloadsDir = File(root, "media_downloads").apply { mkdirs() }
+        val webOfflineDir = File(root, "web_offline").apply { mkdirs() }
         val client = OkHttpClient.Builder()
             .addInterceptor(interceptor)
             .build()
-        val imageCache = ImageCache(mediaCacheDir)
+        val imageCache = ImageCache(mediaCacheDir, mediaDownloadsDir)
         val imageDownloader = ImageDownloader(client)
-        return WebContentLoader(htmlParser, client, imageCache, imageDownloader, htmlCacheDir)
+        return WebContentLoader(
+            htmlParser,
+            client,
+            imageCache,
+            imageDownloader,
+            ParsedContentCache(),
+            htmlCacheDir,
+            htmlDownloadsDir,
+            InMemoryPermanentFailureStore(),
+            fakeImageDimensionCacheRepository(),
+            WebOfflineChapterStore(webOfflineDir, htmlParser, imageDownloader, imageCache)
+        )
     }
 
     private fun buildResponse(

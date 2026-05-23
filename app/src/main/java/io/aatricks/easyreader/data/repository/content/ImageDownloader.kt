@@ -2,11 +2,8 @@ package io.aatricks.easyreader.data.repository.content
 
 import io.aatricks.easyreader.data.model.ImageRequestPriority
 import io.aatricks.easyreader.util.HttpRetry
+import io.aatricks.easyreader.util.HttpTimeouts
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -16,7 +13,6 @@ import okio.sink
 import java.io.File
 import java.io.IOException
 import java.net.URI
-import java.util.LinkedHashMap
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -37,49 +33,31 @@ sealed interface ImageFetchResult {
 
 @Singleton
 class ImageDownloader @Inject constructor(
-    private val okHttpClient: OkHttpClient
+    private val okHttpClient: OkHttpClient,
+    private val hostThrottle: HostThrottle = HostThrottle()
 ) {
     companion object {
-        private const val NON_ESSENTIAL_TIMEOUT_SECONDS = 5L
-        private const val USER_TIMEOUT_SECONDS = 15L
-        private const val HOST_SUCCESS_SPACING_MS = 25L
-        private const val HOST_RATE_LIMIT_SPACING_MS = 1200L
-        private const val HOST_NETWORK_ERROR_SPACING_MS = 300L
-        private const val PER_HOST_CONCURRENCY = 8
-        private const val MAX_HOST_THROTTLE_STATES = 256
-        const val MAX_HOST_THROTTLE_MS = 10_000L
+        const val MAX_HOST_THROTTLE_MS = HostThrottle.MAX_RETRY_AFTER_MS
         private const val USER_REQUEST_ATTEMPTS = 3
         private const val SHORT_REQUEST_ATTEMPTS = 2
         private const val MAX_IMAGE_BYTES = 20 * 1024 * 1024L // 20MB
         private const val MAX_DIMENSION_SNIFF_BYTES = 64 * 1024L // 64KB
         private const val MANGABAT_REFERER = "https://www.mangabats.com/"
         private const val MANGANATO_REFERER = "https://manganato.com/"
+        const val SUPPORTED_IMAGE_ACCEPT_HEADER = "image/webp,image/jpeg,image/png,image/gif,image/*;q=0.8,*/*;q=0.5"
     }
 
     private val shortTimeoutClient = okHttpClient.newBuilder()
-        .callTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .connectTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .readTimeout(NON_ESSENTIAL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(HttpTimeouts.NON_ESSENTIAL_SECONDS, TimeUnit.SECONDS)
+        .connectTimeout(HttpTimeouts.NON_ESSENTIAL_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(HttpTimeouts.NON_ESSENTIAL_SECONDS, TimeUnit.SECONDS)
         .build()
 
     private val userTimeoutClient = okHttpClient.newBuilder()
-        .callTimeout(USER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .connectTimeout(USER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .readTimeout(USER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(HttpTimeouts.USER_REQUEST_SECONDS, TimeUnit.SECONDS)
+        .connectTimeout(HttpTimeouts.USER_REQUEST_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(HttpTimeouts.USER_REQUEST_SECONDS, TimeUnit.SECONDS)
         .build()
-
-    private val hostThrottleMutex = Mutex()
-    private val hostThrottleStates = object : LinkedHashMap<String, HostThrottleState>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, HostThrottleState>?): Boolean {
-            return size > MAX_HOST_THROTTLE_STATES
-        }
-    }
-
-    private data class HostThrottleState(
-        val semaphore: Semaphore = Semaphore(PER_HOST_CONCURRENCY),
-        val throttleMutex: Mutex = Mutex(),
-        var nextAllowedAtMs: Long = 0L
-    )
 
     suspend fun executeImageRequest(
         imageUrl: String,
@@ -95,19 +73,24 @@ class ImageDownloader @Inject constructor(
         repeat(attempts) { attempt ->
             when (
                 val result = runCatching {
-                    executeHostThrottled(imageUrl) {
-                        val requestBuilder = Request.Builder()
-                            .url(imageUrl)
-                            .addHeader("User-Agent", "Mozilla/5.0")
-                            .addHeader("Referer", getReferer(pageUrl))
-                        if (rangeHeader != null) {
-                            requestBuilder.addHeader("Range", rangeHeader)
-                        }
+                    hostThrottle.execute(
+                        url = imageUrl,
+                        block = {
+                            val requestBuilder = Request.Builder()
+                                .url(imageUrl)
+                                .addHeader("User-Agent", "Mozilla/5.0")
+                                .addHeader("Accept", SUPPORTED_IMAGE_ACCEPT_HEADER)
+                                .addHeader("Referer", getReferer(pageUrl))
+                            if (rangeHeader != null) {
+                                requestBuilder.addHeader("Range", rangeHeader)
+                            }
 
-                        client.newCall(requestBuilder.build()).execute().use { response ->
-                            parseImageResponse(response, destinationFile)
-                        }
-                    }
+                            client.newCall(requestBuilder.build()).execute().use { response ->
+                                parseImageResponse(response, destinationFile)
+                            }
+                        },
+                        classify = ::classifyImageOutcome
+                    )
                 }.getOrElse { throwable ->
                     ImageFetchResult.NetworkError(throwable as? IOException ?: IOException(throwable))
                 }
@@ -130,57 +113,16 @@ class ImageDownloader @Inject constructor(
         return ImageFetchResult.HttpError(code = 0)
     }
 
-    private suspend fun executeHostThrottled(
-        imageUrl: String,
-        block: suspend () -> ImageFetchResult
-    ): ImageFetchResult {
-        val state = hostThrottleStateFor(imageUrl)
-        return state.semaphore.withPermit {
-            waitForHostThrottle(state)
-            val result = block()
-            recordHostResult(state, result)
-            result
+    private fun classifyImageOutcome(result: ImageFetchResult): HostThrottle.Outcome = when (result) {
+        is ImageFetchResult.HttpError -> when {
+            result.code == 429 -> HostThrottle.Outcome.RateLimited(result.retryAfterMs)
+            HttpRetry.shouldRetryResponseCode(result.code) -> HostThrottle.Outcome.RetryableError
+            else -> HostThrottle.Outcome.Success
         }
-    }
-
-    private suspend fun waitForHostThrottle(state: HostThrottleState) {
-        state.throttleMutex.withLock {
-            val waitMs = (state.nextAllowedAtMs - System.currentTimeMillis()).coerceAtLeast(0L)
-            if (waitMs > 0) {
-                delay(waitMs)
-            }
-        }
-    }
-
-    private suspend fun recordHostResult(state: HostThrottleState, result: ImageFetchResult) {
-        val spacingMs = when (result) {
-            is ImageFetchResult.HttpError -> {
-                val retryAfter = result.retryAfterMs
-                when {
-                    result.code == 429 && retryAfter != null -> retryAfter
-                    HttpRetry.shouldRetryResponseCode(result.code) -> HOST_RATE_LIMIT_SPACING_MS
-                    else -> HOST_SUCCESS_SPACING_MS
-                }
-            }
-            is ImageFetchResult.NetworkError -> HOST_NETWORK_ERROR_SPACING_MS
-            is ImageFetchResult.Success,
-            is ImageFetchResult.BoundedSuccess,
-            is ImageFetchResult.TooLarge -> HOST_SUCCESS_SPACING_MS
-        }
-
-        state.throttleMutex.withLock {
-            val nextAllowed = System.currentTimeMillis() + spacingMs
-            if (nextAllowed > state.nextAllowedAtMs) {
-                state.nextAllowedAtMs = nextAllowed
-            }
-        }
-    }
-
-    private suspend fun hostThrottleStateFor(imageUrl: String): HostThrottleState {
-        val hostKey = imageUrl.toHttpUrlOrNull()?.host?.lowercase() ?: imageUrl
-        return hostThrottleMutex.withLock {
-            hostThrottleStates.getOrPut(hostKey) { HostThrottleState() }
-        }
+        is ImageFetchResult.NetworkError -> HostThrottle.Outcome.NetworkError
+        is ImageFetchResult.Success,
+        is ImageFetchResult.BoundedSuccess,
+        is ImageFetchResult.TooLarge -> HostThrottle.Outcome.Success
     }
 
     private fun parseImageResponse(
@@ -204,9 +146,9 @@ class ImageDownloader @Inject constructor(
 
         return if (destinationFile != null) {
             try {
+                var totalRead = 0L
                 destinationFile.sink().buffer().use { sink ->
                     val source = body.source()
-                    var totalRead = 0L
                     while (true) {
                         val read = source.read(sink.buffer, 8192)
                         if (read == -1L) break
@@ -216,6 +158,16 @@ class ImageDownloader @Inject constructor(
                         }
                         sink.emitCompleteSegments()
                     }
+                }
+                // Some servers close the connection mid-stream without throwing — OkHttp
+                // returns -1 cleanly and we end up persisting a truncated body. If the
+                // response advertised a Content-Length, fail loud when the bytes we got
+                // don't match so the retry path runs and the disk file never enters the
+                // cache in a half-baked state.
+                if (contentLength != -1L && totalRead != contentLength) {
+                    return ImageFetchResult.NetworkError(
+                        IOException("Short read: got $totalRead, expected $contentLength")
+                    )
                 }
                 ImageFetchResult.Success(destinationFile)
             } catch (e: Exception) {

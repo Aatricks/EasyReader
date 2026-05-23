@@ -68,7 +68,7 @@ import kotlin.math.abs
 @Composable
 fun ReaderScreen(
     readerViewModel: ReaderViewModel,
-    libraryViewModel: LibraryViewModel,
+    libraryViewModelProvider: () -> LibraryViewModel,
     navController: NavController,
     onOpenFilePicker: () -> Unit,
     modifier: Modifier = Modifier
@@ -168,15 +168,24 @@ fun ReaderScreen(
             ModalDrawerSheet(
                 modifier = Modifier.width(320.dp)
             ) {
-                LibraryDrawerContent(
-                    libraryViewModel = libraryViewModel,
-                    readerViewModel = readerViewModel,
-                    navController = navController,
-                    onOpenFilePicker = onOpenFilePicker,
-                    onCloseDrawer = {
-                        scope.launch { drawerState.close() }
+                val drawerIsOpeningOrOpen =
+                    drawerState.currentValue == DrawerValue.Open ||
+                        drawerState.targetValue == DrawerValue.Open
+                if (drawerIsOpeningOrOpen) {
+                    val libraryViewModel = libraryViewModelProvider()
+                    LaunchedEffect(libraryViewModel) {
+                        libraryViewModel.reconcileDownloadedItemsOnDemand()
                     }
-                )
+                    LibraryDrawerContent(
+                        libraryViewModel = libraryViewModel,
+                        readerViewModel = readerViewModel,
+                        navController = navController,
+                        onOpenFilePicker = onOpenFilePicker,
+                        onCloseDrawer = {
+                            scope.launch { drawerState.close() }
+                        }
+                    )
+                }
             }
         }
     ) {
@@ -228,7 +237,7 @@ fun ReaderScreen(
     if (showChapterList) {
         ChapterListSheet(
             uiState = uiState,
-            libraryViewModel = libraryViewModel,
+            libraryViewModel = libraryViewModelProvider(),
             onDismiss = { showChapterList = false },
             onNavigateToChapter = { url, title ->
                 scope.launch {
