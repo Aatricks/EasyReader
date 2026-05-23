@@ -1000,10 +1000,13 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                 Log.d(TAG, "USER_REQUESTED prefetch start url=$safeUrl totalImages=${imageUrls.size}")
                 emitProgress?.invoke()
                 for (pass in 0 until USER_REQUEST_PREFETCH_PASSES) {
-                    val knownPermanent = loadPermanentFailures(url)
-                    val missingImages = imageUrls.filterNot {
-                        imageCache.isDownloaded(it) || it in knownPermanent
-                    }
+                    // Intentionally do NOT consult the permanent-failure store here. A
+                    // USER_REQUESTED prefetch is the user pressing retry; honoring a prior
+                    // sidecar entry would make the manual retry a no-op for chapters
+                    // previously misclassified as permanently failed (e.g. transient 404s
+                    // from an overloaded CDN). The single-pass guard at line ~1027 still
+                    // breaks early once the fresh attempt confirms the failure is permanent.
+                    val missingImages = imageUrls.filterNot { imageCache.isDownloaded(it) }
                     if (missingImages.isEmpty()) {
                         Log.d(TAG, "USER_REQUESTED prefetch complete url=$safeUrl pass=$pass")
                         break
