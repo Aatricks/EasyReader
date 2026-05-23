@@ -33,6 +33,7 @@ class DownloadStatusReconciler @Inject constructor(
     fun isFullyDownloaded(result: PrefetchResult): Boolean =
         result.isStrictOfflineReady()
 
+    @Suppress("ReturnCount")
     suspend fun reconcile(
         item: LibraryItem,
         result: PrefetchResult,

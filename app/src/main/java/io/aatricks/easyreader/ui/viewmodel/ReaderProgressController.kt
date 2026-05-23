@@ -348,20 +348,34 @@ class ReaderProgressController(
         }
 
         val isStable = firstVisibleItemSize >= MIN_STABLE_ITEM_SIZE_PX
-        val effectiveFraction = if (isStable) offsetFraction.coerceIn(0f, 1f) else FRACTION_UNKNOWN
+        val isTerminal = !canScrollForward
+        val effectiveFraction = when {
+            isTerminal -> offsetFraction.coerceIn(0f, 1f)
+            isStable -> offsetFraction.coerceIn(0f, 1f)
+            else -> FRACTION_UNKNOWN
+        }
 
         val nextState = _progressState.value.copy(
             scrollPosition = progress,
             scrollProgress = progressInt,
             scrollIndex = index,
-            scrollElementKey = if (isStable) elementKey else _progressState.value.scrollElementKey,
+            scrollElementKey = if (isStable || isTerminal) elementKey else _progressState.value.scrollElementKey,
             scrollOffsetFraction = effectiveFraction,
             firstVisibleItemSize = firstVisibleItemSize
         )
         _progressState.value = nextState
 
-        // Only schedule a DB write when the sample is stable enough to be meaningful.
-        if (!isStable || !isSnapshotPersistable(content, nextState)) {
+        // Terminal end-of-chapter samples are explicit intent: persist them via the
+        // PAGED_POSITION_ITEM_SIZE_PX sentinel so isSnapshotPersistable bypasses the
+        // upstream-layout-stability gate (which near the end almost always fails because
+        // earlier images haven't been measured yet).
+        val persistSnapshot = if (isTerminal) {
+            nextState.copy(firstVisibleItemSize = PAGED_POSITION_ITEM_SIZE_PX)
+        } else {
+            nextState
+        }
+
+        if ((!isStable && !isTerminal) || !isSnapshotPersistable(content, persistSnapshot)) {
             lastRawScrollOffset = scrollOffset
             return
         }
@@ -376,7 +390,8 @@ class ReaderProgressController(
                     index = index,
                     elementKey = elementKey,
                     offsetFraction = effectiveFraction,
-                    content = content
+                    content = content,
+                    forcePersist = isTerminal
                 )
             }
             lastRawScrollOffset = scrollOffset
@@ -390,7 +405,8 @@ class ReaderProgressController(
         elementKey: String? = null,
         offsetFraction: Float? = null,
         currentChapterUrl: String? = null,
-        content: ChapterContent? = null
+        content: ChapterContent? = null,
+        forcePersist: Boolean = false
     ) {
         val itemId = currentLibraryItemId ?: return
         runCatching {
@@ -405,7 +421,8 @@ class ReaderProgressController(
                 scrollProgress = progress,
                 scrollIndex = lastIndex,
                 scrollElementKey = lastElementKey,
-                scrollOffsetFraction = lastFraction
+                scrollOffsetFraction = lastFraction,
+                firstVisibleItemSize = if (forcePersist) PAGED_POSITION_ITEM_SIZE_PX else latest.firstVisibleItemSize
             )
 
             if (isPlaceholderAtCurrentPosition(content, lastIndex)) return@runCatching

@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber")
+
 package io.aatricks.easyreader.util
 
 import java.io.File
