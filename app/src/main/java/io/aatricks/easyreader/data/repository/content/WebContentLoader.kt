@@ -317,7 +317,12 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         var lastResult: PrefetchResult? = null
 
         repeat(maxAttempts) {
-            val existing = chapterPrefetchMutex.withLock { inFlightChapterPrefetches[url] }
+            val existing = chapterPrefetchMutex.withLock {
+                inFlightChapterPrefetches[url]?.takeIf { it.deferred.isCompleted }?.let {
+                    inFlightChapterPrefetches.remove(url)
+                }
+                inFlightChapterPrefetches[url]
+            }
             // A USER_REQUESTED caller must NOT reuse an in-flight SPECULATIVE prefetch:
             // SPECULATIVE only downloads HTML and would return isComplete=false without
             // ever fetching images. Awaiting it makes the user's tap "finish" without
@@ -398,6 +403,13 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         }
 
         val active = chapterPrefetchMutex.withLock {
+            // invokeOnCompletion cleanup is scheduled via repositoryScope.launch and can
+            // lag behind sequential downloadChapter calls. Drop a completed deferred here
+            // so a repeat USER_REQUESTED retry actually runs a fresh prefetch instead of
+            // awaiting the prior already-resolved result.
+            inFlightChapterPrefetches[url]?.takeIf { it.deferred.isCompleted }?.let {
+                inFlightChapterPrefetches.remove(url)
+            }
             val current = inFlightChapterPrefetches[url]
             if (current?.mode == PrefetchMode.USER_REQUESTED) {
                 deferred.cancel()
