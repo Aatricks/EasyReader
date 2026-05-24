@@ -1,6 +1,5 @@
 package io.aatricks.easyreader.ui.screens
 
-import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -126,14 +125,6 @@ internal fun ContentArea(
             .takeIf { it >= 0f }
             ?.coerceIn(0f, 1f)
 
-        Log.d(
-            "ReaderRestoreUi",
-            "restore entry targetIndex=$targetIndex targetFraction=$targetFraction " +
-                "scrollIndex=${uiState.scrollIndex} restoreKey=${if (uiState.restoreElementKey.isNotEmpty()) "<set>" else "<empty>"} " +
-                "isPrecise=${uiState.isPreciseRestore} scrollPosition=${uiState.scrollPosition} " +
-                "paragraphs=${content.paragraphs.size} isPagedMode=${uiState.isPagedMode}"
-        )
-
         // Paged mode: page index is the whole position, no intra-page fraction to chase.
         if (uiState.isPagedMode) {
             runCatching { pagerState.scrollToPage(targetIndex) }
@@ -149,17 +140,7 @@ internal fun ContentArea(
         }
 
         // Land at the item first so the LazyList composes it. Offset comes after measurement.
-        val initialScrollResult = runCatching { listState.scrollToItem(targetIndex, 0) }
-        Log.d(
-            "ReaderRestoreUi",
-            "after initial scrollToItem(targetIndex=$targetIndex,0) " +
-                "firstVisibleItemIndex=${listState.firstVisibleItemIndex} " +
-                "firstVisibleItemScrollOffset=${listState.firstVisibleItemScrollOffset} " +
-                "visibleItemsCount=${listState.layoutInfo.visibleItemsInfo.size} " +
-                "totalItemsCount=${listState.layoutInfo.totalItemsCount} " +
-                "viewportHeight=${listState.layoutInfo.viewportSize.height} " +
-                "result=${initialScrollResult.exceptionOrNull()?.javaClass?.simpleName ?: "ok"}"
-        )
+        runCatching { listState.scrollToItem(targetIndex, 0) }
 
         val hasFractionToChase = targetFraction != null && targetFraction > 0f
         val chasedFraction = targetFraction?.takeIf { hasFractionToChase } ?: 0f
@@ -214,13 +195,6 @@ internal fun ContentArea(
             kotlinx.coroutines.delay(RESTORE_STABILITY_POLL_INTERVAL_MS)
         }
 
-        Log.d(
-            "ReaderRestoreUi",
-            "watch loop exit firstVisibleItemIndex=${listState.firstVisibleItemIndex} " +
-                "firstVisibleItemScrollOffset=${listState.firstVisibleItemScrollOffset} " +
-                "targetIndex=$targetIndex elapsed=${RESTORE_MAX_WAIT_MS - (deadline - System.currentTimeMillis())}ms"
-        )
-
         // Final percent-based smoke check. Gates on userHasDragged (not the looser
         // hasUserInteractedSinceLoad) so programmatic / reflow-induced scroll events don't
         // suppress self-heal. Runs in every imprecise case AND for precise restores with no
@@ -233,33 +207,11 @@ internal fun ContentArea(
         ) {
             val visiblePercent = computeVisiblePercent(listState, content.paragraphs.size)
             val targetPercent = uiState.scrollPosition
-            val drift = visiblePercent?.let { abs(it - targetPercent) }
-            val willCorrect = visiblePercent != null && drift != null && drift > RESTORE_PERCENT_TOLERANCE
-            Log.d(
-                "ReaderRestoreUi",
-                "smoke check visiblePercent=$visiblePercent targetPercent=$targetPercent drift=$drift " +
-                    "userHasDragged=${readerViewModel.userHasDragged} willCorrect=$willCorrect"
-            )
-            if (willCorrect) {
+            if (visiblePercent != null && abs(visiblePercent - targetPercent) > RESTORE_PERCENT_TOLERANCE) {
                 val fallbackIndex = ((targetPercent / 100f) * content.paragraphs.lastIndex).toInt()
                     .coerceIn(0, content.paragraphs.lastIndex)
-                val correction = runCatching { listState.scrollToItem(fallbackIndex, 0) }
-                Log.d(
-                    "ReaderRestoreUi",
-                    "after corrective scrollToItem(fallbackIndex=$fallbackIndex,0) " +
-                        "firstVisibleItemIndex=${listState.firstVisibleItemIndex} " +
-                        "firstVisibleItemScrollOffset=${listState.firstVisibleItemScrollOffset} " +
-                        "visibleItemsCount=${listState.layoutInfo.visibleItemsInfo.size} " +
-                        "totalItemsCount=${listState.layoutInfo.totalItemsCount} " +
-                        "result=${correction.exceptionOrNull()?.javaClass?.simpleName ?: "ok"}"
-                )
+                runCatching { listState.scrollToItem(fallbackIndex, 0) }
             }
-        } else {
-            Log.d(
-                "ReaderRestoreUi",
-                "smoke check skipped userHasDragged=${readerViewModel.userHasDragged} " +
-                    "isPrecise=${uiState.isPreciseRestore} targetFraction=$targetFraction"
-            )
         }
 
         readerViewModel.markRestoreDone()
@@ -475,14 +427,20 @@ private fun resolveRestoreIndex(
 
 private fun computeVisiblePercent(listState: LazyListState, totalItems: Int): Float? {
     if (totalItems <= 0) return null
-    val firstItem = listState.layoutInfo.visibleItemsInfo.firstOrNull() ?: return null
+    val layoutInfo = listState.layoutInfo
+    val visibleItems = layoutInfo.visibleItemsInfo
+    val firstItem = visibleItems.firstOrNull() ?: return null
     if (firstItem.size <= 0) return null
-    val viewportHeight = listState.layoutInfo.viewportSize.height.toFloat()
-    val viewportInItems = viewportHeight / firstItem.size
-    val currentPos = firstItem.index.toFloat() + (listState.firstVisibleItemScrollOffset.toFloat() / firstItem.size)
-    val maxPos = (totalItems - 1).coerceAtLeast(0).toFloat() + viewportInItems
-    val denom = (maxPos - viewportInItems).coerceAtLeast(0.0001f)
-    return ((currentPos / denom) * 100f).coerceIn(0f, 100f)
+    val viewportPx = layoutInfo.viewportSize.height.toFloat().coerceAtLeast(1f)
+    val avgItemSizePx = visibleItems.map { it.size.toFloat() }
+        .average()
+        .toFloat()
+        .coerceAtLeast(1f)
+    val totalContentPx = totalItems.toFloat() * avgItemSizePx
+    val pixelsBeforeFirst = firstItem.index.toFloat() * avgItemSizePx
+    val currentPixelOffset = pixelsBeforeFirst + listState.firstVisibleItemScrollOffset.toFloat()
+    val scrollablePx = (totalContentPx - viewportPx).coerceAtLeast(1f)
+    return ((currentPixelOffset / scrollablePx) * 100f).coerceIn(0f, 100f)
 }
 
 internal fun shouldRunPercentRestoreFallback(
@@ -498,19 +456,29 @@ private fun buildScrollSnapshot(listState: LazyListState, content: ChapterConten
     if (firstItem.size <= 0) return null
 
     val itemSize = firstItem.size.coerceAtLeast(1)
-    val currentScrollOffset = firstItem.index.toFloat() +
-        (listState.firstVisibleItemScrollOffset.toFloat() / itemSize.toFloat())
-    val viewportHeightInItems = layoutInfo.viewportSize.height.toFloat() / itemSize.toFloat()
-    val maxScrollOffset = (layoutInfo.totalItemsCount - 1).coerceAtLeast(0).toFloat() + viewportHeightInItems
     val offsetFraction = (listState.firstVisibleItemScrollOffset.toFloat() / itemSize.toFloat()).coerceIn(0f, 1f)
     val elementKey = content.paragraphs.getOrNull(firstItem.index)
         ?.let { stableContentElementKey(content.url, firstItem.index, it) }
         ?: ""
 
+    // Pixel-weighted progress: stable across image-decode reflow that would otherwise
+    // drag percent down as items grow. Unmeasured items off-screen are estimated via the
+    // average of currently-measured items; in image-heavy chapters (manhwa) sizes cluster,
+    // so the estimate is accurate enough to keep the seek bar from sliding backward.
+    val totalItems = layoutInfo.totalItemsCount.coerceAtLeast(1)
+    val viewportPx = layoutInfo.viewportSize.height.toFloat().coerceAtLeast(1f)
+    val avgItemSizePx = visibleItems.map { it.size.toFloat() }
+        .average()
+        .toFloat()
+        .coerceAtLeast(1f)
+    val totalContentPx = totalItems.toFloat() * avgItemSizePx
+    val pixelsBeforeFirst = firstItem.index.toFloat() * avgItemSizePx
+    val currentPixelOffset = pixelsBeforeFirst + listState.firstVisibleItemScrollOffset.toFloat()
+
     return ReaderScrollSnapshot(
-        scrollOffset = currentScrollOffset,
-        maxScrollOffset = maxScrollOffset,
-        viewportHeightInItems = viewportHeightInItems,
+        scrollOffset = currentPixelOffset,
+        maxScrollOffset = totalContentPx,
+        viewportHeightInItems = viewportPx,
         index = listState.firstVisibleItemIndex,
         offsetFraction = offsetFraction,
         elementKey = elementKey,

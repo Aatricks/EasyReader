@@ -112,26 +112,11 @@ class ReaderProgressController(
             .coerceIn(0f, 100f)
         restoredScrollPercent = if (shouldRestoreAtTop) 0f else effectivePercent
 
-        Log.d(
-            TAG,
-            "calcInitial url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(content.url)} " +
-                "progress=${libraryItem.progress} lastScroll=${libraryItem.lastScrollPosition} " +
-                "lastReadIndex=${libraryItem.lastReadIndex} lastKey=${if (libraryItem.lastReadElementKey.isNotEmpty()) "<set>" else "<empty>"} " +
-                "lastFraction=${libraryItem.lastReadOffsetFraction} paragraphs=${content.paragraphs.size} " +
-                "effectivePercent=$effectivePercent shouldRestoreAtTop=$shouldRestoreAtTop isDownloaded=${libraryItem.isDownloaded}"
-        )
-
         val resolved = if (shouldRestoreAtTop) {
             ResolvedPosition(index = 0, elementKey = "", fraction = 0f, isPrecise = false)
         } else {
             resolveRestoredIndex(content, libraryItem, effectivePercent)
         }
-
-        Log.d(
-            TAG,
-            "resolvedRestore index=${resolved.index} fraction=${resolved.fraction} " +
-                "isPrecise=${resolved.isPrecise} key=${if (resolved.elementKey.isNotEmpty()) "<set>" else "<empty>"}"
-        )
 
         val state = ReaderProgressState(
             scrollPosition = if (shouldRestoreAtTop) 0f else effectivePercent,
@@ -153,13 +138,9 @@ class ReaderProgressController(
         libraryItem: LibraryItem,
         effectivePercent: Float = libraryItem.lastScrollPosition
     ): ResolvedPosition {
-        fun trace(path: String, result: ResolvedPosition): ResolvedPosition {
-            Log.d(TAG, "resolveRestoredIndex path=$path -> index=${result.index} fraction=${result.fraction} isPrecise=${result.isPrecise}")
-            return result
-        }
         val totalItems = content.paragraphs.size
         if (totalItems <= 0) {
-            return trace("empty", ResolvedPosition(index = 0, elementKey = "", fraction = 0f, isPrecise = false))
+            return ResolvedPosition(index = 0, elementKey = "", fraction = 0f, isPrecise = false)
         }
         val lastItemIndex = totalItems - 1
 
@@ -181,14 +162,11 @@ class ReaderProgressController(
                 }
             }
             if (bestIdx >= 0) {
-                return trace(
-                    "2-elementKey",
-                    ResolvedPosition(
-                        index = bestIdx,
-                        elementKey = savedKey,
-                        fraction = libraryItem.lastReadOffsetFraction.takeIf { it >= 0f } ?: 0f,
-                        isPrecise = true
-                    )
+                return ResolvedPosition(
+                    index = bestIdx,
+                    elementKey = savedKey,
+                    fraction = libraryItem.lastReadOffsetFraction.takeIf { it >= 0f } ?: 0f,
+                    isPrecise = true
                 )
             }
         }
@@ -206,14 +184,11 @@ class ReaderProgressController(
             val refreshedKey = content.paragraphs.getOrNull(savedIndex)
                 ?.let { stableContentElementKey(content.url, savedIndex, it) }
                 ?: ""
-            return trace(
-                "3-savedIndex",
-                ResolvedPosition(
-                    index = savedIndex,
-                    elementKey = refreshedKey,
-                    fraction = if (hasUsableFraction) libraryItem.lastReadOffsetFraction else 0f,
-                    isPrecise = true
-                )
+            return ResolvedPosition(
+                index = savedIndex,
+                elementKey = refreshedKey,
+                fraction = if (hasUsableFraction) libraryItem.lastReadOffsetFraction else 0f,
+                isPrecise = true
             )
         }
 
@@ -225,10 +200,7 @@ class ReaderProgressController(
         val refreshedKey = content.paragraphs.getOrNull(derivedIndex)
             ?.let { stableContentElementKey(content.url, derivedIndex, it) }
             ?: ""
-        return trace(
-            "4-percent",
-            ResolvedPosition(index = derivedIndex, elementKey = refreshedKey, fraction = 0f, isPrecise = false)
-        )
+        return ResolvedPosition(index = derivedIndex, elementKey = refreshedKey, fraction = 0f, isPrecise = false)
     }
 
     fun markUserDragged() {
@@ -330,31 +302,13 @@ class ReaderProgressController(
             return false
         }
         if (isPlaceholderAtCurrentPosition(content, snapshot.scrollIndex)) return false
-        if (snapshot.firstVisibleItemSize != PAGED_POSITION_ITEM_SIZE_PX &&
-            !isLayoutStableThroughPosition(content, snapshot.scrollIndex)
-        ) {
-            return false
-        }
+        // Upstream-layout-stability gate intentionally NOT enforced here. Anchor fields
+        // (index + fraction + elementKey) are precise as long as the *current* item is
+        // measured, and the persisted percent is approximate by design (pixel-weighted
+        // estimate from visible items). Holding writes back because some image far above
+        // hasn't reported its dimensions yet leaves the DB stuck at a stale percent —
+        // exactly the "lands higher than I was" bug.
         return true
-    }
-
-    private fun isLayoutStableThroughPosition(content: ChapterContent, index: Int): Boolean {
-        val lastIndex = index.coerceIn(0, content.paragraphs.lastIndex)
-        return content.paragraphs
-            .asSequence()
-            .take(lastIndex + 1)
-            .all(::areElementDimensionsKnown)
-    }
-
-    private fun areElementDimensionsKnown(item: ContentElement): Boolean {
-        return when (item) {
-            is ContentElement.Image -> item.width > 0 && item.height > 0
-            is ContentElement.ImageGroup -> item.images.isEmpty() ||
-                item.images.all { it.width > 0 && it.height > 0 }
-            is ContentElement.PageContent -> item.elements.all(::areElementDimensionsKnown)
-            is ContentElement.Placeholder -> false
-            else -> true
-        }
     }
 
     fun updateScrollPosition(

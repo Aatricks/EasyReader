@@ -382,7 +382,10 @@ class ReaderProgressControllerTest {
     }
 
     @Test
-    fun `isSnapshotPersistable rejects unknown image dimensions before current position`() = runTest {
+    fun `isSnapshotPersistable accepts snapshot when current item is stable regardless of upstream image dimensions`() = runTest {
+        // Earlier policy rejected the write if any image before the current position lacked
+        // dimensions. That left the DB stuck at a stale percent on image-heavy chapters where
+        // upstream dims trickle in slowly — see "lands higher than I was" bug.
         val controller = ReaderProgressController(libraryRepository, this)
         val unstableContent = ChapterContent(
             paragraphs = listOf(
@@ -391,16 +394,6 @@ class ReaderProgressControllerTest {
             ),
             title = "Chapter 1",
             url = "https://example.com/webtoon/chapter-1"
-        )
-        val stableContent = unstableContent.copy(
-            paragraphs = listOf(
-                ContentElement.Image(
-                    url = "https://cdn.example.com/panel-1.jpg",
-                    width = 1080,
-                    height = 1920
-                ),
-                ContentElement.Text("Text after image")
-            )
         )
         val snapshot = ReaderProgressState(
             scrollPosition = 20f,
@@ -411,8 +404,7 @@ class ReaderProgressControllerTest {
             firstVisibleItemSize = 500
         )
 
-        assertEquals(false, controller.isSnapshotPersistable(unstableContent, snapshot))
-        assertEquals(true, controller.isSnapshotPersistable(stableContent, snapshot))
+        assertEquals(true, controller.isSnapshotPersistable(unstableContent, snapshot))
     }
 
     @Test
