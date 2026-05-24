@@ -105,74 +105,130 @@ class ReaderProgressController(
         }
 
         val shouldRestoreAtTop = libraryItem.progress == 0 && !libraryItem.hasRestorablePosition()
-        restoredScrollPercent = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition
+        // `progress` (Int 0..100) and `lastScrollPosition` (Float) are redundant percent sources
+        // that can diverge in old rows (partial writes). Trust the larger non-zero value so a
+        // surviving field still drives the seek bar and the percent fallback in agreement.
+        val effectivePercent = kotlin.math.max(libraryItem.lastScrollPosition, libraryItem.progress.toFloat())
+            .coerceIn(0f, 100f)
+        restoredScrollPercent = if (shouldRestoreAtTop) 0f else effectivePercent
+
+        Log.d(
+            TAG,
+            "calcInitial url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(content.url)} " +
+                "progress=${libraryItem.progress} lastScroll=${libraryItem.lastScrollPosition} " +
+                "lastReadIndex=${libraryItem.lastReadIndex} lastKey=${if (libraryItem.lastReadElementKey.isNotEmpty()) "<set>" else "<empty>"} " +
+                "lastFraction=${libraryItem.lastReadOffsetFraction} paragraphs=${content.paragraphs.size} " +
+                "effectivePercent=$effectivePercent shouldRestoreAtTop=$shouldRestoreAtTop isDownloaded=${libraryItem.isDownloaded}"
+        )
 
         val resolved = if (shouldRestoreAtTop) {
             ResolvedPosition(index = 0, elementKey = "", fraction = 0f, isPrecise = false)
         } else {
-            resolveRestoredIndex(content, libraryItem)
+            resolveRestoredIndex(content, libraryItem, effectivePercent)
         }
 
+        Log.d(
+            TAG,
+            "resolvedRestore index=${resolved.index} fraction=${resolved.fraction} " +
+                "isPrecise=${resolved.isPrecise} key=${if (resolved.elementKey.isNotEmpty()) "<set>" else "<empty>"}"
+        )
+
         val state = ReaderProgressState(
-            scrollPosition = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition,
-            scrollProgress = if (shouldRestoreAtTop) 0 else libraryItem.progress,
+            scrollPosition = if (shouldRestoreAtTop) 0f else effectivePercent,
+            scrollProgress = if (shouldRestoreAtTop) 0 else kotlin.math.max(libraryItem.progress, effectivePercent.toInt()),
             scrollIndex = resolved.index,
             scrollElementKey = resolved.elementKey,
             scrollOffsetFraction = resolved.fraction,
             isPreciseRestore = resolved.isPrecise,
             firstVisibleItemSize = 0,
             seekTrigger = 0L,
-            targetScrollPosition = if (shouldRestoreAtTop) 0f else libraryItem.lastScrollPosition
+            targetScrollPosition = if (shouldRestoreAtTop) 0f else effectivePercent
         )
         restoredProgressSnapshot = state
         return state
     }
 
-    private fun resolveRestoredIndex(content: ChapterContent, libraryItem: LibraryItem): ResolvedPosition {
+    private fun resolveRestoredIndex(
+        content: ChapterContent,
+        libraryItem: LibraryItem,
+        effectivePercent: Float = libraryItem.lastScrollPosition
+    ): ResolvedPosition {
+        fun trace(path: String, result: ResolvedPosition): ResolvedPosition {
+            Log.d(TAG, "resolveRestoredIndex path=$path -> index=${result.index} fraction=${result.fraction} isPrecise=${result.isPrecise}")
+            return result
+        }
         val totalItems = content.paragraphs.size
         if (totalItems <= 0) {
-            return ResolvedPosition(index = 0, elementKey = "", fraction = 0f, isPrecise = false)
+            return trace("empty", ResolvedPosition(index = 0, elementKey = "", fraction = 0f, isPrecise = false))
         }
         val lastItemIndex = totalItems - 1
 
         // (2) Stable element-key anchor — survives reorderings, splits, item-count drift.
+        // When duplicate keys exist (e.g. site logo image URL repeated), pick the occurrence
+        // closest to `lastReadIndex` so a header duplicate doesn't drag the reader to the top.
         val savedKey = libraryItem.lastReadElementKey
         if (savedKey.isNotEmpty()) {
+            val anchorIndex = libraryItem.lastReadIndex.coerceIn(0, lastItemIndex)
+            var bestIdx = -1
+            var bestDistance = Int.MAX_VALUE
             content.paragraphs.forEachIndexed { idx, element ->
                 if (stableContentElementKey(content.url, idx, element) == savedKey) {
-                    return ResolvedPosition(
-                        index = idx,
+                    val distance = kotlin.math.abs(idx - anchorIndex)
+                    if (distance < bestDistance) {
+                        bestDistance = distance
+                        bestIdx = idx
+                    }
+                }
+            }
+            if (bestIdx >= 0) {
+                return trace(
+                    "2-elementKey",
+                    ResolvedPosition(
+                        index = bestIdx,
                         elementKey = savedKey,
                         fraction = libraryItem.lastReadOffsetFraction.takeIf { it >= 0f } ?: 0f,
                         isPrecise = true
                     )
-                }
+                )
             }
         }
 
-        // (3) Saved index with usable fraction.
+        // (3) Saved index with usable fraction. Suspicious case: `lastReadIndex==0` with a
+        // zero fraction while the percent says we're far in — this looks like a partial-write
+        // ghost row, so we fall through to the percent fallback instead of trusting index 0.
         val savedIndex = libraryItem.lastReadIndex.coerceIn(0, lastItemIndex)
         val hasUsableFraction = libraryItem.lastReadOffsetFraction >= 0f
         val hasSavedPosition = libraryItem.lastReadIndex > 0 || hasUsableFraction
-        if (hasSavedPosition) {
+        val suspiciousZeroIndex = libraryItem.lastReadIndex == 0 &&
+            libraryItem.lastReadOffsetFraction <= 0f &&
+            effectivePercent > 5f
+        if (hasSavedPosition && !suspiciousZeroIndex) {
             val refreshedKey = content.paragraphs.getOrNull(savedIndex)
                 ?.let { stableContentElementKey(content.url, savedIndex, it) }
                 ?: ""
-            return ResolvedPosition(
-                index = savedIndex,
-                elementKey = refreshedKey,
-                fraction = if (hasUsableFraction) libraryItem.lastReadOffsetFraction else 0f,
-                isPrecise = true
+            return trace(
+                "3-savedIndex",
+                ResolvedPosition(
+                    index = savedIndex,
+                    elementKey = refreshedKey,
+                    fraction = if (hasUsableFraction) libraryItem.lastReadOffsetFraction else 0f,
+                    isPrecise = true
+                )
             )
         }
 
-        // (4) Percent fallback. Legacy rows with missing key/fraction land here.
-        val percent = libraryItem.lastScrollPosition.coerceIn(0f, 100f) / 100f
+        // (4) Percent fallback. Legacy rows with missing key/fraction land here. Use
+        // `effectivePercent` (max of `progress` and `lastScrollPosition`) so a stale-zero
+        // `lastScrollPosition` doesn't drag the reader to the top while `progress` says 89%.
+        val percent = effectivePercent.coerceIn(0f, 100f) / 100f
         val derivedIndex = (percent * lastItemIndex).toInt().coerceIn(0, lastItemIndex)
         val refreshedKey = content.paragraphs.getOrNull(derivedIndex)
             ?.let { stableContentElementKey(content.url, derivedIndex, it) }
             ?: ""
-        return ResolvedPosition(index = derivedIndex, elementKey = refreshedKey, fraction = 0f, isPrecise = false)
+        return trace(
+            "4-percent",
+            ResolvedPosition(index = derivedIndex, elementKey = refreshedKey, fraction = 0f, isPrecise = false)
+        )
     }
 
     fun markUserDragged() {
@@ -496,7 +552,8 @@ private fun LibraryItem.hasRestorablePosition(): Boolean =
     lastReadElementKey.isNotEmpty() ||
         lastReadIndex > 0 ||
         lastReadOffsetFraction >= 0f ||
-        lastScrollPosition > 0f
+        lastScrollPosition > 0f ||
+        progress > 0
 
 /**
  * Lifted from the Compose renderer so non-UI code can resolve element anchors. Keep this

@@ -1,5 +1,6 @@
 package io.aatricks.easyreader.ui.screens
 
+import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -125,6 +126,14 @@ internal fun ContentArea(
             .takeIf { it >= 0f }
             ?.coerceIn(0f, 1f)
 
+        Log.d(
+            "ReaderRestoreUi",
+            "restore entry targetIndex=$targetIndex targetFraction=$targetFraction " +
+                "scrollIndex=${uiState.scrollIndex} restoreKey=${if (uiState.restoreElementKey.isNotEmpty()) "<set>" else "<empty>"} " +
+                "isPrecise=${uiState.isPreciseRestore} scrollPosition=${uiState.scrollPosition} " +
+                "paragraphs=${content.paragraphs.size} isPagedMode=${uiState.isPagedMode}"
+        )
+
         // Paged mode: page index is the whole position, no intra-page fraction to chase.
         if (uiState.isPagedMode) {
             runCatching { pagerState.scrollToPage(targetIndex) }
@@ -140,50 +149,82 @@ internal fun ContentArea(
         }
 
         // Land at the item first so the LazyList composes it. Offset comes after measurement.
-        runCatching { listState.scrollToItem(targetIndex, 0) }
+        val initialScrollResult = runCatching { listState.scrollToItem(targetIndex, 0) }
+        Log.d(
+            "ReaderRestoreUi",
+            "after initial scrollToItem(targetIndex=$targetIndex,0) " +
+                "firstVisibleItemIndex=${listState.firstVisibleItemIndex} " +
+                "firstVisibleItemScrollOffset=${listState.firstVisibleItemScrollOffset} " +
+                "visibleItemsCount=${listState.layoutInfo.visibleItemsInfo.size} " +
+                "totalItemsCount=${listState.layoutInfo.totalItemsCount} " +
+                "viewportHeight=${listState.layoutInfo.viewportSize.height} " +
+                "result=${initialScrollResult.exceptionOrNull()?.javaClass?.simpleName ?: "ok"}"
+        )
 
-        if (targetFraction == null || targetFraction == 0f) {
-            readerViewModel.markRestoreDone()
-            return@LaunchedEffect
-        }
+        val hasFractionToChase = targetFraction != null && targetFraction > 0f
+        val chasedFraction = targetFraction?.takeIf { hasFractionToChase } ?: 0f
 
-        // Watch-until-stable: re-apply the intra-item fraction every time the target item
-        // grows significantly (image decode reflow), and lock in once the size is unchanged
-        // for RESTORE_STABILITY_DURATION_MS. Bails immediately on a real user drag. A 3s
-        // hard cap prevents runaway loops on very slow networks.
+        // Watch-until-stable: re-apply scrollToItem every time the list state diverges from
+        // the target. Critical for two reasons:
+        //   1. Image-heavy chapters (manhwa): items start at placeholder size, so all of them
+        //      fit the viewport and scrollToItem is a no-op (the list isn't scrollable yet).
+        //      Once images decode the list grows, but firstVisibleItemIndex stays at 0 unless
+        //      we re-apply the scroll.
+        //   2. Intra-item fraction restore: as the target item grows from image decode reflow,
+        //      the absolute pixel offset changes, so the fraction must be re-applied at the
+        //      new size.
+        // Bails immediately on real user drag. 3s hard cap prevents runaway loops.
         val deadline = System.currentTimeMillis() + RESTORE_MAX_WAIT_MS
         var lastAppliedSize = 0
+        var lastAppliedIndex = -1
         var stableSince = 0L
 
         while (System.currentTimeMillis() < deadline && !readerViewModel.userHasDragged) {
+            val onTargetIndex = listState.firstVisibleItemIndex == targetIndex
             val size = listState.layoutInfo.visibleItemsInfo
                 .firstOrNull { it.index == targetIndex }
                 ?.size ?: 0
-            if (size >= MIN_STABLE_ITEM_SIZE_PX) {
-                if (size == lastAppliedSize) {
-                    if (stableSince == 0L) stableSince = System.currentTimeMillis()
-                    if (System.currentTimeMillis() - stableSince >= RESTORE_STABILITY_DURATION_MS) {
-                        val offsetPx = (size * targetFraction).toInt().coerceIn(0, size)
-                        runCatching { listState.scrollToItem(targetIndex, offsetPx) }
-                        break
-                    }
-                } else {
-                    val grewEnough = lastAppliedSize == 0 ||
-                        abs(size - lastAppliedSize).toFloat() / lastAppliedSize.toFloat() >= RESTORE_REJUMP_THRESHOLD
-                    if (grewEnough) {
-                        val offsetPx = (size * targetFraction).toInt().coerceIn(0, size)
-                        runCatching { listState.scrollToItem(targetIndex, offsetPx) }
-                        lastAppliedSize = size
-                    }
-                    stableSince = 0L
-                }
+            val sizeStable = size >= MIN_STABLE_ITEM_SIZE_PX
+            // Re-fire scroll if we're not on the target index yet, OR if the target item
+            // grew enough that the intra-item offset needs recomputing.
+            val needsScroll = !onTargetIndex || (
+                hasFractionToChase && sizeStable && (
+                    lastAppliedIndex != targetIndex ||
+                        size != lastAppliedSize && (
+                            lastAppliedSize == 0 ||
+                                abs(size - lastAppliedSize).toFloat() / lastAppliedSize.toFloat() >= RESTORE_REJUMP_THRESHOLD
+                            )
+                    )
+                )
+            if (needsScroll) {
+                val offsetPx = if (hasFractionToChase && sizeStable) {
+                    (size * chasedFraction).toInt().coerceIn(0, size)
+                } else 0
+                runCatching { listState.scrollToItem(targetIndex, offsetPx) }
+                lastAppliedSize = if (sizeStable) size else lastAppliedSize
+                lastAppliedIndex = targetIndex
+                stableSince = 0L
+            } else if (onTargetIndex && (!hasFractionToChase || sizeStable)) {
+                // Locked in: either no fraction to chase (any landing on target is fine), or
+                // fraction applied at a stable size. Confirm stability over a short window
+                // before exiting so a mid-decode equilibrium doesn't fool us.
+                if (stableSince == 0L) stableSince = System.currentTimeMillis()
+                if (System.currentTimeMillis() - stableSince >= RESTORE_STABILITY_DURATION_MS) break
             }
             kotlinx.coroutines.delay(RESTORE_STABILITY_POLL_INTERVAL_MS)
         }
 
+        Log.d(
+            "ReaderRestoreUi",
+            "watch loop exit firstVisibleItemIndex=${listState.firstVisibleItemIndex} " +
+                "firstVisibleItemScrollOffset=${listState.firstVisibleItemScrollOffset} " +
+                "targetIndex=$targetIndex elapsed=${RESTORE_MAX_WAIT_MS - (deadline - System.currentTimeMillis())}ms"
+        )
+
         // Final percent-based smoke check. Gates on userHasDragged (not the looser
         // hasUserInteractedSinceLoad) so programmatic / reflow-induced scroll events don't
-        // suppress self-heal.
+        // suppress self-heal. Runs in every imprecise case AND for precise restores with no
+        // intra-item fraction — catches "landed at the wrong index but seek bar says 89%".
         if (!readerViewModel.userHasDragged &&
             shouldRunPercentRestoreFallback(
                 isPreciseRestore = uiState.isPreciseRestore,
@@ -192,11 +233,33 @@ internal fun ContentArea(
         ) {
             val visiblePercent = computeVisiblePercent(listState, content.paragraphs.size)
             val targetPercent = uiState.scrollPosition
-            if (visiblePercent != null && abs(visiblePercent - targetPercent) > RESTORE_PERCENT_TOLERANCE) {
+            val drift = visiblePercent?.let { abs(it - targetPercent) }
+            val willCorrect = visiblePercent != null && drift != null && drift > RESTORE_PERCENT_TOLERANCE
+            Log.d(
+                "ReaderRestoreUi",
+                "smoke check visiblePercent=$visiblePercent targetPercent=$targetPercent drift=$drift " +
+                    "userHasDragged=${readerViewModel.userHasDragged} willCorrect=$willCorrect"
+            )
+            if (willCorrect) {
                 val fallbackIndex = ((targetPercent / 100f) * content.paragraphs.lastIndex).toInt()
                     .coerceIn(0, content.paragraphs.lastIndex)
-                runCatching { listState.scrollToItem(fallbackIndex, 0) }
+                val correction = runCatching { listState.scrollToItem(fallbackIndex, 0) }
+                Log.d(
+                    "ReaderRestoreUi",
+                    "after corrective scrollToItem(fallbackIndex=$fallbackIndex,0) " +
+                        "firstVisibleItemIndex=${listState.firstVisibleItemIndex} " +
+                        "firstVisibleItemScrollOffset=${listState.firstVisibleItemScrollOffset} " +
+                        "visibleItemsCount=${listState.layoutInfo.visibleItemsInfo.size} " +
+                        "totalItemsCount=${listState.layoutInfo.totalItemsCount} " +
+                        "result=${correction.exceptionOrNull()?.javaClass?.simpleName ?: "ok"}"
+                )
             }
+        } else {
+            Log.d(
+                "ReaderRestoreUi",
+                "smoke check skipped userHasDragged=${readerViewModel.userHasDragged} " +
+                    "isPrecise=${uiState.isPreciseRestore} targetFraction=$targetFraction"
+            )
         }
 
         readerViewModel.markRestoreDone()
@@ -425,7 +488,7 @@ private fun computeVisiblePercent(listState: LazyListState, totalItems: Int): Fl
 internal fun shouldRunPercentRestoreFallback(
     isPreciseRestore: Boolean,
     targetFraction: Float?
-): Boolean = !isPreciseRestore && targetFraction != null && targetFraction > 0f
+): Boolean = !isPreciseRestore || targetFraction == null || targetFraction == 0f
 
 private fun buildScrollSnapshot(listState: LazyListState, content: ChapterContent): ReaderScrollSnapshot? {
     if (content.paragraphs.isEmpty()) return null

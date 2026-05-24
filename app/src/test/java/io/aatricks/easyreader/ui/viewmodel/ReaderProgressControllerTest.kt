@@ -216,6 +216,47 @@ class ReaderProgressControllerTest {
     }
 
     @Test
+    fun `calculateInitialPosition uses progress as percent source when lastScrollPosition is stale-zero`() = runTest {
+        // Regression: divergent row where `progress` got persisted but `lastScrollPosition`
+        // was left at 0 (e.g. a partial-field write). Before the fix this resolved to
+        // derivedIndex=0 → reader at top while the seek bar showed 89%.
+        val controller = ReaderProgressController(libraryRepository, this)
+
+        val libraryItem = LibraryItem(
+            id = "test-id",
+            url = "http://example.com/novel",
+            title = "Novel",
+            currentChapter = "Chapter 1",
+            currentChapterUrl = "http://example.com/1",
+            progress = 89,
+            lastScrollPosition = 0f,
+            lastReadIndex = 0,
+            lastReadElementKey = "",
+            lastReadOffsetFraction = FRACTION_UNKNOWN,
+            contentType = ContentType.WEB
+        )
+
+        val content = ChapterContent(
+            paragraphs = List(101) { ContentElement.Text("Text $it") },
+            title = "Chapter 1",
+            url = "http://example.com/1"
+        )
+
+        val state = controller.calculateInitialPosition(
+            content = content,
+            libraryItem = libraryItem,
+            fromBottom = false,
+            isExplicitNavigation = false
+        )
+
+        // 89% of (101-1) = 89
+        assertEquals(89, state.scrollIndex)
+        assertEquals(89f, state.scrollPosition)
+        assertEquals(89, state.scrollProgress)
+        assertTrue(state.scrollElementKey.isNotEmpty())
+    }
+
+    @Test
     fun `calculateInitialPosition for explicit navigation starts from top`() = runTest {
         val controller = ReaderProgressController(libraryRepository, this)
 

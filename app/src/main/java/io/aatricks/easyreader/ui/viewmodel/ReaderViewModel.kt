@@ -941,11 +941,20 @@ class ReaderViewModel @Inject constructor(
 
             effectiveLibraryItemId?.let { id ->
                 libraryRepository.markAsCurrentlyReading(id)
-                libraryRepository.saveProgressAsync(
+                // Write the full anchor set, not just `progress`. Leaving the other fields
+                // `Unchanged` lets `progress` drift away from `lastScrollPosition` /
+                // `lastReadIndex` / `lastReadElementKey`, which on relaunch produces the
+                // "seek bar 89%, reader at top" bug — the seek bar reads `progress` but
+                // the percent-fallback restore reads `lastScrollPosition`.
+                libraryRepository.saveProgressExplicitAsync(
                     itemId = id,
                     currentChapter = chapterTitle,
-                    progress = initialPosition.scrollProgress,
-                    currentChapterUrl = content.url
+                    progress = FieldUpdate.Set(initialPosition.scrollProgress),
+                    currentChapterUrl = FieldUpdate.Set(content.url),
+                    lastScrollProgress = FieldUpdate.Set(initialPosition.scrollPosition),
+                    lastReadIndex = FieldUpdate.Set(initialPosition.scrollIndex),
+                    lastReadElementKey = FieldUpdate.Set(initialPosition.scrollElementKey),
+                    lastReadOffsetFraction = FieldUpdate.Set(initialPosition.scrollOffsetFraction)
                 )
             }
 
