@@ -168,13 +168,13 @@ internal fun ContentArea(
             val sizeStable = size >= MIN_STABLE_ITEM_SIZE_PX
             // Re-fire scroll if we're not on the target index yet, OR if the target item
             // grew enough that the intra-item offset needs recomputing.
+            val sizeChangedEnough = lastAppliedSize == 0 ||
+                abs(size - lastAppliedSize).toFloat() /
+                lastAppliedSize.toFloat() >= RESTORE_REJUMP_THRESHOLD
             val needsScroll = !onTargetIndex || (
                 hasFractionToChase && sizeStable && (
                     lastAppliedIndex != targetIndex ||
-                        size != lastAppliedSize && (
-                            lastAppliedSize == 0 ||
-                                abs(size - lastAppliedSize).toFloat() / lastAppliedSize.toFloat() >= RESTORE_REJUMP_THRESHOLD
-                            )
+                        size != lastAppliedSize && sizeChangedEnough
                     )
                 )
             if (needsScroll) {

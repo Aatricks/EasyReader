@@ -59,6 +59,7 @@ class ReaderProgressController(
         private const val MIN_SCROLL_PROGRESS_DELTA_PERCENT = 0.35f
         const val MIN_STABLE_ITEM_SIZE_PX = 96
         const val PAGED_POSITION_ITEM_SIZE_PX = Int.MAX_VALUE
+        private const val SUSPICIOUS_ZERO_INDEX_PERCENT_THRESHOLD = 5f
     }
 
     fun syncProgressState(state: ReaderProgressState) {
@@ -118,9 +119,14 @@ class ReaderProgressController(
             resolveRestoredIndex(content, libraryItem, effectivePercent)
         }
 
+        val resolvedProgress = if (shouldRestoreAtTop) {
+            0
+        } else {
+            kotlin.math.max(libraryItem.progress, effectivePercent.toInt())
+        }
         val state = ReaderProgressState(
             scrollPosition = if (shouldRestoreAtTop) 0f else effectivePercent,
-            scrollProgress = if (shouldRestoreAtTop) 0 else kotlin.math.max(libraryItem.progress, effectivePercent.toInt()),
+            scrollProgress = resolvedProgress,
             scrollIndex = resolved.index,
             scrollElementKey = resolved.elementKey,
             scrollOffsetFraction = resolved.fraction,
@@ -144,14 +150,24 @@ class ReaderProgressController(
         }
         val lastItemIndex = totalItems - 1
 
-        // (2) Stable element-key anchor — survives reorderings, splits, item-count drift.
-        // When duplicate keys exist (e.g. site logo image URL repeated), pick the occurrence
-        // closest to `lastReadIndex` so a header duplicate doesn't drag the reader to the top.
+        return resolveByElementKey(content, libraryItem, lastItemIndex)
+            ?: resolveBySavedIndex(content, libraryItem, lastItemIndex, effectivePercent)
+            ?: resolveByPercent(content, lastItemIndex, effectivePercent)
+    }
+
+    // (2) Stable element-key anchor — survives reorderings, splits, item-count drift.
+    // When duplicate keys exist (e.g. site logo image URL repeated), pick the occurrence
+    // closest to `lastReadIndex` so a header duplicate doesn't drag the reader to the top.
+    private fun resolveByElementKey(
+        content: ChapterContent,
+        libraryItem: LibraryItem,
+        lastItemIndex: Int
+    ): ResolvedPosition? {
         val savedKey = libraryItem.lastReadElementKey
+        val anchorIndex = libraryItem.lastReadIndex.coerceIn(0, lastItemIndex)
+        var bestIdx = -1
+        var bestDistance = Int.MAX_VALUE
         if (savedKey.isNotEmpty()) {
-            val anchorIndex = libraryItem.lastReadIndex.coerceIn(0, lastItemIndex)
-            var bestIdx = -1
-            var bestDistance = Int.MAX_VALUE
             content.paragraphs.forEachIndexed { idx, element ->
                 if (stableContentElementKey(content.url, idx, element) == savedKey) {
                     val distance = kotlin.math.abs(idx - anchorIndex)
@@ -161,40 +177,54 @@ class ReaderProgressController(
                     }
                 }
             }
-            if (bestIdx >= 0) {
-                return ResolvedPosition(
-                    index = bestIdx,
-                    elementKey = savedKey,
-                    fraction = libraryItem.lastReadOffsetFraction.takeIf { it >= 0f } ?: 0f,
-                    isPrecise = true
-                )
-            }
         }
+        return if (bestIdx < 0) {
+            null
+        } else {
+            ResolvedPosition(
+                index = bestIdx,
+                elementKey = savedKey,
+                fraction = libraryItem.lastReadOffsetFraction.takeIf { it >= 0f } ?: 0f,
+                isPrecise = true
+            )
+        }
+    }
 
-        // (3) Saved index with usable fraction. Suspicious case: `lastReadIndex==0` with a
-        // zero fraction while the percent says we're far in — this looks like a partial-write
-        // ghost row, so we fall through to the percent fallback instead of trusting index 0.
+    // (3) Saved index with usable fraction. Suspicious case: `lastReadIndex==0` with a
+    // zero fraction while the percent says we're far in — this looks like a partial-write
+    // ghost row, so we fall through to the percent fallback instead of trusting index 0.
+    private fun resolveBySavedIndex(
+        content: ChapterContent,
+        libraryItem: LibraryItem,
+        lastItemIndex: Int,
+        effectivePercent: Float
+    ): ResolvedPosition? {
         val savedIndex = libraryItem.lastReadIndex.coerceIn(0, lastItemIndex)
         val hasUsableFraction = libraryItem.lastReadOffsetFraction >= 0f
         val hasSavedPosition = libraryItem.lastReadIndex > 0 || hasUsableFraction
         val suspiciousZeroIndex = libraryItem.lastReadIndex == 0 &&
             libraryItem.lastReadOffsetFraction <= 0f &&
-            effectivePercent > 5f
-        if (hasSavedPosition && !suspiciousZeroIndex) {
-            val refreshedKey = content.paragraphs.getOrNull(savedIndex)
-                ?.let { stableContentElementKey(content.url, savedIndex, it) }
-                ?: ""
-            return ResolvedPosition(
-                index = savedIndex,
-                elementKey = refreshedKey,
-                fraction = if (hasUsableFraction) libraryItem.lastReadOffsetFraction else 0f,
-                isPrecise = true
-            )
-        }
+            effectivePercent > SUSPICIOUS_ZERO_INDEX_PERCENT_THRESHOLD
+        if (!hasSavedPosition || suspiciousZeroIndex) return null
+        val refreshedKey = content.paragraphs.getOrNull(savedIndex)
+            ?.let { stableContentElementKey(content.url, savedIndex, it) }
+            ?: ""
+        return ResolvedPosition(
+            index = savedIndex,
+            elementKey = refreshedKey,
+            fraction = if (hasUsableFraction) libraryItem.lastReadOffsetFraction else 0f,
+            isPrecise = true
+        )
+    }
 
-        // (4) Percent fallback. Legacy rows with missing key/fraction land here. Use
-        // `effectivePercent` (max of `progress` and `lastScrollPosition`) so a stale-zero
-        // `lastScrollPosition` doesn't drag the reader to the top while `progress` says 89%.
+    // (4) Percent fallback. Legacy rows with missing key/fraction land here. Use
+    // `effectivePercent` (max of `progress` and `lastScrollPosition`) so a stale-zero
+    // `lastScrollPosition` doesn't drag the reader to the top while `progress` says 89%.
+    private fun resolveByPercent(
+        content: ChapterContent,
+        lastItemIndex: Int,
+        effectivePercent: Float
+    ): ResolvedPosition {
         val percent = effectivePercent.coerceIn(0f, 100f) / 100f
         val derivedIndex = (percent * lastItemIndex).toInt().coerceIn(0, lastItemIndex)
         val refreshedKey = content.paragraphs.getOrNull(derivedIndex)

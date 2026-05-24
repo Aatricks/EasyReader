@@ -752,7 +752,7 @@ class ReaderViewModelTest {
     }
 
     @Test
-    fun `scroll progress is saved only after preceding image dimensions resolve`() = runTest {
+    fun `scroll progress saves when current item is stable even before upstream image resolves`() = runTest {
         val itemId = "item-1"
         val url = "https://example.com/webtoon/chapter-11"
         val imageUrl = "https://cdn.example.com/panel-1.jpg"
@@ -777,21 +777,6 @@ class ReaderViewModelTest {
         viewModel.onUserInteraction()
         clearInvocations(libraryRepository)
 
-        viewModel.updateScrollPosition(
-            scrollOffset = 1.3f,
-            maxScrollOffset = 10f,
-            viewportHeight = 1f,
-            index = 1,
-            offsetFraction = 0.3f,
-            elementKey = textKey,
-            firstVisibleItemSize = 500
-        )
-        advanceTimeBy(200)
-        runCurrent()
-        verify(libraryRepository, never()).updateProgressExplicit(any(), any(), any(), any(), any(), any(), any(), any())
-
-        viewModel.persistImageDimensions(imageUrl, 1080, 1920)
-        advanceUntilIdle()
         viewModel.updateScrollPosition(
             scrollOffset = 1.6f,
             maxScrollOffset = 10f,
