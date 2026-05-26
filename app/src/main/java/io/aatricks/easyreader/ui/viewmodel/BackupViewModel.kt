@@ -63,10 +63,12 @@ class BackupViewModel @Inject constructor(
             libraryBackupManager.importFrom(uri)
                 .fold(
                     onSuccess = { summary ->
-                        OpStatus.Success(
-                            "Imported ${summary.imported}, skipped ${summary.skipped} duplicate" +
-                                if (summary.skipped == 1) "" else "s"
-                        )
+                        val parts = buildList {
+                            add("Imported ${summary.imported}")
+                            if (summary.duplicates > 0) add("${summary.duplicates} duplicate" + if (summary.duplicates == 1) "" else "s")
+                            if (summary.invalid > 0) add("${summary.invalid} invalid")
+                        }
+                        OpStatus.Success(parts.joinToString(" · "))
                     },
                     onFailure = { OpStatus.Error(it.userMessage("Failed to import library")) }
                 )

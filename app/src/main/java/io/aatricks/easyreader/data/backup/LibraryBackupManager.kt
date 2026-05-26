@@ -21,7 +21,13 @@ import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
-data class ImportSummary(val imported: Int, val skipped: Int)
+data class ImportSummary(
+    val imported: Int,
+    val duplicates: Int,
+    val invalid: Int
+) {
+    val skipped: Int get() = duplicates + invalid
+}
 
 @Singleton
 @Suppress("InjectDispatcher")
@@ -134,11 +140,26 @@ class LibraryBackupManager @Inject constructor(
             .map { it.url }
             .toSet()
         val epubsDir = File(context.filesDir, "imported_epubs").apply { mkdirs() }
-        val toInsert = manifest.items.mapNotNull { convertBackupItem(it, tempDir, epubsDir, existingUrls) }
+        val toInsert = mutableListOf<LibraryItem>()
+        var duplicates = 0
+        var invalid = 0
+        for (backupItem in manifest.items) {
+            when (val outcome = convertBackupItem(backupItem, tempDir, epubsDir, existingUrls)) {
+                is ConvertOutcome.Insert -> toInsert += outcome.item
+                ConvertOutcome.Duplicate -> duplicates++
+                ConvertOutcome.Invalid -> invalid++
+            }
+        }
         if (toInsert.isNotEmpty()) {
             libraryRepository.restoreItems(toInsert)
         }
-        return ImportSummary(imported = toInsert.size, skipped = manifest.items.size - toInsert.size)
+        return ImportSummary(imported = toInsert.size, duplicates = duplicates, invalid = invalid)
+    }
+
+    private sealed interface ConvertOutcome {
+        data class Insert(val item: LibraryItem) : ConvertOutcome
+        data object Duplicate : ConvertOutcome
+        data object Invalid : ConvertOutcome
     }
 
     private fun convertBackupItem(
@@ -146,10 +167,21 @@ class LibraryBackupManager @Inject constructor(
         tempDir: File,
         epubsDir: File,
         existingUrls: Set<String>
-    ): LibraryItem? {
-        val resolved = resolveItemUrl(backupItem, tempDir, epubsDir) ?: return null
-        if (resolved.url in existingUrls) return null
-        return runCatching { backupItem.toEntity(resolved.url, resolved.fileVerified) }.getOrNull()
+    ): ConvertOutcome {
+        val resolved = resolveItemUrl(backupItem, tempDir, epubsDir)
+        if (resolved == null) {
+            Log.w(TAG, "Dropping backup item ${backupItem.id} (${backupItem.title}): unresolved url/bundled EPUB")
+            return ConvertOutcome.Invalid
+        }
+        if (resolved.url in existingUrls) return ConvertOutcome.Duplicate
+        return runCatching { backupItem.toEntity(resolved.url, resolved.fileVerified) }
+            .fold(
+                onSuccess = { ConvertOutcome.Insert(it) },
+                onFailure = { e ->
+                    Log.w(TAG, "Dropping backup item ${backupItem.id} (${backupItem.title}): ${e.message}")
+                    ConvertOutcome.Invalid
+                }
+            )
     }
 
     private fun resolveItemUrl(item: LibraryItemBackup, tempDir: File, epubsDir: File): ResolvedItem? {

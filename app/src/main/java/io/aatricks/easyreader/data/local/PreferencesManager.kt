@@ -7,10 +7,28 @@ import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.util.TextUtils
 
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * Snapshot of all reader-facing preferences. Emitted on every change so the
+ * reader UI can react to bulk updates (e.g. backup restore) without relying
+ * on per-setter call sites.
+ */
+data class ReaderSettingsSnapshot(
+    val fontSize: Float,
+    val lineHeight: Float,
+    val fontFamily: String,
+    val margins: Int,
+    val paragraphSpacing: Float,
+    val readerTheme: String,
+    val accentTheme: String
+)
 
 /**
  * SharedPreferences wrapper for type-safe preferences access
@@ -24,8 +42,36 @@ class PreferencesManager @Inject constructor(
         PREFS_NAME,
         Context.MODE_PRIVATE
     )
-    
+
     private val json = Json { ignoreUnknownKeys = true }
+
+    private val _readerSettings = MutableStateFlow(readReaderSettingsSnapshot())
+
+    /** Reactive view of every reader-facing preference. Emits on any mutation. */
+    val readerSettings: StateFlow<ReaderSettingsSnapshot> = _readerSettings.asStateFlow()
+
+    // Held in a field so the SharedPreferences weak-ref doesn't drop it.
+    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == null || key in READER_SETTINGS_KEYS) {
+            _readerSettings.value = readReaderSettingsSnapshot()
+        }
+    }
+
+    init {
+        prefs.registerOnSharedPreferenceChangeListener(prefsListener)
+    }
+
+    private fun readReaderSettingsSnapshot(): ReaderSettingsSnapshot = ReaderSettingsSnapshot(
+        fontSize = prefs.getFloat(KEY_FONT_SIZE, 18f),
+        lineHeight = prefs.getFloat(KEY_LINE_HEIGHT, 1.5f),
+        fontFamily = prefs.getString(KEY_FONT_FAMILY, "Default") ?: "Default",
+        margins = prefs.getInt(KEY_MARGINS, 16),
+        paragraphSpacing = prefs.getFloat(KEY_PARAGRAPH_SPACING, 1.0f),
+        readerTheme = prefs.getString(KEY_READER_THEME, io.aatricks.easyreader.data.model.ReaderTheme.DARK.name)
+            ?: io.aatricks.easyreader.data.model.ReaderTheme.DARK.name,
+        accentTheme = prefs.getString(KEY_ACCENT_THEME, io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name)
+            ?: io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name
+    )
     
     // Current URL
     var currentUrl: String?
@@ -215,5 +261,15 @@ class PreferencesManager @Inject constructor(
 
         private const val KEY_AI_SUMMARY_ENABLED = "ai_summary_enabled"
         private const val KEY_WEB_OFFLINE_PIPELINE_VERSION = "web_offline_pipeline_version"
+
+        private val READER_SETTINGS_KEYS = setOf(
+            KEY_FONT_SIZE,
+            KEY_LINE_HEIGHT,
+            KEY_FONT_FAMILY,
+            KEY_MARGINS,
+            KEY_PARAGRAPH_SPACING,
+            KEY_READER_THEME,
+            KEY_ACCENT_THEME
+        )
     }
 }

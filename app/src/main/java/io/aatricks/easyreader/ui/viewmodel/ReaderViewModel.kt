@@ -171,22 +171,31 @@ class ReaderViewModel @Inject constructor(
     private var dimensionFlushJob: Job? = null
     private val pendingImageDimensions = LinkedHashMap<String, Pair<Int, Int>>()
 
-    init {
-        // Load initial settings
+    private fun applyReaderSettings(snapshot: io.aatricks.easyreader.data.local.ReaderSettingsSnapshot) {
         updateState {
             it.copy(
-                fontSize = preferencesManager.fontSize,
-                lineHeight = preferencesManager.lineHeight,
-                fontFamily = preferencesManager.fontFamily,
-                margins = preferencesManager.margins,
-                paragraphSpacing = preferencesManager.paragraphSpacing,
-                readerTheme = runCatching { ReaderTheme.valueOf(preferencesManager.readerTheme) }.getOrDefault(
-                    ReaderTheme.DARK
-                ),
-                accentTheme = runCatching { AccentTheme.valueOf(preferencesManager.accentTheme) }.getOrDefault(
-                    AccentTheme.MOSS
-                )
+                fontSize = snapshot.fontSize,
+                lineHeight = snapshot.lineHeight,
+                fontFamily = snapshot.fontFamily,
+                margins = snapshot.margins,
+                paragraphSpacing = snapshot.paragraphSpacing,
+                readerTheme = runCatching { ReaderTheme.valueOf(snapshot.readerTheme) }
+                    .getOrDefault(ReaderTheme.DARK),
+                accentTheme = runCatching { AccentTheme.valueOf(snapshot.accentTheme) }
+                    .getOrDefault(AccentTheme.MOSS)
             )
+        }
+    }
+
+    init {
+        // Seed synchronously so the first frame of the reader renders with the
+        // correct font/theme rather than the data class defaults.
+        applyReaderSettings(preferencesManager.readerSettings.value)
+        // Reactive: any SharedPreferences mutation (including bulk restore via
+        // batchUpdateReaderSettings) re-emits a snapshot and the uiState follows.
+        viewModelScope.launch {
+            preferencesManager.readerSettings
+                .collect { snapshot -> applyReaderSettings(snapshot) }
         }
 
         // Load last read item. Fast path: SharedPreferences mirrors the last-read URL on every
