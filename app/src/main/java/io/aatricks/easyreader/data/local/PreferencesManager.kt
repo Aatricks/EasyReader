@@ -34,6 +34,7 @@ data class ReaderSettingsSnapshot(
  * SharedPreferences wrapper for type-safe preferences access
  */
 @Singleton
+@Suppress("TooManyFunctions")
 class PreferencesManager @Inject constructor(
     @ApplicationContext context: Context
 ) {

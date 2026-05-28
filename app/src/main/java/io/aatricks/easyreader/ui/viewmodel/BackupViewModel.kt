@@ -65,7 +65,10 @@ class BackupViewModel @Inject constructor(
                     onSuccess = { summary ->
                         val parts = buildList {
                             add("Imported ${summary.imported}")
-                            if (summary.duplicates > 0) add("${summary.duplicates} duplicate" + if (summary.duplicates == 1) "" else "s")
+                            if (summary.duplicates > 0) {
+                                val suffix = if (summary.duplicates == 1) "" else "s"
+                                add("${summary.duplicates} duplicate$suffix")
+                            }
                             if (summary.invalid > 0) add("${summary.invalid} invalid")
                         }
                         OpStatus.Success(parts.joinToString(" · "))

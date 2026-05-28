@@ -169,19 +169,21 @@ class LibraryBackupManager @Inject constructor(
         existingUrls: Set<String>
     ): ConvertOutcome {
         val resolved = resolveItemUrl(backupItem, tempDir, epubsDir)
-        if (resolved == null) {
-            Log.w(TAG, "Dropping backup item ${backupItem.id} (${backupItem.title}): unresolved url/bundled EPUB")
-            return ConvertOutcome.Invalid
+        return when {
+            resolved == null -> {
+                Log.w(TAG, "Dropping backup item ${backupItem.id} (${backupItem.title}): unresolved url/bundled EPUB")
+                ConvertOutcome.Invalid
+            }
+            resolved.url in existingUrls -> ConvertOutcome.Duplicate
+            else -> runCatching { backupItem.toEntity(resolved.url, resolved.fileVerified) }
+                .fold(
+                    onSuccess = { ConvertOutcome.Insert(it) },
+                    onFailure = { e ->
+                        Log.w(TAG, "Dropping backup item ${backupItem.id} (${backupItem.title}): ${e.message}")
+                        ConvertOutcome.Invalid
+                    }
+                )
         }
-        if (resolved.url in existingUrls) return ConvertOutcome.Duplicate
-        return runCatching { backupItem.toEntity(resolved.url, resolved.fileVerified) }
-            .fold(
-                onSuccess = { ConvertOutcome.Insert(it) },
-                onFailure = { e ->
-                    Log.w(TAG, "Dropping backup item ${backupItem.id} (${backupItem.title}): ${e.message}")
-                    ConvertOutcome.Invalid
-                }
-            )
     }
 
     private fun resolveItemUrl(item: LibraryItemBackup, tempDir: File, epubsDir: File): ResolvedItem? {
