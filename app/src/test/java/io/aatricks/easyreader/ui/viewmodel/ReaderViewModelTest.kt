@@ -57,6 +57,19 @@ class ReaderViewModelTest {
         whenever(preferencesManager.readerTheme).thenReturn(ReaderTheme.DARK.name)
         whenever(preferencesManager.margins).thenReturn(16)
         whenever(preferencesManager.paragraphSpacing).thenReturn(1.0f)
+        whenever(preferencesManager.readerSettings).thenReturn(
+            MutableStateFlow(
+                io.aatricks.easyreader.data.local.ReaderSettingsSnapshot(
+                    fontSize = 18f,
+                    lineHeight = 1.5f,
+                    fontFamily = "Default",
+                    margins = 16,
+                    paragraphSpacing = 1.0f,
+                    readerTheme = ReaderTheme.DARK.name,
+                    accentTheme = io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name
+                )
+            )
+        )
 
         runTest {
             whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(emptyList()))
