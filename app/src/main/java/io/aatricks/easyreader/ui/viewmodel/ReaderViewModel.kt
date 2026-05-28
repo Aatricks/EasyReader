@@ -1408,8 +1408,19 @@ class ReaderViewModel @Inject constructor(
         updateNavigationUrls()
         currentLibraryItemId?.let { id ->
             libraryRepository.getItemById(id)?.let { item ->
-                if (item.totalChapters != normalizedChapters.size) {
-                    libraryRepository.updateItem(item.copy(totalChapters = normalizedChapters.size))
+                val newCount = normalizedChapters.size
+                if (item.totalChapters != newCount) {
+                    val markerChapterNumber = item.resolvedChapterNumber()
+                    val wasCaughtUp = newCount > item.totalChapters &&
+                        item.totalChapters > 0 &&
+                        markerChapterNumber != null &&
+                        markerChapterNumber >= item.totalChapters.toDouble() &&
+                        item.hasFinishedProgress()
+                    val updated = item.copy(
+                        totalChapters = newCount,
+                        hasUpdates = if (wasCaughtUp) true else item.hasUpdates
+                    )
+                    libraryRepository.updateItem(updated)
                 }
             }
         }
