@@ -9,7 +9,7 @@ import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
 import io.aatricks.easyreader.util.FieldUpdate
-import io.aatricks.easyreader.util.computeAutoDeleteCandidates
+import io.aatricks.easyreader.util.computeDownloadCleanup
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -902,75 +902,121 @@ class ReaderViewModelTest {
     }
 
     @Test
-    fun `computeAutoDeleteCandidates removes only completed chapters two or more behind`() {
+    fun `computeDownloadCleanup frees only downloaded read chapters two or more behind`() {
         val chapters = listOf(
-            LibraryItem(id = "1", title = "Chapter 3", url = "url-3", currentChapter = "Chapter 3", baseTitle = "Novel", progress = 100),
-            LibraryItem(id = "2", title = "Chapter 4", url = "url-4", currentChapter = "Chapter 4", baseTitle = "Novel", progress = 100),
-            LibraryItem(id = "3", title = "Chapter 5", url = "url-5", currentChapter = "Chapter 5", baseTitle = "Novel", progress = 100),
-            LibraryItem(id = "4", title = "Chapter 2", url = "url-2", currentChapter = "Chapter 2", baseTitle = "Novel", progress = 80),
-            LibraryItem(id = "5", title = "Chapter 1", url = "url-1", currentChapter = "Chapter 1", baseTitle = "Other", progress = 100)
+            LibraryItem(id = "1", title = "Chapter 3", url = "url-3", currentChapter = "Chapter 3", baseTitle = "Novel", progress = 100, isDownloaded = true),
+            LibraryItem(id = "2", title = "Chapter 4", url = "url-4", currentChapter = "Chapter 4", baseTitle = "Novel", progress = 100, isDownloaded = true),
+            LibraryItem(id = "3", title = "Chapter 5", url = "url-5", currentChapter = "Chapter 5", baseTitle = "Novel", progress = 100, isDownloaded = true),
+            LibraryItem(id = "4", title = "Chapter 2", url = "url-2", currentChapter = "Chapter 2", baseTitle = "Novel", progress = 80, isDownloaded = true),
+            LibraryItem(id = "5", title = "Chapter 1", url = "url-1", currentChapter = "Chapter 1", baseTitle = "Other", progress = 100, isDownloaded = true)
         )
 
-        val toDelete = computeAutoDeleteCandidates(
+        val plan = computeDownloadCleanup(
             allItems = chapters,
+            fullChapterList = emptyList(),
             baseTitle = "Novel",
             currentUrl = "url-5",
             currentChapterNumber = 5.0
         )
 
-        assertEquals(listOf("1"), toDelete.map { it.id })
+        assertEquals(listOf("1"), plan.downloadsToFree.map { it.id })
     }
 
     @Test
-    fun `computeAutoDeleteCandidates keeps immediate previous and current chapters`() {
+    fun `computeDownloadCleanup keeps immediate previous and current chapters`() {
         val chapters = listOf(
-            LibraryItem(id = "1", title = "Chapter 5", url = "url-5", currentChapter = "Chapter 5", baseTitle = "Novel", progress = 100),
-            LibraryItem(id = "2", title = "Chapter 6", url = "url-6", currentChapter = "Chapter 6", baseTitle = "Novel", progress = 100)
+            LibraryItem(id = "1", title = "Chapter 5", url = "url-5", currentChapter = "Chapter 5", baseTitle = "Novel", progress = 100, isDownloaded = true),
+            LibraryItem(id = "2", title = "Chapter 6", url = "url-6", currentChapter = "Chapter 6", baseTitle = "Novel", progress = 100, isDownloaded = true)
         )
 
-        val toDelete = computeAutoDeleteCandidates(
+        val plan = computeDownloadCleanup(
             allItems = chapters,
+            fullChapterList = emptyList(),
             baseTitle = "Novel",
             currentUrl = "url-6",
             currentChapterNumber = 6.0
         )
 
-        assertEquals(emptyList<LibraryItem>(), toDelete)
+        assertEquals(emptyList<String>(), plan.downloadsToFree.map { it.id })
     }
 
     @Test
-    fun `computeAutoDeleteCandidates includes downloaded chapters once read and far enough behind`() {
+    fun `computeDownloadCleanup frees only downloaded chapters`() {
         val chapters = listOf(
             LibraryItem(id = "1", title = "Chapter 1", url = "url-1", currentChapter = "Chapter 1", baseTitle = "Novel", progress = 100, isDownloaded = true),
             LibraryItem(id = "2", title = "Chapter 2", url = "url-2", currentChapter = "Chapter 2", baseTitle = "Novel", progress = 100, isDownloaded = false),
             LibraryItem(id = "3", title = "Chapter 3", url = "url-3", currentChapter = "Chapter 3", baseTitle = "Novel", progress = 100, isDownloaded = false)
         )
 
-        val toDelete = computeAutoDeleteCandidates(
+        val plan = computeDownloadCleanup(
             allItems = chapters,
+            fullChapterList = emptyList(),
             baseTitle = "Novel",
             currentUrl = "url-5",
             currentChapterNumber = 5.0
         )
 
-        assertEquals(listOf("1", "2", "3"), toDelete.map { it.id }.sorted())
+        assertEquals(listOf("1"), plan.downloadsToFree.map { it.id })
     }
 
     @Test
-    fun `computeAutoDeleteCandidates skips chapters without parseable number`() {
+    fun `computeDownloadCleanup uses the 90 percent finished threshold`() {
         val chapters = listOf(
-            LibraryItem(id = "1", title = "Side story", url = "bonus", currentChapter = "Bonus", baseTitle = "Novel", progress = 100),
-            LibraryItem(id = "2", title = "Chapter 3", url = "url-3", currentChapter = "Chapter 3", baseTitle = "Novel", progress = 100)
+            LibraryItem(id = "ok", title = "Chapter 1", url = "url-1", currentChapter = "Chapter 1", baseTitle = "Novel", progress = 90, isDownloaded = true),
+            LibraryItem(id = "no", title = "Chapter 2", url = "url-2", currentChapter = "Chapter 2", baseTitle = "Novel", progress = 89, isDownloaded = true)
         )
 
-        val toDelete = computeAutoDeleteCandidates(
+        val plan = computeDownloadCleanup(
             allItems = chapters,
+            fullChapterList = emptyList(),
             baseTitle = "Novel",
             currentUrl = "url-5",
             currentChapterNumber = 5.0
         )
 
-        assertEquals(listOf("2"), toDelete.map { it.id })
+        assertEquals(listOf("ok"), plan.downloadsToFree.map { it.id })
+    }
+
+    @Test
+    fun `computeDownloadCleanup skips chapters without parseable number`() {
+        val chapters = listOf(
+            LibraryItem(id = "1", title = "Side story", url = "bonus", currentChapter = "Bonus", baseTitle = "Novel", progress = 100, isDownloaded = true),
+            LibraryItem(id = "2", title = "Chapter 3", url = "url-3", currentChapter = "Chapter 3", baseTitle = "Novel", progress = 100, isDownloaded = true)
+        )
+
+        val plan = computeDownloadCleanup(
+            allItems = chapters,
+            fullChapterList = emptyList(),
+            baseTitle = "Novel",
+            currentUrl = "url-5",
+            currentChapterNumber = 5.0
+        )
+
+        assertEquals(listOf("2"), plan.downloadsToFree.map { it.id })
+    }
+
+    @Test
+    fun `computeDownloadCleanup evicts speculative caches for non-library chapters far behind`() {
+        val library = listOf(
+            LibraryItem(id = "1", title = "Chapter 5", url = "url-5", currentChapter = "Chapter 5", baseTitle = "Novel", progress = 100, isDownloaded = true)
+        )
+        val fullList = listOf(
+            ChapterInfo(title = "Chapter 1", url = "url-1", number = 1.0),
+            ChapterInfo(title = "Chapter 4", url = "url-4", number = 4.0),
+            ChapterInfo(title = "Chapter 5", url = "url-5", number = 5.0),
+            ChapterInfo(title = "Chapter 2", url = "url-2", number = 2.0)
+        )
+
+        val plan = computeDownloadCleanup(
+            allItems = library,
+            fullChapterList = fullList,
+            baseTitle = "Novel",
+            currentUrl = "url-5",
+            currentChapterNumber = 5.0
+        )
+
+        assertEquals(listOf("url-1", "url-2"), plan.speculativeCacheUrls.sorted())
+        assertEquals(emptyList<String>(), plan.downloadsToFree.map { it.id })
     }
 
     @Test
@@ -1017,8 +1063,72 @@ class ReaderViewModelTest {
         advanceTimeBy(1_000)
         advanceUntilIdle()
 
-        verify(libraryRepository, never()).removeItems(any())
+        verify(libraryRepository, never()).markDownloaded(any(), any())
+        verify(contentRepository, never()).clearCachesAndDownloadsForUrls(any())
         verify(contentRepository, never()).clearCachesForUrls(any())
+        verify(libraryRepository, never()).removeItems(any())
+    }
+
+    @Test
+    fun `loadContent frees old downloaded read chapters but keeps their library rows`() = runTest {
+        val currentUrl = "https://example.com/ch5"
+        val currentItem = LibraryItem(
+            id = "item-5",
+            title = "Chapter 5",
+            url = currentUrl,
+            currentChapter = "Chapter 5",
+            baseTitle = "Novel",
+            progress = 100,
+            isDownloaded = true
+        )
+        fun chapter(n: Int) = LibraryItem(
+            id = "item-$n",
+            title = "Chapter $n",
+            url = "https://example.com/ch$n",
+            currentChapter = "Chapter $n",
+            baseTitle = "Novel",
+            progress = 100,
+            isDownloaded = true
+        )
+        val existingItems = listOf(chapter(1), chapter(2), chapter(3), chapter(4), currentItem)
+
+        whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(existingItems))
+        whenever(contentRepository.loadContent(currentUrl)).thenReturn(
+            ContentResult.Success(listOf(ContentElement.Text("Body")), "Chapter 5", currentUrl)
+        )
+        whenever(libraryRepository.getItemByUrl(currentUrl)).thenReturn(currentItem)
+        whenever(libraryRepository.getItemById("item-5")).thenReturn(currentItem)
+        whenever(contentRepository.isUserDownloadInFlight(any())).thenReturn(false)
+        whenever(libraryRepository.markDownloaded(any(), any())).thenReturn(true)
+
+        viewModel = ReaderViewModel(
+            contentRepository,
+            libraryRepository,
+            exploreRepository,
+            preferencesManager,
+            chapterListCache,
+            fakeImageDimensionCacheRepository()
+        )
+
+        viewModel.loadContent(currentUrl)
+        advanceTimeBy(1_000)
+        advanceUntilIdle()
+
+        // Chapters 1-3 are read and 2+ behind -> downloads freed; chapter 4 (n-1) is kept.
+        verify(contentRepository).clearCachesAndDownloadsForUrls(
+            check { urls ->
+                assertEquals(
+                    listOf("https://example.com/ch1", "https://example.com/ch2", "https://example.com/ch3"),
+                    urls.toList().sorted()
+                )
+            }
+        )
+        verify(libraryRepository).markDownloaded("item-1", false)
+        verify(libraryRepository).markDownloaded("item-2", false)
+        verify(libraryRepository).markDownloaded("item-3", false)
+        verify(libraryRepository, never()).markDownloaded("item-4", false)
+        // The rows themselves are preserved; only the download flag is cleared.
+        verify(libraryRepository, never()).removeItems(any())
     }
 
     @Test

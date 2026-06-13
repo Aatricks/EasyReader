@@ -17,7 +17,7 @@ import io.aatricks.easyreader.util.TextUtils
 import io.aatricks.easyreader.util.UrlSecurity
 import io.aatricks.easyreader.ui.viewmodel.ReaderProgressController.Companion.PAGED_POSITION_ITEM_SIZE_PX
 import io.aatricks.easyreader.util.FieldUpdate
-import io.aatricks.easyreader.util.computeAutoDeleteCandidates
+import io.aatricks.easyreader.util.computeDownloadCleanup
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -701,58 +701,45 @@ class ReaderViewModel @Inject constructor(
         if (baseTitle.isBlank()) return
 
         viewModelScope.launch {
-            delay(1000) // Ensure progress is saved if navigating from a finished chapter
+            delay(1000) // Let a just-left chapter's progress write settle before reading the library.
 
-            val currentChapterNumber = TextUtils.extractChapterNumber(chapterTitle)
-                ?: TextUtils.extractChapterNumber(currentUrl)
+            val currentChapterNumber = resolveCurrentChapterNumber(chapterTitle, currentUrl)
                 ?: return@launch
 
-            val libraryItems = libraryRepository.libraryItems.value
-            val toDelete = computeAutoDeleteCandidates(
-                allItems = libraryItems,
+            val plan = computeDownloadCleanup(
+                allItems = libraryRepository.libraryItems.value,
+                fullChapterList = _uiState.value.fullChapterList,
                 baseTitle = baseTitle,
                 currentUrl = currentUrl,
                 currentChapterNumber = currentChapterNumber
             )
 
-            val safeToDelete = toDelete.filterNot { contentRepository.isUserDownloadInFlight(it.url) }
-            if (safeToDelete.isNotEmpty()) {
-                contentRepository.clearCachesAndDownloadsForUrls(safeToDelete.map { it.url })
-                val ids = safeToDelete.map { it.id }.toSet()
-                libraryRepository.removeItems(ids)
+            // Free downloaded files for old, read chapters but keep the library row + its
+            // progress. Downloads still in flight are left alone.
+            val toFree = plan.downloadsToFree.filterNot { contentRepository.isUserDownloadInFlight(it.url) }
+            if (toFree.isNotEmpty()) {
+                contentRepository.clearCachesAndDownloadsForUrls(toFree.map { it.url })
+                toFree.forEach { libraryRepository.markDownloaded(it.id, false) }
             }
 
-            // Also evict speculative/partial caches for chapters that are NOT in the library
-            // but live in the current novel's chapter list and sit >1 behind the current one.
-            // Those entries never get an auto-delete candidate (no LibraryItem) so their cache
-            // files accumulate forever otherwise.
-            val downloadedUrls = libraryItems.asSequence()
-                .filter { it.isDownloaded }
-                .map { it.url }
-                .toSet()
-            val inLibraryUrls = libraryItems.map { it.url }.toSet()
-            val staleSpeculativeUrls = _uiState.value.fullChapterList
-                .asSequence()
-                .filter { chapter ->
-                    chapter.url.isNotBlank() &&
-                        chapter.url != currentUrl &&
-                        chapter.url !in inLibraryUrls &&
-                        chapter.url !in downloadedUrls
-                }
-                .filter { chapter ->
-                    val otherNum = chapter.number
-                        ?: TextUtils.extractChapterNumber(chapter.title)
-                        ?: TextUtils.extractChapterNumber(chapter.url)
-                        ?: return@filter false
-                    (currentChapterNumber - otherNum) > 1
-                }
-                .map { it.url }
-                .toList()
-
-            if (staleSpeculativeUrls.isNotEmpty()) {
-                contentRepository.clearCachesForUrls(staleSpeculativeUrls)
+            // Evict speculative/partial caches for chapters that are NOT in the library but live in
+            // the current novel's chapter list; otherwise their cache files accumulate forever.
+            if (plan.speculativeCacheUrls.isNotEmpty()) {
+                contentRepository.clearCachesForUrls(plan.speculativeCacheUrls)
             }
         }
+    }
+
+    /**
+     * Chapter number of the chapter being read. Prefers the current library row's
+     * [resolvedChapterNumber] so the comparison shares the app-wide numbering scheme, falling back
+     * to parsing the loaded title/URL only when no row is available.
+     */
+    private suspend fun resolveCurrentChapterNumber(chapterTitle: String, currentUrl: String): Double? {
+        val item = currentLibraryItemId?.let { libraryRepository.getItemById(it) }
+        return item?.resolvedChapterNumber()
+            ?: TextUtils.extractChapterNumber(chapterTitle)
+            ?: TextUtils.extractChapterNumber(currentUrl)
     }
 
     private fun handleLoadError(result: ContentResult.Error): Unit {
