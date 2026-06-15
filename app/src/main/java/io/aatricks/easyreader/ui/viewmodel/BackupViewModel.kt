@@ -1,11 +1,14 @@
 package io.aatricks.easyreader.ui.viewmodel
 
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import io.aatricks.easyreader.data.backup.LibraryBackupManager
 import io.aatricks.easyreader.data.backup.SettingsBackupManager
+import io.aatricks.easyreader.work.LibraryUpdateWorker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,6 +17,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class BackupViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val settingsBackupManager: SettingsBackupManager,
     private val libraryBackupManager: LibraryBackupManager
 ) : ViewModel() {
@@ -63,6 +67,13 @@ class BackupViewModel @Inject constructor(
             libraryBackupManager.importFrom(uri)
                 .fold(
                     onSuccess = { summary ->
+                        // Imported items keep the totalChapters/hasUpdates copied from the
+                        // backup, and their old lastRead/dateAdded would normally exclude them
+                        // from the periodic update check. Kick off a one-off forced refresh so
+                        // freshly restored finished series surface their NEW pills.
+                        if (summary.imported > 0) {
+                            LibraryUpdateWorker.runOnce(appContext)
+                        }
                         val parts = buildList {
                             add("Imported ${summary.imported}")
                             if (summary.duplicates > 0) {

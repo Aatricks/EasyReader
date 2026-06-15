@@ -267,4 +267,38 @@ class LibraryRepositoryUpdateTest {
             size == 1 && first().id == "old_but_reading" && first().totalChapters == 15
         })
     }
+
+    @Test
+    fun testRefreshLibraryUpdates_checks_old_finished_novels_when_threshold_ignored() = runBlocking {
+        // Simulates a just-imported, finished series: lastRead/dateAdded restored from an old
+        // backup, so the periodic path would skip it. A post-import forced run must still check
+        // it and surface the NEW pill (hasUpdates) when the source has new chapters.
+        val oldCutoff = System.currentTimeMillis() - 30 * 24 * 60 * 60 * 1000L
+
+        val importedFinished = LibraryItem(
+            id = "imported", title = "Imported Novel Chapter 10", url = "novel_imported/ch-10",
+            currentChapter = "Ch 10",
+            baseTitle = "Imported Novel", baseNovelUrl = "novel_imported", sourceName = "Source1",
+            totalChapters = 10,
+            progress = 100,
+            lastRead = oldCutoff,
+            dateAdded = oldCutoff
+        )
+
+        whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(importedFinished)))
+        whenever(exploreRepository.getNovelDetails("novel_imported", "Source1"))
+            .thenReturn(
+                ExploreItem(
+                    "Imported Novel", "novel_imported", source = "Source1",
+                    chapters = chapterList(15, "novel_imported")
+                )
+            )
+
+        repository.refreshLibraryUpdates(exploreRepository, ignoreActivityThreshold = true)
+
+        verify(exploreRepository).getNovelDetails("novel_imported", "Source1")
+        verify(libraryDao).insertItems(argThat {
+            size == 1 && first().id == "imported" && first().totalChapters == 15 && first().hasUpdates
+        })
+    }
 }

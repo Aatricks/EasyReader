@@ -363,7 +363,10 @@ class LibraryRepository @Inject constructor(
         true
     } ?: false
 
-    suspend fun refreshLibraryUpdates(exploreRepository: ExploreRepository): Unit = io {
+    suspend fun refreshLibraryUpdates(
+        exploreRepository: ExploreRepository,
+        ignoreActivityThreshold: Boolean = false
+    ): Unit = io {
         runRepoCatching("Refresh updates failed") {
             val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
             val groupedItems = getGroupedByTitle(allItems)
@@ -371,11 +374,15 @@ class LibraryRepository @Inject constructor(
 
             // Only check for updates on novels that have been read recently or were added recently.
             // This prevents checking hundreds of abandoned novels on every app launch.
+            // A user-initiated run (e.g. right after a library import) passes
+            // ignoreActivityThreshold = true so freshly restored "finished" series — whose
+            // lastRead/dateAdded are old, copied from the backup — still get checked and can
+            // surface their NEW pills.
             val threshold = System.currentTimeMillis() - UPDATE_CHECK_THRESHOLD_DAYS * 24 * 60 * 60 * 1000L
             val activeGroups = groupedItems.filter { (_, items) ->
-                items.isNotEmpty() && items.any {
+                items.isNotEmpty() && (ignoreActivityThreshold || items.any {
                     it.isCurrentlyReading || it.lastRead > threshold || it.dateAdded > threshold
-                }
+                })
             }
 
             val channel = Channel<Pair<String, List<LibraryItem>>>(Channel.UNLIMITED)
