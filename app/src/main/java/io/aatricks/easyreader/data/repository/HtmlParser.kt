@@ -43,7 +43,10 @@ class HtmlParser @Inject constructor() {
             ".entry-content p",
             "#content p",
             "main p",
-            "div.chapter-c p"
+            "div.chapter-c p",
+            // Novelight serves chapter prose as <div>-per-paragraph inside .chapter-text
+            // (delivered by its read-chapter XHR; see NovelightUrls).
+            ".chapter-text > div"
         ).joinToString(", ")
     }
 
@@ -165,7 +168,8 @@ class HtmlParser @Inject constructor() {
             ".ads-banner", "[class*=\"ads-banner\"]", "[class*=\"bats-ads\"]", ".ads-responsive",
             ".ads-chapter-bottom", ".bats-detail-bottom-pos-1-detail-bottom-72", ".sh-recommend",
             ".cm-info", ".next-chapter-img", "[id*=\"ads-\"]", "[class*=\"footer-ads\"]",
-            ".ads-contain", ".banner-owner", ".banner-ads", "[class*=\"ads-contain\"]"
+            ".ads-contain", ".banner-owner", ".banner-ads", "[class*=\"ads-contain\"]",
+            ".advertisment"
         )
         document.select(adSelectors.joinToString(", ")).remove()
 
@@ -266,7 +270,13 @@ class HtmlParser @Inject constructor() {
             
             if (p.isEmpty() || p.matches(DIGIT_ONLY_REGEX) || CHAPTER_CLEANUP_PATTERN.containsMatchIn(p)) return@filter false
             if (p.length <= 80 && p.contains(CHAPTER_WORD_PATTERN) && p.any { it.isDigit() }) return@filter false
-            if (cleanTitle != null && (lowerP == cleanTitle || lowerP.startsWith(cleanTitle))) return@filter false
+            // Guard against a blank page title: lowerP.startsWith("") is always true and would
+            // drop every paragraph (e.g. Novelight's title-less wrapped chapter content).
+            if (!cleanTitle.isNullOrEmpty() &&
+                (lowerP == cleanTitle || lowerP.startsWith(cleanTitle))
+            ) {
+                return@filter false
+            }
             true
         }
     }

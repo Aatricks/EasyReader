@@ -9,6 +9,7 @@ import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.repository.source.AsuraScansSource
 import io.aatricks.easyreader.data.repository.source.MangaBatSource
 import io.aatricks.easyreader.data.repository.source.NovelFireSource
+import io.aatricks.easyreader.data.repository.source.NovelightSource
 import io.aatricks.easyreader.data.repository.source.NovelSource
 import io.aatricks.easyreader.data.repository.source.SmartSource
 import javax.inject.Singleton
@@ -39,6 +40,14 @@ object SourceModule {
         preferencesManager: PreferencesManager,
         okHttpClient: okhttp3.OkHttpClient
     ): NovelSource = AsuraScansSource(preferencesManager, okHttpClient)
+
+    @Provides
+    @Singleton
+    @IntoSet
+    fun provideNovelightSource(
+        preferencesManager: PreferencesManager,
+        okHttpClient: okhttp3.OkHttpClient
+    ): NovelSource = NovelightSource(preferencesManager, okHttpClient)
 
     @Provides
     @Singleton

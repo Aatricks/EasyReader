@@ -46,6 +46,27 @@ class ExploreRepositoryTest {
     }
 
     @Test
+    fun `getNovelDetailsByUrl resolves the source whose host matches the url`() = runBlocking {
+        val novelight = FakeNovelSource(name = "Novelight", baseUrl = "https://novelight.net")
+        val novelfire = FakeNovelSource(name = "NovelFire", baseUrl = "https://novelfire.net")
+        val repository = ExploreRepository(mock<Context>(), setOf(novelight, novelfire))
+
+        val item = repository.getNovelDetailsByUrl("https://novelight.net/book/pick-me-up")
+
+        assertEquals("Novelight", item?.source)
+    }
+
+    @Test
+    fun `getNovelDetailsByUrl returns null when no host matches and no SmartSource present`() = runBlocking {
+        val repository = ExploreRepository(
+            mock<Context>(),
+            setOf(FakeNovelSource(name = "NovelFire", baseUrl = "https://novelfire.net"))
+        )
+
+        assertEquals(null, repository.getNovelDetailsByUrl("https://unknown-site.example/book/x"))
+    }
+
+    @Test
     fun `source can still be instantiated`() {
         val source = NovelFireSource(
             mock<PreferencesManager>(),
@@ -64,11 +85,11 @@ class ExploreRepositoryTest {
 
     private class FakeNovelSource(
         override val name: String,
-        private val popularByTag: Map<String, List<io.aatricks.easyreader.data.model.ExploreItem>> = emptyMap()
+        private val popularByTag: Map<String, List<io.aatricks.easyreader.data.model.ExploreItem>> = emptyMap(),
+        override val baseUrl: String = "https://example.com"
     ) : NovelSource {
         val popularRequests = mutableListOf<Pair<Int, List<String>>>()
 
-        override val baseUrl: String = "https://example.com"
         override val version: String = "test"
 
         override suspend fun getPopularNovels(page: Int, tags: List<String>): List<io.aatricks.easyreader.data.model.ExploreItem> {

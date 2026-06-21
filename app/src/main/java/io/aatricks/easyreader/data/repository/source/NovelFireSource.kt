@@ -9,6 +9,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import java.net.URLEncoder
@@ -97,7 +98,10 @@ class NovelFireSource @Inject constructor(
     
     override suspend fun searchNovels(query: String, page: Int): List<ExploreItem> = io {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
-        val url = "$baseUrl/ajax/searchLive?inputContent=$encodedQuery"
+        // NovelFire's live-search endpoint reads the `keyword` query param; the old `inputContent`
+        // name (now just the search box's element id) returns {"data":null}, which used to throw
+        // and silently fall back to the popular page instead of searching.
+        val url = "$baseUrl/ajax/searchLive?keyword=$encodedQuery"
         
         runCatching {
             val request = okhttp3.Request.Builder()
@@ -107,32 +111,7 @@ class NovelFireSource @Inject constructor(
                 .build()
 
             val response = okHttpClient.newCall(request).execute().use { it.body?.string() ?: "" }
-            
-            val json = JSONObject(response)
-            val data = json.getJSONArray("data")
-            val items = mutableListOf<ExploreItem>()
-            val addedUrls = java.util.HashSet<String>()
-            
-            for (i in 0 until data.length()) {
-                val obj = data.getJSONObject(i)
-                val rawTitle = obj.getString("title")
-                val title = cleanNovelTitle(rawTitle)
-                val slug = obj.getString("slug")
-                val image = obj.getString("image")
-                val url = "$baseUrl/book/$slug"
-                
-                if (addedUrls.add(url)) {
-                    items.add(ExploreItem(
-                        title = title,
-                        url = url,
-                        coverUrl = resolveUrl(image),
-                        source = name,
-                        rank = obj.optInt("rank").toString(),
-                        chapterCount = obj.optInt("total_chapter")
-                    ))
-                }
-            }
-            items
+            parseSearchJson(response)
         }.getOrElse {
             val fallbackUrl = "$baseUrl/genre-all/sort-popular/status-all/all-novel?keyword=$encodedQuery&page=$page"
             val document = getDocument(fallbackUrl)
@@ -168,6 +147,33 @@ class NovelFireSource @Inject constructor(
             }
             items
         }
+    }
+
+    private fun parseSearchJson(response: String): List<ExploreItem> {
+        val json = JSONObject(response)
+        // A query with no hits returns {"data":null}; treat that as empty results rather than
+        // throwing into the popular-page fallback.
+        val data = json.optJSONArray("data") ?: JSONArray()
+        val items = mutableListOf<ExploreItem>()
+        val addedUrls = java.util.HashSet<String>()
+
+        for (i in 0 until data.length()) {
+            val obj = data.getJSONObject(i)
+            val title = cleanNovelTitle(obj.getString("title"))
+            val bookUrl = "$baseUrl/book/${obj.getString("slug")}"
+
+            if (addedUrls.add(bookUrl)) {
+                items.add(ExploreItem(
+                    title = title,
+                    url = bookUrl,
+                    coverUrl = resolveUrl(obj.getString("image")),
+                    source = name,
+                    rank = obj.optInt("rank").toString(),
+                    chapterCount = obj.optInt("total_chapter")
+                ))
+            }
+        }
+        return items
     }
 
     override suspend fun getNovelDetails(url: String): ExploreItem = io {

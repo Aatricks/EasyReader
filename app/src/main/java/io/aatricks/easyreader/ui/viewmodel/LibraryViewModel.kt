@@ -319,38 +319,46 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    fun addExploreItem(
-        item: ExploreItem,
-        exploreRepository: ExploreRepository
-    ): Unit {
+    fun addExploreItem(item: ExploreItem): Unit {
         viewModelScope.launch {
             runCatching {
                 updateState { it.copy(isLoading = true) }
-                val readingUrl = item.readingUrl ?: exploreRepository.getNovelDetails(item.url, item.source)?.readingUrl ?: item.url
-                
-                if (repository.getItemByUrl(readingUrl) != null) {
-                    throw Exception("Item already in library")
-                }
-                
-                val contentType = determineContentType(readingUrl)
-                if (contentType == ContentType.WEB) {
-                    addWebExploreItem(item, readingUrl)
-                } else {
-                    repository.addItem(
-                        title = item.title,
-                        url = readingUrl,
-                        contentType = contentType,
-                        currentChapter = "Chapter 1",
-                        baseTitle = item.title,
-                        baseNovelUrl = item.url,
-                        sourceName = item.source,
-                        totalChapters = item.chapterCount
-                    )
-                }
+                addExploreItemInternal(item)
                 updateState { it.copy(isLoading = false) }
             }.onFailure { e ->
                 updateState { it.copy(isLoading = false, error = "Failed to add: ${e.message}") }
             }
+        }
+    }
+
+    /**
+     * Add a resolved [ExploreItem] (from Explore or from a pasted URL) as a proper series:
+     * stores `baseTitle`/`baseNovelUrl`/`sourceName`/`totalChapters` so chapter pagination and
+     * "open new chapter" work. Caller owns the coroutine + loading/error state.
+     */
+    private suspend fun addExploreItemInternal(item: ExploreItem) {
+        val readingUrl = item.readingUrl
+            ?: exploreRepository.getNovelDetails(item.url, item.source)?.readingUrl
+            ?: item.url
+
+        if (repository.getItemByUrl(readingUrl) != null) {
+            throw Exception("Item already in library")
+        }
+
+        val contentType = determineContentType(readingUrl)
+        if (contentType == ContentType.WEB) {
+            addWebExploreItem(item, readingUrl)
+        } else {
+            repository.addItem(
+                title = item.title,
+                url = readingUrl,
+                contentType = contentType,
+                currentChapter = "Chapter 1",
+                baseTitle = item.title,
+                baseNovelUrl = item.url,
+                sourceName = item.source,
+                totalChapters = item.chapterCount
+            )
         }
     }
 
@@ -435,40 +443,61 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching {
                 updateState { it.copy(isLoading = true, error = null) }
-                if (repository.getItemByUrl(url) != null) {
+                val trimmed = url.trim()
+                if (repository.getItemByUrl(trimmed) != null) {
                     throw Exception("This item already exists in your library")
                 }
-                val contentType = contentRepository.inferContentType(url)
-                val fetchedTitle = runCatching { contentRepository.fetchTitle(url) }.getOrNull() ?: url
-                
-                if (contentType == ContentType.EPUB) {
-                    repository.addItem(
-                        title = fetchedTitle.trim().ifBlank { url },
-                        url = url.trim(),
-                        contentType = ContentType.EPUB,
-                        currentChapter = "Chapter 1",
-                        baseTitle = fetchedTitle.trim().ifBlank { url },
-                        baseNovelUrl = url,
-                        sourceName = "EPUB"
-                    )
-                } else {
-                    val fullTitle = fetchedTitle.trim().ifBlank { url }
-                    val baseTitle = TextUtils.extractBaseTitle(fullTitle, contentType)
-                    repository.addItem(
-                        title = fullTitle,
-                        url = url.trim(),
-                        contentType = contentType,
-                        currentChapter = TextUtils.extractChapterLabel(fullTitle) ?: "Chapter 1",
-                        baseTitle = baseTitle,
-                        baseNovelUrl = url,
-                        sourceName = if (url.startsWith("http")) "Web" else "File"
-                    )
+                val contentType = contentRepository.inferContentType(trimmed)
+
+                when {
+                    contentType == ContentType.EPUB -> {
+                        val fetchedTitle = runCatching { contentRepository.fetchTitle(trimmed) }.getOrNull() ?: trimmed
+                        repository.addItem(
+                            title = fetchedTitle.trim().ifBlank { trimmed },
+                            url = trimmed,
+                            contentType = ContentType.EPUB,
+                            currentChapter = "Chapter 1",
+                            baseTitle = fetchedTitle.trim().ifBlank { trimmed },
+                            baseNovelUrl = trimmed,
+                            sourceName = "EPUB"
+                        )
+                    }
+                    // A web series URL: resolve it to a source (Novelight/NovelFire/… by host, or
+                    // SmartSource) and add it as a proper, paginating series with its chapter list.
+                    contentType == ContentType.WEB && trimmed.startsWith("http") &&
+                        addResolvedSeries(trimmed) -> Unit
+                    // Fallback: not resolvable as a series (arbitrary page or local file) — keep the
+                    // legacy single-item behaviour so pasting a lone chapter URL still works.
+                    else -> addUnresolvedItem(trimmed, contentType)
                 }
                 updateState { it.copy(isLoading = false) }
             }.onFailure { e ->
                 updateState { it.copy(isLoading = false, error = "Failed to add item: ${e.message}") }
             }
         }
+    }
+
+    /** Returns true if [url] resolved to a source series (with chapters) and was added. */
+    private suspend fun addResolvedSeries(url: String): Boolean {
+        val item = runCatching { exploreRepository.getNovelDetailsByUrl(url) }.getOrNull()
+        if (item == null || item.chapters.isEmpty()) return false
+        addExploreItemInternal(item)
+        return true
+    }
+
+    private suspend fun addUnresolvedItem(url: String, contentType: ContentType) {
+        val fetchedTitle = runCatching { contentRepository.fetchTitle(url) }.getOrNull() ?: url
+        val fullTitle = fetchedTitle.trim().ifBlank { url }
+        val baseTitle = TextUtils.extractBaseTitle(fullTitle, contentType)
+        repository.addItem(
+            title = fullTitle,
+            url = url,
+            contentType = contentType,
+            currentChapter = TextUtils.extractChapterLabel(fullTitle) ?: "Chapter 1",
+            baseTitle = baseTitle,
+            baseNovelUrl = url,
+            sourceName = if (url.startsWith("http")) "Web" else "File"
+        )
     }
 
     fun openNewChapter(

@@ -3,6 +3,7 @@ package io.aatricks.easyreader.data.repository
 import io.aatricks.easyreader.data.model.ExploreItem
 import io.aatricks.easyreader.data.repository.source.BrowseMode
 import io.aatricks.easyreader.data.repository.source.NovelSource
+import io.aatricks.easyreader.data.repository.source.SmartSource
 import io.aatricks.easyreader.data.repository.source.isSourceEnabled
 import io.aatricks.easyreader.util.normalizeExploreItemDetails
 import kotlinx.coroutines.async
@@ -125,6 +126,23 @@ class ExploreRepository @Inject constructor(
         val source = enabledSources.find { it.name == sourceName } ?: return null
         return runCatching { normalizeExploreItemDetails(source.getNovelDetails(url)) }.getOrNull()
     }
+
+    /**
+     * Resolve a pasted series/book URL to a source and fetch its details. Picks the source whose
+     * [NovelSource.baseUrl] host matches the URL's host (e.g. a novelight.net link → Novelight),
+     * falling back to [SmartSource] (its `baseUrl` is blank, the universal heuristic scraper).
+     * Lets "add by URL" build a proper, paginating series instead of a single orphan page.
+     */
+    suspend fun getNovelDetailsByUrl(url: String): ExploreItem? {
+        val host = hostOf(url) ?: return null
+        val match = enabledSources.firstOrNull { source ->
+            source.baseUrl.isNotBlank() && hostOf(source.baseUrl) == host
+        } ?: enabledSources.firstOrNull { it is SmartSource }
+        return match?.let { getNovelDetails(url, it.name) }
+    }
+
+    private fun hostOf(url: String): String? =
+        runCatching { java.net.URI(url).host?.removePrefix("www.") }.getOrNull()?.takeIf { it.isNotBlank() }
 
     private fun filterSources(sourceName: String?): List<NovelSource> {
         return if (sourceName == null) enabledSources else enabledSources.filter { it.name == sourceName }

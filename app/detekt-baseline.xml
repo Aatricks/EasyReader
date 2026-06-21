@@ -755,6 +755,7 @@
     <ID>TooManyFunctions:MainActivity.kt$MainActivity : ComponentActivity</ID>
     <ID>TooManyFunctions:MangaBatSource.kt$MangaBatSource : BaseJsoupSource</ID>
     <ID>TooManyFunctions:NovelFireSource.kt$NovelFireSource : BaseJsoupSource</ID>
+    <ID>TooManyFunctions:NovelightSource.kt$NovelightSource : BaseJsoupSource</ID>
     <ID>TooManyFunctions:PdfContentLoader.kt$PdfContentLoader</ID>
     <ID>TooManyFunctions:ReaderProgressController.kt$ReaderProgressController</ID>
     <ID>TooManyFunctions:ReaderViewModel.kt$ReaderViewModel : BaseViewModel</ID>

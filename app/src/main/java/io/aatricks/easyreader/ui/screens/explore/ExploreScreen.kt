@@ -119,7 +119,7 @@ fun ExploreScreen(
                 isLoading = uiState.isFetchingDetails,
                 isInLibrary = isInLibrary(activeItem),
                 onAddToLibrary = {
-                    libraryViewModel.addExploreItem(activeItem, exploreViewModel.exploreRepository)
+                    libraryViewModel.addExploreItem(activeItem)
                     exploreViewModel.dismissItem()
                     scope.launch {
                         val result = snackbarHostState.showSnackbar(
@@ -132,7 +132,7 @@ fun ExploreScreen(
                 },
                 onRead = {
                     if (!isInLibrary(activeItem)) {
-                        libraryViewModel.addExploreItem(activeItem, exploreViewModel.exploreRepository)
+                        libraryViewModel.addExploreItem(activeItem)
                     }
                     onReadItem(activeItem)
                     exploreViewModel.dismissItem()

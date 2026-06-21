@@ -1,11 +1,49 @@
 package io.aatricks.easyreader.data.repository.source
 
+import io.aatricks.easyreader.data.local.PreferencesManager
+import io.aatricks.easyreader.data.model.ExploreItem
+import kotlinx.coroutines.runBlocking
+import okhttp3.Call
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.jsoup.Jsoup
 import org.junit.Test
 import org.junit.Assert.*
-import io.aatricks.easyreader.data.model.ExploreItem
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 
 class NovelFireSourceTest {
+
+    @Test
+    fun `searchNovels queries searchLive with the keyword param`() {
+        val okHttpClient = mock<OkHttpClient>()
+        val call = mock<Call>()
+        val captor = argumentCaptor<Request>()
+        whenever(okHttpClient.newCall(captor.capture())).thenReturn(call)
+        whenever(call.execute()).thenAnswer {
+            Response.Builder()
+                .request(Request.Builder().url("https://novelfire.net/ajax/searchLive").build())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body("{\"data\":[]}".toResponseBody("application/json".toMediaType()))
+                .build()
+        }
+        val source = NovelFireSource(mock<PreferencesManager>(), okHttpClient)
+
+        runBlocking { source.searchNovels("kidnapped dragons", 1) }
+
+        val firstUrl = captor.firstValue.url.toString()
+        assertTrue("expected searchLive request, got $firstUrl", firstUrl.contains("/ajax/searchLive"))
+        assertTrue("query param should be 'keyword', got $firstUrl", firstUrl.contains("keyword="))
+        assertFalse("stale 'inputContent' param still used: $firstUrl", firstUrl.contains("inputContent="))
+    }
 
     @Test
     fun testParsePopularNovels() {

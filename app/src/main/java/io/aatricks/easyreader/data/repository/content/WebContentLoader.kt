@@ -8,6 +8,7 @@ import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.repository.HtmlParser
 import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
+import io.aatricks.easyreader.data.repository.source.NovelightUrls
 import io.aatricks.easyreader.util.CacheKeyUtils
 import io.aatricks.easyreader.util.FileSizeUtils
 import io.aatricks.easyreader.util.HttpRetry
@@ -78,6 +79,9 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         // re-attempt them after a day. Some CDNs return 404 transiently when overloaded; an
         // entry that's still 404 after the TTL gets re-recorded with a fresh timestamp.
         private const val PERMANENT_FAILURE_TTL_MS = 24L * 60L * 60L * 1000L
+        // Returned for a Novelight chapter whose prose came back empty/gated (premium) so the
+        // reader shows a clean empty state instead of caching ad markup or raw JSON.
+        private const val EMPTY_HTML_DOCUMENT = "<!doctype html><html><body></body></html>"
     }
 
     // Process-lifetime scope for background image prefetches that intentionally
@@ -671,19 +675,25 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         val attempts = if (useShortTimeout) SHORT_REQUEST_ATTEMPTS else USER_REQUEST_ATTEMPTS
         val client = if (useShortTimeout) shortTimeoutClient else userHtmlClient
 
+        // Novelight chapter pages are "Loading…" shells; the prose lives behind the read-chapter
+        // XHR endpoint. Fetch that instead and unwrap its JSON into clean chapter HTML so the
+        // cached/parsed content (read, prefetch, offline) is the actual text. See NovelightUrls.
+        val novelightChapterId = NovelightUrls.chapterId(url)
+        val fetchUrl = novelightChapterId?.let { NovelightUrls.readChapterUrl(it) } ?: url
+
         var lastException: Exception? = null
 
         repeat(attempts) { attempt ->
             val outcome = runCatching {
                 hostThrottle.execute(
-                    url = url,
-                    block = { fetchHtmlOnce(client, url) },
+                    url = fetchUrl,
+                    block = { fetchHtmlOnce(client, fetchUrl) },
                     classify = ::classifyHtmlOutcome
                 )
             }.getOrElse { t -> HtmlFetchOutcome.NetworkError(t as? Exception ?: Exception(t)) }
 
             when (outcome) {
-                is HtmlFetchOutcome.Body -> return outcome.text
+                is HtmlFetchOutcome.Body -> return finalizeHtmlBody(outcome.text, novelightChapterId)
                 is HtmlFetchOutcome.HttpError -> {
                     val e = Exception("HTTP ${outcome.code}")
                     lastException = e
@@ -700,11 +710,24 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         throw lastException ?: Exception("Failed to download HTML")
     }
 
+    // For a Novelight chapter the fetched body is read-chapter JSON: unwrap it into clean prose
+    // HTML (or an empty doc when gated/premium). Everything else is returned verbatim.
+    private fun finalizeHtmlBody(body: String, novelightChapterId: String?): String =
+        if (novelightChapterId != null) {
+            NovelightUrls.extractChapterContentHtml(body) ?: EMPTY_HTML_DOCUMENT
+        } else {
+            body
+        }
+
     private fun fetchHtmlOnce(client: OkHttpClient, url: String): HtmlFetchOutcome {
         val request = Request.Builder()
             .url(url)
             .addHeader("User-Agent", "Mozilla/5.0")
             .addHeader("Referer", getReferer(url))
+            .apply {
+                // Novelight's XHR endpoints (read-chapter, etc.) 403 without this header.
+                if (NovelightUrls.requiresXhrHeader(url)) addHeader("X-Requested-With", "XMLHttpRequest")
+            }
             .build()
         return try {
             client.newCall(request).execute().use { response ->

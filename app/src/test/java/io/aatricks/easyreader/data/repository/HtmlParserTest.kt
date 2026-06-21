@@ -82,4 +82,26 @@ class HtmlParserTest {
                 img.url.startsWith("https://cdn.asurascans.com/asura-images/chapters/"))
         }
     }
+
+    @Test
+    fun `parses Novelight div-per-paragraph chapter prose and drops ad blocks`() {
+        val pageUrl = "https://novelight.net/book/chapter/191867"
+        val html = """
+            <html><body>
+              <div class="chapter-text">
+                <div>Several days later.</div>
+                <div>In front of me stood a row of steel dummies.</div>
+                <div class="advertisment"><script>var ad=1;</script>SPONSORED</div>
+              </div>
+            </body></html>
+        """.trimIndent()
+
+        val document = Jsoup.parse(html, pageUrl)
+        val elements = parser.parse(document, pageUrl)
+        val text = elements.filterIsInstance<ContentElement.Text>().joinToString(" ") { it.content }
+
+        assertTrue("expected prose text, got '$text'", text.contains("Several days later"))
+        assertTrue(text.contains("steel dummies"))
+        assertTrue("ad text leaked into prose: '$text'", !text.contains("SPONSORED"))
+    }
 }
