@@ -190,12 +190,17 @@ fun ReaderScreen(
         }
     ) {
         Scaffold(
-            containerColor = Color.Black
-        ) { paddingValues ->
+            containerColor = Color.Black,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0)
+        ) {
+            // Reader content is always edge-to-edge -- it must not depend on Scaffold's
+            // (system-bar) inset padding, which Android keeps reporting as non-zero while
+            // BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE is active even after hide(), so consuming
+            // it here left a black gap where the status bar used to be. TopInfoBar and
+            // BottomNavigationBar apply their own statusBars/navigationBars padding instead,
+            // since they only render while the bars are actually shown.
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
+                modifier = Modifier.fillMaxSize()
             ) {
                 ReaderContent(
                     uiState = uiState,
