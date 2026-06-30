@@ -31,7 +31,7 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
 
 android {
     namespace = "io.aatricks.easyreader"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         // Keep the legacy applicationId so existing installs continue to update in-place.
