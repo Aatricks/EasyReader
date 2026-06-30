@@ -32,7 +32,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.aatricks.easyreader.data.model.ChapterContent
 import io.aatricks.easyreader.data.model.ContentElement
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import io.aatricks.easyreader.ui.components.ReaderImageView
+import io.aatricks.easyreader.ui.components.ReaderTiledImage
+import io.aatricks.easyreader.ui.components.readerImageSliceCount
 import io.aatricks.easyreader.ui.components.ZoomableBox
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 
@@ -438,23 +442,45 @@ internal fun ScrollingReaderView(
                 }
 
                 is ContentElement.Image -> {
-                    ReaderImageView(
-                        imageUrl = element.url,
-                        altText = element.altText,
-                        readerViewModel = readerViewModel,
-                        pageUrl = content.url,
-                        contentScale = ContentScale.Fit,
-                        backgroundColor = bgColor,
-                        width = element.width,
-                        height = element.height,
-                        side = element.side,
-                        enableZoom = false,
-                        dynamicHeight = false,
-                        onDimensionsResolved = { url, w, h ->
-                            readerViewModel.persistImageDimensions(url, w, h)
-                        },
-                        onTap = { readerViewModel.toggleControls() }
-                    )
+                    val resolved = readerViewModel.resolvedImageDimensions[element.url]
+                    val imgW = resolved?.first ?: element.width
+                    val imgH = resolved?.second ?: element.height
+                    val screenWidthPx = with(LocalDensity.current) {
+                        LocalConfiguration.current.screenWidthDp.dp.roundToPx()
+                    }
+                    val sliceCount = if (isManhwa && element.side == ContentElement.Image.Side.FULL) {
+                        readerImageSliceCount(screenWidthPx, imgW, imgH)
+                    } else {
+                        1
+                    }
+                    if (sliceCount > 1) {
+                        ReaderTiledImage(
+                            imageUrl = element.url,
+                            pageUrl = content.url,
+                            sliceAspect = imgW.toFloat() / (imgH.toFloat() / sliceCount),
+                            sliceCount = sliceCount,
+                            backgroundColor = bgColor,
+                            onTap = { readerViewModel.toggleControls() }
+                        )
+                    } else {
+                        ReaderImageView(
+                            imageUrl = element.url,
+                            altText = element.altText,
+                            readerViewModel = readerViewModel,
+                            pageUrl = content.url,
+                            contentScale = ContentScale.Fit,
+                            backgroundColor = bgColor,
+                            width = element.width,
+                            height = element.height,
+                            side = element.side,
+                            enableZoom = false,
+                            dynamicHeight = false,
+                            onDimensionsResolved = { url, w, h ->
+                                readerViewModel.persistImageDimensions(url, w, h)
+                            },
+                            onTap = { readerViewModel.toggleControls() }
+                        )
+                    }
                 }
 
                 is ContentElement.ImageGroup -> {

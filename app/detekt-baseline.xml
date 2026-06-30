@@ -121,6 +121,7 @@
     <ID>FunctionNaming:ReaderStates.kt$@Composable fun ErrorState(error: String, onRetry: () -&gt; Unit)</ID>
     <ID>FunctionNaming:ReaderStates.kt$@Composable fun LoadingState()</ID>
     <ID>FunctionNaming:ReaderStates.kt$@Composable private fun ReaderStatePanel( icon: ImageVector, iconTint: androidx.compose.ui.graphics.Color, iconDescription: String, title: String, body: String, action: @Composable (() -&gt; Unit)? = null )</ID>
+    <ID>FunctionNaming:ReaderTiledImage.kt$@Composable fun ReaderTiledImage( imageUrl: String, pageUrl: String, sliceAspect: Float, sliceCount: Int, backgroundColor: Color, onTap: (() -&gt; Unit)? = null )</ID>
     <ID>FunctionNaming:SettingsScreen.kt$@Composable private fun SettingsRow(title: String, subtitle: String)</ID>
     <ID>FunctionNaming:SettingsScreen.kt$@Composable private fun SettingsSection( title: String, content: @Composable () -&gt; Unit )</ID>
     <ID>FunctionNaming:SettingsScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsScreen( readerViewModel: ReaderViewModel, libraryViewModel: LibraryViewModel, onNavigateBack: () -&gt; Unit, backupViewModel: BackupViewModel = hiltViewModel() )</ID>
@@ -163,7 +164,6 @@
     <ID>LongMethod:LibraryScreenListSections.kt$@OptIn(ExperimentalFoundationApi::class) @Composable private fun NovelGroupHeader( title: String, items: List&lt;LibraryItem&gt;, isExpanded: Boolean, isSelectionMode: Boolean, isGroupSelected: Boolean, hasGroupSelection: Boolean, readerUiState: ReaderViewModel.ReaderUiState, onToggleExpand: () -&gt; Unit, onToggleSelection: () -&gt; Unit, onOpenItem: (LibraryItem) -&gt; Unit, onOpenNewChapter: (LibraryItem) -&gt; Unit, onResetProgress: () -&gt; Unit, onRemoveGroup: () -&gt; Unit ): Unit</ID>
     <ID>LongMethod:LlmEdgeSummaryEngine.kt$LlmEdgeSummaryEngine$override suspend fun initialize(): Result&lt;Unit&gt;</ID>
     <ID>LongMethod:MainActivity.kt$MainActivity$override fun onCreate(savedInstanceState: Bundle?)</ID>
-    <ID>LongMethod:NovelFireSource.kt$NovelFireSource$override suspend fun searchNovels(query: String, page: Int): List&lt;ExploreItem&gt;</ID>
     <ID>LongMethod:PdfContentLoader.kt$PdfContentLoader$internal fun processExtractedElements(filePath: String, pageNum: Int, extracted: ExtractedResult): List&lt;ContentElement&gt;</ID>
     <ID>LongMethod:ReaderContentArea.kt$@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class) @Composable internal fun ContentArea( uiState: ReaderViewModel.ReaderUiState, content: ChapterContent, readerViewModel: ReaderViewModel, onLibraryClick: () -&gt; Unit, onShowChapterList: () -&gt; Unit, onShowSettings: () -&gt; Unit ): Unit</ID>
     <ID>LongMethod:ReaderContentGestures.kt$@Composable internal fun PullToNavigateOverlay( pullAmount: Float, threshold: Float, isThresholdReached: Boolean, isPagedMode: Boolean, isRtl: Boolean ): Unit</ID>
@@ -214,6 +214,7 @@
     <ID>LongParameterList:ReaderSettingsSheet.kt$( label: String, value: Float, onValueChange: (Float) -&gt; Unit, valueRange: ClosedFloatingPointRange&lt;Float&gt;, steps: Int, displayValue: String )</ID>
     <ID>LongParameterList:ReaderSettingsSheet.kt$( uiState: ReaderViewModel.ReaderUiState, onDismiss: () -&gt; Unit, onUpdatePagedMode: (Boolean) -&gt; Unit, onUpdateRtl: (Boolean) -&gt; Unit, onUpdateFontSize: (Float) -&gt; Unit, onUpdateLineHeight: (Float) -&gt; Unit, onUpdateFontFamily: (String) -&gt; Unit, onUpdateMargins: (Int) -&gt; Unit, onUpdateParagraphSpacing: (Float) -&gt; Unit, onUpdateReaderTheme: (ReaderTheme) -&gt; Unit, onUpdateAccentTheme: (AccentTheme) -&gt; Unit, sheetState: SheetState )</ID>
     <ID>LongParameterList:ReaderStates.kt$( icon: ImageVector, iconTint: androidx.compose.ui.graphics.Color, iconDescription: String, title: String, body: String, action: @Composable (() -&gt; Unit)? = null )</ID>
+    <ID>LongParameterList:ReaderTiledImage.kt$( imageUrl: String, pageUrl: String, sliceAspect: Float, sliceCount: Int, backgroundColor: Color, onTap: (() -&gt; Unit)? = null )</ID>
     <ID>LongParameterList:ReaderViewModel.kt$ReaderViewModel$( progress: Int, scrollPosition: Float? = null, index: Int? = null, elementKey: String? = null, offsetFraction: Float? = null, currentChapterUrl: String? = null, forcePersist: Boolean = false )</ID>
     <ID>LongParameterList:ReaderViewModel.kt$ReaderViewModel$( scrollOffset: Float, maxScrollOffset: Float, viewportHeight: Float, index: Int, offsetFraction: Float, elementKey: String, canScrollForward: Boolean = true, firstVisibleItemSize: Int = 0 )</ID>
     <ID>LongParameterList:ReaderViewModel.kt$ReaderViewModel$( url: String, libraryItemId: String? = null, fromBottom: Boolean = false, isSilent: Boolean = false, isExplicitNavigation: Boolean = false, resetWebStateBeforeLoad: Boolean = false )</ID>
@@ -303,7 +304,6 @@
     <ID>MagicNumber:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$7</ID>
     <ID>MagicNumber:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$8</ID>
     <ID>MagicNumber:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$9</ID>
-    <ID>MagicNumber:AutoDeletionPolicy.kt$100</ID>
     <ID>MagicNumber:BaseJsoupSource.kt$BaseJsoupSource$15000L</ID>
     <ID>MagicNumber:CacheKeyUtils.kt$CacheKeyUtils$0xff</ID>
     <ID>MagicNumber:CacheKeyUtils.kt$CacheKeyUtils$4</ID>
@@ -414,12 +414,10 @@
     <ID>MagicNumber:PreferencesManager.kt$PreferencesManager$1.5f</ID>
     <ID>MagicNumber:PreferencesManager.kt$PreferencesManager$16</ID>
     <ID>MagicNumber:PreferencesManager.kt$PreferencesManager$18f</ID>
-    <ID>MagicNumber:ReaderContentArea.kt$0.0001f</ID>
     <ID>MagicNumber:ReaderContentArea.kt$100f</ID>
     <ID>MagicNumber:ReaderContentGestures.kt$0.4f</ID>
     <ID>MagicNumber:ReaderContentGestures.kt$0xFF4CAF50</ID>
     <ID>MagicNumber:ReaderContentGestures.kt$180f</ID>
-    <ID>MagicNumber:ReaderContentGestures.kt$6</ID>
     <ID>MagicNumber:ReaderContentGestures.kt$&lt;no name provided&gt;$0.5f</ID>
     <ID>MagicNumber:ReaderContentRenderers.kt$10000000</ID>
     <ID>MagicNumber:ReaderContentRenderers.kt$100f</ID>
@@ -560,7 +558,6 @@
     <ID>MaxLineLength:LibraryDao.kt$LibraryDao$@Query("UPDATE library_items SET progress = 0, lastScrollPosition = 0, lastReadIndex = 0, lastReadElementKey = '', lastReadOffsetFraction = -1, lastRead = :timestamp WHERE id = :id")</ID>
     <ID>MaxLineLength:LibraryItemCard.kt$color = if (item.progress == 100) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant</ID>
     <ID>MaxLineLength:LibraryItemCard.kt$val isLastChapter = chapterNumber != null &amp;&amp; item.totalChapters &gt; 0 &amp;&amp; chapterNumber.toInt() &gt;= item.totalChapters</ID>
-    <ID>MaxLineLength:LibraryRepository.kt$LibraryRepository$?:</ID>
     <ID>MaxLineLength:LibraryRepository.kt$LibraryRepository$if</ID>
     <ID>MaxLineLength:LibraryRepository.kt$LibraryRepository$suspend</ID>
     <ID>MaxLineLength:LibraryRepository.kt$LibraryRepository$val</ID>
@@ -571,7 +568,6 @@
     <ID>MaxLineLength:LibraryScreenListSections.kt$val chapterUrl = if (chapterItem.currentChapterUrl.isNotBlank()) chapterItem.currentChapterUrl else chapterItem.url</ID>
     <ID>MaxLineLength:LibraryScreenListSections.kt$val loadUrl = if (chapter.currentChapterUrl.isNotBlank()) chapter.currentChapterUrl else chapter.url</ID>
     <ID>MaxLineLength:LibraryScreenListSections.kt$val streamingSummary = if (summaryUiState.activeChapterUrl == chapterUrl) summaryUiState.currentSummary else cachedSummary</ID>
-    <ID>MaxLineLength:LibraryViewModel.kt$LibraryViewModel$val readingUrl = item.readingUrl ?: exploreRepository.getNovelDetails(item.url, item.source)?.readingUrl ?: item.url</ID>
     <ID>MaxLineLength:LocalContentLoader.kt$LocalContentLoader$mime.contains("epub", ignoreCase = true) || mime.contains("application/epub+zip", ignoreCase = true) -&gt; epubLoader.loadEpubContent(url)</ID>
     <ID>MaxLineLength:MangaBatSource.kt$MangaBatSource$.</ID>
     <ID>MaxLineLength:NovelFireSource.kt$NovelFireSource$"Sci-fi"</ID>
@@ -650,7 +646,6 @@
     <ID>ReturnCount:ImageIntegrity.kt$ImageIntegrity$private fun ByteArray.containsSequence(needle: ByteArray): Boolean</ID>
     <ID>ReturnCount:ImageIntegrity.kt$ImageIntegrity$private fun classifyFormat(header: ByteArray): ImageFormat?</ID>
     <ID>ReturnCount:ImageIntegrity.kt$ImageIntegrity$private fun looksLikeHtml(header: ByteArray): Boolean</ID>
-    <ID>ReturnCount:LibraryBackupManager.kt$LibraryBackupManager$private fun convertBackupItem( backupItem: LibraryItemBackup, tempDir: File, epubsDir: File, existingUrls: Set&lt;String&gt; ): LibraryItem?</ID>
     <ID>ReturnCount:LibraryBackupManager.kt$LibraryBackupManager$private fun resolveItemUrl(item: LibraryItemBackup, tempDir: File, epubsDir: File): ResolvedItem?</ID>
     <ID>ReturnCount:LibraryNovelHelpers.kt$internal fun isNovelFinished(item: LibraryItem, latestKnownChapterCount: Int): Boolean</ID>
     <ID>ReturnCount:LibraryRepository.kt$LibraryRepository$private fun parseChapterNumberOrNull(item: LibraryItem): Double?</ID>
@@ -667,7 +662,6 @@
     <ID>ReturnCount:ReaderContentGestures.kt$&lt;no name provided&gt;$override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset</ID>
     <ID>ReturnCount:ReaderProgressController.kt$ReaderProgressController$fun isSnapshotPersistable(content: ChapterContent?, snapshot: ReaderProgressState): Boolean</ID>
     <ID>ReturnCount:ReaderProgressController.kt$ReaderProgressController$fun updateScrollPosition( scrollOffset: Float, maxScrollOffset: Float, viewportHeight: Float, index: Int, offsetFraction: Float, elementKey: String, content: ChapterContent?, canScrollForward: Boolean = true, firstVisibleItemSize: Int = 0 )</ID>
-    <ID>ReturnCount:ReaderProgressController.kt$ReaderProgressController$private fun resolveRestoredIndex(content: ChapterContent, libraryItem: LibraryItem): ResolvedPosition</ID>
     <ID>ReturnCount:ReaderProgressController.kt$ReaderProgressController$suspend fun saveCurrentProgress(content: ChapterContent?)</ID>
     <ID>ReturnCount:ReaderViewModel.kt$ReaderViewModel$private fun updateNavigationUrls(): Unit</ID>
     <ID>ReturnCount:ReaderViewModel.kt$ReaderViewModel$private suspend fun resolvePdfResumeIndex( url: String, libraryItemId: String?, isExplicitNavigation: Boolean ): Int?</ID>
