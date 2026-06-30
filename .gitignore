@@ -21,3 +21,5 @@ docs/ai
 window_dump.xml
 *.uiautomator.xml
 uiautomator-dump*.xml
+.superpowers/
+docs/superpowers/
