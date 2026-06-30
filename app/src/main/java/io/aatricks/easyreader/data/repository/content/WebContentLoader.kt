@@ -737,7 +737,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                         retryAfterMs = HttpRetry.parseRetryAfterMs(response.header("Retry-After"))
                     )
                 }
-                val body = response.body ?: return@use HtmlFetchOutcome.NetworkError(IOException("Empty body"))
+                val body = response.body
                 val contentLength = body.contentLength()
                 if (contentLength > MAX_HTML_BODY_BYTES) {
                     return@use HtmlFetchOutcome.NetworkError(

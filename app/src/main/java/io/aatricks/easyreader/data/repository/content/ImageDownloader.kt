@@ -136,7 +136,7 @@ class ImageDownloader @Inject constructor(
             )
         }
 
-        val body = response.body ?: return ImageFetchResult.HttpError(response.code)
+        val body = response.body
         val maxBytes = if (destinationFile != null) MAX_IMAGE_BYTES else MAX_DIMENSION_SNIFF_BYTES
 
         val contentLength = body.contentLength()

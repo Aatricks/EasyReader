@@ -68,7 +68,7 @@ class SmartSource @Inject constructor(
 
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
-            val html = response.body?.string() ?: throw IOException("Empty response")
+            val html = response.body.string()
             return Jsoup.parse(html, url)
         }
     }
