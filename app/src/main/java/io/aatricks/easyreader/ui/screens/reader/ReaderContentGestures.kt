@@ -280,14 +280,20 @@ internal fun rememberReaderNestedScrollConnection(
     }
 }
 
+// Disk warm-ahead window. Kept small for image-heavy (manhwa) chapters: each item is a large
+// decode, so a wide window inflates coroutine fan-out and disk-trim churn that competes with
+// on-screen decoding. LazyColumn governs its own compose-ahead, so visible loading is unaffected.
+private const val PREFETCH_AHEAD = 4
+private const val PREFETCH_BEHIND = 1
+
 internal fun prefetchImages(
     currentIndex: Int,
     content: ChapterContent,
     requestedIndices: MutableSet<Int>,
     onEnqueue: (String) -> Unit
 ) {
-    val prefetchAhead = 6
-    val prefetchBehind = 2
+    val prefetchAhead = PREFETCH_AHEAD
+    val prefetchBehind = PREFETCH_BEHIND
 
     val startRange = (currentIndex - prefetchBehind).coerceAtLeast(0)
     val endRange = (currentIndex + prefetchAhead).coerceAtMost(content.paragraphs.size - 1)

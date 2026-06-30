@@ -29,7 +29,7 @@ class ReaderScreenPrefetchTest {
         val onEnqueue: (String) -> Unit = { url -> enqueuedUrls.add(url) }
 
         // Act 1: Initial prefetch (index 0)
-        // Window skips current index and checks 1..6.
+        // Window is ahead=4 / behind=1, so it skips current index and checks 0..4.
         prefetchImages(
             currentIndex = 0,
             content = content,
@@ -38,19 +38,17 @@ class ReaderScreenPrefetchTest {
         )
 
         // Assert 1
-        // Expected requests: url1 (idx 1), url3 (idx 3), url4 (idx 4), url6a (idx 6), url6b (idx 6)
-        assertEquals(5, enqueuedUrls.size)
-        assertTrue(enqueuedUrls.containsAll(listOf("url1", "url3", "url4", "url6a", "url6b")))
-        assertTrue(requestedIndices.containsAll(listOf(1, 2, 3, 4, 5, 6)))
+        // Expected requests: url1 (idx 1), url3 (idx 3), url4 (idx 4). Idx 5/6 are outside the window.
+        assertEquals(3, enqueuedUrls.size)
+        assertTrue(enqueuedUrls.containsAll(listOf("url1", "url3", "url4")))
+        assertTrue(requestedIndices.containsAll(listOf(1, 2, 3, 4)))
 
         // Clear enqueued to verify new ones
         enqueuedUrls.clear()
 
         // Act 2: Scroll slightly (index 1)
-        // Window: 0..7, skipping current index.
-        // Range 0..6 is already requested.
-        // If prefetchImages is optimized, it should NOT request anything for 0..6.
-        // It might check 7, 8... but they don't exist.
+        // Window: 0..5, skipping current index. Idx 2/3/4 are already requested; idx 0/5 are Text,
+        // so nothing new is enqueued.
         prefetchImages(
             currentIndex = 1,
             content = content,
@@ -70,20 +68,20 @@ class ReaderScreenPrefetchTest {
         val largeRequested = mutableSetOf<Int>()
         val largeEnqueued = mutableListOf<String>()
 
-        // Scroll to 0. Range skips current and checks 1..6.
+        // Scroll to 0. Range skips current and checks 0..4.
         prefetchImages(0, largeContent, largeRequested, { largeEnqueued.add(it) })
-        // Images at 1, 3, 5. (3 images)
-        assertEquals(3, largeEnqueued.size)
+        // Images at odd indices 1, 3. (2 images)
+        assertEquals(2, largeEnqueued.size)
         assertTrue(largeRequested.contains(1))
 
         largeEnqueued.clear()
 
-        // Scroll to 6. Range: 4..12, skipping current.
-        // New image indices are 7, 9, and 11.
+        // Scroll to 6. Range: 5..10, skipping current.
+        // New image indices are 5, 7, and 9.
         prefetchImages(6, largeContent, largeRequested, { largeEnqueued.add(it) })
 
         assertEquals(3, largeEnqueued.size)
-        assertTrue(largeEnqueued.containsAll(listOf("url7", "url9", "url11")))
-        assertTrue(largeRequested.contains(11))
+        assertTrue(largeEnqueued.containsAll(listOf("url5", "url7", "url9")))
+        assertTrue(largeRequested.contains(9))
     }
 }
