@@ -232,6 +232,10 @@ dependencies {
     // Networking - OkHttp
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging.interceptor)
+    // Ktor's OkHttp engine pulls okhttp-sse in transitively at an older version than the rest
+    // of the okhttp family; declaring it explicitly forces it to resolve at the same version so
+    // its internals (e.g. RealEventSource) stay binary-compatible with okhttp itself.
+    implementation(libs.okhttp.sse)
     
     // Testing
     testImplementation(libs.junit)

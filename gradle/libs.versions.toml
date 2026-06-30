@@ -90,6 +90,7 @@ bouncycastle-bcpkix-jdk15to18 = { group = "org.bouncycastle", name = "bcpkix-jdk
 bouncycastle-bcutil-jdk15to18 = { group = "org.bouncycastle", name = "bcutil-jdk15to18", version.ref = "bouncycastle" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okhttp-logging-interceptor = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
+okhttp-sse = { group = "com.squareup.okhttp3", name = "okhttp-sse", version.ref = "okhttp" }
 
 # Tests
 mockito-inline = { group = "org.mockito", name = "mockito-inline", version.ref = "mockitoInline" }
