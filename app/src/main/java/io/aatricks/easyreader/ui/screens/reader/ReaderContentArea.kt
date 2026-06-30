@@ -47,12 +47,22 @@ import io.aatricks.easyreader.ui.util.toFontFamily
 import io.aatricks.easyreader.ui.viewmodel.ReaderProgressController.Companion.MIN_STABLE_ITEM_SIZE_PX
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import io.aatricks.easyreader.ui.viewmodel.stableContentElementKey
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
+import io.aatricks.easyreader.ui.components.ReaderBottomEdgeBlur
+import io.aatricks.easyreader.ui.components.ReaderTopEdgeBlur
+import io.aatricks.easyreader.ui.components.applyReaderEdgeBlur
+import io.aatricks.easyreader.ui.components.supportsReaderEdgeBlur
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 private const val RESTORE_PERCENT_TOLERANCE = 5f
+private const val EDGE_BLUR_RECAPTURE_DEBOUNCE_MS = 200L
 private const val RESTORE_STABILITY_POLL_INTERVAL_MS = 80L
 private const val RESTORE_STABILITY_DURATION_MS = 300L
 private const val RESTORE_MAX_WAIT_MS = 3_000L
@@ -95,6 +105,33 @@ internal fun ContentArea(
     val requestedIndices = remember(content.url) { mutableSetOf<Int>() }
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
+
+    val density = LocalDensity.current
+
+    val edgeBlurLayer = rememberGraphicsLayer()
+    var edgeBlurCaptureGeneration by remember(content.url) { mutableIntStateOf(0) }
+    var edgeBlurLastCaptured by remember(content.url) { mutableIntStateOf(-1) }
+
+    LaunchedEffect(edgeBlurLayer, density) {
+        if (supportsReaderEdgeBlur) {
+            applyReaderEdgeBlur(edgeBlurLayer, density)
+        }
+    }
+
+    LaunchedEffect(uiState.showControls) {
+        if (uiState.showControls) edgeBlurCaptureGeneration++
+    }
+
+    LaunchedEffect(
+        uiState.showControls,
+        listState.firstVisibleItemIndex,
+        listState.firstVisibleItemScrollOffset,
+        pagerState.currentPage
+    ) {
+        if (!uiState.showControls) return@LaunchedEffect
+        kotlinx.coroutines.delay(EDGE_BLUR_RECAPTURE_DEBOUNCE_MS)
+        edgeBlurCaptureGeneration++
+    }
 
     LaunchedEffect(listState.firstVisibleItemIndex, pagerState.currentPage, content.url) {
         val currentIndex = if (uiState.isPagedMode) pagerState.currentPage else listState.firstVisibleItemIndex
@@ -308,7 +345,6 @@ internal fun ContentArea(
         }
     }
 
-    val density = androidx.compose.ui.platform.LocalDensity.current
     val threshold = remember { with(density) { 80.dp.toPx() } }
     var pullAmount by remember { mutableFloatStateOf(0f) }
     val isThresholdReached = abs(pullAmount) >= threshold
@@ -336,27 +372,56 @@ internal fun ContentArea(
             .nestedScroll(nestedScrollConnection)
             .background(bgColor)
     ) {
-        if (uiState.isPagedMode) {
-            PagedReaderView(
-                content = content,
-                pagerState = pagerState,
-                uiState = uiState,
-                fontFamily = fontFamily,
-                bgColor = bgColor,
-                textColor = textColor,
-                readerViewModel = readerViewModel,
-                isZoomable = isManhwa
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithContent {
+                    if (uiState.showControls && edgeBlurCaptureGeneration != edgeBlurLastCaptured) {
+                        edgeBlurLayer.record(
+                            density = this,
+                            layoutDirection = layoutDirection,
+                            size = IntSize(size.width.toInt(), size.height.toInt())
+                        ) {
+                            this@drawWithContent.drawContent()
+                        }
+                        edgeBlurLastCaptured = edgeBlurCaptureGeneration
+                    }
+                    drawContent()
+                }
+        ) {
+            if (uiState.isPagedMode) {
+                PagedReaderView(
+                    content = content,
+                    pagerState = pagerState,
+                    uiState = uiState,
+                    fontFamily = fontFamily,
+                    bgColor = bgColor,
+                    textColor = textColor,
+                    readerViewModel = readerViewModel,
+                    isZoomable = isManhwa
+                )
+            } else {
+                ScrollingReaderView(
+                    content = content,
+                    listState = listState,
+                    uiState = uiState,
+                    isManhwa = isManhwa,
+                    fontFamily = fontFamily,
+                    bgColor = bgColor,
+                    textColor = textColor,
+                    readerViewModel = readerViewModel
+                )
+            }
+        }
+
+        if (uiState.showControls) {
+            ReaderTopEdgeBlur(
+                graphicsLayer = edgeBlurLayer,
+                modifier = Modifier.align(Alignment.TopCenter)
             )
-        } else {
-            ScrollingReaderView(
-                content = content,
-                listState = listState,
-                uiState = uiState,
-                isManhwa = isManhwa,
-                fontFamily = fontFamily,
-                bgColor = bgColor,
-                textColor = textColor,
-                readerViewModel = readerViewModel
+            ReaderBottomEdgeBlur(
+                graphicsLayer = edgeBlurLayer,
+                modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
 
