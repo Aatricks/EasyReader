@@ -1,6 +1,6 @@
 [versions]
-agp = "8.13.0"
-kotlin = "2.1.0"
+agp = "9.2.1"
+kotlin = "2.3.21"
 coreKtx = "1.17.0"
 junit = "4.13.2"
 junitVersion = "1.3.0"
@@ -8,7 +8,7 @@ espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.9.4"
 activityCompose = "1.11.0"
 composeBom = "2025.06.01"
-hilt = "2.54"
+hilt = "2.60"
 # Intentionally kept on the Room alpha line because the app uses the matching
 # Room/KSP/SQLite APIs already resolved by the project and we are not upgrading
 # the persistence stack in this ticket.
@@ -24,7 +24,7 @@ itext7 = "7.2.5"
 mockitoInline = "5.2.0"
 llmedge = "0.3.9"
 bouncycastle = "1.72"
-ksp = "2.1.0-1.0.29"
+ksp = "2.3.9"
 robolectric = "4.12.1"
 androidxTestCore = "1.5.0"
 coreSplashscreen = "1.0.1"
