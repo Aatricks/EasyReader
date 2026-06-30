@@ -214,7 +214,7 @@ class NovelightSource @Inject constructor(
             .build()
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw java.io.IOException("Unexpected code $response")
-            return response.body?.string() ?: ""
+            return response.body.string()
         }
     }
 }

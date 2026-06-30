@@ -49,7 +49,7 @@ class ContentRepositoryUrlTest {
 
     @Before
     fun setup() {
-        tempCacheDir = createTempDir(prefix = "content-repository-url-test")
+        tempCacheDir = kotlin.io.path.createTempDirectory("content-repository-url-test").toFile()
         whenever(context.cacheDir).thenReturn(tempCacheDir)
         whenever(context.contentResolver).thenReturn(contentResolver)
         whenever(okHttpClient.cache).thenReturn(okHttpCache)

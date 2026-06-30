@@ -110,7 +110,7 @@ class NovelFireSource @Inject constructor(
                 .header("Referer", baseUrl)
                 .build()
 
-            val response = okHttpClient.newCall(request).execute().use { it.body?.string() ?: "" }
+            val response = okHttpClient.newCall(request).execute().use { it.body.string() }
             parseSearchJson(response)
         }.getOrElse {
             val fallbackUrl = "$baseUrl/genre-all/sort-popular/status-all/all-novel?keyword=$encodedQuery&page=$page"

@@ -33,7 +33,7 @@ abstract class BaseJsoupSource(
 
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw java.io.IOException("Unexpected code $response")
-            val html = response.body?.string() ?: throw java.io.IOException("Empty response")
+            val html = response.body.string()
             return Jsoup.parse(html, url)
         }
     }

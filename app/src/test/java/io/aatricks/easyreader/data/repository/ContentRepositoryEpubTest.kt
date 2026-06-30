@@ -52,7 +52,7 @@ class ContentRepositoryEpubTest {
 
     @Before
     fun setup() {
-        tempDir = createTempDir("epub_large_test")
+        tempDir = kotlin.io.path.createTempDirectory("epub_large_test").toFile()
         epubFile = File(tempDir, "test_book.epub")
         createLargeEpub(epubFile, chapterCount)
 

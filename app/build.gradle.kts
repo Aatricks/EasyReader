@@ -2,7 +2,6 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
@@ -32,7 +31,7 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
 
 android {
     namespace = "io.aatricks.easyreader"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         // Keep the legacy applicationId so existing installs continue to update in-place.
@@ -93,11 +92,13 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "11"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
     ksp {
         arg("room.schemaLocation", "$projectDir/schemas")
@@ -185,6 +186,9 @@ dependencies {
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+    // Hilt 2.60's generated code references com.google.errorprone.annotations (now compileOnly in
+    // Dagger), so the generated-Java compile needs these annotations on the classpath.
+    compileOnly("com.google.errorprone:error_prone_annotations:2.50.0")
     implementation(libs.hilt.navigation.compose)
     implementation(libs.androidx.hilt.work)
     ksp(libs.androidx.hilt.compiler)
@@ -228,6 +232,10 @@ dependencies {
     // Networking - OkHttp
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging.interceptor)
+    // Ktor's OkHttp engine pulls okhttp-sse in transitively at an older version than the rest
+    // of the okhttp family; declaring it explicitly forces it to resolve at the same version so
+    // its internals (e.g. RealEventSource) stay binary-compatible with okhttp itself.
+    implementation(libs.okhttp.sse)
     
     // Testing
     testImplementation(libs.junit)

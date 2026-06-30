@@ -34,6 +34,7 @@ fun TopInfoBar(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .statusBarsPadding()
             .padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.xs),
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
@@ -129,6 +130,7 @@ fun BottomNavigationBar(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .navigationBarsPadding()
             .padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.xs),
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),

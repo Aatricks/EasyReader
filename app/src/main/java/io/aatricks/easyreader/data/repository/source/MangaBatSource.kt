@@ -198,7 +198,7 @@ class MangaBatSource @Inject constructor(
                     .header("Referer", "$baseUrl/manga/$slug")
                     .header("X-Requested-With", "XMLHttpRequest")
                     .build()
-            ).execute().use { it.body?.string() ?: "" }
+            ).execute().use { it.body.string() }
             
             val json = JSONObject(response)
             if (!json.getBoolean("success")) return@runCatching Pair(emptyList<ChapterInfo>(), false)
