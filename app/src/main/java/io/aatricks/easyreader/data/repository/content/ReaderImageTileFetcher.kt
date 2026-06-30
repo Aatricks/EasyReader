@@ -56,13 +56,10 @@ class ReaderImageTileFetcher(
         val index = tile.sliceIndex.coerceIn(0, count - 1)
         val top = (srcH.toLong() * index / count).toInt()
         val bottom = (srcH.toLong() * (index + 1) / count).toInt().coerceAtMost(srcH)
-        if (srcW <= 0 || srcH <= 0 || bottom <= top) {
-            Log.w(TAG, "bad bounds img=${UrlSanitizer.sanitize(tile.imageUrl)} w=$srcW h=$srcH")
-            return null
-        }
         val targetW = (options.size.width as? Dimension.Pixels)?.px ?: srcW
         val sampleSize = calculateInSampleSize(srcW, targetW)
-        val bitmap = newRegionDecoder(file)?.let { decoder ->
+        val valid = srcW > 0 && srcH > 0 && bottom > top
+        val decoded = if (!valid) null else newRegionDecoder(file)?.let { decoder ->
             try {
                 decoder.decodeRegion(
                     Rect(0, top, srcW, bottom),
@@ -72,7 +69,19 @@ class ReaderImageTileFetcher(
                 decoder.recycle()
             }
         }
-        return bitmap?.let { SliceBitmap(it, sampleSize > 1) }
+        if (decoded == null) {
+            Log.w(TAG, "decode failed img=${UrlSanitizer.sanitize(tile.imageUrl)} w=$srcW h=$srcH")
+            return null
+        }
+        // BitmapRegionDecoder always returns a software (ARGB_8888) bitmap, which HWUI would then
+        // upload to the GPU on the RenderThread the first frame it is drawn (~5-12ms stall =
+        // scroll micro-stutter). Copy it to a HARDWARE bitmap here, on the decode thread, so the
+        // upload happens off the draw path and drawing it is free.
+        val hardware = runCatching {
+            decoded.copy(android.graphics.Bitmap.Config.HARDWARE, false)
+        }.getOrNull()
+        if (hardware != null) decoded.recycle()
+        return SliceBitmap(hardware ?: decoded, sampleSize > 1)
     }
 
     private suspend fun resolveFile(): File? {
