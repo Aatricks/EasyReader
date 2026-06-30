@@ -102,7 +102,6 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
         return ImageLoader.Builder(context)
             .memoryCache { buildMemoryCache(context) }
             .components {
-                add(io.aatricks.easyreader.data.repository.content.ReaderImageTileFetcher.Factory(contentRepository))
                 add(EpubImageFetcher.Factory(contentRepository))
                 add(HttpMediaCacheFetcher.Factory(contentRepository))
                 // Fallback only: HttpMediaCacheFetcher owns the disk-cached HTTP path and
