@@ -5,6 +5,8 @@ package io.aatricks.easyreader.ui.components
 import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.os.Build
+import androidx.annotation.ChecksSdkIntAtLeast
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,11 +27,13 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 
+@ChecksSdkIntAtLeast(api = Build.VERSION_CODES.S)
 internal val supportsReaderEdgeBlur: Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
 private const val EDGE_BLUR_RADIUS_DP = 20f
 private const val EDGE_SCRIM_ALPHA = 0.55f
 
+@RequiresApi(Build.VERSION_CODES.S)
 internal fun applyReaderEdgeBlur(graphicsLayer: GraphicsLayer, density: Density) {
     val radiusPx = with(density) { EDGE_BLUR_RADIUS_DP.dp.toPx() }
     graphicsLayer.renderEffect = RenderEffect

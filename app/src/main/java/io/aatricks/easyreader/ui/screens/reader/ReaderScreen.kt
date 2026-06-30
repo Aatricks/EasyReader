@@ -189,6 +189,7 @@ fun ReaderScreen(
             }
         }
     ) {
+        @Suppress("UnusedMaterial3ScaffoldPaddingParameter")
         Scaffold(
             containerColor = Color.Black,
             contentWindowInsets = WindowInsets(0, 0, 0, 0)
