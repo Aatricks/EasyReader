@@ -1,8 +1,8 @@
 # EasyReader
 
 [![Android](https://img.shields.io/badge/Android-11%2B-green.svg)](https://www.android.com/)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.1.0-blue.svg)](https://kotlinlang.org/)
-[![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-1.7.6-brightgreen.svg)](https://developer.android.com/jetpack/compose)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.3.21-blue.svg)](https://kotlinlang.org/)
+[![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-1.11.3-brightgreen.svg)](https://developer.android.com/jetpack/compose)
 
 An Android reader for web novels, manga, manhwa, and local files (like PDFs and EPUBs). Built with Kotlin and Jetpack Compose.
 
@@ -25,7 +25,7 @@ An Android reader for web novels, manga, manhwa, and local files (like PDFs and 
 
 ### Prerequisites
 - JDK 17+
-- Android Studio / Android SDK (compileSdk = 36)
+- Android Studio / Android SDK (compileSdk = 37)
 
 ### Run the App
 

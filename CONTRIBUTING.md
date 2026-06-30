@@ -4,7 +4,7 @@ Thanks for considering a contribution. The basics that aren't obvious from `READ
 
 ## Local setup
 
-1. JDK 17, Android SDK 36, AGP 8.13 (the wrapper bootstraps everything else).
+1. JDK 17, Android SDK 37, AGP 9.2 (the wrapper bootstraps everything else).
 2. Default workflow for PRs is the `standardDebug` variant:
    ```bash
    ./gradlew :app:lintStandardDebug :app:testStandardDebugUnitTest :app:detekt :app:assembleStandardDebug
