@@ -296,6 +296,12 @@ fun ReaderImageView(
                 alignment = imageAlignment,
                 contentScale = pagedContentScale,
                 onSuccess = { state: AsyncImagePainter.State.Success ->
+                    // Kick off the GPU texture upload now, while the bitmap is decoded but (for
+                    // compose-ahead items) not yet drawn. Reader bitmaps are software-backed, so
+                    // otherwise HWUI uploads them synchronously on the RenderThread the first frame
+                    // they scroll into view — measured at up to ~12ms, the cause of scroll
+                    // micro-stutter. prepareToDraw() moves that upload onto a background thread.
+                    (state.result.image as? coil3.BitmapImage)?.bitmap?.prepareToDraw()
                     val resolved = ImageDimensions(
                         width = state.result.image.width,
                         height = state.result.image.height

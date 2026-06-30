@@ -81,7 +81,12 @@ fun ReaderTiledImage(
                     .fillMaxWidth()
                     .aspectRatio(sliceAspect)
                     .background(backgroundColor),
-                contentScale = ContentScale.FillWidth
+                contentScale = ContentScale.FillWidth,
+                // Upload the slice texture asynchronously as soon as it decodes (all slices of an
+                // item compose together, so off-screen ones get uploaded ahead of being drawn).
+                onSuccess = { state ->
+                    (state.result.image as? coil3.BitmapImage)?.bitmap?.prepareToDraw()
+                }
             )
         }
     }
