@@ -61,14 +61,15 @@ class LibraryViewModel @Inject constructor(
     private val selectionManager = LibrarySelectionManager()
     private val _collapsedSources = MutableStateFlow<Set<String>>(emptySet())
     private val _chapterCacheStates = MutableStateFlow<Map<String, PrefetchResult>>(emptyMap())
-    private val _pendingDeletion = MutableStateFlow<Set<String>>(emptySet())
-    val pendingDeletion: StateFlow<Set<String>> = _pendingDeletion.asStateFlow()
-    private var pendingDeleteJob: Job? = null
-    private var pendingDeleteUrls: List<String> = emptyList()
+    private val deletionCoordinator = LibraryDeletionCoordinator(
+        scope = viewModelScope,
+        repository = repository,
+        contentRepository = contentRepository,
+    ) { message -> updateState { it.copy(error = message) } }
+    val pendingDeletion: StateFlow<Set<String>> = deletionCoordinator.pendingDeletion
     private var downloadedReconciliationJob: Job? = null
 
     companion object {
-        private const val UNDO_DELETE_WINDOW_MS = 5000L
         private const val CACHE_STATE_REFRESH_CONCURRENCY = 6
     }
 
@@ -150,7 +151,11 @@ class LibraryViewModel @Inject constructor(
                 Triple(items, selected, collapsed) to selectionModeEnabled
             }
 
-            val cacheAndPending = combine(_chapterCacheStates, _pendingDeletion, _statusFilter) { c, p, s ->
+            val cacheAndPending = combine(
+                _chapterCacheStates,
+                deletionCoordinator.pendingDeletion,
+                _statusFilter
+            ) { c, p, s ->
                 Triple(c, p, s)
             }
 
@@ -197,61 +202,19 @@ class LibraryViewModel @Inject constructor(
     }
 
     private fun scheduleDeletion(ids: Set<String>) {
-        if (ids.isEmpty()) return
-        val items = repository.libraryItems.value
-        val urls = ids.mapNotNull { id -> items.firstOrNull { it.id == id }?.url }
-        pendingDeleteJob?.cancel()
-        pendingDeleteUrls = (pendingDeleteUrls + urls).distinct()
-        _pendingDeletion.update { it + ids }
-        pendingDeleteJob = viewModelScope.launch {
-            delay(UNDO_DELETE_WINDOW_MS)
-            commitPendingDeletion()
-        }
+        deletionCoordinator.schedule(ids)
     }
 
     fun undoPendingDeletion(): Unit {
-        pendingDeleteJob?.cancel()
-        pendingDeleteJob = null
-        _pendingDeletion.value = emptySet()
-        pendingDeleteUrls = emptyList()
-    }
-
-    private suspend fun commitPendingDeletion() {
-        val ids = _pendingDeletion.value
-        if (ids.isEmpty()) return
-        val urls = pendingDeleteUrls
-        runCatching {
-            contentRepository.clearCachesAndDownloadsForUrls(urls)
-            repository.removeItems(ids)
-        }.onFailure { e ->
-            updateState { it.copy(error = "Failed to remove items: ${e.message}") }
-        }
-        _pendingDeletion.value = emptySet()
-        pendingDeleteUrls = emptyList()
-        pendingDeleteJob = null
+        deletionCoordinator.undo()
     }
 
     fun flushPendingDeletion(): Unit {
-        pendingDeleteJob?.cancel()
-        pendingDeleteJob = null
-        viewModelScope.launch { commitPendingDeletion() }
+        deletionCoordinator.flush()
     }
 
     fun removeItemsImmediate(ids: Set<String>): Unit {
-        if (ids.isEmpty()) return
-        viewModelScope.launch {
-            val urls = repository.libraryItems.value
-                .asSequence()
-                .filter { it.id in ids }
-                .map { it.url }
-                .toList()
-            runCatching {
-                contentRepository.clearCachesAndDownloadsForUrls(urls)
-                repository.removeItems(ids)
-            }.onFailure { e ->
-                updateState { it.copy(error = "Failed to remove items: ${e.message}") }
-            }
-        }
+        deletionCoordinator.removeImmediate(ids)
     }
 
     private fun filterAndSortItems(
