@@ -58,8 +58,7 @@ class LibraryViewModel @Inject constructor(
         _statusFilter.value = filter
     }
 
-    private val _selectedItems = MutableStateFlow<Set<String>>(emptySet())
-    private val _selectionModeEnabled = MutableStateFlow(false)
+    private val selectionManager = LibrarySelectionManager()
     private val _collapsedSources = MutableStateFlow<Set<String>>(emptySet())
     private val _chapterCacheStates = MutableStateFlow<Map<String, PrefetchResult>>(emptyMap())
     private val _pendingDeletion = MutableStateFlow<Set<String>>(emptySet())
@@ -144,9 +143,9 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             val repoFlow = combine(
                 repository.libraryItems,
-                _selectedItems,
+                selectionManager.selectedItems,
                 _collapsedSources,
-                _selectionModeEnabled
+                selectionManager.selectionModeEnabled
             ) { items, selected, collapsed, selectionModeEnabled ->
                 Triple(items, selected, collapsed) to selectionModeEnabled
             }
@@ -551,7 +550,7 @@ class LibraryViewModel @Inject constructor(
             runCatching {
                 updateState { it.copy(isLoading = true) }
                 val items = if (selectedOnly) {
-                    val selectedIds = _selectedItems.value
+                    val selectedIds = selectionManager.selectedIds
                     repository.libraryItems.value.filter { it.id in selectedIds }
                 } else {
                     repository.libraryItems.value
@@ -639,48 +638,34 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun toggleSelection(itemId: String): Unit {
-        _selectedItems.update {
-            val current = it.toMutableSet()
-            if (!current.add(itemId)) current.remove(itemId)
-            current
-        }
+        selectionManager.toggle(itemId)
     }
 
     fun selectItem(itemId: String): Unit {
-        _selectedItems.update { it + itemId }
+        selectionManager.select(itemId)
     }
 
     fun deselectItem(itemId: String): Unit {
-        _selectedItems.update { it - itemId }
+        selectionManager.deselect(itemId)
     }
 
     fun toggleGroupSelection(baseTitle: String): Unit {
         viewModelScope.launch {
-            val groupItems = uiState.value.groupedItems[baseTitle] ?: emptyList()
-            val selectedIds = uiState.value.selectedIds
-            val allSelected = groupItems.all { it.id in selectedIds }
-            val itemIds = groupItems.map { it.id }
-            
-            if (allSelected) {
-                _selectedItems.update { it - itemIds.toSet() }
-            } else {
-                _selectedItems.update { it + itemIds.toSet() }
-            }
+            val itemIds = uiState.value.groupedItems[baseTitle]?.map { it.id } ?: emptyList()
+            selectionManager.toggleGroup(itemIds)
         }
     }
 
     fun selectAll(): Unit {
-        _selectionModeEnabled.value = true
-        _selectedItems.value = repository.libraryItems.value.map { it.id }.toSet()
+        selectionManager.selectAll(repository.libraryItems.value.map { it.id }.toSet())
     }
 
     fun enterSelectionMode(): Unit {
-        _selectionModeEnabled.value = true
+        selectionManager.enterSelectionMode()
     }
 
     fun clearSelection(): Unit {
-        _selectedItems.value = emptySet()
-        _selectionModeEnabled.value = false
+        selectionManager.clear()
     }
 
     fun updateSearchQuery(query: String): Unit {
@@ -749,11 +734,10 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun removeSelectedItems(): Unit {
-        val selectedIds = _selectedItems.value
+        val selectedIds = selectionManager.selectedIds
         if (selectedIds.isEmpty()) return
         scheduleDeletion(selectedIds)
-        _selectedItems.value = emptySet()
-        _selectionModeEnabled.value = false
+        selectionManager.clear()
     }
 
     fun clearLibrary(): Unit {
@@ -761,8 +745,7 @@ class LibraryViewModel @Inject constructor(
             runCatching {
                 repository.clearLibrary()
                 contentRepository.clearAllCache()
-                _selectedItems.value = emptySet()
-                _selectionModeEnabled.value = false
+                selectionManager.clear()
             }.onFailure { e ->
                 updateState { it.copy(error = "Failed to clear library: ${e.message}") }
             }
