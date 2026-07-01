@@ -58,19 +58,6 @@ class ReaderViewModel @Inject constructor(
         get() = progressController.currentLibraryItemId
         set(value) { progressController.currentLibraryItemId = value }
 
-    // Suppress auto navigation when restoring a saved position until user interacts
-    private var suppressAutoNavUntilUserInteraction: Boolean
-        get() = progressController.suppressAutoNavUntilUserInteraction
-        set(value) { progressController.suppressAutoNavUntilUserInteraction = value }
-
-    private var restoredScrollPercent: Float
-        get() = progressController.restoredScrollPercent
-        set(value) { progressController.restoredScrollPercent = value }
-
-    var hasUserInteractedSinceLoad: Boolean
-        get() = progressController.hasUserInteractedSinceLoad
-        private set(value) { progressController.hasUserInteractedSinceLoad = value }
-
     val userHasDragged: Boolean
         get() = progressController.userHasDragged
 
@@ -191,10 +178,6 @@ class ReaderViewModel @Inject constructor(
             else -> this
         }
     }
-
-    private var restoredProgressSnapshot: ReaderProgressState?
-        get() = progressController.restoredProgressSnapshot
-        set(value) { progressController.restoredProgressSnapshot = value }
 
     // Track if we're explicitly navigating (not restoring from library)
     private var isExplicitNavigation: Boolean = false
@@ -1049,7 +1032,7 @@ class ReaderViewModel @Inject constructor(
         val content = _uiState.value.content ?: return
         progressController.cancelProgressUpdate()
         val latest = currentPersistedSnapshot()
-        val shouldSnapToTop = !hasUserInteractedSinceLoad &&
+        val shouldSnapToTop = !progressController.hasUserInteractedSinceLoad &&
             latest.scrollProgress == 0 &&
             !latest.isPreciseRestore &&
             latest.scrollIndex == 0 &&
