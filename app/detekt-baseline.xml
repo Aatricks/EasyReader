@@ -767,23 +767,10 @@
     <ID>UnusedParameter:TextFormattingPipeline.kt$TextFormattingPipeline$original: String</ID>
     <ID>UnusedParameter:WebChapterElementShaper.kt$WebChapterElementShaper$url: String</ID>
     <ID>UnusedParameter:ZoomableBox.kt$isDynamic: Boolean = false</ID>
-    <ID>UnusedPrivateMember:MangaBatSource.kt$MangaBatSource$private suspend fun fetchChaptersFromApi(slug: String): List&lt;ChapterInfo&gt;</ID>
-    <ID>UnusedPrivateMember:ReaderViewModel.kt$ReaderViewModel$private fun isPlaceholderAtCurrentPosition(index: Int? = null): Boolean</ID>
     <ID>UnusedPrivateProperty:ExploreRepository.kt$ExploreRepository$@ApplicationContext private val context: android.content.Context</ID>
-    <ID>UnusedPrivateProperty:HtmlParser.kt$HtmlParser.Companion$private val WHITESPACE_REGEX = Regex("\\s+")</ID>
     <ID>UnusedPrivateProperty:LibraryRepository.kt$LibraryRepository$val semaphore = Semaphore(5)</ID>
     <ID>UnusedPrivateProperty:LlmEdgeSummaryEngine.kt$LlmEdgeSummaryEngine.Companion$private const val MODEL_FILENAME = "Qwen3-0.6B-Q4_K_M.gguf"</ID>
-    <ID>UnusedPrivateProperty:ReaderViewModel.kt$ReaderViewModel.Companion$private const val MIN_SCROLL_OFFSET_DELTA_PX = 8</ID>
     <ID>UnusedPrivateProperty:TextFormattingPipeline.kt$TextFormattingPipeline$k</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val FOUR_PLUS_NEWLINES_REGEX = Regex("\\n{4,}")</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val LINE_BREAK_REGEX = Regex("\\r\\n|\\r")</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val LIST_MARKER_REGEX = Regex("^(?:\\d+|[ivxIVX]+\\.|[-*•])\\s")</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val NEWLINE_BEFORE_LOWER_DIGIT_REGEX = Regex("\\n(?=[a-z0-9])")</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val PARAGRAPH_SPLIT_REGEX = Regex("(?s)(.*?)(\\n+|$)")</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val SINGLE_NEWLINE_REGEX = Regex("(?&lt;!\\n)\\n(?!\\n)")</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val SPACE_PLUS_NEWLINE_REGEX = Regex(" +\\n")</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val THREE_PLUS_NEWLINES_REGEX = Regex("\\n{3,}")</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val TWO_PLUS_SPACES_REGEX = Regex("[ ]{2,}")</ID>
     <ID>VariableNaming:BaseViewModel.kt$BaseViewModel$protected val _uiState = MutableStateFlow(initialState)</ID>
     <ID>VariableNaming:LibraryViewModel.kt$LibraryViewModel$private val TAG = "LibraryViewModel"</ID>
     <ID>VariableNaming:SummaryViewModel.kt$SummaryViewModel$private val TAG = "SummaryViewModel"</ID>

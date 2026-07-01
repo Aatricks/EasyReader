@@ -48,7 +48,6 @@ class ReaderViewModel @Inject constructor(
     companion object {
         private const val TAG = "ReaderViewModel"
         private val DOUBLE_NEWLINE_REGEX = Regex("""\n\s*\n""")
-        private const val MIN_SCROLL_OFFSET_DELTA_PX = 8
     }
 
     // Current library item ID being read
@@ -532,14 +531,6 @@ class ReaderViewModel @Inject constructor(
             ?: return null
 
         return libraryItem.takeIf { it.contentType == ContentType.PDF }?.lastReadIndex
-    }
-
-    private fun isPlaceholderAtCurrentPosition(index: Int? = null): Boolean {
-        val lastIndex = index ?: _uiState.value.scrollIndex
-        val paragraphs = _uiState.value.content?.paragraphs ?: return false
-        val currentItem = paragraphs.getOrNull(lastIndex)
-        return currentItem is ContentElement.Placeholder ||
-            (currentItem is ContentElement.Text && currentItem.content.startsWith("Loading page"))
     }
 
     private suspend fun saveCurrentProgress(): Unit {

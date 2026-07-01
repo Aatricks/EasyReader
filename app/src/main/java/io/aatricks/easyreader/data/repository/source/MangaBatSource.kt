@@ -221,11 +221,6 @@ class MangaBatSource @Inject constructor(
         }.getOrDefault(Pair(emptyList(), false))
     }
 
-    private suspend fun fetchChaptersFromApi(slug: String): List<ChapterInfo> {
-        // Fallback for list elements if needed, but we now use fetchAllChaptersFromApi in getNovelDetails
-        return fetchAllChaptersFromApi(slug)
-    }
-
     private fun extractAuthor(document: org.jsoup.nodes.Document): String {
         val authorByLink = document.select(".table-value a[href*='search/author'], .info-author a").text()
         if (authorByLink.isNotBlank()) return authorByLink
