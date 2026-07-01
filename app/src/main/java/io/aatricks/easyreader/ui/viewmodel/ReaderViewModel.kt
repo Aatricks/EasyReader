@@ -49,8 +49,6 @@ class ReaderViewModel @Inject constructor(
         private const val TAG = "ReaderViewModel"
         private val DOUBLE_NEWLINE_REGEX = Regex("""\n\s*\n""")
         private const val MIN_SCROLL_OFFSET_DELTA_PX = 8
-        private const val IMAGE_DIMENSION_FLUSH_DELAY_MS = 100L
-        private const val CONTENT_DIM_APPLY_DEBOUNCE_MS = 350L
     }
 
     // Current library item ID being read
@@ -81,54 +79,16 @@ class ReaderViewModel @Inject constructor(
     // item scrolled away and back is sized correctly on its FIRST composition (no collapse to the
     // loading placeholder + relayout). This is what keeps fast up/down dragging smooth; the
     // debounced `content` rebuild below stays only for persistence / restore math.
-    val resolvedImageDimensions = androidx.compose.runtime.mutableStateMapOf<String, Pair<Int, Int>>()
+    private val imageDimensionManager = ImageDimensionManager(
+        scope = viewModelScope,
+        imageDimensionCache = imageDimensionCache,
+        applyContentDimensions = ::updateCurrentContentImageDimensions,
+    )
 
-    fun persistImageDimensions(imageUrl: String, width: Int, height: Int) {
-        if (imageUrl.isBlank() || width <= 0 || height <= 0) return
-        resolvedImageDimensions[imageUrl] = width to height
-        pendingImageDimensions[imageUrl] = width to height
-        contentDimUpdates[imageUrl] = width to height
-        scheduleDimensionDbFlush()
-        scheduleContentDimApply()
-    }
+    val resolvedImageDimensions get() = imageDimensionManager.resolvedImageDimensions
 
-    // Persist resolved dimensions to the on-disk cache promptly (off-main, no UI cost).
-    private fun scheduleDimensionDbFlush() {
-        if (dimensionFlushJob?.isActive == true) return
-        dimensionFlushJob = viewModelScope.launch {
-            delay(IMAGE_DIMENSION_FLUSH_DELAY_MS)
-            while (pendingImageDimensions.isNotEmpty()) {
-                flushPendingImageDimensions()
-            }
-        }
-    }
-
-    // Trailing debounce for the in-memory content rebuild. Applying dimensions per-image rebuilt
-    // the whole chapter (`paragraphs.map{}` + `content.copy`) and re-emitted `_uiState` on every
-    // decode, recomposing the reader on the main thread — measured as 9–16ms frame overruns
-    // (micro-stutter) at 120Hz during scroll. The live image already sizes itself via
-    // ReaderImageView.runtimeDimensions, so the content mutation only needs to land once loading
-    // settles (for re-composed items / future restore math). Each new dimension cancels the
-    // pending apply, so a continuous scroll never rebuilds content mid-fling.
-    private fun scheduleContentDimApply() {
-        contentDimApplyJob?.cancel()
-        contentDimApplyJob = viewModelScope.launch {
-            delay(CONTENT_DIM_APPLY_DEBOUNCE_MS)
-            if (contentDimUpdates.isEmpty()) return@launch
-            val batch = contentDimUpdates.toMap()
-            contentDimUpdates.clear()
-            updateCurrentContentImageDimensions(batch)
-        }
-    }
-
-    private suspend fun flushPendingImageDimensions() {
-        val updates = pendingImageDimensions.toMap()
-        pendingImageDimensions.clear()
-        if (updates.isEmpty()) return
-        imageDimensionCache.persistAll(updates.map { (url, dimensions) ->
-            Triple(url, dimensions.first, dimensions.second)
-        })
-    }
+    fun persistImageDimensions(imageUrl: String, width: Int, height: Int) =
+        imageDimensionManager.persistImageDimensions(imageUrl, width, height)
 
     private fun updateCurrentContentImageDimensions(updates: Map<String, Pair<Int, Int>>) {
         updateState { state ->
@@ -187,10 +147,6 @@ class ReaderViewModel @Inject constructor(
 
     // Job for tracking content loading
     private var loadJob: Job? = null
-    private var dimensionFlushJob: Job? = null
-    private val pendingImageDimensions = LinkedHashMap<String, Pair<Int, Int>>()
-    private var contentDimApplyJob: Job? = null
-    private val contentDimUpdates = LinkedHashMap<String, Pair<Int, Int>>()
 
     private fun applyReaderSettings(snapshot: io.aatricks.easyreader.data.local.ReaderSettingsSnapshot) {
         updateState {
@@ -1149,9 +1105,7 @@ class ReaderViewModel @Inject constructor(
         progressController.resetState()
         isExplicitNavigation = false
         lastRawScrollOffset = -1f
-        contentDimApplyJob?.cancel()
-        contentDimUpdates.clear()
-        resolvedImageDimensions.clear()
+        imageDimensionManager.reset()
     }
 
     private fun closeContent(content: ChapterContent?) {
