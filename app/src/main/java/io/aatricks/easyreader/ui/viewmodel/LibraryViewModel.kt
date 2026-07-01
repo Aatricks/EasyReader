@@ -9,8 +9,6 @@ import io.aatricks.easyreader.data.model.ExploreItem
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.model.SortMode
 import io.aatricks.easyreader.data.model.SeriesReadingStatus
-import io.aatricks.easyreader.data.model.libraryNovelKey
-import io.aatricks.easyreader.data.model.seriesReadingStatus
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.DownloadStatusReconciler
 import io.aatricks.easyreader.data.repository.ExploreRepository
@@ -42,20 +40,14 @@ class LibraryViewModel @Inject constructor(
 
     private val TAG = "LibraryViewModel"
 
-    private val _searchQuery = MutableStateFlow("")
-    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
-
-    private val _contentTypeFilter = MutableStateFlow<ContentType?>(null)
-    val contentTypeFilter: StateFlow<ContentType?> = _contentTypeFilter.asStateFlow()
-
-    private val _sortMode = MutableStateFlow(SortMode.LAST_READ)
-    val sortMode: StateFlow<SortMode> = _sortMode.asStateFlow()
-
-    private val _statusFilter = MutableStateFlow(SeriesReadingStatus.ALL)
-    val statusFilter: StateFlow<SeriesReadingStatus> = _statusFilter.asStateFlow()
+    private val filters = LibraryFilters()
+    val searchQuery: StateFlow<String> = filters.searchQuery
+    val contentTypeFilter: StateFlow<ContentType?> = filters.contentTypeFilter
+    val sortMode: StateFlow<SortMode> = filters.sortMode
+    val statusFilter: StateFlow<SeriesReadingStatus> = filters.statusFilter
 
     fun setStatusFilter(filter: SeriesReadingStatus): Unit {
-        _statusFilter.value = filter
+        filters.setStatusFilter(filter)
     }
 
     private val selectionManager = LibrarySelectionManager()
@@ -154,7 +146,7 @@ class LibraryViewModel @Inject constructor(
             val cacheAndPending = combine(
                 _chapterCacheStates,
                 deletionCoordinator.pendingDeletion,
-                _statusFilter
+                filters.statusFilter
             ) { c, p, s ->
                 Triple(c, p, s)
             }
@@ -162,16 +154,16 @@ class LibraryViewModel @Inject constructor(
             combine(
                 repoFlow,
                 cacheAndPending,
-                _searchQuery,
-                _contentTypeFilter,
-                _sortMode
+                filters.searchQuery,
+                filters.contentTypeFilter,
+                filters.sortMode
             ) { repoState, cachePending, query, filter, sort ->
                 val (repoData, selectionModeEnabled) = repoState
                 val (rawItems, selectedIds, collapsedSources) = repoData
                 val (cacheStates, pendingIds, statusFilter) = cachePending
 
                 val items = if (pendingIds.isEmpty()) rawItems else rawItems.filterNot { it.id in pendingIds }
-                val filteredItems = filterAndSortItems(items, query, filter, sort, statusFilter)
+                val filteredItems = filters.apply(items, query, filter, sort, statusFilter)
 
                 LibraryUiState(
                     items = items,
@@ -215,43 +207,6 @@ class LibraryViewModel @Inject constructor(
 
     fun removeItemsImmediate(ids: Set<String>): Unit {
         deletionCoordinator.removeImmediate(ids)
-    }
-
-    private fun filterAndSortItems(
-        items: List<LibraryItem>,
-        query: String,
-        filter: ContentType?,
-        sort: SortMode,
-        statusFilter: SeriesReadingStatus = SeriesReadingStatus.ALL
-    ): List<LibraryItem> {
-        var filtered = items
-
-        if (filter != null) {
-            filtered = filtered.filter { it.contentType == filter }
-        }
-
-        if (statusFilter != SeriesReadingStatus.ALL) {
-            val seriesGroups = filtered.groupBy { it.libraryNovelKey() }
-            val matchingKeys = seriesGroups
-                .filterValues { groupItems -> seriesReadingStatus(groupItems) == statusFilter }
-                .keys
-            filtered = filtered.filter { it.libraryNovelKey() in matchingKeys }
-        }
-
-        if (query.isNotBlank()) {
-            val lowercaseQuery = query.trim().lowercase()
-            filtered = filtered.filter {
-                it.title.lowercase().contains(lowercaseQuery) ||
-                it.baseTitle.lowercase().contains(lowercaseQuery)
-            }
-        }
-
-        return when (sort) {
-            SortMode.LAST_READ -> filtered.sortedByDescending { it.lastRead }
-            SortMode.DATE_ADDED -> filtered.sortedByDescending { it.dateAdded }
-            SortMode.TITLE -> filtered.sortedBy { it.title.lowercase() }
-            SortMode.PROGRESS -> filtered.sortedByDescending { it.progress }
-        }
     }
 
     fun addItem(
@@ -632,15 +587,15 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun updateSearchQuery(query: String): Unit {
-        _searchQuery.value = query
+        filters.setSearchQuery(query)
     }
 
     fun setContentTypeFilter(contentType: ContentType?): Unit {
-        _contentTypeFilter.value = contentType
+        filters.setContentTypeFilter(contentType)
     }
 
     fun setSortMode(mode: SortMode): Unit {
-        _sortMode.value = mode
+        filters.setSortMode(mode)
     }
 
     fun refreshChapterCacheStates(urls: Collection<String>): Unit {
