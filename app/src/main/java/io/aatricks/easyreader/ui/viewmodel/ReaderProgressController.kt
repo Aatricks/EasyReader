@@ -25,6 +25,34 @@ class ReaderProgressController(
 
     var currentLibraryItemId: String? = null
 
+    /**
+     * Restore gating — the flags below encode three semi-independent concerns; they are NOT a
+     * single linear phase. Transitions:
+     *
+     *   entry (calculateInitialPosition / beginRestore):
+     *       restoreInProgress = true                     // layout still reflowing as images decode
+     *       userHasDragged    = false                    // no confirmed touch yet
+     *       suppressAutoNavUntilUserInteraction = true   // (calculateInitialPosition only)
+     *       hasUserInteractedSinceLoad = false
+     *
+     *   restore loop finishes (markRestoreDone):
+     *       restoreInProgress = false                    // ONLY this clears; suppress/drag unchanged
+     *
+     *   confirmed user drag / interaction (markUserDragged / onUserInteraction):
+     *       userHasDragged = true; hasUserInteractedSinceLoad = true
+     *       suppressAutoNavUntilUserInteraction = false; restoreInProgress = false
+     *
+     * Note: beginRestore() deliberately re-arms restoreInProgress + userHasDragged for a
+     * mid-flight seek WITHOUT touching suppressAutoNav — the axes are independent.
+     *
+     * Write-gating consequences:
+     *   - suppressAutoNavUntilUserInteraction: in-memory state still updates (UI/seek bar stay
+     *     live) but NO DB writes and NO auto-nav until the user acts.
+     *   - restoreInProgress && !userHasDragged: skip DB writes — the position is a mid-reflow
+     *     restore landing, not user intent.
+     *   - hasUserInteractedSinceLoad flips on programmatic scroll too, so self-heal / smoke
+     *     checks gate on userHasDragged (the stricter flag) instead.
+     */
     var suppressAutoNavUntilUserInteraction: Boolean = false
     var restoredScrollPercent: Float = 0f
     var hasUserInteractedSinceLoad: Boolean = false
@@ -55,10 +83,22 @@ class ReaderProgressController(
 
     companion object {
         private const val TAG = "ReaderProgress"
+        // 0.5% of an item. Below this an intra-item fraction change is pixel-rounding noise, not
+        // real movement — skip the DB write.
         private const val MIN_SCROLL_FRACTION_DELTA_PERMILLE = 5
+        // Minimum chapter-percent change worth persisting. With the fraction/index guards this
+        // collapses a scroll gesture's hundreds of samples into a handful of writes.
         private const val MIN_SCROLL_PROGRESS_DELTA_PERCENT = 0.35f
+        // An item smaller than this is almost certainly still a placeholder (real content items are
+        // taller). Positions measured against it are meaningless and must not pollute the saved row.
         const val MIN_STABLE_ITEM_SIZE_PX = 96
+        // Sentinel "item size" for paged mode and terminal end-of-chapter samples, where there is no
+        // real intra-item measurement but the position is explicit user intent. Bypasses the
+        // placeholder-size stability gate in isSnapshotPersistable.
         const val PAGED_POSITION_ITEM_SIZE_PX = Int.MAX_VALUE
+        // If a saved row claims index 0 with zero fraction but its percent says we are more than this
+        // far into the chapter, it is a partial-write ghost row: ignore the index and use the percent
+        // fallback.
         private const val SUSPICIOUS_ZERO_INDEX_PERCENT_THRESHOLD = 5f
     }
 
