@@ -54,8 +54,9 @@ class WebContentLoaderPrefetchRetryTest {
             loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
         }
 
-        assertFalse(result.isComplete)
-        assertTrue(result.isRetryable)
+        assertTrue(result.isComplete)
+        assertFalse(result.isRetryable)
+        assertTrue(result.hasPermanentFailures)
         assertEquals(1, imageRequests.get())
     }
 
@@ -136,13 +137,13 @@ class WebContentLoaderPrefetchRetryTest {
             interceptor = Interceptor { chain ->
                 val request = chain.request()
                 when (request.url.toString()) {
-                    chapterUrl -> buildResponse(request, "<html><body><p>Novel text</p></body></html>", "text/html")
+                    chapterUrl -> buildResponse(request, "<html><body></body></html>", "text/html")
                     else -> buildResponse(request, "", "text/plain", code = 404)
                 }
             }
         )
 
-        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Text("Novel text")))
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(emptyList())
 
         val result = harness.loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
 
@@ -214,7 +215,7 @@ class WebContentLoaderPrefetchRetryTest {
             htmlParser, client, imageCache,
             imageDownloader, ParsedContentCache(), htmlCacheDir, htmlDownloadsDir,
             store, fakeImageDimensionCacheRepository(),
-            WebOfflineChapterStore(webOfflineDir, htmlParser, imageDownloader, imageCache)
+            WebOfflineChapterStore(webOfflineDir, htmlParser, imageDownloader, imageCache, store)
         )
         return LoaderHarness(loader, htmlDownloadsDir, store)
     }

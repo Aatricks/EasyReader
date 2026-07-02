@@ -824,7 +824,7 @@ class WebContentLoaderTest {
             .build()
         val imageCache = ImageCache(mediaCacheDir, mediaDownloadsDir)
         val imageDownloader = ImageDownloader(client)
-        val offlineStore = WebOfflineChapterStore(webOfflineDir, htmlParser, imageDownloader, imageCache)
+        val offlineStore = WebOfflineChapterStore(webOfflineDir, htmlParser, imageDownloader, imageCache, InMemoryPermanentFailureStore())
         return WebContentLoader(
             htmlParser,
             client,

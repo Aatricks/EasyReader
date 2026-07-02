@@ -143,7 +143,7 @@ class WebContentLoaderBenchmarkTest {
             htmlDownloadsDir,
             InMemoryPermanentFailureStore(),
             fakeImageDimensionCacheRepository(),
-            WebOfflineChapterStore(webOfflineDir, htmlParser, imageDownloader, imageCache)
+            WebOfflineChapterStore(webOfflineDir, htmlParser, imageDownloader, imageCache, InMemoryPermanentFailureStore())
         )
     }
 

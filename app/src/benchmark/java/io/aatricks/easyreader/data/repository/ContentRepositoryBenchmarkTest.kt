@@ -72,7 +72,7 @@ class ContentRepositoryBenchmarkTest {
             htmlDownloadsDir,
             InMemoryPermanentFailureStore(),
             fakeImageDimensionCacheRepository(),
-            WebOfflineChapterStore(webOfflineDir, mockHtmlParser, imageDownloader, imageCache)
+            WebOfflineChapterStore(webOfflineDir, mockHtmlParser, imageDownloader, imageCache, InMemoryPermanentFailureStore())
         )
         
         // Generate images

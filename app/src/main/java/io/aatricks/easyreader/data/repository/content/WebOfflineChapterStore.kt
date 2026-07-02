@@ -31,7 +31,8 @@ class WebOfflineChapterStore @Inject constructor(
     @WebOfflineDownloadsDir private val rootDir: File,
     private val htmlParser: HtmlParser,
     private val imageDownloader: ImageDownloader,
-    private val imageCache: ImageCache
+    private val imageCache: ImageCache,
+    private val permanentFailureStore: PermanentFailureStore
 ) {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -44,24 +45,58 @@ class WebOfflineChapterStore @Inject constructor(
         val imageUrls: List<String>
     )
 
+    private sealed interface DownloadResult {
+        data class Success(val record: ImageRecord) : DownloadResult
+        data class Failure(val retryable: Boolean) : DownloadResult
+    }
+
+    private suspend fun handleZeroImageChapter(
+        url: String,
+        document: Document,
+        payload: ChapterPayload
+    ): PrefetchResult? {
+        if (payload.imageUrls.isNotEmpty()) return null
+        return if (ChapterDocumentClassifier.isRenderableTextChapter(document, payload.elements)) {
+            val now = System.currentTimeMillis()
+            writeManifest(
+                url = url,
+                manifest = Manifest(
+                    schemaVersion = SCHEMA_VERSION,
+                    chapterUrl = url,
+                    title = payload.title,
+                    elements = payload.elements,
+                    images = emptyList(),
+                    complete = true,
+                    downloadedAtMs = now
+                )
+            )
+            PrefetchResult(
+                url = url,
+                htmlCached = true,
+                totalImages = 0,
+                cachedImages = 0,
+                isComplete = true,
+                isInProgress = false,
+                isRetryable = false,
+                isPersistentDownload = true,
+                hasPermanentFailures = false
+            )
+        } else {
+            val existing = inspect(url)
+            existing.copy(
+                isInProgress = false,
+                isRetryable = !existing.isComplete
+            )
+        }
+    }
+
     suspend fun downloadChapter(
         url: String,
         document: Document,
         onProgress: (suspend (PrefetchResult) -> Unit)?
     ): PrefetchResult = withContext(Dispatchers.IO) {
         val payload = parsePayload(url, document)
-        if (payload.imageUrls.isEmpty()) {
-            clear(url)
-            return@withContext PrefetchResult(
-                url = url,
-                htmlCached = false,
-                totalImages = 0,
-                cachedImages = 0,
-                isComplete = false,
-                isRetryable = true,
-                isPersistentDownload = false
-            )
-        }
+        handleZeroImageChapter(url, document, payload)?.let { return@withContext it }
 
         val chapterDir = chapterDir(url)
         val imageDir = File(chapterDir, IMAGE_DIR)
@@ -108,7 +143,7 @@ class WebOfflineChapterStore @Inject constructor(
         )
         writeManifest(url, finalManifest)
 
-        inspect(url).copy(isInProgress = false, isRetryable = !complete)
+        inspect(url).copy(isInProgress = false)
     }
 
     fun loadContent(url: String): ContentResult.Success? {
@@ -134,21 +169,25 @@ class WebOfflineChapterStore @Inject constructor(
                 isPersistentDownload = false
             )
 
-        val cached = manifest.images.count { record ->
+        val fresh = permanentFailureStore.load(url, System.currentTimeMillis() - PermanentFailureStore.DEFAULT_TTL_MS)
+        val onDisk = manifest.images.count { record ->
             ImageIntegrity.isValidImageFile(fileFor(url, record.fileName))
         }
-        val complete = manifest.complete &&
-            manifest.images.isNotEmpty() &&
-            cached == manifest.images.size
+        val accountedPermanent = manifest.images.count { record ->
+            record.url in fresh && !ImageIntegrity.isValidImageFile(fileFor(url, record.fileName))
+        }
+        val isComplete = (manifest.complete && manifest.images.isEmpty()) ||
+            (manifest.images.isNotEmpty() && onDisk + accountedPermanent == manifest.images.size)
+
         PrefetchResult(
             url = url,
             htmlCached = true,
             totalImages = manifest.images.size,
-            cachedImages = cached,
-            isComplete = complete,
-            isRetryable = !complete,
+            cachedImages = onDisk,
+            isComplete = isComplete,
+            isRetryable = !isComplete,
             isPersistentDownload = true,
-            hasPermanentFailures = false
+            hasPermanentFailures = accountedPermanent > 0
         )
     }
 
@@ -197,75 +236,118 @@ class WebOfflineChapterStore @Inject constructor(
         onProgress: (suspend (PrefetchResult) -> Unit)?
     ): Map<String, ImageRecord> = supervisorScope {
         val semaphore = Semaphore(MAX_CONCURRENT_IMAGE_DOWNLOADS)
-        records.map { record ->
+        val results = records.map { record ->
             async {
                 semaphore.withPermit {
                     val existing = existingRecord(record, fileFor(pageUrl, record.fileName))
                     if (existing != null) {
                         onProgress?.let { emitProgress(pageUrl, records, inProgress = true, onProgress = it) }
-                        return@withPermit existing.url to existing
+                        return@withPermit record.url to DownloadResult.Success(existing)
                     }
                     val downloaded = downloadImage(pageUrl, record)
-                    if (downloaded != null) {
+                    if (downloaded is DownloadResult.Success) {
                         onProgress?.let { emitProgress(pageUrl, records, inProgress = true, onProgress = it) }
-                        downloaded.url to downloaded
-                    } else {
-                        null
+                    }
+                    record.url to downloaded
+                }
+            }
+        }.awaitAll()
+
+        val downloadedMap = mutableMapOf<String, ImageRecord>()
+        val permanentUrls = mutableListOf<String>()
+
+        for ((url, res) in results) {
+            when (res) {
+                is DownloadResult.Success -> {
+                    downloadedMap[url] = res.record
+                }
+                is DownloadResult.Failure -> {
+                    if (!res.retryable) {
+                        permanentUrls.add(url)
                     }
                 }
             }
-        }.awaitAll().filterNotNull().toMap()
+        }
+
+        if (permanentUrls.isNotEmpty()) {
+            permanentFailureStore.record(pageUrl, permanentUrls, System.currentTimeMillis())
+        }
+
+        downloadedMap
     }
 
-    private suspend fun downloadImage(pageUrl: String, record: ImageRecord): ImageRecord? {
+    private suspend fun downloadImage(pageUrl: String, record: ImageRecord): DownloadResult {
         val target = fileFor(pageUrl, record.fileName)
         val temp = File(target.parentFile, "${target.name}.${java.util.UUID.randomUUID()}.tmp")
         target.parentFile?.mkdirs()
-        imageCache.findExistingCachedMediaFile(record.url)?.let { cached ->
-            return runCatching {
-                cached.copyTo(target, overwrite = true)
-                if (!ImageIntegrity.isValidImageFile(target)) {
+
+        val cachedRecord = imageCache.findExistingCachedMediaFile(record.url)?.let { cachedFile ->
+            runCatching {
+                cachedFile.copyTo(target, overwrite = true)
+                if (ImageIntegrity.isValidImageFile(target)) {
+                    val bounds = ImageBoundsParser.parse(target)
+                    record.copy(
+                        width = bounds?.first ?: 0,
+                        height = bounds?.second ?: 0,
+                        bytes = target.length()
+                    )
+                } else {
                     target.delete()
-                    return@runCatching null
+                    null
                 }
-                val bounds = ImageBoundsParser.parse(target)
-                record.copy(
-                    width = bounds?.first ?: 0,
-                    height = bounds?.second ?: 0,
-                    bytes = target.length()
-                )
             }.getOrNull()
         }
+
+        if (cachedRecord != null) {
+            return DownloadResult.Success(cachedRecord)
+        }
+
+        return downloadImageFromNetwork(pageUrl, record, target, temp)
+    }
+
+    private suspend fun downloadImageFromNetwork(
+        pageUrl: String,
+        record: ImageRecord,
+        target: File,
+        temp: File
+    ): DownloadResult {
         val result = imageDownloader.executeImageRequest(
             imageUrl = record.url,
             pageUrl = pageUrl,
             priority = ImageRequestPriority.USER_REQUESTED,
             destinationFile = temp
         )
-        if (result !is ImageFetchResult.Success) {
-            temp.delete()
-            return null
+        return when {
+            result !is ImageFetchResult.Success -> {
+                temp.delete()
+                DownloadResult.Failure(retryable = result.isRetryable())
+            }
+            !ImageIntegrity.isValidImageFile(temp) -> {
+                Log.w(TAG, "invalid offline image url=${UrlSanitizer.sanitize(record.url)}")
+                temp.delete()
+                DownloadResult.Failure(retryable = true)
+            }
+            else -> {
+                target.delete()
+                if (!temp.renameTo(target)) {
+                    temp.copyTo(target, overwrite = true)
+                    temp.delete()
+                }
+                if (ImageIntegrity.isValidImageFile(target)) {
+                    val bounds = ImageBoundsParser.parse(target)
+                    DownloadResult.Success(
+                        record.copy(
+                            width = bounds?.first ?: 0,
+                            height = bounds?.second ?: 0,
+                            bytes = target.length()
+                        )
+                    )
+                } else {
+                    target.delete()
+                    DownloadResult.Failure(retryable = true)
+                }
+            }
         }
-        if (!ImageIntegrity.isValidImageFile(temp)) {
-            Log.w(TAG, "invalid offline image url=${UrlSanitizer.sanitize(record.url)}")
-            temp.delete()
-            return null
-        }
-        target.delete()
-        if (!temp.renameTo(target)) {
-            temp.copyTo(target, overwrite = true)
-            temp.delete()
-        }
-        if (!ImageIntegrity.isValidImageFile(target)) {
-            target.delete()
-            return null
-        }
-        val bounds = ImageBoundsParser.parse(target)
-        return record.copy(
-            width = bounds?.first ?: 0,
-            height = bounds?.second ?: 0,
-            bytes = target.length()
-        )
     }
 
     private suspend fun emitProgress(
@@ -303,8 +385,7 @@ class WebOfflineChapterStore @Inject constructor(
     }
 
     private fun validateManifestFiles(url: String, manifest: Manifest): Boolean =
-        manifest.images.isNotEmpty() &&
-            manifest.images.all { ImageIntegrity.isValidImageFile(fileFor(url, it.fileName)) }
+        manifest.images.all { ImageIntegrity.isValidImageFile(fileFor(url, it.fileName)) }
 
     private fun readManifest(url: String): Manifest? {
         val file = manifestFile(url)

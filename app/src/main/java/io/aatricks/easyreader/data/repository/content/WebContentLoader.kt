@@ -76,7 +76,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         // Permanent failures (4xx images recorded in the `.failed` sidecar) get a TTL so we
         // re-attempt them after a day. Some CDNs return 404 transiently when overloaded; an
         // entry that's still 404 after the TTL gets re-recorded with a fresh timestamp.
-        private const val PERMANENT_FAILURE_TTL_MS = 24L * 60L * 60L * 1000L
+        private const val PERMANENT_FAILURE_TTL_MS = PermanentFailureStore.DEFAULT_TTL_MS
         // Returned for a Novelight chapter whose prose came back empty/gated (premium) so the
         // reader shows a clean empty state instead of caching ad markup or raw JSON.
         private const val EMPTY_HTML_DOCUMENT = "<!doctype html><html><body></body></html>"
@@ -1366,26 +1366,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     // page list yet (JS-rendered). Presence of any of these selectors is a strong signal
     // the page should not be treated as a "novel-style text page" for completeness.
     private fun detectMangaReaderHints(document: Document): Boolean {
-        val selector = listOf(
-            ".container-chapter-reader",
-            ".reader-content",
-            ".chapter-content",
-            ".chapter-img",
-            ".read-content",
-            ".container-reading",
-            ".vung-doc",
-            "div.page-break",
-            "img[data-page-index]",
-            "div[data-page]",
-            "[class*=\"chapter-reader\"]",
-            "[class*=\"manga-reader\"]"
-        ).joinToString(", ")
-        if (document.selectFirst(selector) != null) return true
-        // Astro / SSR page-island payloads embed `pages:[...]` lists for the reader.
-        val raw = document.html()
-        if (raw.contains("\"pages\"") && raw.contains("\"url\"") && raw.contains("/chapters/")) return true
-        if (raw.contains("chapterImages") && raw.contains("[\"")) return true
-        return false
+        return ChapterDocumentClassifier.detectMangaReaderHints(document)
     }
 
 

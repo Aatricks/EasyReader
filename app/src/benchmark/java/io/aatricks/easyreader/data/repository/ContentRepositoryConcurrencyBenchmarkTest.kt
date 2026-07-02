@@ -131,7 +131,7 @@ class ContentRepositoryConcurrencyBenchmarkTest {
             htmlDownloadsDir,
             InMemoryPermanentFailureStore(),
             fakeImageDimensionCacheRepository(),
-            WebOfflineChapterStore(webOfflineDir, mockHtmlParser, imageDownloader, imageCache)
+            WebOfflineChapterStore(webOfflineDir, mockHtmlParser, imageDownloader, imageCache, InMemoryPermanentFailureStore())
         )
         val pdfLoader = PdfContentLoader(mockContext, DefaultPdfDocumentOpener(mockContext))
         val epubLoader = EpubContentLoader(mockContext, epubCacheDir)
