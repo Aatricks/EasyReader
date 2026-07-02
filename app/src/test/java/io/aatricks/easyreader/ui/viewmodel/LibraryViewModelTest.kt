@@ -577,6 +577,111 @@ class LibraryViewModelTest {
         verify(libraryRepository, timeout(1000)).markDownloaded(downloadedItem.id, false)
         assertEquals(inspected, activeViewModel.uiState.value.chapterCacheStates[chapterUrl])
     }
+
+    @Test
+    fun `removeDownload cancels work clears disk and refreshes cache state`() = runTest {
+        val itemId = "id-1"
+        val url = "https://example.com/novel-1"
+        val item = LibraryItem(id = itemId, title = "Novel 1", url = url)
+        
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(item)
+        val queue: ChapterDownloadQueue = mock()
+        whenever(queue.observeAll()).thenReturn(MutableStateFlow(emptyMap()))
+        
+        val activeViewModel = LibraryViewModel(
+            libraryRepository,
+            contentRepository,
+            exploreRepository,
+            queue,
+            reconciler
+        )
+        advanceUntilIdle()
+        
+        val inspected = PrefetchResult(
+            url = url,
+            htmlCached = false,
+            totalImages = 0,
+            cachedImages = 0,
+            isComplete = false
+        )
+        whenever(contentRepository.inspectCache(url)).thenReturn(inspected)
+        whenever(libraryRepository.markDownloaded(itemId, false)).thenReturn(true)
+        
+        activeViewModel.removeDownload(itemId)
+        advanceUntilIdle()
+        
+        verify(queue).cancel(url)
+        verify(contentRepository).clearDownload(url)
+        verify(libraryRepository).markDownloaded(itemId, false)
+        
+        assertEquals(inspected, activeViewModel.uiState.value.chapterCacheStates[url])
+    }
+
+    @Test
+    fun `committed deletion cancels queued downloads and drops cache states`() = runTest {
+        val itemId = "id-1"
+        val url = "https://example.com/novel-1"
+        val item = LibraryItem(id = itemId, title = "Novel 1", url = url)
+        whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(listOf(item)))
+        whenever(libraryRepository.removeItems(any())).thenReturn(1)
+        
+        val queue: ChapterDownloadQueue = mock()
+        whenever(queue.observeAll()).thenReturn(MutableStateFlow(emptyMap()))
+        
+        val activeViewModel = LibraryViewModel(
+            libraryRepository,
+            contentRepository,
+            exploreRepository,
+            queue,
+            reconciler
+        )
+        advanceUntilIdle()
+        
+        val result = PrefetchResult(url = url, htmlCached = true, totalImages = 5, cachedImages = 5, isComplete = true)
+        whenever(contentRepository.inspectDownload(url)).thenReturn(result)
+        
+        activeViewModel.refreshChapterCacheStates(listOf(url))
+        advanceUntilIdle()
+        
+        assertEquals(result, activeViewModel.uiState.value.chapterCacheStates[url])
+        
+        activeViewModel.removeItem(itemId)
+        
+        verify(queue, never()).cancel(url)
+        assertNotNull(activeViewModel.uiState.value.chapterCacheStates[url])
+        
+        advanceTimeBy(5001)
+        runCurrent()
+        
+        verify(queue).cancel(url)
+        assertNull(activeViewModel.uiState.value.chapterCacheStates[url])
+    }
+
+    @Test
+    fun `retryDownload surfaces error and rolls back when enqueue fails`() = runTest {
+        val url = "https://example.com/novel-1"
+        
+        val queue: ChapterDownloadQueue = mock()
+        whenever(queue.enqueue(eq(url), any())).thenReturn(false)
+        whenever(queue.observeAll()).thenReturn(MutableStateFlow(emptyMap()))
+        
+        val activeViewModel = LibraryViewModel(
+            libraryRepository,
+            contentRepository,
+            exploreRepository,
+            queue,
+            reconciler
+        )
+        advanceUntilIdle()
+        
+        activeViewModel.retryDownload(url)
+        advanceUntilIdle()
+        
+        assertEquals("Failed to queue download", activeViewModel.uiState.value.error)
+        
+        val state = activeViewModel.uiState.value.chapterCacheStates[url]
+        assertTrue(state == null || !state.isInProgress)
+    }
 }
 
 private data class RecordedEnqueue(val url: String, val replaceExisting: Boolean)

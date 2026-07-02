@@ -21,6 +21,7 @@ class LibraryDeletionCoordinator(
     private val repository: LibraryRepository,
     private val contentRepository: ContentRepository,
     private val onError: (String) -> Unit,
+    private val onItemsRemoved: (List<String>) -> Unit,
 ) {
     private val _pendingDeletion = MutableStateFlow<Set<String>>(emptySet())
     val pendingDeletion: StateFlow<Set<String>> = _pendingDeletion.asStateFlow()
@@ -59,6 +60,8 @@ class LibraryDeletionCoordinator(
         runCatching {
             contentRepository.clearCachesAndDownloadsForUrls(urls)
             repository.removeItems(ids)
+        }.onSuccess {
+            onItemsRemoved(urls)
         }.onFailure { e ->
             onError("Failed to remove items: ${e.message}")
         }
@@ -84,6 +87,8 @@ class LibraryDeletionCoordinator(
             runCatching {
                 contentRepository.clearCachesAndDownloadsForUrls(urls)
                 repository.removeItems(ids)
+            }.onSuccess {
+                onItemsRemoved(urls)
             }.onFailure { e ->
                 onError("Failed to remove items: ${e.message}")
             }
