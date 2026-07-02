@@ -61,10 +61,8 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
     companion object {
         private const val TAG = "WebContentLoader"
         private val DIMENSION_SEMAPHORE = Semaphore(20)
-        private const val MAX_CONCURRENT_DOWNLOADS = 4
         private const val USER_REQUEST_ATTEMPTS = 4
         private const val SHORT_REQUEST_ATTEMPTS = 2
-        private const val USER_REQUEST_PREFETCH_PASSES = 2
         private const val MAX_SPECULATIVE_PREFETCH_ATTEMPTS = 1
         private const val MAX_DIMENSION_SNIFF_BYTES = 64 * 1024L // 64KB
         private const val FETCH_REMOTE_DIMENSIONS_DURING_INITIAL_LOAD = false
@@ -73,10 +71,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         // misbehaving scraper, a CDN error page, or a hostile response — fail loud rather
         // than allocate it whole into memory via `body.string()`.
         private const val MAX_HTML_BODY_BYTES = 4L * 1024L * 1024L
-        // Permanent failures (4xx images recorded in the `.failed` sidecar) get a TTL so we
-        // re-attempt them after a day. Some CDNs return 404 transiently when overloaded; an
-        // entry that's still 404 after the TTL gets re-recorded with a fresh timestamp.
-        private const val PERMANENT_FAILURE_TTL_MS = PermanentFailureStore.DEFAULT_TTL_MS
+
         // Returned for a Novelight chapter whose prose came back empty/gated (premium) so the
         // reader shows a clean empty state instead of caching ad markup or raw JSON.
         private const val EMPTY_HTML_DOCUMENT = "<!doctype html><html><body></body></html>"
@@ -102,7 +97,6 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
     private data class InFlightImageDownload(
         val priority: ImageRequestPriority,
-        val writeTier: StorageTier,
         val deferred: Deferred<ImageDownloadResult>
     )
 
@@ -440,14 +434,13 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         val result = downloadAndCacheImageInternal(
             imageUrl,
             pageUrl,
-            ImageRequestPriority.USER_REQUESTED,
-            StorageTier.CACHE
+            ImageRequestPriority.USER_REQUESTED
         )
         (result as? ImageDownloadResult.Success)?.file
     }
 
     suspend fun warmImage(imageUrl: String, pageUrl: String): File? = withContext(Dispatchers.IO) {
-        val result = downloadAndCacheImageInternal(imageUrl, pageUrl, ImageRequestPriority.SPECULATIVE, StorageTier.CACHE)
+        val result = downloadAndCacheImageInternal(imageUrl, pageUrl, ImageRequestPriority.SPECULATIVE)
         (result as? ImageDownloadResult.Success)?.file
     }
 
@@ -564,9 +557,6 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
     private fun tierForPriority(priority: ImageRequestPriority): StorageTier =
         if (priority == ImageRequestPriority.USER_REQUESTED) StorageTier.DOWNLOADS else StorageTier.CACHE
-
-    private fun tierForMode(mode: PrefetchMode): StorageTier =
-        if (mode == PrefetchMode.USER_REQUESTED) StorageTier.DOWNLOADS else StorageTier.CACHE
 
     private suspend fun getDocumentFromCacheOrNetwork(
         url: String,
@@ -882,16 +872,6 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         data class Failure(val isRetryable: Boolean) : ImageDownloadResult
     }
 
-    private data class ImageBatchDownloadReport(
-        val total: Int,
-        val succeeded: Int,
-        val retryableFailures: List<String>,
-        val permanentFailures: List<String>
-    ) {
-        val isComplete: Boolean get() = succeeded == total
-        val isRetryable: Boolean get() = retryableFailures.isNotEmpty()
-    }
-
     private suspend fun executePrefetch(
         url: String,
         mode: PrefetchMode,
@@ -903,13 +883,13 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             getDocumentFromCacheOrNetwork(
                 url = url,
                 priority = priority,
-                writeTier = tierForMode(mode)
+                writeTier = StorageTier.CACHE
             )
         } catch (e: Exception) {
             val inspected = if (mode == PrefetchMode.USER_REQUESTED) {
                 offlineChapterStore.inspect(url)
             } else {
-                inspectCacheInternal(url = url, persistentOnly = false)
+                inspectCacheInternal(url = url)
             }
             return inspected.copy(isRetryable = shouldRetryException(e))
         }
@@ -928,108 +908,8 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             return result.copy(isInProgress = false)
         }
 
-        val imageUrls = extractImageUrls(htmlParser.parse(cachedDocument.document, url))
-            .distinct()
-            .filter { it.startsWith("http") }
-
-        var allImagesRetryable = true
-        val permanentFailuresAccumulated = mutableListOf<String>()
-        val emitProgress: (suspend () -> Unit)? = if (onProgress != null) {
-            {
-                val cached = imageUrls.count { imageUrl ->
-                    if (mode == PrefetchMode.USER_REQUESTED) {
-                        imageCache.isDownloaded(imageUrl)
-                    } else {
-                        imageCache.findExistingCachedMediaFile(imageUrl) != null
-                    }
-                }
-                // Never claim isComplete=true from a progress emission. Mid-flight we don't
-                // yet know whether permanent failures will appear, and emitting Downloaded
-                // before the final inspectCacheInternal produces a UI badge that contradicts
-                // what the reader is about to display. The terminal PrefetchResult returned
-                // by executePrefetch is the only authoritative "complete" emission.
-                onProgress(
-                    PrefetchResult(
-                        url = url,
-                        htmlCached = true,
-                        totalImages = imageUrls.size,
-                        cachedImages = cached,
-                        isComplete = false,
-                        isInProgress = true,
-                        isRetryable = true,
-                        isPersistentDownload = mode == PrefetchMode.USER_REQUESTED
-                    )
-                )
-            }
-        } else null
-
-        when (mode) {
-            PrefetchMode.USER_REQUESTED -> {
-                Log.d(TAG, "USER_REQUESTED prefetch start url=$safeUrl totalImages=${imageUrls.size}")
-                emitProgress?.invoke()
-                for (pass in 0 until USER_REQUEST_PREFETCH_PASSES) {
-                    // Intentionally do NOT consult the permanent-failure store here. A
-                    // USER_REQUESTED prefetch is the user pressing retry; honoring a prior
-                    // sidecar entry would make the manual retry a no-op for chapters
-                    // previously misclassified as permanently failed (e.g. transient 404s
-                    // from an overloaded CDN). The single-pass guard at line ~1027 still
-                    // breaks early once the fresh attempt confirms the failure is permanent.
-                    val missingImages = imageUrls.filterNot { imageCache.isDownloaded(it) }
-                    if (missingImages.isEmpty()) {
-                        Log.d(TAG, "USER_REQUESTED prefetch complete url=$safeUrl pass=$pass")
-                        break
-                    }
-
-                    Log.d(
-                        TAG,
-                        "USER_REQUESTED prefetch pass=$pass missing=${missingImages.size} url=$safeUrl"
-                    )
-                    val report = cacheImages(
-                        imageUrls = missingImages,
-                        pageUrl = url,
-                        priority = ImageRequestPriority.USER_REQUESTED,
-                        writeTier = StorageTier.DOWNLOADS,
-                        maxConcurrency = MAX_CONCURRENT_DOWNLOADS,
-                        onImageCached = emitProgress
-                    )
-                    permanentFailuresAccumulated.addAll(report.permanentFailures)
-
-                    allImagesRetryable = report.isRetryable
-                    if (report.retryableFailures.isEmpty() && report.permanentFailures.isNotEmpty()) {
-                        Log.d(TAG, "USER_REQUESTED prefetch stop url=$safeUrl - all remaining failures are permanent")
-                        break
-                    }
-                    if (report.isComplete) break
-
-                    if (pass < USER_REQUEST_PREFETCH_PASSES - 1) {
-                        delay(250L * (pass + 1))
-                    }
-                }
-            }
-
-            PrefetchMode.SPECULATIVE -> {
-                Log.d(TAG, "SPECULATIVE prefetch HTML-only url=$safeUrl")
-                allImagesRetryable = true
-            }
-        }
-
-        if (permanentFailuresAccumulated.isNotEmpty()) {
-            recordPermanentFailures(url, permanentFailuresAccumulated)
-        }
-
-        val inspected = inspectCacheInternal(
-            url = url,
-            cachedDocument = cachedDocument.document,
-            persistentOnly = mode == PrefetchMode.USER_REQUESTED
-        )
-        val finalResult = inspected.copy(
-            isInProgress = false,
-            // Retry is useful when there's missing content (incomplete) OR we accepted
-            // permanent failures into the sidecar — clearing the sidecar and re-attempting
-            // can recover transient errors that were misclassified as permanent (e.g. a 404
-            // returned by an overloaded CDN).
-            isRetryable = (allImagesRetryable && !inspected.isComplete) || inspected.hasPermanentFailures
-        )
+        Log.d(TAG, "SPECULATIVE prefetch HTML-only url=$safeUrl")
+        val finalResult = inspectCacheInternal(url, cachedDocument.document).copy(isInProgress = false)
         Log.d(
             TAG,
             "prefetch final result url=$safeUrl complete=${finalResult.isComplete} " +
@@ -1039,74 +919,18 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         return finalResult
     }
 
-    private suspend fun cacheImages(
-        imageUrls: List<String>,
-        pageUrl: String,
-        priority: ImageRequestPriority,
-        writeTier: StorageTier,
-        maxConcurrency: Int,
-        onImageCached: (suspend () -> Unit)? = null
-    ): ImageBatchDownloadReport = supervisorScope {
-        if (imageUrls.isEmpty()) return@supervisorScope ImageBatchDownloadReport(0, 0, emptyList(), emptyList())
-
-        val semaphore = Semaphore(maxConcurrency.coerceAtLeast(1))
-        val deferreds = imageUrls
-            .distinct()
-            .map { imageUrl ->
-                imageUrl to async {
-                    semaphore.withPermit {
-                        val result = downloadAndCacheImageInternal(imageUrl, pageUrl, priority, writeTier)
-                        if (result is ImageDownloadResult.Success) {
-                            onImageCached?.invoke()
-                        }
-                        result
-                    }
-                }
-            }
-
-        var succeeded = 0
-        val retryableFailures = mutableListOf<String>()
-        val permanentFailures = mutableListOf<String>()
-
-        deferreds.forEach { (url, deferred) ->
-            when (val result = deferred.await()) {
-                is ImageDownloadResult.Success -> succeeded++
-                is ImageDownloadResult.Failure -> {
-                    if (result.isRetryable) retryableFailures.add(url)
-                    else permanentFailures.add(url)
-                }
-            }
-        }
-
-        ImageBatchDownloadReport(
-            total = imageUrls.size,
-            succeeded = succeeded,
-            retryableFailures = retryableFailures,
-            permanentFailures = permanentFailures
-        )
-    }
-
     private suspend fun downloadAndCacheImageInternal(
         imageUrl: String,
         pageUrl: String,
-        priority: ImageRequestPriority,
-        writeTier: StorageTier = tierForPriority(priority)
+        priority: ImageRequestPriority
     ): ImageDownloadResult = withContext(Dispatchers.IO) {
         if (!imageUrl.startsWith("http")) return@withContext ImageDownloadResult.Failure(false)
 
         imageCache.findExistingCachedMediaFile(imageUrl)?.let { existingFile ->
-            if (writeTier == StorageTier.DOWNLOADS && !imageCache.isDownloaded(imageUrl)) {
-                val promoted = imageCache.promoteToDownloads(imageUrl)
-                return@withContext if (promoted != null) {
-                    ImageDownloadResult.Success(promoted)
-                } else {
-                    ImageDownloadResult.Failure(true)
-                }
-            }
             return@withContext ImageDownloadResult.Success(existingFile)
         }
 
-        val cachedFile = imageCache.destinationFile(imageUrl, writeTier)
+        val cachedFile = imageCache.destinationFile(imageUrl, StorageTier.CACHE)
         // Unique per attempt: a SPECULATIVE download that gets cancelled mid-write by an
         // arriving USER_REQUESTED would otherwise race on the same `.tmp` path and
         // interleave bytes. Random suffix isolates the two writers so the new attempt
@@ -1208,17 +1032,13 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                             }
                         }
                     }
-                    inFlightImageDownloads[imageUrl] = InFlightImageDownload(priority, writeTier, created)
+                    inFlightImageDownloads[imageUrl] = InFlightImageDownload(priority, created)
                 }
             }
         }
 
         return@withContext try {
-            ensureResultForTier(
-                result = deferred.await(),
-                imageUrl = imageUrl,
-                writeTier = writeTier
-            )
+            deferred.await()
         } catch (e: CancellationException) {
             if (currentCoroutineContext().isActive) {
                 ImageDownloadResult.Failure(true)
@@ -1228,59 +1048,24 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         }
     }
 
-    private fun ensureResultForTier(
-        result: ImageDownloadResult,
-        imageUrl: String,
-        writeTier: StorageTier
-    ): ImageDownloadResult {
-        if (result !is ImageDownloadResult.Success || writeTier != StorageTier.DOWNLOADS) {
-            return result
-        }
-        if (imageCache.isDownloaded(imageUrl)) return result
-        val promoted = imageCache.promoteToDownloads(imageUrl)
-        return if (promoted != null) {
-            ImageDownloadResult.Success(promoted)
-        } else {
-            ImageDownloadResult.Failure(true)
-        }
-    }
-
     private suspend fun inspectCacheInternal(
         url: String,
-        cachedDocument: Document? = null,
-        persistentOnly: Boolean = false
+        cachedDocument: Document? = null
     ): PrefetchResult {
-        val downloadHtmlFile = primaryCachedFile(url, StorageTier.DOWNLOADS).takeIf(File::exists)
-        val htmlFile = if (persistentOnly) downloadHtmlFile else findExistingCachedFile(url)
+        val htmlFile = findExistingCachedFile(url)
         val htmlCached = htmlFile != null
 
         val memo = resolveParsedImageMemo(url, htmlFile, cachedDocument)
 
         val imageUrls = memo?.imageUrls.orEmpty()
-        // Permanent failures (4xx that the fetcher gave up on) are tracked in the .failed
-        // sidecar. They count toward isComplete so the download loop and the auto-resume
-        // path don't keep retrying URLs we've already concluded are dead — but they are
-        // NOT actually on disk, so cachedImages reflects only the on-disk count and
-        // hasPermanentFailures signals the gap. The DB isDownloaded flag and the
-        // "Downloaded" UI label require isComplete && !hasPermanentFailures so chapters
-        // that can't be read offline don't masquerade as fully downloaded.
-        val knownPermanent = if (persistentOnly) loadPermanentFailures(url) else emptySet()
         val downloadedCount = imageUrls.count { imageUrl ->
-            if (persistentOnly) {
-                imageCache.isDownloaded(imageUrl)
-            } else {
-                imageCache.findExistingCachedMediaFile(imageUrl) != null
-            }
+            imageCache.findExistingCachedMediaFile(imageUrl) != null
         }
-        val accountedPermanent = if (persistentOnly) {
-            imageUrls.count { it in knownPermanent && !imageCache.isDownloaded(it) }
-        } else 0
-        val effectiveCached = downloadedCount + accountedPermanent
 
         val isInProgress = chapterPrefetchMutex.withLock { url in inFlightChapterPrefetches }
         val finalComplete = when {
             !htmlCached -> false
-            imageUrls.isNotEmpty() -> effectiveCached == imageUrls.size
+            imageUrls.isNotEmpty() -> downloadedCount == imageUrls.size
             memo?.hasImageTags == true -> false
             // The page carries manga-reader CSS hooks but the parser found zero images —
             // typically a JS-rendered chapter where static HTML is just the shell. Refuse
@@ -1295,7 +1080,6 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             isChapterPageUrl(url) -> false
             else -> memo?.bodyNonEmpty == true
         }
-        val hasPermanentFailures = imageUrls.isNotEmpty() && accountedPermanent > 0
 
         return PrefetchResult(
             url = url,
@@ -1304,9 +1088,9 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             cachedImages = downloadedCount,
             isComplete = finalComplete,
             isInProgress = isInProgress,
-            isRetryable = !finalComplete || hasPermanentFailures,
-            isPersistentDownload = persistentOnly && htmlCached,
-            hasPermanentFailures = hasPermanentFailures
+            isRetryable = !finalComplete,
+            isPersistentDownload = false,
+            hasPermanentFailures = false
         )
     }
 
@@ -1415,51 +1199,4 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
     private fun sidecarFileVariants(url: String): List<File> =
         cacheFileVariants(url).map { File(it.parent, "${it.name}.failed") }
-
-    // Permanent failures are persisted in the chapter_image_state Room table via
-    // PermanentFailureStore. TTL filtering lives in the store (load takes freshAfterMs).
-    // Legacy `.failed` sidecar files from before the Room migration are imported on first
-    // read and then deleted, so existing installs upgrade losslessly.
-    private suspend fun loadPermanentFailures(
-        url: String,
-        now: Long = System.currentTimeMillis()
-    ): Set<String> {
-        migrateLegacySidecarIfPresent(url, now)
-        return permanentFailureStore.load(url, freshAfterMs = now - PERMANENT_FAILURE_TTL_MS)
-    }
-
-    private suspend fun recordPermanentFailures(url: String, failures: List<String>) {
-        if (failures.isEmpty()) return
-        permanentFailureStore.record(url, failures, recordedAtMs = System.currentTimeMillis())
-    }
-
-    // Reads any pre-migration sidecar entries, imports the still-fresh ones (those that
-    // already have a timestamp younger than the TTL) into the store, and removes the sidecar
-    // file. Legacy entries that pre-date the timestamp format are dropped — they'd be
-    // immediately expired by the TTL anyway, and dropping them gives the URL one fresh
-    // attempt which is the safer post-upgrade behavior.
-    private suspend fun migrateLegacySidecarIfPresent(url: String, now: Long) {
-        val sidecarFiles = sidecarFileVariants(url).filter(File::exists)
-        if (sidecarFiles.isEmpty()) return
-        val parsed = LinkedHashMap<String, Long>()
-        for (f in sidecarFiles) {
-            val lines = runCatching { f.readLines() }.getOrDefault(emptyList())
-            for (line in lines) {
-                val trimmed = line.trim()
-                if (trimmed.isEmpty()) continue
-                val sep = trimmed.lastIndexOf('|')
-                if (sep <= 0) continue
-                val imageUrl = trimmed.substring(0, sep)
-                val ts = trimmed.substring(sep + 1).toLongOrNull() ?: continue
-                if (imageUrl.isEmpty()) continue
-                if (now - ts >= PERMANENT_FAILURE_TTL_MS) continue
-                val prev = parsed[imageUrl]
-                if (prev == null || ts > prev) parsed[imageUrl] = ts
-            }
-        }
-        if (parsed.isNotEmpty()) {
-            permanentFailureStore.record(url, parsed.keys, recordedAtMs = now)
-        }
-        sidecarFiles.forEach { it.delete() }
-    }
 }

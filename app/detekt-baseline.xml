@@ -41,11 +41,8 @@
     <ID>CyclomaticComplexMethod:SettingsScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsScreen( readerViewModel: ReaderViewModel, libraryViewModel: LibraryViewModel, onNavigateBack: () -&gt; Unit, backupViewModel: BackupViewModel = hiltViewModel() )</ID>
     <ID>CyclomaticComplexMethod:TextFormattingPipeline.kt$TextFormattingPipeline$private fun replaceSpacesPlusNewline(text: String, replacementChar: Char): String</ID>
     <ID>CyclomaticComplexMethod:UrlSecurity.kt$UrlSecurity$fun isSafeInetAddress(address: InetAddress): Boolean</ID>
-    <ID>CyclomaticComplexMethod:WebContentLoader.kt$WebContentLoader$private suspend fun downloadAndCacheImageInternal( imageUrl: String, pageUrl: String, priority: ImageRequestPriority, writeTier: StorageTier = tierForPriority(priority) ): ImageDownloadResult</ID>
+    <ID>CyclomaticComplexMethod:WebContentLoader.kt$WebContentLoader$private suspend fun downloadAndCacheImageInternal( imageUrl: String, pageUrl: String, priority: ImageRequestPriority ): ImageDownloadResult</ID>
     <ID>CyclomaticComplexMethod:WebContentLoader.kt$WebContentLoader$private suspend fun enrichParsedCacheDimensions(elements: List&lt;ContentElement&gt;): List&lt;ContentElement&gt;</ID>
-    <ID>CyclomaticComplexMethod:WebContentLoader.kt$WebContentLoader$private suspend fun executePrefetch( url: String, mode: PrefetchMode, onProgress: (suspend (PrefetchResult) -&gt; Unit)? = null ): PrefetchResult</ID>
-    <ID>CyclomaticComplexMethod:WebContentLoader.kt$WebContentLoader$private suspend fun inspectCacheInternal( url: String, cachedDocument: Document? = null, persistentOnly: Boolean = false ): PrefetchResult</ID>
-    <ID>CyclomaticComplexMethod:WebContentLoader.kt$WebContentLoader$private suspend fun migrateLegacySidecarIfPresent(url: String, now: Long)</ID>
     <ID>CyclomaticComplexMethod:WebContentLoader.kt$WebContentLoader$suspend fun prefetch( url: String, mode: PrefetchMode, onProgress: (suspend (PrefetchResult) -&gt; Unit)? ): PrefetchResult</ID>
     <ID>CyclomaticComplexMethod:ZoomableBox.kt$@Composable fun ZoomableBox( modifier: Modifier = Modifier, minScale: Float = 1f, maxScale: Float = 3f, enableZoom: Boolean = false, dynamicHeight: Boolean = false, zoomStateKey: Any? = null, onZoomChanged: ((Boolean) -&gt; Unit)? = null, lockTapWhileZoomed: Boolean = false, onTap: (() -&gt; Unit)? = null, content: @Composable BoxScope.() -&gt; Unit )</ID>
     <ID>EmptyFunctionBlock:HtmlParser.kt$HtmlParser.&lt;no name provided&gt;${}</ID>
@@ -179,8 +176,7 @@
     <ID>LongMethod:ReaderViewModel.kt$ReaderViewModel$fun loadEpubChapter( epubPath: String, href: String, libraryItemId: String? = null, fromBottom: Boolean = false, isSilent: Boolean = false ): Unit</ID>
     <ID>LongMethod:ReaderViewModel.kt$ReaderViewModel$private suspend fun handleLoadSuccess( result: ContentResult.Success, libraryItemId: String?, fromBottom: Boolean ): Unit</ID>
     <ID>LongMethod:SettingsScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsScreen( readerViewModel: ReaderViewModel, libraryViewModel: LibraryViewModel, onNavigateBack: () -&gt; Unit, backupViewModel: BackupViewModel = hiltViewModel() )</ID>
-    <ID>LongMethod:WebContentLoader.kt$WebContentLoader$private suspend fun downloadAndCacheImageInternal( imageUrl: String, pageUrl: String, priority: ImageRequestPriority, writeTier: StorageTier = tierForPriority(priority) ): ImageDownloadResult</ID>
-    <ID>LongMethod:WebContentLoader.kt$WebContentLoader$private suspend fun executePrefetch( url: String, mode: PrefetchMode, onProgress: (suspend (PrefetchResult) -&gt; Unit)? = null ): PrefetchResult</ID>
+    <ID>LongMethod:WebContentLoader.kt$WebContentLoader$private suspend fun downloadAndCacheImageInternal( imageUrl: String, pageUrl: String, priority: ImageRequestPriority ): ImageDownloadResult</ID>
     <ID>LongMethod:ZoomableBox.kt$@Composable fun ZoomableBox( modifier: Modifier = Modifier, minScale: Float = 1f, maxScale: Float = 3f, enableZoom: Boolean = false, dynamicHeight: Boolean = false, zoomStateKey: Any? = null, onZoomChanged: ((Boolean) -&gt; Unit)? = null, lockTapWhileZoomed: Boolean = false, onTap: (() -&gt; Unit)? = null, content: @Composable BoxScope.() -&gt; Unit )</ID>
     <ID>LongParameterList:ChapterSummaryDropdown.kt$( summary: String?, isGenerating: Boolean, onGenerateSummary: () -&gt; Unit, onCancel: (() -&gt; Unit)? = null, aiSupportedInBuild: Boolean = true, aiOptedIn: Boolean = true, onEnableAi: (() -&gt; Unit)? = null, isInitializing: Boolean = false, isReady: Boolean = aiSupportedInBuild &amp;&amp; aiOptedIn, modifier: Modifier = Modifier )</ID>
     <ID>LongParameterList:ContentRenderer.kt$( url: String, altText: String?, side: ContentElement.Image.Side = ContentElement.Image.Side.FULL, width: Int = 0, height: Int = 0, pageUrl: String = "" )</ID>
@@ -219,7 +215,6 @@
     <ID>LongParameterList:ReaderViewModel.kt$ReaderViewModel$( scrollOffset: Float, maxScrollOffset: Float, viewportHeight: Float, index: Int, offsetFraction: Float, elementKey: String, canScrollForward: Boolean = true, firstVisibleItemSize: Int = 0 )</ID>
     <ID>LongParameterList:ReaderViewModel.kt$ReaderViewModel$( url: String, libraryItemId: String? = null, fromBottom: Boolean = false, isSilent: Boolean = false, isExplicitNavigation: Boolean = false, resetWebStateBeforeLoad: Boolean = false )</ID>
     <ID>LongParameterList:ReaderViewModel.kt$ReaderViewModel$( url: String, libraryItemId: String?, fromBottom: Boolean, isSilent: Boolean, isExplicitNavigation: Boolean, preloadedResult: ContentResult.Success? = null, resetWebStateBeforeLoad: Boolean = false )</ID>
-    <ID>LongParameterList:WebContentLoader.kt$WebContentLoader$( imageUrls: List&lt;String&gt;, pageUrl: String, priority: ImageRequestPriority, writeTier: StorageTier, maxConcurrency: Int, onImageCached: (suspend () -&gt; Unit)? = null )</ID>
     <ID>LongParameterList:ZoomableBox.kt$( modifier: Modifier = Modifier, minScale: Float = 1f, maxScale: Float = 3f, enableZoom: Boolean = false, dynamicHeight: Boolean = false, zoomStateKey: Any? = null, onZoomChanged: ((Boolean) -&gt; Unit)? = null, lockTapWhileZoomed: Boolean = false, onTap: (() -&gt; Unit)? = null, content: @Composable BoxScope.() -&gt; Unit )</ID>
     <ID>LoopWithTooManyJumpStatements:AsuraScansSource.kt$AsuraScansSource$for</ID>
     <ID>LoopWithTooManyJumpStatements:ContentRepository.kt$ContentRepository$for</ID>
@@ -229,7 +224,6 @@
     <ID>LoopWithTooManyJumpStatements:SafeRedirectInterceptor.kt$SafeRedirectInterceptor$while</ID>
     <ID>LoopWithTooManyJumpStatements:SmartSource.kt$SmartSource$for</ID>
     <ID>LoopWithTooManyJumpStatements:TextFormattingPipeline.kt$TextFormattingPipeline$while</ID>
-    <ID>LoopWithTooManyJumpStatements:WebContentLoader.kt$WebContentLoader$for</ID>
     <ID>MagicNumber:AccentTheme.kt$AccentTheme.AMBER$0xFF162109</ID>
     <ID>MagicNumber:AccentTheme.kt$AccentTheme.AMBER$0xFF221A0C</ID>
     <ID>MagicNumber:AccentTheme.kt$AccentTheme.AMBER$0xFF251800</ID>
@@ -512,7 +506,6 @@
     <ID>MagicNumber:WebChapterElementShaper.kt$WebChapterElementShaper$1.2f</ID>
     <ID>MagicNumber:WebChapterElementShaper.kt$WebChapterElementShaper$1.6</ID>
     <ID>MagicNumber:WebChapterElementShaper.kt$WebChapterElementShaper$1600</ID>
-    <ID>MagicNumber:WebContentLoader.kt$WebContentLoader$250L</ID>
     <ID>MagicNumber:WebContentLoader.kt$WebContentLoader$429</ID>
     <ID>MagicNumber:WebContentLoader.kt$WebContentLoader.&lt;no name provided&gt;$0.75f</ID>
     <ID>MagicNumber:ZipUtils.kt$ZipUtils$10</ID>
@@ -605,7 +598,6 @@
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$if</ID>
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$private suspend</ID>
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$val priority = if (mode == PrefetchMode.SPECULATIVE) ImageRequestPriority.SPECULATIVE else ImageRequestPriority.USER_REQUESTED</ID>
-    <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$val result = downloadAndCacheImageInternal(imageUrl, pageUrl, ImageRequestPriority.SPECULATIVE, StorageTier.CACHE)</ID>
     <ID>MaxLineLength:WebViewUtils.kt$WebViewUtils$userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"</ID>
     <ID>MaxLineLength:ZoomableBox.kt$// In dynamic mode, the container grows with the content, but the viewable area is still constrained by the screen/parent</ID>
     <ID>MaxLineLength:ZoomableBox.kt$if</ID>
@@ -682,8 +674,6 @@
     <ID>ReturnCount:UrlSecurity.kt$UrlSecurity$private fun isIpv4MappedIpv6(bytes: ByteArray): Boolean</ID>
     <ID>ReturnCount:WebChapterElementShaper.kt$WebChapterElementShaper$private fun shouldGroupWithLastGroup(last: ContentElement, current: ContentElement.Image): Boolean</ID>
     <ID>ReturnCount:WebChapterElementShaper.kt$WebChapterElementShaper$private fun shouldGroupWithLastImage(last: ContentElement, current: ContentElement.Image): Boolean</ID>
-    <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun detectMangaReaderHints(document: Document): Boolean</ID>
-    <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun ensureResultForTier( result: ImageDownloadResult, imageUrl: String, writeTier: StorageTier ): ImageDownloadResult</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun shouldRetryException(e: Exception): Boolean</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private suspend fun enrichParsedCacheDimensions(elements: List&lt;ContentElement&gt;): List&lt;ContentElement&gt;</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private suspend fun executePrefetch( url: String, mode: PrefetchMode, onProgress: (suspend (PrefetchResult) -&gt; Unit)? = null ): PrefetchResult</ID>
@@ -693,7 +683,6 @@
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$suspend fun prefetch( url: String, mode: PrefetchMode, onProgress: (suspend (PrefetchResult) -&gt; Unit)? ): PrefetchResult</ID>
     <ID>ReturnCount:WebOfflineChapterStore.kt$WebOfflineChapterStore$fun hasImage(url: String, imageUrl: String): Boolean</ID>
     <ID>ReturnCount:WebOfflineChapterStore.kt$WebOfflineChapterStore$fun loadContent(url: String): ContentResult.Success?</ID>
-    <ID>ReturnCount:WebOfflineChapterStore.kt$WebOfflineChapterStore$private suspend fun downloadImage(pageUrl: String, record: ImageRecord): ImageRecord?</ID>
     <ID>ReturnCount:WebViewUtils.kt$WebViewUtils$fun shouldAllowCloudflareNavigation(url: String?, expectedHost: String? = null): Boolean</ID>
     <ID>SwallowedException:ContentRenderer.kt$ex: Exception</ID>
     <ID>SwallowedException:ContentRepository.kt$ContentRepository$e: TimeoutCancellationException</ID>

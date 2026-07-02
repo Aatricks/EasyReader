@@ -405,6 +405,60 @@ class WebContentLoaderTest {
     }
 
     @Test
+    fun `user requested prefetch writes html to cache tier only`() = runBlocking {
+        val chapterUrl = "https://example.com/chapter-download"
+        val imageUrl = "https://example.com/download.jpg"
+        val htmlParser = mock<HtmlParser>()
+
+        val root = java.nio.file.Files.createTempDirectory("web-loader-test-downloads-tier").toFile()
+        val htmlCacheDir = File(root, "html_cache").apply { mkdirs() }
+        val mediaCacheDir = File(root, "media_cache").apply { mkdirs() }
+        val htmlDownloadsDir = File(root, "html_downloads").apply { mkdirs() }
+        val mediaDownloadsDir = File(root, "media_downloads").apply { mkdirs() }
+        val webOfflineDir = File(root, "web_offline").apply { mkdirs() }
+        val client = okhttp3.OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                when (chain.request().url.toString()) {
+                    chapterUrl -> buildResponse(
+                        chain.request(),
+                        "<html><head><title>Download</title></head><body><img src=\"$imageUrl\"></body></html>",
+                        "text/html"
+                    )
+                    imageUrl -> buildByteResponse(chain.request(), tinyPng(width = 2, height = 3), "image/png")
+                    else -> buildResponse(chain.request(), "", "text/plain", code = 404)
+                }
+            })
+            .build()
+        val imageCache = ImageCache(mediaCacheDir, mediaDownloadsDir)
+        val imageDownloader = ImageDownloader(client)
+        val offlineStore = WebOfflineChapterStore(webOfflineDir, htmlParser, imageDownloader, imageCache, InMemoryPermanentFailureStore())
+        val loader = WebContentLoader(
+            htmlParser,
+            client,
+            imageCache,
+            imageDownloader,
+            ParsedContentCache(),
+            htmlCacheDir,
+            htmlDownloadsDir,
+            InMemoryPermanentFailureStore(),
+            fakeImageDimensionCacheRepository(),
+            offlineStore
+        )
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Image(imageUrl)))
+
+        loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED)
+
+        // The html downloads dir should be empty.
+        val files = htmlDownloadsDir.listFiles()
+        assertTrue(files == null || files.isEmpty())
+
+        // Let's assert html cache dir actually contains the html file.
+        val cacheFiles = htmlCacheDir.listFiles()
+        assertTrue(cacheFiles != null && cacheFiles.isNotEmpty())
+    }
+
+    @Test
     fun `user requested prefetch stores a persistent download`() = runBlocking {
         val chapterUrl = "https://example.com/chapter-download"
         val imageUrl = "https://example.com/download.jpg"
