@@ -3,6 +3,14 @@ package io.aatricks.easyreader.data.repository.content
 import java.io.File
 
 internal object ImageBoundsParser {
+    private const val VP8_START_CODE_0 = 0x9D
+    private const val VP8_START_CODE_1 = 0x01
+    private const val VP8_START_CODE_2 = 0x2A
+    private const val VP8_START_CODE_OFFSET = 23
+    private const val VP8_WIDTH_OFFSET = 26
+    private const val VP8_HEIGHT_OFFSET = 28
+    private const val VP8_DIMENSION_MASK = 0x3FFF
+
     fun parse(file: File): Pair<Int, Int>? {
         if (!file.exists()) return null
         return runCatching { parse(file.readBytes()) }.getOrNull()
@@ -69,12 +77,12 @@ internal object ImageBoundsParser {
         if (!matchesAscii(bytes, 0, "RIFF") || !matchesAscii(bytes, 8, "WEBP")) return null
         if (bytes.size < 30) return null
         return when {
-            matchesAscii(bytes, 12, "VP8X") && bytes.size >= 30 -> {
+            matchesAscii(bytes, 12, "VP8 ") -> parseLossyWebP(bytes)
+            matchesAscii(bytes, 12, "VP8X") -> {
                 val width = 1 + readInt24(bytes, 24)
                 val height = 1 + readInt24(bytes, 27)
                 if (width > 0 && height > 0) width to height else null
             }
-
             matchesAscii(bytes, 12, "VP8L") && bytes.size >= 25 -> {
                 val b0 = bytes[21].toInt() and 0xFF
                 val b1 = bytes[22].toInt() and 0xFF
@@ -84,9 +92,22 @@ internal object ImageBoundsParser {
                 val height = 1 + (((b1 and 0xC0) shr 6) or (b2 shl 2) or ((b3 and 0x0F) shl 10))
                 if (width > 0 && height > 0) width to height else null
             }
-
             else -> null
         }
+    }
+
+    private fun parseLossyWebP(bytes: ByteArray): Pair<Int, Int>? {
+        val startCodeOk = bytes[VP8_START_CODE_OFFSET] == VP8_START_CODE_0.toByte() &&
+            bytes[VP8_START_CODE_OFFSET + 1] == VP8_START_CODE_1.toByte() &&
+            bytes[VP8_START_CODE_OFFSET + 2] == VP8_START_CODE_2.toByte()
+        if (startCodeOk) {
+            val width = ((bytes[VP8_WIDTH_OFFSET].toInt() and 0xFF) or
+                ((bytes[VP8_WIDTH_OFFSET + 1].toInt() and 0xFF) shl 8)) and VP8_DIMENSION_MASK
+            val height = ((bytes[VP8_HEIGHT_OFFSET].toInt() and 0xFF) or
+                ((bytes[VP8_HEIGHT_OFFSET + 1].toInt() and 0xFF) shl 8)) and VP8_DIMENSION_MASK
+            if (width > 0 && height > 0) return width to height
+        }
+        return null
     }
 
     private fun readInt16(bytes: ByteArray, offset: Int): Int {
