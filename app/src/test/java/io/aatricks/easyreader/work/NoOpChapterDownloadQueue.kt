@@ -6,8 +6,9 @@ import kotlinx.coroutines.flow.flowOf
 
 /** Test-only queue for ViewModel tests that do not care about download work. */
 class NoOpChapterDownloadQueue : ChapterDownloadQueue {
-    override fun enqueue(url: String, replaceExisting: Boolean) = Unit
+    override fun enqueue(url: String, replaceExisting: Boolean): Boolean = true
     override fun cancel(url: String) = Unit
     override fun observeChapter(url: String): Flow<PrefetchResult?> = flowOf(null)
     override fun observeAll(): Flow<Map<String, PrefetchResult>> = flowOf(emptyMap())
+    override fun prune() = Unit
 }

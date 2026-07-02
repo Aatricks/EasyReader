@@ -56,7 +56,12 @@ class LibraryViewModel @Inject constructor(
         scope = viewModelScope,
         repository = repository,
         contentRepository = contentRepository,
-    ) { message -> updateState { it.copy(error = message) } }
+        onError = { message -> updateState { it.copy(error = message) } },
+        onItemsRemoved = { urls ->
+            urls.forEach { downloadQueue.cancel(it) }
+            downloadStates.removeCacheStates(urls)
+        }
+    )
     val pendingDeletion: StateFlow<Set<String>> = deletionCoordinator.pendingDeletion
 
     init {
@@ -261,6 +266,7 @@ class LibraryViewModel @Inject constructor(
         sourceName: String
     ): Unit {
         viewModelScope.launch {
+            var failedToQueueAny = false
             chapters.forEach { chapter ->
                 runCatching {
                     repository.getItemByUrl(chapter.url)
@@ -276,24 +282,18 @@ class LibraryViewModel @Inject constructor(
                             sourceName = sourceName
                         )
                 }.onSuccess {
-                    downloadStates.setCacheState(
-                        PrefetchResult(
-                            url = chapter.url,
-                            htmlCached = false,
-                            totalImages = 0,
-                            cachedImages = 0,
-                            isComplete = false,
-                            isInProgress = true,
-                            isRetryable = false,
-                            isPersistentDownload = true
-                        )
-                    )
-                    downloadQueue.enqueue(chapter.url)
+                    val success = downloadStates.markPendingAndEnqueue(chapter.url)
+                    if (!success) {
+                        failedToQueueAny = true
+                    }
                 }.onFailure { e ->
                     updateState { state ->
                         state.copy(error = "Failed to queue chapter download: ${e.message}")
                     }
                 }
+            }
+            if (failedToQueueAny) {
+                updateState { it.copy(error = "Failed to queue download") }
             }
         }
     }
@@ -419,19 +419,7 @@ class LibraryViewModel @Inject constructor(
                     repository.libraryItems.value
                 }
                 items.forEach { item ->
-                    downloadStates.setCacheState(
-                        PrefetchResult(
-                            url = item.url,
-                            htmlCached = false,
-                            totalImages = 0,
-                            cachedImages = 0,
-                            isComplete = false,
-                            isInProgress = true,
-                            isRetryable = false,
-                            isPersistentDownload = true
-                        )
-                    )
-                    downloadQueue.enqueue(item.url)
+                    downloadStates.markPendingAndEnqueue(item.url)
                 }
                 updateState { it.copy(isLoading = false) }
             }.onFailure { e ->
@@ -444,13 +432,10 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { contentRepository.clearPermanentFailures(url) }
                 .onFailure { e -> Log.w(TAG, "failed to clear permanent failures before retry: ${e.message}") }
-            downloadStates.setCacheState(
-                (uiState.value.chapterCacheStates[url] ?: PrefetchResult(url, false, 0, 0, false))
-                    .copy(isInProgress = true, isRetryable = false, isPersistentDownload = true)
-            )
-            // Replace any in-flight worker so the retry runs on a fresh attempt with the
-            // permanent-failure cleanup reflected.
-            downloadQueue.enqueue(url, replaceExisting = true)
+            val success = downloadStates.markPendingAndEnqueue(url, replaceExisting = true)
+            if (!success) {
+                updateState { it.copy(error = "Failed to queue download") }
+            }
         }
     }
 
@@ -465,6 +450,8 @@ class LibraryViewModel @Inject constructor(
             runCatching {
                 contentRepository.clearDownload(item.url)
                 repository.markDownloaded(itemId, false)
+            }.onSuccess {
+                downloadStates.refreshChapterCacheStates(listOf(item.url))
             }
         }
     }

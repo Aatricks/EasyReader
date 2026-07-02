@@ -108,7 +108,8 @@ class ContentRepositoryEpubTest {
                 File(tempDir, "web_offline").apply { mkdirs() },
                 mockHtmlParser,
                 imageDownloader,
-                imageCache
+                imageCache,
+                io.aatricks.easyreader.data.repository.content.InMemoryPermanentFailureStore()
             )
         )
         val pdfLoader = PdfContentLoader(mockContext, DefaultPdfDocumentOpener(mockContext))

@@ -30,10 +30,11 @@ import javax.inject.Singleton
  * coalesces (KEEP) or replaces (REPLACE) deterministically.
  */
 interface ChapterDownloadQueue {
-    fun enqueue(url: String, replaceExisting: Boolean = false)
+    fun enqueue(url: String, replaceExisting: Boolean = false): Boolean
     fun cancel(url: String)
     fun observeChapter(url: String): Flow<PrefetchResult?>
     fun observeAll(): Flow<Map<String, PrefetchResult>>
+    fun prune()
 
     companion object {
         const val TAG_CHAPTER_DOWNLOAD = "chapter-download"
@@ -46,21 +47,30 @@ class WorkManagerChapterDownloadQueue @Inject constructor(
 ) : ChapterDownloadQueue {
     private val workManager: WorkManager get() = WorkManager.getInstance(context)
 
-    override fun enqueue(url: String, replaceExisting: Boolean) {
-        if (url.isBlank()) return
-        val request = OneTimeWorkRequestBuilder<ChapterDownloadWorker>()
-            .addTag(ChapterDownloadQueue.TAG_CHAPTER_DOWNLOAD)
-            .addTag(tagFor(url))
-            .setInputData(workDataOf(ChapterDownloadWorker.KEY_CHAPTER_URL to url))
-            .setConstraints(
-                Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build()
-            )
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-            .build()
-        val policy = if (replaceExisting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP
-        workManager.enqueueUniqueWork(uniqueName(url), policy, request)
+    override fun enqueue(url: String, replaceExisting: Boolean): Boolean {
+        if (url.isBlank()) return false
+        return runCatching {
+            val request = OneTimeWorkRequestBuilder<ChapterDownloadWorker>()
+                .addTag(ChapterDownloadQueue.TAG_CHAPTER_DOWNLOAD)
+                .addTag(tagFor(url))
+                .setInputData(workDataOf(ChapterDownloadWorker.KEY_CHAPTER_URL to url))
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .build()
+            val policy = if (replaceExisting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP
+            workManager.enqueueUniqueWork(uniqueName(url), policy, request)
+            true
+        }.getOrDefault(false)
+    }
+
+    override fun prune() {
+        runCatching {
+            workManager.pruneWork()
+        }
     }
 
     override fun cancel(url: String) {
@@ -101,50 +111,55 @@ class WorkManagerChapterDownloadQueue @Inject constructor(
             .distinctUntilChanged()
     }
 
-    private fun uniqueName(url: String): String = "$UNIQUE_PREFIX${urlKey(url)}"
-    private fun tagFor(url: String): String = "$URL_TAG_PREFIX${urlKey(url)}"
-    private fun urlKey(url: String): String = CacheKeyUtils.keyFor(url)
+}
 
-    private fun WorkInfo.chapterUrl(): String? {
-        progress.getString(ChapterDownloadWorker.KEY_CHAPTER_URL)
-            ?.takeIf { it.isNotBlank() }
-            ?.let { return it }
-        return outputData.getString(ChapterDownloadWorker.KEY_CHAPTER_URL)?.takeIf { it.isNotBlank() }
-    }
+private const val UNIQUE_PREFIX = "chapter-download:"
+private const val URL_TAG_PREFIX = "chapter-url:"
 
-    private fun WorkInfo.toPrefetchResult(fallbackUrl: String): PrefetchResult {
-        val payload: Data = if (progress.keyValueMap.isNotEmpty()) progress else outputData
-        val url = payload.getString(ChapterDownloadWorker.KEY_CHAPTER_URL) ?: fallbackUrl
-        val inProgress = state == WorkInfo.State.RUNNING ||
-            state == WorkInfo.State.ENQUEUED ||
-            state == WorkInfo.State.BLOCKED
-        // For terminal states without progress data (e.g. failed pre-publish), fall back to
-        // sensible defaults that won't promote the DB isDownloaded flag.
-        return PrefetchResult(
-            url = url,
-            htmlCached = payload.getBoolean(ChapterDownloadWorker.KEY_HTML_CACHED, false),
-            totalImages = payload.getInt(ChapterDownloadWorker.KEY_TOTAL_IMAGES, 0),
-            cachedImages = payload.getInt(ChapterDownloadWorker.KEY_CACHED_IMAGES, 0),
-            isComplete = payload.getBoolean(ChapterDownloadWorker.KEY_IS_COMPLETE, false) &&
-                state == WorkInfo.State.SUCCEEDED,
-            isInProgress = inProgress,
-            isRetryable = payload.getBoolean(ChapterDownloadWorker.KEY_IS_RETRYABLE, state != WorkInfo.State.SUCCEEDED),
-            isPersistentDownload = payload.getBoolean(ChapterDownloadWorker.KEY_IS_PERSISTENT_DOWNLOAD, true),
-            hasPermanentFailures = payload.getBoolean(ChapterDownloadWorker.KEY_HAS_PERMANENT_FAILURES, false)
-        )
-    }
+private fun uniqueName(url: String): String = "$UNIQUE_PREFIX${urlKey(url)}"
+private fun tagFor(url: String): String = "$URL_TAG_PREFIX${urlKey(url)}"
+private fun urlKey(url: String): String = CacheKeyUtils.keyFor(url)
 
-    private fun WorkInfo.downloadObservationRank(): Int = when (state) {
-        WorkInfo.State.RUNNING -> 5
-        WorkInfo.State.ENQUEUED,
-        WorkInfo.State.BLOCKED -> 4
-        WorkInfo.State.SUCCEEDED -> 3
-        WorkInfo.State.FAILED -> 2
-        WorkInfo.State.CANCELLED -> 1
-    }
+private fun WorkInfo.chapterUrl(): String? {
+    progress.getString(ChapterDownloadWorker.KEY_CHAPTER_URL)
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return it }
+    return outputData.getString(ChapterDownloadWorker.KEY_CHAPTER_URL)?.takeIf { it.isNotBlank() }
+}
 
-    companion object {
-        private const val UNIQUE_PREFIX = "chapter-download:"
-        private const val URL_TAG_PREFIX = "chapter-url:"
-    }
+private fun WorkInfo.toPrefetchResult(fallbackUrl: String): PrefetchResult {
+    val payload: Data = if (progress.keyValueMap.isNotEmpty()) progress else outputData
+    val url = payload.getString(ChapterDownloadWorker.KEY_CHAPTER_URL) ?: fallbackUrl
+    val inProgress = state == WorkInfo.State.RUNNING ||
+        state == WorkInfo.State.ENQUEUED ||
+        state == WorkInfo.State.BLOCKED
+    // For terminal states without progress data (e.g. failed pre-publish), fall back to
+    // sensible defaults that won't promote the DB isDownloaded flag.
+    return PrefetchResult(
+        url = url,
+        htmlCached = payload.getBoolean(ChapterDownloadWorker.KEY_HTML_CACHED, false),
+        totalImages = payload.getInt(ChapterDownloadWorker.KEY_TOTAL_IMAGES, 0),
+        cachedImages = payload.getInt(ChapterDownloadWorker.KEY_CACHED_IMAGES, 0),
+        isComplete = payload.getBoolean(ChapterDownloadWorker.KEY_IS_COMPLETE, false) &&
+            state == WorkInfo.State.SUCCEEDED,
+        isInProgress = inProgress,
+        isRetryable = payload.getBoolean(ChapterDownloadWorker.KEY_IS_RETRYABLE, state != WorkInfo.State.SUCCEEDED),
+        isPersistentDownload = payload.getBoolean(ChapterDownloadWorker.KEY_IS_PERSISTENT_DOWNLOAD, true),
+        hasPermanentFailures = payload.getBoolean(ChapterDownloadWorker.KEY_HAS_PERMANENT_FAILURES, false)
+    )
+}
+
+private const val RANK_RUNNING = 5
+private const val RANK_ENQUEUED = 4
+private const val RANK_SUCCEEDED = 3
+private const val RANK_FAILED = 2
+private const val RANK_CANCELLED = 1
+
+private fun WorkInfo.downloadObservationRank(): Int = when (state) {
+    WorkInfo.State.RUNNING -> RANK_RUNNING
+    WorkInfo.State.ENQUEUED,
+    WorkInfo.State.BLOCKED -> RANK_ENQUEUED
+    WorkInfo.State.SUCCEEDED -> RANK_SUCCEEDED
+    WorkInfo.State.FAILED -> RANK_FAILED
+    WorkInfo.State.CANCELLED -> RANK_CANCELLED
 }

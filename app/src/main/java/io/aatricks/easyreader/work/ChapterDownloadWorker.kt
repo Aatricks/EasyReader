@@ -64,16 +64,21 @@ class ChapterDownloadWorker @AssistedInject constructor(
             }
 
             publishProgress(result)
-            // Worker is the durable second writer for the DB flag. Even if the VM call
-            // that originally enqueued us was cancelled mid-flight, this guarantees the
-            // flag eventually tracks on-disk reality.
-            runCatching { reconcileFlag(url, result) }
+            // Worker is the durable second writer for the DB flag. Flag must track on-disk reality
+            // even if the user cleared the download mid-run.
+            runCatching { reconcileFlag(url, contentRepository.inspectDownload(url)) }
             val terminal = result.toTerminalData()
             // Treat "complete with permanent failures" as success — the loop has nothing more
             // to do. The badge logic separately downgrades it via hasPermanentFailures.
             when {
                 result.isComplete -> Result.success(terminal)
-                result.isRetryable -> Result.retry()
+                result.isRetryable -> {
+                    if (runAttemptCount < MAX_RUN_ATTEMPTS) {
+                        Result.retry()
+                    } else {
+                        Result.failure(terminal)
+                    }
+                }
                 else -> Result.failure(terminal)
             }
         } catch (cancel: kotlinx.coroutines.CancellationException) {

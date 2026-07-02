@@ -56,23 +56,45 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
             prewarmLastReadChapter()
         }
         pruneImageDimensionCache()
+        pruneChapterDownloadQueue()
+    }
+
+    private fun pruneChapterDownloadQueue() {
+        warmupScope.launch {
+            runCatching { chapterDownloadQueue.prune() }
+                .onFailure { Log.w(TAG, "chapter download queue prune failed message=${it.message}") }
+        }
     }
 
     private fun resetLegacyWebOfflinePipelineIfNeeded(): Boolean {
-        if (preferencesManager.webOfflinePipelineVersion >= WEB_OFFLINE_PIPELINE_VERSION) return false
+        val storedVersion = preferencesManager.webOfflinePipelineVersion
+        if (storedVersion >= WEB_OFFLINE_PIPELINE_VERSION) return false
         warmupScope.launch {
-            runCatching {
-                val previouslyDownloadedWeb = libraryRepository.getDownloadedItems()
-                    .filter { it.contentType == ContentType.WEB }
-                contentRepository.resetWebOfflinePipelineData()
-                previouslyDownloadedWeb.forEach { item ->
-                    libraryRepository.markDownloaded(item.id, false)
-                    chapterDownloadQueue.enqueue(item.url, replaceExisting = true)
+            if (storedVersion < 2) {
+                runCatching {
+                    val previouslyDownloadedWeb = libraryRepository.getDownloadedItems()
+                        .filter { it.contentType == ContentType.WEB }
+                    contentRepository.resetWebOfflinePipelineData()
+                    previouslyDownloadedWeb.forEach { item ->
+                        libraryRepository.markDownloaded(item.id, false)
+                        chapterDownloadQueue.enqueue(item.url, replaceExisting = true)
+                    }
+                    preferencesManager.webOfflinePipelineVersion = WEB_OFFLINE_PIPELINE_VERSION
+                    Log.i(TAG, "reset legacy web offline data and requeued ${previouslyDownloadedWeb.size} chapters")
+                }.onFailure {
+                    Log.w(TAG, "web offline reset failed message=${it.message}")
                 }
-                preferencesManager.webOfflinePipelineVersion = WEB_OFFLINE_PIPELINE_VERSION
-                Log.i(TAG, "reset legacy web offline data and requeued ${previouslyDownloadedWeb.size} chapters")
-            }.onFailure {
-                Log.w(TAG, "web offline reset failed message=${it.message}")
+            } else if (storedVersion == 2) {
+                runCatching {
+                    contentRepository.sweepLegacyWebDownloadArtifacts()
+                    preferencesManager.webOfflinePipelineVersion = WEB_OFFLINE_PIPELINE_VERSION
+                    Log.i(
+                        TAG,
+                        "swept legacy web download artifacts for version $WEB_OFFLINE_PIPELINE_VERSION"
+                    )
+                }.onFailure {
+                    Log.w(TAG, "web offline sweep failed message=${it.message}")
+                }
             }
             prewarmLastReadChapter()
         }
@@ -123,6 +145,6 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
 
     companion object {
         private const val TAG = "EasyReaderApplication"
-        private const val WEB_OFFLINE_PIPELINE_VERSION = 2
+        private const val WEB_OFFLINE_PIPELINE_VERSION = 3
     }
 }

@@ -15,6 +15,10 @@ interface PermanentFailureStore {
     suspend fun load(chapterUrl: String, freshAfterMs: Long): Set<String>
     suspend fun record(chapterUrl: String, imageUrls: Collection<String>, recordedAtMs: Long)
     suspend fun clear(chapterUrl: String)
+
+    companion object {
+        const val DEFAULT_TTL_MS = 24 * 60 * 60 * 1000L
+    }
 }
 
 @Singleton

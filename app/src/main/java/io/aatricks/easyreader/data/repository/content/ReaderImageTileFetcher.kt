@@ -84,11 +84,26 @@ class ReaderImageTileFetcher(
         return SliceBitmap(hardware ?: decoded, sampleSize > 1)
     }
 
-    private suspend fun resolveFile(): File? {
-        contentRepository.findUsableCachedMediaFile(tile.imageUrl)?.let { return it }
-        val referer = tile.pageUrl.takeIf { it.isNotBlank() } ?: tile.imageUrl
-        return contentRepository.downloadAndCacheImage(tile.imageUrl, referer)
-            ?.takeIf { it.exists() && it.length() > 0L }
+    /**
+     * Resolves the image file for this tile.
+     * Offline chapters serve file:// URIs from the offline manifest store.
+     */
+    @androidx.annotation.VisibleForTesting
+    internal suspend fun resolveFile(): File? {
+        return localFile(tile.imageUrl)
+            ?: contentRepository.findUsableCachedMediaFile(tile.imageUrl)
+            ?: run {
+                val referer = tile.pageUrl.takeIf { it.isNotBlank() } ?: tile.imageUrl
+                contentRepository.downloadAndCacheImage(tile.imageUrl, referer)
+                    ?.takeIf { it.exists() && it.length() > 0L }
+            }
+    }
+
+    private fun localFile(url: String): File? {
+        if (!url.startsWith("file:")) return null
+        return runCatching {
+            File(java.net.URI(url))
+        }.getOrNull()?.takeIf { it.exists() && it.length() > 0L }
     }
 
     @Suppress("DEPRECATION")

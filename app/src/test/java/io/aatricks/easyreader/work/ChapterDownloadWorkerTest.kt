@@ -48,22 +48,20 @@ class ChapterDownloadWorkerTest {
     fun `worker runs prefetch and reports success when chapter completes`() = runBlocking {
         val chapterUrl = "https://example.com/work-success"
         val contentRepository = mock<ContentRepository>()
+        val incomplete = PrefetchResult(url = chapterUrl, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+        val complete = PrefetchResult(
+            url = chapterUrl,
+            htmlCached = true,
+            totalImages = 5,
+            cachedImages = 5,
+            isComplete = true,
+            isPersistentDownload = true
+        )
         // Inspect must indicate the chapter is incomplete so the worker actually runs the
         // prefetch path instead of short-circuiting on the already-complete check.
-        whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(
-            PrefetchResult(url = chapterUrl, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
-        )
+        whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(incomplete, complete)
         whenever(contentRepository.downloadChapter(eq(chapterUrl), any()))
-            .thenReturn(
-                PrefetchResult(
-                    url = chapterUrl,
-                    htmlCached = true,
-                    totalImages = 5,
-                    cachedImages = 5,
-                    isComplete = true,
-                    isPersistentDownload = true
-                )
-            )
+            .thenReturn(complete)
 
         val worker = TestListenableWorkerBuilder<ChapterDownloadWorker>(context)
             .setInputData(workDataOf(ChapterDownloadWorker.KEY_CHAPTER_URL to chapterUrl))
@@ -139,20 +137,18 @@ class ChapterDownloadWorkerTest {
         val chapterUrl = "https://example.com/work-promote"
         val contentRepository = mock<ContentRepository>()
         val libraryRepository = mock<LibraryRepository>()
-        whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(
-            PrefetchResult(url = chapterUrl, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+        val incomplete = PrefetchResult(url = chapterUrl, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+        val complete = PrefetchResult(
+            url = chapterUrl,
+            htmlCached = true,
+            totalImages = 3,
+            cachedImages = 3,
+            isComplete = true,
+            isPersistentDownload = true
         )
+        whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(incomplete, complete)
         whenever(contentRepository.downloadChapter(eq(chapterUrl), any()))
-            .thenReturn(
-                PrefetchResult(
-                    url = chapterUrl,
-                    htmlCached = true,
-                    totalImages = 3,
-                    cachedImages = 3,
-                    isComplete = true,
-                    isPersistentDownload = true
-                )
-            )
+            .thenReturn(complete)
         whenever(libraryRepository.getItemByUrl(chapterUrl)).thenReturn(
             io.aatricks.easyreader.data.model.LibraryItem(
                 id = "lib-id",
@@ -177,21 +173,19 @@ class ChapterDownloadWorkerTest {
         val chapterUrl = "https://example.com/work-permanent-failures"
         val contentRepository = mock<ContentRepository>()
         val libraryRepository = mock<LibraryRepository>()
-        whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(
-            PrefetchResult(url = chapterUrl, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+        val incomplete = PrefetchResult(url = chapterUrl, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+        val permanentFailure = PrefetchResult(
+            url = chapterUrl,
+            htmlCached = true,
+            totalImages = 4,
+            cachedImages = 3,
+            isComplete = true,
+            isPersistentDownload = true,
+            hasPermanentFailures = true
         )
+        whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(incomplete, permanentFailure)
         whenever(contentRepository.downloadChapter(eq(chapterUrl), any()))
-            .thenReturn(
-                PrefetchResult(
-                    url = chapterUrl,
-                    htmlCached = true,
-                    totalImages = 4,
-                    cachedImages = 3,
-                    isComplete = true,
-                    isPersistentDownload = true,
-                    hasPermanentFailures = true
-                )
-            )
+            .thenReturn(permanentFailure)
         whenever(libraryRepository.getItemByUrl(chapterUrl)).thenReturn(
             io.aatricks.easyreader.data.model.LibraryItem(
                 id = "lib-permanent",
@@ -245,6 +239,90 @@ class ChapterDownloadWorkerTest {
         val result = worker.doWork()
         assertTrue("expected Success, got $result", result is ListenableWorker.Result.Success)
         verify(libraryRepository).markDownloaded("lib-orphan", true)
+    }
+
+    @Test
+    fun `worker returns failure when retryable result exhausts attempt budget`() = runBlocking {
+        val chapterUrl = "https://example.com/work-exhaust-retry"
+        val contentRepository = mock<ContentRepository>()
+        val incomplete = PrefetchResult(
+            url = chapterUrl,
+            htmlCached = false,
+            totalImages = 0,
+            cachedImages = 0,
+            isComplete = false
+        )
+        val retryable = PrefetchResult(
+            url = chapterUrl,
+            htmlCached = true,
+            totalImages = 5,
+            cachedImages = 2,
+            isComplete = false,
+            isRetryable = true,
+            isPersistentDownload = true
+        )
+        whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(incomplete, retryable)
+        whenever(contentRepository.downloadChapter(eq(chapterUrl), any()))
+            .thenReturn(retryable)
+
+        val worker = TestListenableWorkerBuilder<ChapterDownloadWorker>(context)
+            .setInputData(workDataOf(ChapterDownloadWorker.KEY_CHAPTER_URL to chapterUrl))
+            .setWorkerFactory(workerFactoryWith(contentRepository))
+            .setRunAttemptCount(5)
+            .build()
+
+        val result = worker.doWork()
+        assertTrue("expected Failure, got $result", result is ListenableWorker.Result.Failure)
+    }
+
+    @Test
+    fun `worker does not re-promote flag when disk was cleared during download`(): Unit = runBlocking {
+        val chapterUrl = "https://example.com/work-cleared-disk"
+        val contentRepository = mock<ContentRepository>()
+        val libraryRepository = mock<LibraryRepository>()
+        val incomplete = PrefetchResult(
+            url = chapterUrl,
+            htmlCached = false,
+            totalImages = 0,
+            cachedImages = 0,
+            isComplete = false
+        )
+        val complete = PrefetchResult(
+            url = chapterUrl,
+            htmlCached = true,
+            totalImages = 5,
+            cachedImages = 5,
+            isComplete = true,
+            isPersistentDownload = true
+        )
+        val emptyInspect = PrefetchResult(
+            url = chapterUrl,
+            htmlCached = false,
+            totalImages = 0,
+            cachedImages = 0,
+            isPersistentDownload = false,
+            isComplete = false
+        )
+        whenever(contentRepository.inspectDownload(chapterUrl)).thenReturn(incomplete, emptyInspect)
+        whenever(contentRepository.downloadChapter(eq(chapterUrl), any()))
+            .thenReturn(complete)
+        whenever(libraryRepository.getItemByUrl(chapterUrl)).thenReturn(
+            io.aatricks.easyreader.data.model.LibraryItem(
+                id = "lib-cleared",
+                title = "Chapter cleared",
+                url = chapterUrl,
+                isDownloaded = false
+            )
+        )
+
+        val worker = TestListenableWorkerBuilder<ChapterDownloadWorker>(context)
+            .setInputData(workDataOf(ChapterDownloadWorker.KEY_CHAPTER_URL to chapterUrl))
+            .setWorkerFactory(workerFactoryWith(contentRepository, libraryRepository))
+            .build()
+
+        val result = worker.doWork()
+        assertTrue("expected Success, got $result", result is ListenableWorker.Result.Success)
+        verify(libraryRepository, org.mockito.kotlin.never()).markDownloaded(any(), eq(true))
     }
 
     @Test
