@@ -585,8 +585,9 @@ private class RecordingChapterDownloadQueue : ChapterDownloadQueue {
     val enqueued = mutableListOf<RecordedEnqueue>()
     private val results = MutableStateFlow<Map<String, PrefetchResult>>(emptyMap())
 
-    override fun enqueue(url: String, replaceExisting: Boolean) {
+    override fun enqueue(url: String, replaceExisting: Boolean): Boolean {
         enqueued += RecordedEnqueue(url, replaceExisting)
+        return true
     }
 
     override fun cancel(url: String) = Unit
@@ -595,4 +596,6 @@ private class RecordingChapterDownloadQueue : ChapterDownloadQueue {
         results.map { it[url] }
 
     override fun observeAll(): Flow<Map<String, PrefetchResult>> = results
+
+    override fun prune() = Unit
 }

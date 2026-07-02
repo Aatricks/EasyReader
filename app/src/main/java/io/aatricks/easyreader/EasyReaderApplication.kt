@@ -56,6 +56,14 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
             prewarmLastReadChapter()
         }
         pruneImageDimensionCache()
+        pruneChapterDownloadQueue()
+    }
+
+    private fun pruneChapterDownloadQueue() {
+        warmupScope.launch {
+            runCatching { chapterDownloadQueue.prune() }
+                .onFailure { Log.w(TAG, "chapter download queue prune failed message=${it.message}") }
+        }
     }
 
     private fun resetLegacyWebOfflinePipelineIfNeeded(): Boolean {
