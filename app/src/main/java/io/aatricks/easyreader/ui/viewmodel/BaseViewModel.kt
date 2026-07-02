@@ -2,6 +2,7 @@ package io.aatricks.easyreader.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.aatricks.easyreader.util.rethrowCancellation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +30,7 @@ abstract class BaseViewModel<S>(initialState: S) : ViewModel() {
             if (handleError) updateState { errorState(it, null) }
             
             runCatching { block() }
+                .rethrowCancellation()
                 .onFailure { e ->
                     if (handleError) updateState { errorState(it, e.message ?: "An unknown error occurred") }
                 }

@@ -6,6 +6,7 @@ import io.aatricks.easyreader.data.model.*
 import io.aatricks.easyreader.data.repository.content.*
 import io.aatricks.easyreader.data.repository.content.StorageTier
 import io.aatricks.easyreader.util.FileSizeUtils
+import io.aatricks.easyreader.util.rethrowCancellation
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.CancellationException
@@ -235,7 +236,7 @@ class ContentRepository @Inject constructor(
                     isRetryable = false
                 )
             }
-        }.getOrElse {
+        }.rethrowCancellation().getOrElse {
             PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = true)
         }
         trimCachesInternal(force = true)
@@ -285,7 +286,7 @@ class ContentRepository @Inject constructor(
                     isPersistentDownload = true
                 )
             }
-        }.getOrElse {
+        }.rethrowCancellation().getOrElse {
             PrefetchResult(
                 url,
                 htmlCached = false,
@@ -328,7 +329,7 @@ class ContentRepository @Inject constructor(
                     isPersistentDownload = true
                 )
             }
-        }.getOrElse {
+        }.rethrowCancellation().getOrElse {
             PrefetchResult(
                 url,
                 htmlCached = false,
@@ -363,7 +364,7 @@ class ContentRepository @Inject constructor(
                     isRetryable = false
                 )
             }
-        }.getOrElse {
+        }.rethrowCancellation().getOrElse {
             PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = true)
         }
 
