@@ -5,10 +5,13 @@ import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.model.ChapterInfo
 import io.aatricks.easyreader.data.model.ExploreItem
 import io.aatricks.easyreader.data.model.LibraryItem
+import io.aatricks.easyreader.util.FieldUpdate
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 import org.mockito.Mock
@@ -35,6 +38,7 @@ class LibraryRepositoryUpdateTest {
     fun setup() {
         MockitoAnnotations.openMocks(this)
         whenever(preferencesManager.loadLibraryItems()).thenReturn(emptyList())
+        whenever(preferencesManager.loadCollapsedSources()).thenReturn(emptySet())
         whenever(libraryDao.getAllItems()).thenReturn(flowOf(emptyList()))
         repository = LibraryRepository(libraryDao, preferencesManager)
 
@@ -118,8 +122,11 @@ class LibraryRepositoryUpdateTest {
         // Execute
         repository.refreshLibraryUpdates(exploreRepository)
 
-        // Verify behavior: Optimized behavior calls insertItems once with all updates.
-        verify(libraryDao, times(1)).insertItems(any())
+        // Verify behavior: Optimized behavior calls updateTotalChapters.
+        verify(libraryDao).updateTotalChapters("1", 15)
+        verify(libraryDao).updateTotalChapters("2", 25)
+        verify(libraryDao).updateTotalChapters("3", 35)
+        verify(libraryDao, never()).insertItems(any())
     }
 
     @Test
@@ -142,9 +149,9 @@ class LibraryRepositoryUpdateTest {
 
         repository.refreshLibraryUpdates(exploreRepository)
 
-        verify(libraryDao).insertItems(argThat {
-            size == 1 && first().totalChapters == 11 && !first().hasUpdates
-        })
+        verify(libraryDao).updateTotalChapters("unfinished", 11)
+        verify(libraryDao, never()).markHasUpdates(any())
+        verify(libraryDao, never()).insertItems(any())
     }
 
     @Test
@@ -167,9 +174,9 @@ class LibraryRepositoryUpdateTest {
 
         repository.refreshLibraryUpdates(exploreRepository)
 
-        verify(libraryDao).insertItems(argThat {
-            size == 1 && first().totalChapters == 11 && first().hasUpdates
-        })
+        verify(libraryDao).updateTotalChapters("caught-up", 11)
+        verify(libraryDao).markHasUpdates("caught-up")
+        verify(libraryDao, never()).insertItems(any())
     }
 
     @Test
@@ -189,9 +196,9 @@ class LibraryRepositoryUpdateTest {
         repository.refreshLibraryUpdates(exploreRepository)
 
         // Verify behavior: It should still update the successful one
-        verify(libraryDao, times(1)).insertItems(argThat { 
-            size == 1 && first().id == "1" && first().totalChapters == 15 
-        })
+        verify(libraryDao).updateTotalChapters("1", 15)
+        verify(libraryDao, never()).updateTotalChapters(eq("2"), any())
+        verify(libraryDao, never()).insertItems(any())
     }
 
     @Test
@@ -230,9 +237,9 @@ class LibraryRepositoryUpdateTest {
         verify(exploreRepository, never()).getNovelDetails("novel_old", "Source1")
 
         // Verify that only recent items were updated in DB
-        verify(libraryDao).insertItems(argThat {
-            size == 1 && first().id == "recent" && first().totalChapters == 15
-        })
+        verify(libraryDao).updateTotalChapters("recent", 15)
+        verify(libraryDao, never()).updateTotalChapters(eq("old"), any())
+        verify(libraryDao, never()).insertItems(any())
     }
 
     @Test
@@ -263,9 +270,8 @@ class LibraryRepositoryUpdateTest {
         verify(exploreRepository).getNovelDetails("novel_old_reading", "Source1")
 
         // Verify that it was updated
-        verify(libraryDao).insertItems(argThat {
-            size == 1 && first().id == "old_but_reading" && first().totalChapters == 15
-        })
+        verify(libraryDao).updateTotalChapters("old_but_reading", 15)
+        verify(libraryDao, never()).insertItems(any())
     }
 
     @Test
@@ -297,8 +303,156 @@ class LibraryRepositoryUpdateTest {
         repository.refreshLibraryUpdates(exploreRepository, ignoreActivityThreshold = true)
 
         verify(exploreRepository).getNovelDetails("novel_imported", "Source1")
-        verify(libraryDao).insertItems(argThat {
-            size == 1 && first().id == "imported" && first().totalChapters == 15 && first().hasUpdates
-        })
+        verify(libraryDao).updateTotalChapters("imported", 15)
+        verify(libraryDao).markHasUpdates("imported")
+        verify(libraryDao, never()).insertItems(any())
+    }
+
+    @Test
+    fun `refresh preserves progress written during the refresh window`() = runBlocking {
+        val item = LibraryItem(
+            id = "1", title = "Novel 1", url = "url1",
+            baseTitle = "Novel 1", baseNovelUrl = "novel1", sourceName = "Source1",
+            currentChapter = "Ch 10",
+            totalChapters = 10,
+            progress = 50,
+            lastReadElementKey = "oldKey"
+        )
+        val dbItems = mutableMapOf("1" to item)
+        whenever(libraryDao.getAllItems()).thenAnswer { flowOf(dbItems.values.toList()) }
+        whenever(libraryDao.getItemById("1")).thenAnswer { dbItems["1"] }
+        whenever(libraryDao.insertItem(any())).thenAnswer { inv ->
+            val itm = inv.arguments[0] as LibraryItem
+            dbItems[itm.id] = itm
+            Unit
+        }
+        whenever(libraryDao.updateTotalChapters(any(), any())).thenAnswer { inv ->
+            val id = inv.arguments[0] as String
+            val chapters = inv.arguments[1] as Int
+            dbItems[id]?.let {
+                dbItems[id] = it.copy(totalChapters = chapters)
+            }
+            Unit
+        }
+
+        // We want getNovelDetails to suspend, allowing us to update progress concurrently
+        val deferredNovelDetails = kotlinx.coroutines.CompletableDeferred<ExploreItem>()
+        whenever(exploreRepository.getNovelDetails("novel1", "Source1")).thenAnswer {
+            runBlocking { deferredNovelDetails.await() }
+        }
+
+        val refreshJob = launch {
+            repository.refreshLibraryUpdates(exploreRepository)
+        }
+
+        // yield to let refreshLibraryUpdates start and wait on getNovelDetails
+        kotlinx.coroutines.yield()
+
+        // updateProgressExplicit concurrently
+        repository.updateProgressExplicit(
+            itemId = "1",
+            progress = FieldUpdate.Set(80),
+            lastReadElementKey = FieldUpdate.Set("newKey")
+        )
+
+        // Now resume getNovelDetails with more chapters
+        val chapters = chapterList(15, "novel1")
+        deferredNovelDetails.complete(ExploreItem("Novel 1", "novel1", source = "Source1", chapters = chapters))
+
+        refreshJob.join()
+
+        val finalItem = dbItems["1"]!!
+        assertEquals(80, finalItem.progress)
+        assertEquals("newKey", finalItem.lastReadElementKey)
+        assertEquals(15, finalItem.totalChapters)
+    }
+
+    @Test
+    fun `refresh keeps per-source chapter counts independent`() = runBlocking {
+        val item1 = LibraryItem(
+            id = "1", title = "Novel", url = "url1",
+            baseTitle = "Novel", baseNovelUrl = "novel_src1", sourceName = "Source1",
+            totalChapters = 10
+        )
+        val item2 = LibraryItem(
+            id = "2", title = "Novel", url = "url2",
+            baseTitle = "Novel", baseNovelUrl = "novel_src2", sourceName = "Source2",
+            totalChapters = 10
+        )
+        val dbItems = mutableMapOf("1" to item1, "2" to item2)
+        whenever(libraryDao.getAllItems()).thenAnswer { flowOf(dbItems.values.toList()) }
+        whenever(libraryDao.updateTotalChapters(any(), any())).thenAnswer { inv ->
+            val id = inv.arguments[0] as String
+            val chapters = inv.arguments[1] as Int
+            dbItems[id]?.let {
+                dbItems[id] = it.copy(totalChapters = chapters)
+            }
+            Unit
+        }
+
+        whenever(exploreRepository.getNovelDetails("novel_src1", "Source1"))
+            .thenReturn(ExploreItem("Novel", "novel_src1", source = "Source1", chapters = chapterList(15, "novel_src1")))
+        whenever(exploreRepository.getNovelDetails("novel_src2", "Source2"))
+            .thenReturn(ExploreItem("Novel", "novel_src2", source = "Source2", chapters = chapterList(20, "novel_src2")))
+
+        repository.refreshLibraryUpdates(exploreRepository)
+
+        assertEquals(15, dbItems["1"]?.totalChapters)
+        assertEquals(20, dbItems["2"]?.totalChapters)
+    }
+
+    @Test
+    fun `refresh marks hasUpdates only on the caught-up marker item`() = runBlocking {
+        // Group of 3 items under same baseTitle, same sourceName.
+        // One is currently reading (item2), one is older (item1), one is newer but not read (item3).
+        val item1 = LibraryItem(
+            id = "1", title = "Novel Ch 5", url = "url1",
+            baseTitle = "Novel", baseNovelUrl = "novel", sourceName = "Source1",
+            currentChapter = "Ch 5", totalChapters = 10, progress = 100, hasUpdates = false
+        )
+        val item2 = LibraryItem(
+            id = "2", title = "Novel Ch 10", url = "url10",
+            baseTitle = "Novel", baseNovelUrl = "novel", sourceName = "Source1",
+            currentChapter = "Ch 10", totalChapters = 10, progress = 90, hasUpdates = false,
+            isCurrentlyReading = true
+        )
+        val item3 = LibraryItem(
+            id = "3", title = "Novel Ch 10", url = "url3",
+            baseTitle = "Novel", baseNovelUrl = "novel", sourceName = "Source1",
+            currentChapter = "Ch 10", totalChapters = 10, progress = 0, hasUpdates = false
+        )
+        val dbItems = mutableMapOf("1" to item1, "2" to item2, "3" to item3)
+        whenever(libraryDao.getAllItems()).thenAnswer { flowOf(dbItems.values.toList()) }
+        whenever(libraryDao.updateTotalChapters(any(), any())).thenAnswer { inv ->
+            val id = inv.arguments[0] as String
+            val chapters = inv.arguments[1] as Int
+            dbItems[id]?.let {
+                dbItems[id] = it.copy(totalChapters = chapters)
+            }
+            Unit
+        }
+        whenever(libraryDao.markHasUpdates(any())).thenAnswer { inv ->
+            val id = inv.arguments[0] as String
+            dbItems[id]?.let {
+                dbItems[id] = it.copy(hasUpdates = true)
+            }
+            Unit
+        }
+
+        whenever(exploreRepository.getNovelDetails("novel", "Source1"))
+            .thenReturn(ExploreItem("Novel", "novel", source = "Source1", chapters = chapterList(12, "novel")))
+
+        repository.refreshLibraryUpdates(exploreRepository)
+
+        // item2 is currently reading and caught up (progress 90 >= 90% of totalChapters 10).
+        // It should be marked with hasUpdates.
+        // item1 and item3 should NOT be marked.
+        assertTrue(dbItems["2"]!!.hasUpdates)
+        assertFalse(dbItems["1"]!!.hasUpdates)
+        assertFalse(dbItems["3"]!!.hasUpdates)
+
+        assertEquals(12, dbItems["1"]!!.totalChapters)
+        assertEquals(12, dbItems["2"]!!.totalChapters)
+        assertEquals(12, dbItems["3"]!!.totalChapters)
     }
 }
