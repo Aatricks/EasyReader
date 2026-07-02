@@ -52,7 +52,15 @@ class ChapterListCache @Inject constructor(
                 baseNovelUrl = baseNovelUrl,
                 sourceName = sourceName
             )
-            file.writeText(json.encodeToString(Entry.serializer(), entry))
+            val temp = File.createTempFile("${file.name}.", ".tmp", file.parentFile)
+            try {
+                temp.writeText(json.encodeToString(Entry.serializer(), entry))
+                if (!temp.renameTo(file)) {
+                    temp.copyTo(file, overwrite = true)
+                }
+            } finally {
+                temp.delete()
+            }
         }
     }
 

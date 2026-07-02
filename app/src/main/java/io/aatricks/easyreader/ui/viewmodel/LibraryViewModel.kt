@@ -19,6 +19,8 @@ import io.aatricks.easyreader.work.ChapterDownloadQueue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import io.aatricks.easyreader.util.rethrowCancellation
 import javax.inject.Inject
 import android.util.Log
 
@@ -347,6 +349,8 @@ class LibraryViewModel @Inject constructor(
         return true
     }
 
+    private var openNewChapterJob: Job? = null
+
     private suspend fun addUnresolvedItem(url: String, contentType: ContentType) {
         val fetchedTitle = runCatching { contentRepository.fetchTitle(url) }.getOrNull() ?: url
         val fullTitle = fetchedTitle.trim().ifBlank { url }
@@ -368,7 +372,8 @@ class LibraryViewModel @Inject constructor(
         sourceName: String,
         onChapterLoaded: (String, String) -> Unit
     ): Unit {
-        viewModelScope.launch {
+        if (openNewChapterJob?.isActive == true) return
+        openNewChapterJob = viewModelScope.launch {
             runCatching {
                 updateState { it.copy(isLoading = true) }
                 val details = exploreRepository.getNovelDetails(baseNovelUrl, sourceName)
@@ -401,7 +406,7 @@ class LibraryViewModel @Inject constructor(
                 repository.clearUpdateIndicator(item.id)
                 onChapterLoaded(item.url, item.id)
                 updateState { it.copy(isLoading = false) }
-            }.onFailure { e ->
+            }.rethrowCancellation().onFailure { e ->
                 Log.e(TAG, "Failed to open new chapter", e)
                 updateState { it.copy(isLoading = false, error = "Failed to load new chapter: ${e.message}") }
             }

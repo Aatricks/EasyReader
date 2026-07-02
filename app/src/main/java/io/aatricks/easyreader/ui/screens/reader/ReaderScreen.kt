@@ -29,6 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -77,11 +78,11 @@ fun ReaderScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    var showCloudflareWebView by remember { mutableStateOf(false) }
-    var cloudflareUrl by remember { mutableStateOf("") }
+    var showCloudflareWebView by rememberSaveable { mutableStateOf(false) }
+    var cloudflareUrl by rememberSaveable { mutableStateOf("") }
 
-    var showChapterList by remember { mutableStateOf(false) }
-    var showSettings by remember { mutableStateOf(false) }
+    var showChapterList by rememberSaveable { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
     val bottomSheetState = rememberModalBottomSheetState()
     val settingsSheetState = rememberModalBottomSheetState()
 

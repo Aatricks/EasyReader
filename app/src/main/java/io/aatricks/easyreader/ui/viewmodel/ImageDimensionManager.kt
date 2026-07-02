@@ -6,6 +6,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import android.util.Log
+import io.aatricks.easyreader.util.rethrowCancellation
 
 /**
  * Owns the resolved-image-dimension pipeline extracted from ReaderViewModel.
@@ -32,6 +34,7 @@ class ImageDimensionManager(
     private var contentDimApplyJob: Job? = null
 
     companion object {
+        private const val TAG = "ImageDimensionManager"
         private const val IMAGE_DIMENSION_FLUSH_DELAY_MS = 100L
         private const val CONTENT_DIM_APPLY_DEBOUNCE_MS = 350L
     }
@@ -78,9 +81,13 @@ class ImageDimensionManager(
         val updates = pendingImageDimensions.toMap()
         pendingImageDimensions.clear()
         if (updates.isEmpty()) return
-        imageDimensionCache.persistAll(updates.map { (url, dimensions) ->
-            Triple(url, dimensions.first, dimensions.second)
-        })
+        runCatching {
+            imageDimensionCache.persistAll(updates.map { (url, dimensions) ->
+                Triple(url, dimensions.first, dimensions.second)
+            })
+        }.rethrowCancellation().onFailure { e ->
+            Log.e(TAG, "Failed to flush pending image dimensions", e)
+        }
     }
 
     // Matches the reader's resetState: drop the queued in-memory rebuild and the resolved map.

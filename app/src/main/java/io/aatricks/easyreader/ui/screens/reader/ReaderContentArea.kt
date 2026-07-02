@@ -58,6 +58,7 @@ import io.aatricks.easyreader.ui.components.applyReaderEdgeBlur
 import io.aatricks.easyreader.ui.components.supportsReaderEdgeBlur
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -134,15 +135,18 @@ internal fun ContentArea(
         if (uiState.showControls) edgeBlurCaptureGeneration++
     }
 
-    LaunchedEffect(
-        uiState.showControls,
-        listState.firstVisibleItemIndex,
-        listState.firstVisibleItemScrollOffset,
-        pagerState.currentPage
-    ) {
+    LaunchedEffect(uiState.showControls, content.url) {
         if (!uiState.showControls) return@LaunchedEffect
-        kotlinx.coroutines.delay(EDGE_BLUR_RECAPTURE_DEBOUNCE_MS)
-        edgeBlurCaptureGeneration++
+        snapshotFlow {
+            Triple(
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset,
+                pagerState.currentPage
+            )
+        }.collectLatest {
+            kotlinx.coroutines.delay(EDGE_BLUR_RECAPTURE_DEBOUNCE_MS)
+            edgeBlurCaptureGeneration++
+        }
     }
 
     LaunchedEffect(listState.firstVisibleItemIndex, pagerState.currentPage, content.url) {

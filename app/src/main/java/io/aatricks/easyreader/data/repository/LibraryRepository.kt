@@ -2,6 +2,7 @@ package io.aatricks.easyreader.data.repository
 
 import io.aatricks.easyreader.util.TextUtils
 import io.aatricks.easyreader.util.normalizeChapterList
+import io.aatricks.easyreader.util.rethrowCancellation
 import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.local.LibraryDao
 import io.aatricks.easyreader.data.model.LibraryItem
@@ -82,6 +83,7 @@ class LibraryRepository @Inject constructor(
         block: suspend () -> T
     ): T? = withContext(Dispatchers.IO) {
         kotlin.runCatching { block() }
+            .rethrowCancellation()
             .onFailure { e -> Log.e(TAG, errorMessage, e) }
             .getOrDefault(fallback)
     }
@@ -369,7 +371,11 @@ class LibraryRepository @Inject constructor(
     ): Unit = io {
         runRepoCatching("Refresh updates failed") {
             val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
-            val groupedItems = getGroupedByTitle(allItems)
+            val groupedItems = allItems.groupBy { item ->
+                Pair(item.baseTitle.ifBlank { item.title }, item.sourceName)
+            }.mapValues { (_, group) ->
+                sortChapters(group)
+            }
             val semaphore = Semaphore(5)
 
             // Only check for updates on novels that have been read recently or were added recently.
@@ -385,19 +391,20 @@ class LibraryRepository @Inject constructor(
                 })
             }
 
-            val channel = Channel<Pair<String, List<LibraryItem>>>(Channel.UNLIMITED)
+            val channel = Channel<Pair<Pair<String, String>, List<LibraryItem>>>(Channel.UNLIMITED)
             activeGroups.forEach { channel.trySend(it.key to it.value) }
             channel.close()
 
             val allUpdates = coroutineScope {
                 val workers = (1..5).map {
                     async {
-                        val localUpdates = mutableListOf<LibraryItem>()
-                        for ((baseTitle, items) in channel) {
+                        val localUpdates = mutableListOf<LibraryUpdate>()
+                        for ((key, items) in channel) {
+                            val (baseTitle, _) = key
                             if (items.isNotEmpty()) {
                                 val latestInLibrary = items.last()
                                 if (latestInLibrary.baseNovelUrl.isNotBlank() && latestInLibrary.sourceName.isNotBlank()) {
-                                    val newUpdates = runRepoCatching("Failed to refresh updates for $baseTitle", emptyList<LibraryItem>()) {
+                                    val newUpdates = runRepoCatching("Failed to refresh updates for $baseTitle", emptyList<LibraryUpdate>()) {
                                         val details = withTimeoutOrNull(REFRESH_PER_SOURCE_TIMEOUT_MS) {
                                             exploreRepository.getNovelDetails(
                                                 latestInLibrary.baseNovelUrl,
@@ -415,17 +422,20 @@ class LibraryRepository @Inject constructor(
                                                     markerChapterNumber >= previousTotalChapters.toDouble() &&
                                                     itemToMark.hasFinishedProgress()
                                                 items.map { item ->
-                                                    var newItem = item.copy(totalChapters = sourceChapterCount)
-                                                    if (wasCaughtUp && item.id == itemToMark.id && !item.hasUpdates) {
-                                                        newItem = newItem.copy(hasUpdates = true)
-                                                    }
-                                                    newItem
+                                                    val markUpdate = wasCaughtUp &&
+                                                        item.id == itemToMark.id &&
+                                                        !item.hasUpdates
+                                                    LibraryUpdate(
+                                                        itemId = item.id,
+                                                        newTotalChapters = sourceChapterCount,
+                                                        markHasUpdates = markUpdate
+                                                    )
                                                 }
                                             } else {
-                                                emptyList<LibraryItem>()
+                                                emptyList()
                                             }
                                         } else {
-                                            emptyList<LibraryItem>()
+                                            emptyList()
                                         }
                                     } ?: emptyList()
                                     localUpdates.addAll(newUpdates)
@@ -439,7 +449,12 @@ class LibraryRepository @Inject constructor(
             }
 
             if (allUpdates.isNotEmpty()) {
-                libraryDao.insertItems(allUpdates)
+                allUpdates.forEach { update ->
+                    libraryDao.updateTotalChapters(update.itemId, update.newTotalChapters)
+                    if (update.markHasUpdates) {
+                        libraryDao.markHasUpdates(update.itemId)
+                    }
+                }
             }
         }
     }
@@ -473,4 +488,9 @@ class LibraryRepository @Inject constructor(
         } ?: false
     } ?: false
 
+    private data class LibraryUpdate(
+        val itemId: String,
+        val newTotalChapters: Int,
+        val markHasUpdates: Boolean
+    )
 }

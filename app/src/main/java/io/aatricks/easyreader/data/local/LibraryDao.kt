@@ -52,6 +52,12 @@ interface LibraryDao {
     @Query("UPDATE library_items SET isDownloaded = :downloaded, downloadedAt = :timestamp WHERE id = :id")
     suspend fun setDownloaded(id: String, downloaded: Boolean, timestamp: Long?)
 
+    @Query("UPDATE library_items SET totalChapters = :totalChapters WHERE id = :id")
+    suspend fun updateTotalChapters(id: String, totalChapters: Int)
+
+    @Query("UPDATE library_items SET hasUpdates = 1 WHERE id = :id")
+    suspend fun markHasUpdates(id: String)
+
     @Query("SELECT * FROM library_items WHERE isDownloaded = 1")
     suspend fun getDownloadedItems(): List<LibraryItem>
 
