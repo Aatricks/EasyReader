@@ -34,7 +34,6 @@ data class ReaderSettingsSnapshot(
  * SharedPreferences wrapper for type-safe preferences access
  */
 @Singleton
-@Suppress("TooManyFunctions")
 class PreferencesManager @Inject constructor(
     @ApplicationContext context: Context
 ) {
@@ -74,11 +73,6 @@ class PreferencesManager @Inject constructor(
             ?: io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name
     )
     
-    // Current URL
-    var currentUrl: String?
-        get() = prefs.getString(KEY_CURRENT_URL, null)
-        set(value) = prefs.edit().putString(KEY_CURRENT_URL, value).apply()
-
     // Last-read chapter URL, mirrored on every successful chapter load so cold launch can
     // restore the reader without waiting for the Room currently-reading query.
     var lastReadUrl: String?
@@ -96,32 +90,7 @@ class PreferencesManager @Inject constructor(
             .apply()
     }
     
-    // Current paragraphs
-    fun saveParagraphs(paragraphs: List<String>) {
-        val jsonString = json.encodeToString(paragraphs)
-        prefs.edit().putString(KEY_PARAGRAPHS, jsonString).apply()
-    }
-    
-    fun loadParagraphs(): List<String> {
-        val jsonString = prefs.getString(KEY_PARAGRAPHS, null) ?: return emptyList()
-        return try {
-            json.decodeFromString(jsonString)
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-    
-    // Scroll position
-    var scrollPosition: Int
-        get() = prefs.getInt(KEY_SCROLL_POSITION, 0)
-        set(value) = prefs.edit().putInt(KEY_SCROLL_POSITION, value).apply()
-    
-    // Library items
-    fun saveLibraryItems(items: List<LibraryItem>) {
-        val jsonString = json.encodeToString(items)
-        prefs.edit().putString(KEY_LIBRARY_ITEMS, jsonString).apply()
-    }
-    
+    // Library items (legacy SharedPreferences store — read only, for one-time migration to Room)
     fun loadLibraryItems(): List<LibraryItem> {
         val jsonString = prefs.getString(KEY_LIBRARY_ITEMS, null)
         return if (jsonString != null) {
@@ -151,11 +120,6 @@ class PreferencesManager @Inject constructor(
         }
     }
     
-    // Current title for tracking
-    var currentTitle: String?
-        get() = prefs.getString(KEY_CURRENT_TITLE, null)
-        set(value) = prefs.edit().putString(KEY_CURRENT_TITLE, value).apply()
-
     // Last update check time
     var lastUpdateCheckTime: Long
         get() = prefs.getLong(KEY_LAST_UPDATE_CHECK, 0L)
@@ -207,14 +171,6 @@ class PreferencesManager @Inject constructor(
         prefs.edit().clear().apply()
     }
     
-    // Clear specific data
-    fun clearContent() {
-        prefs.edit()
-            .remove(KEY_PARAGRAPHS)
-            .remove(KEY_SCROLL_POSITION)
-            .apply()
-    }
-
     /**
      * Batch update multiple reader settings in a single SharedPreferences transaction.
      */
@@ -241,14 +197,10 @@ class PreferencesManager @Inject constructor(
     companion object {
         private const val PREFS_NAME = "novel_scraper_prefs"
         
-        private const val KEY_CURRENT_URL = "current_url"
         private const val KEY_LAST_READ_URL = "last_read_url"
         private const val KEY_LAST_READ_LIBRARY_ITEM_ID = "last_read_library_item_id"
-        private const val KEY_PARAGRAPHS = "paragraphs"
-        private const val KEY_SCROLL_POSITION = "scroll_position"
         private const val KEY_LIBRARY_ITEMS = "library_items"
         private const val KEY_COLLAPSED_SOURCES = "collapsed_sources"
-        private const val KEY_CURRENT_TITLE = "current_title"
         private const val KEY_LAST_UPDATE_CHECK = "last_update_check"
         
         // Reader Settings Keys

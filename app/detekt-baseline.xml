@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <SmellBaseline>
-  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <ManuallySuppressedIssues/>
   <CurrentIssues>
     <ID>ComplexCondition:HtmlParser.kt$HtmlParser$images.isNotEmpty() &amp;&amp; (images.size &gt; 5 || isChapterPage(url) || filteredParagraphs.size &lt; 10)</ID>
     <ID>ComplexCondition:ImageIntegrity.kt$ImageIntegrity$header.size &gt;= 12 &amp;&amp; header[0] == 'R'.code.toByte() &amp;&amp; header[1] == 'I'.code.toByte() &amp;&amp; header[2] == 'F'.code.toByte() &amp;&amp; header[3] == 'F'.code.toByte() &amp;&amp; header[8] == 'W'.code.toByte() &amp;&amp; header[9] == 'E'.code.toByte() &amp;&amp; header[10] == 'B'.code.toByte() &amp;&amp; header[11] == 'P'.code.toByte()</ID>
@@ -508,10 +508,10 @@
     <ID>MagicNumber:UrlSecurity.kt$UrlSecurity$31</ID>
     <ID>MagicNumber:UrlSecurity.kt$UrlSecurity$64</ID>
     <ID>MagicNumber:UrlSecurity.kt$UrlSecurity$9</ID>
-    <ID>MagicNumber:WebContentLoader.kt$WebContentLoader$0.05f</ID>
-    <ID>MagicNumber:WebContentLoader.kt$WebContentLoader$1.2f</ID>
-    <ID>MagicNumber:WebContentLoader.kt$WebContentLoader$1.6</ID>
-    <ID>MagicNumber:WebContentLoader.kt$WebContentLoader$1600</ID>
+    <ID>MagicNumber:WebChapterElementShaper.kt$WebChapterElementShaper$0.05f</ID>
+    <ID>MagicNumber:WebChapterElementShaper.kt$WebChapterElementShaper$1.2f</ID>
+    <ID>MagicNumber:WebChapterElementShaper.kt$WebChapterElementShaper$1.6</ID>
+    <ID>MagicNumber:WebChapterElementShaper.kt$WebChapterElementShaper$1600</ID>
     <ID>MagicNumber:WebContentLoader.kt$WebContentLoader$250L</ID>
     <ID>MagicNumber:WebContentLoader.kt$WebContentLoader$429</ID>
     <ID>MagicNumber:WebContentLoader.kt$WebContentLoader.&lt;no name provided&gt;$0.75f</ID>
@@ -596,14 +596,14 @@
     <ID>MaxLineLength:SummaryService.kt$SummaryService$val keywords = listOf("suddenly", "realized", "discovered", "decided", "arrived", "died", "killed", "attacked", "revealed", "secret", "important", "finally", "however", "shocked", "surprised")</ID>
     <ID>MaxLineLength:SummaryService.kt$SummaryService$val verbs = listOf("ran", "fought", "grabbed", "rushed", "jumped", "fell", "screamed", "whispered", "turned", "opened")</ID>
     <ID>MaxLineLength:TextFormattingPipeline.kt$TextFormattingPipeline$if</ID>
+    <ID>MaxLineLength:WebChapterElementShaper.kt$WebChapterElementShaper$finalElements.add(ContentElement.ImageGroup(element.images.map { it.copy(side = ContentElement.Image.Side.LEFT) }))</ID>
+    <ID>MaxLineLength:WebChapterElementShaper.kt$WebChapterElementShaper$finalElements.add(ContentElement.ImageGroup(element.images.map { it.copy(side = ContentElement.Image.Side.RIGHT) }))</ID>
+    <ID>MaxLineLength:WebChapterElementShaper.kt$WebChapterElementShaper$processed[processed.size - 1] = ContentElement.ImageGroup(listOf(last as ContentElement.Image, element))</ID>
+    <ID>MaxLineLength:WebChapterElementShaper.kt$WebChapterElementShaper$val isManga = url.contains("manga", ignoreCase = true) &amp;&amp; !url.contains("manhwa", ignoreCase = true)</ID>
+    <ID>MaxLineLength:WebChapterElementShaper.kt$WebChapterElementShaper$val lastImages = if (last is ContentElement.ImageGroup) last.images else listOf(last as ContentElement.Image)</ID>
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$Log.d(TAG, "Invalid image payload, deleting and retrying: ${UrlSanitizer.sanitize(imageUrl)}")</ID>
-    <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$finalElements.add(ContentElement.ImageGroup(element.images.map { it.copy(side = ContentElement.Image.Side.LEFT) }))</ID>
-    <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$finalElements.add(ContentElement.ImageGroup(element.images.map { it.copy(side = ContentElement.Image.Side.RIGHT) }))</ID>
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$if</ID>
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$private suspend</ID>
-    <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$processed[processed.size - 1] = ContentElement.ImageGroup(listOf(last as ContentElement.Image, element))</ID>
-    <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$val isManga = url.contains("manga", ignoreCase = true) &amp;&amp; !url.contains("manhwa", ignoreCase = true)</ID>
-    <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$val lastImages = if (last is ContentElement.ImageGroup) last.images else listOf(last as ContentElement.Image)</ID>
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$val priority = if (mode == PrefetchMode.SPECULATIVE) ImageRequestPriority.SPECULATIVE else ImageRequestPriority.USER_REQUESTED</ID>
     <ID>MaxLineLength:WebContentLoader.kt$WebContentLoader$val result = downloadAndCacheImageInternal(imageUrl, pageUrl, ImageRequestPriority.SPECULATIVE, StorageTier.CACHE)</ID>
     <ID>MaxLineLength:WebViewUtils.kt$WebViewUtils$userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"</ID>
@@ -622,9 +622,9 @@
     <ID>NestedBlockDepth:TextFormattingPipeline.kt$TextFormattingPipeline$private fun mergeAccidentalSplits(paragraphs: List&lt;Pair&lt;String, Int&gt;&gt;, original: String): List&lt;String&gt;</ID>
     <ID>NestedBlockDepth:TextFormattingPipeline.kt$TextFormattingPipeline$private fun replaceFourPlusNewlines(text: String): String</ID>
     <ID>NestedBlockDepth:TextFormattingPipeline.kt$TextFormattingPipeline$private fun replaceSpacesPlusNewline(text: String, replacementChar: Char): String</ID>
-    <ID>NestedBlockDepth:WebContentLoader.kt$WebContentLoader$private fun expandWideElements( groupedElements: List&lt;ContentElement&gt;, url: String ): List&lt;ContentElement&gt;</ID>
+    <ID>NestedBlockDepth:WebChapterElementShaper.kt$WebChapterElementShaper$fun expandWideElements(groupedElements: List&lt;ContentElement&gt;, url: String): List&lt;ContentElement&gt;</ID>
+    <ID>NestedBlockDepth:WebChapterElementShaper.kt$WebChapterElementShaper$fun groupSimilarElements(elements: List&lt;ContentElement&gt;): List&lt;ContentElement&gt;</ID>
     <ID>NestedBlockDepth:WebContentLoader.kt$WebContentLoader$private fun fetchHtmlOnce(client: OkHttpClient, url: String): HtmlFetchOutcome</ID>
-    <ID>NestedBlockDepth:WebContentLoader.kt$WebContentLoader$private fun groupSimilarElements(elements: List&lt;ContentElement&gt;): List&lt;ContentElement&gt;</ID>
     <ID>NewLineAtEndOfFile:TextHeuristics.kt$io.aatricks.easyreader.util.TextHeuristics.kt</ID>
     <ID>RethrowCaughtException:EpubContentLoader.kt$EpubContentLoader$throw e</ID>
     <ID>ReturnCount:ChapterListCache.kt$ChapterListCache$fun load(baseNovelUrl: String, sourceName: String): Entry?</ID>
@@ -680,10 +680,10 @@
     <ID>ReturnCount:UrlSecurity.kt$UrlSecurity$fun isSafeUrlSynchronous(httpUrl: okhttp3.HttpUrl): Boolean</ID>
     <ID>ReturnCount:UrlSecurity.kt$UrlSecurity$fun isUnsafeHostLiteral(host: String): Boolean</ID>
     <ID>ReturnCount:UrlSecurity.kt$UrlSecurity$private fun isIpv4MappedIpv6(bytes: ByteArray): Boolean</ID>
+    <ID>ReturnCount:WebChapterElementShaper.kt$WebChapterElementShaper$private fun shouldGroupWithLastGroup(last: ContentElement, current: ContentElement.Image): Boolean</ID>
+    <ID>ReturnCount:WebChapterElementShaper.kt$WebChapterElementShaper$private fun shouldGroupWithLastImage(last: ContentElement, current: ContentElement.Image): Boolean</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun detectMangaReaderHints(document: Document): Boolean</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun ensureResultForTier( result: ImageDownloadResult, imageUrl: String, writeTier: StorageTier ): ImageDownloadResult</ID>
-    <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun shouldGroupWithLastGroup(last: ContentElement, current: ContentElement.Image): Boolean</ID>
-    <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun shouldGroupWithLastImage(last: ContentElement, current: ContentElement.Image): Boolean</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private fun shouldRetryException(e: Exception): Boolean</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private suspend fun enrichParsedCacheDimensions(elements: List&lt;ContentElement&gt;): List&lt;ContentElement&gt;</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private suspend fun executePrefetch( url: String, mode: PrefetchMode, onProgress: (suspend (PrefetchResult) -&gt; Unit)? = null ): PrefetchResult</ID>
@@ -765,25 +765,12 @@
     <ID>UnusedParameter:NovelFireSource.kt$NovelFireSource$chaptersUrl: String</ID>
     <ID>UnusedParameter:SummaryService.kt$SummaryService$selectedContent: String</ID>
     <ID>UnusedParameter:TextFormattingPipeline.kt$TextFormattingPipeline$original: String</ID>
-    <ID>UnusedParameter:WebContentLoader.kt$WebContentLoader$url: String</ID>
+    <ID>UnusedParameter:WebChapterElementShaper.kt$WebChapterElementShaper$url: String</ID>
     <ID>UnusedParameter:ZoomableBox.kt$isDynamic: Boolean = false</ID>
-    <ID>UnusedPrivateMember:MangaBatSource.kt$MangaBatSource$private suspend fun fetchChaptersFromApi(slug: String): List&lt;ChapterInfo&gt;</ID>
-    <ID>UnusedPrivateMember:ReaderViewModel.kt$ReaderViewModel$private fun isPlaceholderAtCurrentPosition(index: Int? = null): Boolean</ID>
     <ID>UnusedPrivateProperty:ExploreRepository.kt$ExploreRepository$@ApplicationContext private val context: android.content.Context</ID>
-    <ID>UnusedPrivateProperty:HtmlParser.kt$HtmlParser.Companion$private val WHITESPACE_REGEX = Regex("\\s+")</ID>
     <ID>UnusedPrivateProperty:LibraryRepository.kt$LibraryRepository$val semaphore = Semaphore(5)</ID>
     <ID>UnusedPrivateProperty:LlmEdgeSummaryEngine.kt$LlmEdgeSummaryEngine.Companion$private const val MODEL_FILENAME = "Qwen3-0.6B-Q4_K_M.gguf"</ID>
-    <ID>UnusedPrivateProperty:ReaderViewModel.kt$ReaderViewModel.Companion$private const val MIN_SCROLL_OFFSET_DELTA_PX = 8</ID>
     <ID>UnusedPrivateProperty:TextFormattingPipeline.kt$TextFormattingPipeline$k</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val FOUR_PLUS_NEWLINES_REGEX = Regex("\\n{4,}")</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val LINE_BREAK_REGEX = Regex("\\r\\n|\\r")</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val LIST_MARKER_REGEX = Regex("^(?:\\d+|[ivxIVX]+\\.|[-*•])\\s")</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val NEWLINE_BEFORE_LOWER_DIGIT_REGEX = Regex("\\n(?=[a-z0-9])")</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val PARAGRAPH_SPLIT_REGEX = Regex("(?s)(.*?)(\\n+|$)")</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val SINGLE_NEWLINE_REGEX = Regex("(?&lt;!\\n)\\n(?!\\n)")</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val SPACE_PLUS_NEWLINE_REGEX = Regex(" +\\n")</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val THREE_PLUS_NEWLINES_REGEX = Regex("\\n{3,}")</ID>
-    <ID>UnusedPrivateProperty:TextUtils.kt$TextUtils$private val TWO_PLUS_SPACES_REGEX = Regex("[ ]{2,}")</ID>
     <ID>VariableNaming:BaseViewModel.kt$BaseViewModel$protected val _uiState = MutableStateFlow(initialState)</ID>
     <ID>VariableNaming:LibraryViewModel.kt$LibraryViewModel$private val TAG = "LibraryViewModel"</ID>
     <ID>VariableNaming:SummaryViewModel.kt$SummaryViewModel$private val TAG = "SummaryViewModel"</ID>

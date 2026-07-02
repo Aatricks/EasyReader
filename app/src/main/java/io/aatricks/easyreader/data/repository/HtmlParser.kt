@@ -16,7 +16,6 @@ import javax.inject.Singleton
 class HtmlParser @Inject constructor() {
 
     companion object {
-        private val WHITESPACE_REGEX = Regex("\\s+")
         private val MULTIPLE_SPACES_REGEX = Regex(" +")
         private val DOUBLE_NEWLINE_REGEX = Regex("\\n\\s*\\n")
         private val CHAPTER_CLEANUP_PATTERN = Regex("(?i)^(?:chapter|chap|ch|ch\\.)[\\s:\\-\\.]*\\d+\\b.*")

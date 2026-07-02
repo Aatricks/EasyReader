@@ -9,8 +9,6 @@ import io.aatricks.easyreader.data.model.ExploreItem
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.model.SortMode
 import io.aatricks.easyreader.data.model.SeriesReadingStatus
-import io.aatricks.easyreader.data.model.libraryNovelKey
-import io.aatricks.easyreader.data.model.seriesReadingStatus
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.DownloadStatusReconciler
 import io.aatricks.easyreader.data.repository.ExploreRepository
@@ -18,19 +16,12 @@ import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.util.TextUtils
 import io.aatricks.easyreader.util.normalizeChapterList
 import io.aatricks.easyreader.work.ChapterDownloadQueue
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.supervisorScope
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 import android.util.Log
 
-@Suppress("LargeClass")
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     val repository: LibraryRepository,
@@ -42,86 +33,39 @@ class LibraryViewModel @Inject constructor(
 
     private val TAG = "LibraryViewModel"
 
-    private val _searchQuery = MutableStateFlow("")
-    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
-
-    private val _contentTypeFilter = MutableStateFlow<ContentType?>(null)
-    val contentTypeFilter: StateFlow<ContentType?> = _contentTypeFilter.asStateFlow()
-
-    private val _sortMode = MutableStateFlow(SortMode.LAST_READ)
-    val sortMode: StateFlow<SortMode> = _sortMode.asStateFlow()
-
-    private val _statusFilter = MutableStateFlow(SeriesReadingStatus.ALL)
-    val statusFilter: StateFlow<SeriesReadingStatus> = _statusFilter.asStateFlow()
+    private val filters = LibraryFilters()
+    val searchQuery: StateFlow<String> = filters.searchQuery
+    val contentTypeFilter: StateFlow<ContentType?> = filters.contentTypeFilter
+    val sortMode: StateFlow<SortMode> = filters.sortMode
+    val statusFilter: StateFlow<SeriesReadingStatus> = filters.statusFilter
 
     fun setStatusFilter(filter: SeriesReadingStatus): Unit {
-        _statusFilter.value = filter
+        filters.setStatusFilter(filter)
     }
 
-    private val _selectedItems = MutableStateFlow<Set<String>>(emptySet())
-    private val _selectionModeEnabled = MutableStateFlow(false)
+    private val selectionManager = LibrarySelectionManager()
     private val _collapsedSources = MutableStateFlow<Set<String>>(emptySet())
-    private val _chapterCacheStates = MutableStateFlow<Map<String, PrefetchResult>>(emptyMap())
-    private val _pendingDeletion = MutableStateFlow<Set<String>>(emptySet())
-    val pendingDeletion: StateFlow<Set<String>> = _pendingDeletion.asStateFlow()
-    private var pendingDeleteJob: Job? = null
-    private var pendingDeleteUrls: List<String> = emptyList()
-    private var downloadedReconciliationJob: Job? = null
-
-    companion object {
-        private const val UNDO_DELETE_WINDOW_MS = 5000L
-        private const val CACHE_STATE_REFRESH_CONCURRENCY = 6
-    }
+    private val downloadStates = LibraryDownloadStates(
+        scope = viewModelScope,
+        repository = repository,
+        contentRepository = contentRepository,
+        downloadStatusReconciler = downloadStatusReconciler,
+        downloadQueue = downloadQueue,
+    )
+    private val deletionCoordinator = LibraryDeletionCoordinator(
+        scope = viewModelScope,
+        repository = repository,
+        contentRepository = contentRepository,
+    ) { message -> updateState { it.copy(error = message) } }
+    val pendingDeletion: StateFlow<Set<String>> = deletionCoordinator.pendingDeletion
 
     init {
         _collapsedSources.value = repository.loadCollapsedSources()
         observeLibraryChanges()
-        observeDownloadQueue()
     }
 
     fun reconcileDownloadedItemsOnDemand(): Unit {
-        if (downloadedReconciliationJob?.isActive == true) return
-        downloadedReconciliationJob = viewModelScope.launch {
-            val snapshot = runCatching {
-                @Suppress("USELESS_ELVIS")
-                repository.getAllItemsSnapshot() ?: emptyList()
-            }.getOrDefault(emptyList())
-            val urls = snapshot.asSequence().map { it.url }.filter { it.isNotBlank() }.toList()
-            if (urls.isEmpty()) return@launch
-            val results = refreshChapterCacheStatesSuspend(urls)
-            val wantedUrls = snapshot.asSequence().filter { it.isDownloaded }.map { it.url }.toSet()
-            autoResumeIncompleteDownloads(results, wantedUrls)
-        }
-    }
-
-    private fun autoResumeIncompleteDownloads(results: List<PrefetchResult>, userWantedUrls: Set<String>) {
-        // Two ways a chapter qualifies as an in-flight-but-incomplete download:
-        //  - inspect reports it as a persistent download with images still missing
-        //  - DB remembers the user asked for it (isDownloaded=true) but html cache was lost
-        //    (cache eviction, manual clear) — these are invisible to the first condition
-        //    because isPersistentDownload requires htmlCached=true.
-        val targets = results.filter { result ->
-            if (result.isInProgress) return@filter false
-            val wanted = result.isPersistentDownload || result.url in userWantedUrls
-            if (!wanted) return@filter false
-            val missingHtml = !result.htmlCached
-            val missingImages = result.htmlCached &&
-                result.totalImages > 0 &&
-                result.cachedImages < result.totalImages
-            missingHtml || missingImages
-        }
-        if (targets.isEmpty()) return
-        Log.d(TAG, "Auto-resuming ${targets.size} incomplete downloads")
-        targets.forEach { state ->
-            setCacheState(
-                state.copy(
-                    isInProgress = true,
-                    isRetryable = false,
-                    isPersistentDownload = true
-                )
-            )
-            downloadQueue.enqueue(state.url)
-        }
+        downloadStates.reconcileDownloadedItemsOnDemand()
     }
 
     data class LibraryUiState(
@@ -144,30 +88,34 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             val repoFlow = combine(
                 repository.libraryItems,
-                _selectedItems,
+                selectionManager.selectedItems,
                 _collapsedSources,
-                _selectionModeEnabled
+                selectionManager.selectionModeEnabled
             ) { items, selected, collapsed, selectionModeEnabled ->
                 Triple(items, selected, collapsed) to selectionModeEnabled
             }
 
-            val cacheAndPending = combine(_chapterCacheStates, _pendingDeletion, _statusFilter) { c, p, s ->
+            val cacheAndPending = combine(
+                downloadStates.chapterCacheStates,
+                deletionCoordinator.pendingDeletion,
+                filters.statusFilter
+            ) { c, p, s ->
                 Triple(c, p, s)
             }
 
             combine(
                 repoFlow,
                 cacheAndPending,
-                _searchQuery,
-                _contentTypeFilter,
-                _sortMode
+                filters.searchQuery,
+                filters.contentTypeFilter,
+                filters.sortMode
             ) { repoState, cachePending, query, filter, sort ->
                 val (repoData, selectionModeEnabled) = repoState
                 val (rawItems, selectedIds, collapsedSources) = repoData
                 val (cacheStates, pendingIds, statusFilter) = cachePending
 
                 val items = if (pendingIds.isEmpty()) rawItems else rawItems.filterNot { it.id in pendingIds }
-                val filteredItems = filterAndSortItems(items, query, filter, sort, statusFilter)
+                val filteredItems = filters.apply(items, query, filter, sort, statusFilter)
 
                 LibraryUiState(
                     items = items,
@@ -188,108 +136,22 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    private fun observeDownloadQueue(): Unit {
-        viewModelScope.launch {
-            downloadQueue.observeAll().collect { results ->
-                if (results.isEmpty()) return@collect
-                _chapterCacheStates.update { current -> current + results }
-            }
-        }
-    }
+
 
     private fun scheduleDeletion(ids: Set<String>) {
-        if (ids.isEmpty()) return
-        val items = repository.libraryItems.value
-        val urls = ids.mapNotNull { id -> items.firstOrNull { it.id == id }?.url }
-        pendingDeleteJob?.cancel()
-        pendingDeleteUrls = (pendingDeleteUrls + urls).distinct()
-        _pendingDeletion.update { it + ids }
-        pendingDeleteJob = viewModelScope.launch {
-            delay(UNDO_DELETE_WINDOW_MS)
-            commitPendingDeletion()
-        }
+        deletionCoordinator.schedule(ids)
     }
 
     fun undoPendingDeletion(): Unit {
-        pendingDeleteJob?.cancel()
-        pendingDeleteJob = null
-        _pendingDeletion.value = emptySet()
-        pendingDeleteUrls = emptyList()
-    }
-
-    private suspend fun commitPendingDeletion() {
-        val ids = _pendingDeletion.value
-        if (ids.isEmpty()) return
-        val urls = pendingDeleteUrls
-        runCatching {
-            contentRepository.clearCachesAndDownloadsForUrls(urls)
-            repository.removeItems(ids)
-        }.onFailure { e ->
-            updateState { it.copy(error = "Failed to remove items: ${e.message}") }
-        }
-        _pendingDeletion.value = emptySet()
-        pendingDeleteUrls = emptyList()
-        pendingDeleteJob = null
+        deletionCoordinator.undo()
     }
 
     fun flushPendingDeletion(): Unit {
-        pendingDeleteJob?.cancel()
-        pendingDeleteJob = null
-        viewModelScope.launch { commitPendingDeletion() }
+        deletionCoordinator.flush()
     }
 
     fun removeItemsImmediate(ids: Set<String>): Unit {
-        if (ids.isEmpty()) return
-        viewModelScope.launch {
-            val urls = repository.libraryItems.value
-                .asSequence()
-                .filter { it.id in ids }
-                .map { it.url }
-                .toList()
-            runCatching {
-                contentRepository.clearCachesAndDownloadsForUrls(urls)
-                repository.removeItems(ids)
-            }.onFailure { e ->
-                updateState { it.copy(error = "Failed to remove items: ${e.message}") }
-            }
-        }
-    }
-
-    private fun filterAndSortItems(
-        items: List<LibraryItem>,
-        query: String,
-        filter: ContentType?,
-        sort: SortMode,
-        statusFilter: SeriesReadingStatus = SeriesReadingStatus.ALL
-    ): List<LibraryItem> {
-        var filtered = items
-
-        if (filter != null) {
-            filtered = filtered.filter { it.contentType == filter }
-        }
-
-        if (statusFilter != SeriesReadingStatus.ALL) {
-            val seriesGroups = filtered.groupBy { it.libraryNovelKey() }
-            val matchingKeys = seriesGroups
-                .filterValues { groupItems -> seriesReadingStatus(groupItems) == statusFilter }
-                .keys
-            filtered = filtered.filter { it.libraryNovelKey() in matchingKeys }
-        }
-
-        if (query.isNotBlank()) {
-            val lowercaseQuery = query.trim().lowercase()
-            filtered = filtered.filter {
-                it.title.lowercase().contains(lowercaseQuery) ||
-                it.baseTitle.lowercase().contains(lowercaseQuery)
-            }
-        }
-
-        return when (sort) {
-            SortMode.LAST_READ -> filtered.sortedByDescending { it.lastRead }
-            SortMode.DATE_ADDED -> filtered.sortedByDescending { it.dateAdded }
-            SortMode.TITLE -> filtered.sortedBy { it.title.lowercase() }
-            SortMode.PROGRESS -> filtered.sortedByDescending { it.progress }
-        }
+        deletionCoordinator.removeImmediate(ids)
     }
 
     fun addItem(
@@ -414,7 +276,7 @@ class LibraryViewModel @Inject constructor(
                             sourceName = sourceName
                         )
                 }.onSuccess {
-                    setCacheState(
+                    downloadStates.setCacheState(
                         PrefetchResult(
                             url = chapter.url,
                             htmlCached = false,
@@ -551,13 +413,13 @@ class LibraryViewModel @Inject constructor(
             runCatching {
                 updateState { it.copy(isLoading = true) }
                 val items = if (selectedOnly) {
-                    val selectedIds = _selectedItems.value
+                    val selectedIds = selectionManager.selectedIds
                     repository.libraryItems.value.filter { it.id in selectedIds }
                 } else {
                     repository.libraryItems.value
                 }
                 items.forEach { item ->
-                    setCacheState(
+                    downloadStates.setCacheState(
                         PrefetchResult(
                             url = item.url,
                             htmlCached = false,
@@ -582,7 +444,7 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { contentRepository.clearPermanentFailures(url) }
                 .onFailure { e -> Log.w(TAG, "failed to clear permanent failures before retry: ${e.message}") }
-            setCacheState(
+            downloadStates.setCacheState(
                 (uiState.value.chapterCacheStates[url] ?: PrefetchResult(url, false, 0, 0, false))
                     .copy(isInProgress = true, isRetryable = false, isPersistentDownload = true)
             )
@@ -639,121 +501,57 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun toggleSelection(itemId: String): Unit {
-        _selectedItems.update {
-            val current = it.toMutableSet()
-            if (!current.add(itemId)) current.remove(itemId)
-            current
-        }
+        selectionManager.toggle(itemId)
     }
 
     fun selectItem(itemId: String): Unit {
-        _selectedItems.update { it + itemId }
+        selectionManager.select(itemId)
     }
 
     fun deselectItem(itemId: String): Unit {
-        _selectedItems.update { it - itemId }
+        selectionManager.deselect(itemId)
     }
 
     fun toggleGroupSelection(baseTitle: String): Unit {
         viewModelScope.launch {
-            val groupItems = uiState.value.groupedItems[baseTitle] ?: emptyList()
-            val selectedIds = uiState.value.selectedIds
-            val allSelected = groupItems.all { it.id in selectedIds }
-            val itemIds = groupItems.map { it.id }
-            
-            if (allSelected) {
-                _selectedItems.update { it - itemIds.toSet() }
-            } else {
-                _selectedItems.update { it + itemIds.toSet() }
-            }
+            val itemIds = uiState.value.groupedItems[baseTitle]?.map { it.id } ?: emptyList()
+            selectionManager.toggleGroup(itemIds)
         }
     }
 
     fun selectAll(): Unit {
-        _selectionModeEnabled.value = true
-        _selectedItems.value = repository.libraryItems.value.map { it.id }.toSet()
+        selectionManager.selectAll(repository.libraryItems.value.map { it.id }.toSet())
     }
 
     fun enterSelectionMode(): Unit {
-        _selectionModeEnabled.value = true
+        selectionManager.enterSelectionMode()
     }
 
     fun clearSelection(): Unit {
-        _selectedItems.value = emptySet()
-        _selectionModeEnabled.value = false
+        selectionManager.clear()
     }
 
     fun updateSearchQuery(query: String): Unit {
-        _searchQuery.value = query
+        filters.setSearchQuery(query)
     }
 
     fun setContentTypeFilter(contentType: ContentType?): Unit {
-        _contentTypeFilter.value = contentType
+        filters.setContentTypeFilter(contentType)
     }
 
     fun setSortMode(mode: SortMode): Unit {
-        _sortMode.value = mode
+        filters.setSortMode(mode)
     }
 
     fun refreshChapterCacheStates(urls: Collection<String>): Unit {
-        viewModelScope.launch { refreshChapterCacheStatesSuspend(urls) }
-    }
-
-    private suspend fun refreshChapterCacheStatesSuspend(urls: Collection<String>): List<PrefetchResult> {
-        val targetUrls = urls.asSequence()
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .toList()
-        if (targetUrls.isEmpty()) return emptyList()
-
-        val libraryItemsByUrl = repository.libraryItems.value
-            .asSequence()
-            .associateBy { it.url }
-
-        val results = supervisorScope {
-            val semaphore = Semaphore(CACHE_STATE_REFRESH_CONCURRENCY)
-            targetUrls.map { url ->
-                async {
-                    semaphore.withPermit {
-                        val item = libraryItemsByUrl[url]
-                        val downloadResult = if (item != null) {
-                            runCatching { contentRepository.inspectDownload(url) }.getOrNull()
-                        } else {
-                            null
-                        }
-                        val useDownloadResult = item?.isDownloaded == true || downloadResult.hasDownloadEvidence()
-                        val result = if (useDownloadResult) {
-                            downloadResult
-                        } else {
-                            runCatching { contentRepository.inspectCache(url) }.getOrNull()
-                        }
-                        if (item != null && result != null && !result.isInProgress) {
-                            downloadStatusReconciler.reconcile(
-                                item,
-                                result,
-                                wasUserInspect = useDownloadResult
-                            )
-                        }
-                        result
-                    }
-                }
-            }.awaitAll().filterNotNull()
-        }
-        if (results.isNotEmpty()) {
-            _chapterCacheStates.update { current ->
-                current + results.associateBy { it.url }
-            }
-        }
-        return results
+        downloadStates.refreshChapterCacheStates(urls)
     }
 
     fun removeSelectedItems(): Unit {
-        val selectedIds = _selectedItems.value
+        val selectedIds = selectionManager.selectedIds
         if (selectedIds.isEmpty()) return
         scheduleDeletion(selectedIds)
-        _selectedItems.value = emptySet()
-        _selectionModeEnabled.value = false
+        selectionManager.clear()
     }
 
     fun clearLibrary(): Unit {
@@ -761,8 +559,7 @@ class LibraryViewModel @Inject constructor(
             runCatching {
                 repository.clearLibrary()
                 contentRepository.clearAllCache()
-                _selectedItems.value = emptySet()
-                _selectionModeEnabled.value = false
+                selectionManager.clear()
             }.onFailure { e ->
                 updateState { it.copy(error = "Failed to clear library: ${e.message}") }
             }
@@ -803,16 +600,7 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    private fun setCacheState(result: PrefetchResult): Unit {
-        _chapterCacheStates.update { current ->
-            current + (result.url to result)
-        }
-    }
-
 }
-
-private fun PrefetchResult?.hasDownloadEvidence(): Boolean =
-    this != null && (htmlCached || totalImages > 0 || cachedImages > 0 || isInProgress)
 
 internal fun selectLatestChapter(chapters: List<ChapterInfo>): ChapterInfo? {
     if (chapters.isEmpty()) return null
