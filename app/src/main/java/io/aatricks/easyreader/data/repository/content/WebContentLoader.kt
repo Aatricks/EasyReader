@@ -494,23 +494,17 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
 
     suspend fun clearDownload(url: String) {
         offlineChapterStore.clear(url)
-        val sourceForImageList = primaryCachedFile(url, StorageTier.DOWNLOADS)
-            .takeIf(File::exists)
-            ?: findExistingCachedFile(url)
-
-        if (sourceForImageList != null) {
-            runCatching {
-                val document = Jsoup.parse(sourceForImageList, "UTF-8", url)
-                extractImageUrls(htmlParser.parse(document, url))
-                    .distinct()
-                    .forEach(imageCache::deleteDownloadedMediaFile)
-            }
-        }
-
         primaryCachedFile(url, StorageTier.DOWNLOADS).delete()
         File(downloadsDir, "${CacheKeyUtils.keyFor(url)}.html.failed").delete()
         parsedImageMemo.remove(url)
         permanentFailureStore.clear(url)
+    }
+
+    fun sweepLegacyDownloadArtifacts() {
+        downloadsDir.deleteRecursively()
+        downloadsDir.mkdirs()
+        imageCache.clearAllDownloads()
+        parsedImageMemo.clear()
     }
 
     suspend fun resetInFlightState(url: String) {

@@ -508,6 +508,10 @@ class ContentRepository @Inject constructor(
         trimCachesInternal(force = true)
     }
 
+    suspend fun sweepLegacyWebDownloadArtifacts(): Unit = withContext(Dispatchers.IO) {
+        webLoader.sweepLegacyDownloadArtifacts()
+    }
+
     private fun localContentResult(url: String, isPersistentDownload: Boolean = false): PrefetchResult {
         val exists = localResourceExists(url)
         return PrefetchResult(
