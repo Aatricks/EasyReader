@@ -568,11 +568,6 @@ class ReaderViewModel @Inject constructor(
             preCalculatedTextCount = result.textCount,
             preCalculatedImageCount = result.imageCount
         )
-        // Only after a successful load — a failed navigation keeps the old chapter (and its
-        // dimension state) on screen. Parse-time seeding from the Room cache restores anything
-        // pruned here if the user navigates back.
-        imageDimensionManager.pruneForChapter(content.getAllImageUrls().toSet())
-
         val libraryItem = effectiveId?.let { libraryRepository.getItemById(it) }
         val baseTitle = getBaseTitle(content, libraryItem)
         val novelName = baseTitle.ifBlank { content.title ?: libraryItem?.title ?: "" }
@@ -636,6 +631,12 @@ class ReaderViewModel @Inject constructor(
             )
         }
         syncProgressState(initialPosition)
+
+        // Prune only AFTER the new content is committed to uiState: during the (suspending)
+        // load above the old chapter is still composed, and pruning it early would strip its
+        // shared dimensions mid-display while late decodes re-inserted just-pruned entries.
+        // A failed load never reaches this line, so an on-screen chapter is never pruned.
+        imageDimensionManager.pruneForChapter(content.getAllImageUrls().toSet())
 
         updateNavigationUrls()
         maybeWarmNextChapter(_uiState.value.content?.nextChapterUrl)
@@ -863,7 +864,6 @@ class ReaderViewModel @Inject constructor(
                 previousChapterUrl = chapter.previousHref?.let { "$epubPath#${it}" }
                     ?: epubBook.getPreviousHref(href)?.let { "$epubPath#${it}" }
             )
-            imageDimensionManager.pruneForChapter(content.getAllImageUrls().toSet())
 
             val tocChapterList = epubBook.getFlatToc()
                 .map { ChapterInfo(title = it.title, url = "$epubPath#${it.href}") }
@@ -907,6 +907,9 @@ class ReaderViewModel @Inject constructor(
                 )
             }
             syncProgressState(initialPosition)
+
+            // After the content swap, for the same reasons as in handleLoadSuccess.
+            imageDimensionManager.pruneForChapter(content.getAllImageUrls().toSet())
 
             preferencesManager.batchUpdateLastRead(content.url, effectiveLibraryItemId)
 

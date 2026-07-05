@@ -140,6 +140,21 @@ class ImageCacheTest {
     }
 
     @Test
+    fun `trimToSize keeps the memo when nothing is deleted`() {
+        val url = "https://example.com/trim-noop.jpg"
+        val file = File(cacheDir, CacheKeyUtils.keyFor(url)).apply { writeBytes(validJpegBytes()) }
+        val memoized = imageCache.getLikelyMediaState(url)
+
+        // Delete behind the memo's back, then trim with a budget that deletes nothing:
+        // the memo must survive (trim runs every ~30s during prefetch — wiping it on
+        // no-op trims would defeat the memoization).
+        file.delete()
+        imageCache.trimToSize(Long.MAX_VALUE)
+
+        assertEquals(memoized, imageCache.getLikelyMediaState(url))
+    }
+
+    @Test
     fun `promoteToDownloads refreshes media state to the downloads path`() {
         val url = "https://example.com/promote-refresh.jpg"
         val key = CacheKeyUtils.keyFor(url)

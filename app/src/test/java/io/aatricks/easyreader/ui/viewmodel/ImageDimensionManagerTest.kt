@@ -1,5 +1,8 @@
 package io.aatricks.easyreader.ui.viewmodel
 
+import io.aatricks.easyreader.data.local.ImageDimensionDao
+import io.aatricks.easyreader.data.model.ImageDimensionEntity
+import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
 import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -7,28 +10,22 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ImageDimensionManagerTest {
 
-    private class RecordingApplier {
-        val batches = mutableListOf<Map<String, Pair<Int, Int>>>()
-        fun apply(updates: Map<String, Pair<Int, Int>>) {
-            batches.add(updates)
-        }
-    }
-
     @Test
     fun `persist stores dimensions and applies content rebuild once`() = runTest {
-        val applier = RecordingApplier()
-        val manager = ImageDimensionManager(this, fakeImageDimensionCacheRepository(), applier::apply)
+        val batches = mutableListOf<Map<String, Pair<Int, Int>>>()
+        val manager = ImageDimensionManager(this, fakeImageDimensionCacheRepository()) { batches += it }
 
         manager.persistImageDimensions("http://img/1.jpg", 800, 1200)
         advanceUntilIdle()
 
-        assertEquals(800 to 1200, manager.resolvedDimensions("http://img/1.jpg"))
-        assertEquals(listOf(mapOf("http://img/1.jpg" to (800 to 1200))), applier.batches)
+        assertEquals(800 to 1200, manager.dimensionState("http://img/1.jpg").value)
+        assertEquals(listOf(mapOf("http://img/1.jpg" to (800 to 1200))), batches)
     }
 
     @Test
@@ -47,8 +44,8 @@ class ImageDimensionManagerTest {
 
     @Test
     fun `duplicate persist of identical dimensions is a no-op`() = runTest {
-        val applier = RecordingApplier()
-        val manager = ImageDimensionManager(this, fakeImageDimensionCacheRepository(), applier::apply)
+        val batches = mutableListOf<Map<String, Pair<Int, Int>>>()
+        val manager = ImageDimensionManager(this, fakeImageDimensionCacheRepository()) { batches += it }
 
         manager.persistImageDimensions("http://img/1.jpg", 800, 1200)
         advanceUntilIdle()
@@ -57,22 +54,22 @@ class ImageDimensionManagerTest {
         manager.persistImageDimensions("http://img/1.jpg", 800, 1200)
         advanceUntilIdle()
 
-        assertEquals(1, applier.batches.size)
+        assertEquals(1, batches.size)
     }
 
     @Test
     fun `changed dimensions for the same url go through`() = runTest {
-        val applier = RecordingApplier()
-        val manager = ImageDimensionManager(this, fakeImageDimensionCacheRepository(), applier::apply)
+        val batches = mutableListOf<Map<String, Pair<Int, Int>>>()
+        val manager = ImageDimensionManager(this, fakeImageDimensionCacheRepository()) { batches += it }
 
         manager.persistImageDimensions("http://img/1.jpg", 800, 1200)
         advanceUntilIdle()
         manager.persistImageDimensions("http://img/1.jpg", 900, 1600)
         advanceUntilIdle()
 
-        assertEquals(900 to 1600, manager.resolvedDimensions("http://img/1.jpg"))
-        assertEquals(2, applier.batches.size)
-        assertEquals(mapOf("http://img/1.jpg" to (900 to 1600)), applier.batches[1])
+        assertEquals(900 to 1600, manager.dimensionState("http://img/1.jpg").value)
+        assertEquals(2, batches.size)
+        assertEquals(mapOf("http://img/1.jpg" to (900 to 1600)), batches[1])
     }
 
     @Test
@@ -85,14 +82,14 @@ class ImageDimensionManagerTest {
 
         manager.pruneForChapter(setOf("http://kept/2.jpg", "http://new/3.jpg"))
 
-        assertNull(manager.resolvedDimensions("http://old/1.jpg"))
-        assertEquals(900 to 1400, manager.resolvedDimensions("http://kept/2.jpg"))
+        assertNull(manager.dimensionState("http://old/1.jpg").value)
+        assertEquals(900 to 1400, manager.dimensionState("http://kept/2.jpg").value)
     }
 
     @Test
     fun `pruneForChapter reschedules content apply only for surviving urls`() = runTest {
-        val applier = RecordingApplier()
-        val manager = ImageDimensionManager(this, fakeImageDimensionCacheRepository(), applier::apply)
+        val batches = mutableListOf<Map<String, Pair<Int, Int>>>()
+        val manager = ImageDimensionManager(this, fakeImageDimensionCacheRepository()) { batches += it }
 
         manager.persistImageDimensions("http://old/1.jpg", 800, 1200)
         manager.persistImageDimensions("http://kept/2.jpg", 900, 1400)
@@ -101,20 +98,76 @@ class ImageDimensionManagerTest {
         manager.pruneForChapter(setOf("http://kept/2.jpg"))
         advanceUntilIdle()
 
-        assertEquals(listOf(mapOf("http://kept/2.jpg" to (900 to 1400))), applier.batches)
+        assertEquals(listOf(mapOf("http://kept/2.jpg" to (900 to 1400))), batches)
+    }
+
+    @Test
+    fun `pruneForChapter re-enqueues surviving dims for the content rebuild`() = runTest {
+        val batches = mutableListOf<Map<String, Pair<Int, Int>>>()
+        val manager = ImageDimensionManager(this, fakeImageDimensionCacheRepository()) { batches += it }
+
+        manager.persistImageDimensions("http://kept/2.jpg", 900, 1400)
+        advanceUntilIdle()
+        assertEquals(1, batches.size)
+
+        // A url shared with the previous chapter keeps its state, but the new chapter's
+        // element may still lack dimensions — prune must schedule a fresh apply because the
+        // duplicate-persist guard blocks any future decode from doing so.
+        manager.pruneForChapter(setOf("http://kept/2.jpg"))
+        advanceUntilIdle()
+
+        assertEquals(2, batches.size)
+        assertEquals(mapOf("http://kept/2.jpg" to (900 to 1400)), batches[1])
+    }
+
+    @Test
+    fun `failed db flush re-queues the batch and retries on the next flush`() = runTest {
+        val dao = FlakyImageDimensionDao()
+        val manager = ImageDimensionManager(this, ImageDimensionCacheRepository(dao)) {}
+
+        manager.persistImageDimensions("http://img/1.jpg", 800, 1200)
+        advanceUntilIdle()
+        assertTrue(dao.upserted.isEmpty())
+
+        // Without the re-queue, the duplicate-persist guard would swallow every later
+        // re-report of these dims and they would never reach the DB this session.
+        dao.failWrites = false
+        manager.persistImageDimensions("http://img/2.jpg", 700, 1000)
+        advanceUntilIdle()
+
+        assertEquals(setOf("http://img/1.jpg", "http://img/2.jpg"), dao.upserted.keys)
     }
 
     @Test
     fun `blank url and non-positive dimensions are rejected`() = runTest {
-        val applier = RecordingApplier()
-        val manager = ImageDimensionManager(this, fakeImageDimensionCacheRepository(), applier::apply)
+        val batches = mutableListOf<Map<String, Pair<Int, Int>>>()
+        val manager = ImageDimensionManager(this, fakeImageDimensionCacheRepository()) { batches += it }
 
         manager.persistImageDimensions("", 800, 1200)
         manager.persistImageDimensions("http://img/1.jpg", 0, 1200)
         manager.persistImageDimensions("http://img/1.jpg", 800, -1)
         advanceUntilIdle()
 
-        assertNull(manager.resolvedDimensions("http://img/1.jpg"))
-        assertEquals(0, applier.batches.size)
+        assertNull(manager.dimensionState("http://img/1.jpg").value)
+        assertEquals(0, batches.size)
+    }
+
+    private class FlakyImageDimensionDao : ImageDimensionDao {
+        var failWrites = true
+        val upserted = mutableMapOf<String, ImageDimensionEntity>()
+
+        override suspend fun getMany(urls: List<String>, parserVersion: Int): List<ImageDimensionEntity> =
+            emptyList()
+
+        override suspend fun upsert(entity: ImageDimensionEntity) {
+            upserted[entity.imageUrl] = entity
+        }
+
+        override suspend fun upsertAll(entities: List<ImageDimensionEntity>) {
+            if (failWrites) throw RuntimeException("disk full")
+            entities.forEach { upserted[it.imageUrl] = it }
+        }
+
+        override suspend fun prune(cutoffMs: Long, currentParserVersion: Int) = Unit
     }
 }

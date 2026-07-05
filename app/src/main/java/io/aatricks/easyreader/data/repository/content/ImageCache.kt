@@ -30,6 +30,10 @@ class ImageCache @Inject constructor(
     // and WebContentLoader.downloadAndCacheImageInternal); staleness is otherwise harmless
     // because HttpMediaCacheFetcher re-checks disk authoritatively before serving.
     fun getLikelyMediaState(url: String): String {
+        // Hit path stays lookup-only (same shape as isCachedImageValid below): the size guard
+        // both costs a CHM sweep and, when it trips, would wipe the live chapter's hot entries
+        // on what was a plain read.
+        mediaStateMemo[url]?.let { return it }
         if (mediaStateMemo.size > MAX_MEDIA_STATE_MEMO) mediaStateMemo.clear()
         return mediaStateMemo.computeIfAbsent(url) { computeLikelyMediaState(it) }
     }
@@ -50,10 +54,15 @@ class ImageCache @Inject constructor(
     fun getDownloadsSize(): Long = FileSizeUtils.calculateDirectorySize(mediaDownloadsDir)
 
     fun trimToSize(maxBytes: Long): Long {
-        // Trim deletes arbitrary cache files; there is no per-url mapping back, so drop the
-        // whole media-state memo.
-        mediaStateMemo.clear()
-        return FileSizeUtils.trimDirectoryToSize(mediaCacheDir, maxBytes)
+        // Trim runs routinely (after chapter loads, every ~30s during prefetch) and usually
+        // deletes nothing — the memo must survive those calls or the memoization is defeated.
+        // When files ARE deleted there is no per-url mapping back from file names, so drop the
+        // whole memo, and only AFTER the walk finishes: clearing first would let a concurrent
+        // probe re-memoize a file the walk is about to delete.
+        var deletedAny = false
+        val remaining = FileSizeUtils.trimDirectoryToSize(mediaCacheDir, maxBytes) { deletedAny = true }
+        if (deletedAny) mediaStateMemo.clear()
+        return remaining
     }
 
     fun findExistingCachedMediaFile(url: String): File? =
@@ -96,30 +105,37 @@ class ImageCache @Inject constructor(
         private const val MAX_MEDIA_STATE_MEMO = 4096
     }
 
+    // Memo invalidation always FOLLOWS the disk mutation: invalidating first leaves a window
+    // where a concurrent probe re-memoizes the pre-mutation state, which then sticks.
     fun deleteCachedMediaFiles(url: String) {
-        mediaStateMemo.remove(url)
         candidateFiles(url).forEach { it.delete() }
+        mediaStateMemo.remove(url)
     }
 
     fun deleteDownloadedMediaFile(url: String) {
-        mediaStateMemo.remove(url)
         File(mediaDownloadsDir, CacheKeyUtils.keyFor(url)).delete()
+        mediaStateMemo.remove(url)
     }
 
     fun clearAll() {
-        mediaStateMemo.clear()
         mediaCacheDir.deleteRecursively()
         mediaCacheDir.mkdirs()
+        mediaStateMemo.clear()
     }
 
     fun clearAllDownloads() {
-        mediaStateMemo.clear()
         mediaDownloadsDir.deleteRecursively()
         mediaDownloadsDir.mkdirs()
+        mediaStateMemo.clear()
     }
 
-    fun promoteToDownloads(url: String): File? {
+    fun promoteToDownloads(url: String): File? = try {
+        promoteToDownloadsInternal(url)
+    } finally {
         mediaStateMemo.remove(url)
+    }
+
+    private fun promoteToDownloadsInternal(url: String): File? {
         val key = CacheKeyUtils.keyFor(url)
         val target = File(mediaDownloadsDir, key)
         if (target.exists()) {

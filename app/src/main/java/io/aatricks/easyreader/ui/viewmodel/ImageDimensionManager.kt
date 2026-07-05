@@ -9,7 +9,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import android.util.Log
-import io.aatricks.easyreader.util.rethrowCancellation
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -52,9 +51,6 @@ class ImageDimensionManager(
     fun dimensionState(imageUrl: String): State<Pair<Int, Int>?> =
         dimensionStates.computeIfAbsent(imageUrl) { mutableStateOf(null) }
 
-    /** Non-observing read for tests and non-compose callers. */
-    fun resolvedDimensions(imageUrl: String): Pair<Int, Int>? = dimensionStates[imageUrl]?.value
-
     fun persistImageDimensions(imageUrl: String, width: Int, height: Int) {
         if (imageUrl.isBlank() || width <= 0 || height <= 0) return
         val dims = width to height
@@ -77,7 +73,7 @@ class ImageDimensionManager(
         dimensionFlushJob = scope.launch {
             delay(IMAGE_DIMENSION_FLUSH_DELAY_MS)
             while (pendingImageDimensions.isNotEmpty()) {
-                flushPendingImageDimensions()
+                if (!flushPendingImageDimensions()) break
             }
         }
     }
@@ -100,21 +96,26 @@ class ImageDimensionManager(
         }
     }
 
-    private suspend fun flushPendingImageDimensions() {
+    /** @return false when the write failed; the batch is re-queued for a later flush. */
+    private suspend fun flushPendingImageDimensions(): Boolean {
         val updates = pendingImageDimensions.toMap()
         pendingImageDimensions.clear()
-        if (updates.isEmpty()) return
-        runCatching {
-            imageDimensionCache.persistAll(updates.map { (url, dimensions) ->
-                Triple(url, dimensions.first, dimensions.second)
-            })
-        }.rethrowCancellation().onFailure { e ->
-            Log.e(TAG, "Failed to flush pending image dimensions", e)
+        if (updates.isEmpty()) return true
+        val persisted = imageDimensionCache.persistAll(updates.map { (url, dimensions) ->
+            Triple(url, dimensions.first, dimensions.second)
+        })
+        if (!persisted) {
+            // Re-queue: the duplicate-persist guard means no future onSuccess will re-enqueue
+            // these dims itself, so dropping the batch here would lose them for the session.
+            // putIfAbsent keeps any newer value that arrived during the failed write.
+            updates.forEach { (url, dims) -> pendingImageDimensions.putIfAbsent(url, dims) }
+            Log.e(TAG, "Failed to flush pending image dimensions; batch re-queued")
         }
+        return persisted
     }
 
     /**
-     * Called when a new chapter's content replaces the old one. Drops per-URL state for images
+     * Called after a new chapter's content replaces the old one. Drops per-URL state for images
      * that are not part of the new chapter — without this the manager grows unboundedly for the
      * life of the (Activity-scoped) ReaderViewModel, one entry per image ever displayed. Keeping
      * the new chapter's own urls means a same-chapter reload keeps its dims. The db-flush job /
@@ -123,8 +124,15 @@ class ImageDimensionManager(
      */
     fun pruneForChapter(currentImageUrls: Set<String>) {
         dimensionStates.keys.retainAll(currentImageUrls)
-        contentDimApplyJob?.cancel()
         contentDimUpdates.keys.retainAll(currentImageUrls)
+        // Re-enqueue the survivors' resolved dims: a url shared with the previous chapter can
+        // hold dimensions here while the new chapter's element still lacks them (the Room seed
+        // raced the 100ms flush), and the duplicate-persist guard would otherwise block the
+        // content rebuild from ever healing that element.
+        dimensionStates.forEach { (url, state) ->
+            val dims = state.value ?: return@forEach
+            contentDimUpdates.putIfAbsent(url, dims)
+        }
         if (contentDimUpdates.isNotEmpty()) scheduleContentDimApply()
     }
 }
