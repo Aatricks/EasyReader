@@ -108,20 +108,6 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    private fun collectImageUrls(elements: List<ContentElement>): Set<String> {
-        val urls = mutableSetOf<String>()
-        fun visit(element: ContentElement) {
-            when (element) {
-                is ContentElement.Image -> urls.add(element.url)
-                is ContentElement.ImageGroup -> element.images.forEach { urls.add(it.url) }
-                is ContentElement.PageContent -> element.elements.forEach(::visit)
-                else -> Unit
-            }
-        }
-        elements.forEach(::visit)
-        return urls
-    }
-
     private fun ContentElement.withResolvedImageDimensions(updates: Map<String, Pair<Int, Int>>): ContentElement {
         return when (this) {
             is ContentElement.Image -> {
@@ -585,7 +571,7 @@ class ReaderViewModel @Inject constructor(
         // Only after a successful load — a failed navigation keeps the old chapter (and its
         // dimension state) on screen. Parse-time seeding from the Room cache restores anything
         // pruned here if the user navigates back.
-        imageDimensionManager.pruneForChapter(collectImageUrls(content.paragraphs))
+        imageDimensionManager.pruneForChapter(content.getAllImageUrls().toSet())
 
         val libraryItem = effectiveId?.let { libraryRepository.getItemById(it) }
         val baseTitle = getBaseTitle(content, libraryItem)
@@ -877,7 +863,7 @@ class ReaderViewModel @Inject constructor(
                 previousChapterUrl = chapter.previousHref?.let { "$epubPath#${it}" }
                     ?: epubBook.getPreviousHref(href)?.let { "$epubPath#${it}" }
             )
-            imageDimensionManager.pruneForChapter(collectImageUrls(content.paragraphs))
+            imageDimensionManager.pruneForChapter(content.getAllImageUrls().toSet())
 
             val tocChapterList = epubBook.getFlatToc()
                 .map { ChapterInfo(title = it.title, url = "$epubPath#${it.href}") }
