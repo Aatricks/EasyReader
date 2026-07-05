@@ -113,12 +113,18 @@ class ImageDimensionManager(
         }
     }
 
-    // Matches the reader's resetState: drop the queued in-memory rebuild and the resolved map.
-    // The db-flush job / pending map are intentionally left running so an in-flight persist of
-    // already-resolved dimensions still completes.
-    fun reset() {
+    /**
+     * Called when a new chapter's content replaces the old one. Drops per-URL state for images
+     * that are not part of the new chapter — without this the manager grows unboundedly for the
+     * life of the (Activity-scoped) ReaderViewModel, one entry per image ever displayed. Keeping
+     * the new chapter's own urls means a same-chapter reload keeps its dims. The db-flush job /
+     * pending map are intentionally left running so an in-flight persist of already-resolved
+     * dimensions still completes (the on-disk cache is cross-chapter by design).
+     */
+    fun pruneForChapter(currentImageUrls: Set<String>) {
+        dimensionStates.keys.retainAll(currentImageUrls)
         contentDimApplyJob?.cancel()
-        contentDimUpdates.clear()
-        dimensionStates.clear()
+        contentDimUpdates.keys.retainAll(currentImageUrls)
+        if (contentDimUpdates.isNotEmpty()) scheduleContentDimApply()
     }
 }

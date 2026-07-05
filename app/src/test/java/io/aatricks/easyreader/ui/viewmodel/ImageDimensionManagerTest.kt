@@ -76,6 +76,35 @@ class ImageDimensionManagerTest {
     }
 
     @Test
+    fun `pruneForChapter drops stale urls and keeps current ones`() = runTest {
+        val manager = ImageDimensionManager(this, fakeImageDimensionCacheRepository()) {}
+
+        manager.persistImageDimensions("http://old/1.jpg", 800, 1200)
+        manager.persistImageDimensions("http://kept/2.jpg", 900, 1400)
+        advanceUntilIdle()
+
+        manager.pruneForChapter(setOf("http://kept/2.jpg", "http://new/3.jpg"))
+
+        assertNull(manager.resolvedDimensions("http://old/1.jpg"))
+        assertEquals(900 to 1400, manager.resolvedDimensions("http://kept/2.jpg"))
+    }
+
+    @Test
+    fun `pruneForChapter reschedules content apply only for surviving urls`() = runTest {
+        val applier = RecordingApplier()
+        val manager = ImageDimensionManager(this, fakeImageDimensionCacheRepository(), applier::apply)
+
+        manager.persistImageDimensions("http://old/1.jpg", 800, 1200)
+        manager.persistImageDimensions("http://kept/2.jpg", 900, 1400)
+        // Prune before the 350ms apply debounce fires: the old chapter's update must not
+        // survive into the rebuilt batch, the kept one must.
+        manager.pruneForChapter(setOf("http://kept/2.jpg"))
+        advanceUntilIdle()
+
+        assertEquals(listOf(mapOf("http://kept/2.jpg" to (900 to 1400))), applier.batches)
+    }
+
+    @Test
     fun `blank url and non-positive dimensions are rejected`() = runTest {
         val applier = RecordingApplier()
         val manager = ImageDimensionManager(this, fakeImageDimensionCacheRepository(), applier::apply)
