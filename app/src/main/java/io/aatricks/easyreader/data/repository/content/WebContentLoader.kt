@@ -1039,6 +1039,10 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
             } else {
                 throw e
             }
+        } finally {
+            // A download attempt may have created, replaced, or deleted this url's cached
+            // media file — drop the memoized media state so the next probe re-stats disk.
+            imageCache.invalidateMediaState(imageUrl)
         }
     }
 

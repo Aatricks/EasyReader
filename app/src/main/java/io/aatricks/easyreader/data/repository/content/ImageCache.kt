@@ -23,9 +23,24 @@ class ImageCache @Inject constructor(
     fun getLikelyCachedMediaFile(url: String): File? =
         candidateFiles(url).firstOrNull { it.exists() && it.length() > 0L }
 
+    // Memoized: the reader probes this on the main thread for every image item entering
+    // composition (twice per item before the memo), and a fast up/down scroll re-enters items
+    // continuously — up to 3 candidate files × exists/length/mtime syscalls each time. Entries
+    // are dropped whenever a write path touches the url's candidate files (see mutators below
+    // and WebContentLoader.downloadAndCacheImageInternal); staleness is otherwise harmless
+    // because HttpMediaCacheFetcher re-checks disk authoritatively before serving.
     fun getLikelyMediaState(url: String): String {
+        if (mediaStateMemo.size > MAX_MEDIA_STATE_MEMO) mediaStateMemo.clear()
+        return mediaStateMemo.computeIfAbsent(url) { computeLikelyMediaState(it) }
+    }
+
+    private fun computeLikelyMediaState(url: String): String {
         val file = getLikelyCachedMediaFile(url) ?: return "missing"
         return "${file.absolutePath}:${file.length()}:${file.lastModified()}"
+    }
+
+    fun invalidateMediaState(url: String) {
+        mediaStateMemo.remove(url)
     }
 
     fun getRootDir(): File = mediaCacheDir
@@ -34,7 +49,12 @@ class ImageCache @Inject constructor(
 
     fun getDownloadsSize(): Long = FileSizeUtils.calculateDirectorySize(mediaDownloadsDir)
 
-    fun trimToSize(maxBytes: Long): Long = FileSizeUtils.trimDirectoryToSize(mediaCacheDir, maxBytes)
+    fun trimToSize(maxBytes: Long): Long {
+        // Trim deletes arbitrary cache files; there is no per-url mapping back, so drop the
+        // whole media-state memo.
+        mediaStateMemo.clear()
+        return FileSizeUtils.trimDirectoryToSize(mediaCacheDir, maxBytes)
+    }
 
     fun findExistingCachedMediaFile(url: String): File? =
         candidateFiles(url).firstOrNull { it.exists() && it.isCachedImageValid() }
@@ -59,6 +79,8 @@ class ImageCache @Inject constructor(
     private data class IntegrityKey(val path: String, val length: Long, val mtime: Long)
     private val integrityVerdicts = ConcurrentHashMap<IntegrityKey, Boolean>()
 
+    private val mediaStateMemo = ConcurrentHashMap<String, String>()
+
     private fun File.isCachedImageValid(): Boolean {
         if (!exists() || length() <= 0L) return false
         val key = IntegrityKey(absolutePath, length(), lastModified())
@@ -71,27 +93,33 @@ class ImageCache @Inject constructor(
 
     private companion object {
         private const val MAX_INTEGRITY_VERDICTS = 4096
+        private const val MAX_MEDIA_STATE_MEMO = 4096
     }
 
     fun deleteCachedMediaFiles(url: String) {
+        mediaStateMemo.remove(url)
         candidateFiles(url).forEach { it.delete() }
     }
 
     fun deleteDownloadedMediaFile(url: String) {
+        mediaStateMemo.remove(url)
         File(mediaDownloadsDir, CacheKeyUtils.keyFor(url)).delete()
     }
 
     fun clearAll() {
+        mediaStateMemo.clear()
         mediaCacheDir.deleteRecursively()
         mediaCacheDir.mkdirs()
     }
 
     fun clearAllDownloads() {
+        mediaStateMemo.clear()
         mediaDownloadsDir.deleteRecursively()
         mediaDownloadsDir.mkdirs()
     }
 
     fun promoteToDownloads(url: String): File? {
+        mediaStateMemo.remove(url)
         val key = CacheKeyUtils.keyFor(url)
         val target = File(mediaDownloadsDir, key)
         if (target.exists()) {
