@@ -149,10 +149,18 @@ internal fun ContentArea(
         }
     }
 
-    LaunchedEffect(listState.firstVisibleItemIndex, pagerState.currentPage, content.url) {
-        val currentIndex = if (uiState.isPagedMode) pagerState.currentPage else listState.firstVisibleItemIndex
-        prefetchImages(currentIndex, content, requestedIndices) { url ->
-            readerViewModel.prefetchVisibleImage(url, content.url)
+    // snapshotFlow instead of effect keys: reading firstVisibleItemIndex during composition
+    // recomposed this whole scope — and cancelled/relaunched the effect — on every item
+    // boundary crossed while scrolling. The captured `content` may be an older copy after a
+    // dimension rebuild, which is fine: prefetch only reads the element urls, identical
+    // across copies of the same chapter.
+    LaunchedEffect(content.url, uiState.isPagedMode) {
+        snapshotFlow {
+            if (uiState.isPagedMode) pagerState.currentPage else listState.firstVisibleItemIndex
+        }.collect { currentIndex ->
+            prefetchImages(currentIndex, content, requestedIndices) { url ->
+                readerViewModel.prefetchVisibleImage(url, content.url)
+            }
         }
     }
 
