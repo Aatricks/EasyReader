@@ -134,6 +134,7 @@ class ImageCacheTest {
         assertEquals("missing", imageCache.getLikelyMediaState(url))
 
         File(cacheDir, CacheKeyUtils.keyFor(url)).writeBytes(validJpegBytes())
+        imageCache.invalidateMediaState(url)
         assertNotEquals("missing", imageCache.getLikelyMediaState(url))
         imageCache.trimToSize(0)
         assertEquals("missing", imageCache.getLikelyMediaState(url))

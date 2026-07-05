@@ -301,10 +301,7 @@
     <ID>MagicNumber:BaseJsoupSource.kt$BaseJsoupSource$15000L</ID>
     <ID>MagicNumber:CacheKeyUtils.kt$CacheKeyUtils$0xff</ID>
     <ID>MagicNumber:CacheKeyUtils.kt$CacheKeyUtils$4</ID>
-    <ID>MagicNumber:ChapterDownloadQueue.kt$WorkManagerChapterDownloadQueue$3</ID>
     <ID>MagicNumber:ChapterDownloadQueue.kt$WorkManagerChapterDownloadQueue$30</ID>
-    <ID>MagicNumber:ChapterDownloadQueue.kt$WorkManagerChapterDownloadQueue$4</ID>
-    <ID>MagicNumber:ChapterDownloadQueue.kt$WorkManagerChapterDownloadQueue$5</ID>
     <ID>MagicNumber:ChapterListSheet.kt$100</ID>
     <ID>MagicNumber:EasyReaderApplication.kt$EasyReaderApplication$0.25</ID>
     <ID>MagicNumber:EpubContentLoader.kt$EpubContentLoader$1024</ID>
@@ -630,8 +627,9 @@
     <ID>ReturnCount:ImageBoundsParser.kt$ImageBoundsParser$private fun parseJpeg(bytes: ByteArray): Pair&lt;Int, Int&gt;?</ID>
     <ID>ReturnCount:ImageBoundsParser.kt$ImageBoundsParser$private fun parsePng(bytes: ByteArray): Pair&lt;Int, Int&gt;?</ID>
     <ID>ReturnCount:ImageBoundsParser.kt$ImageBoundsParser$private fun parseWebP(bytes: ByteArray): Pair&lt;Int, Int&gt;?</ID>
-    <ID>ReturnCount:ImageCache.kt$ImageCache$fun promoteToDownloads(url: String): File?</ID>
     <ID>ReturnCount:ImageCache.kt$ImageCache$private fun File.isCachedImageValid(): Boolean</ID>
+    <ID>ReturnCount:ImageCache.kt$ImageCache$private fun promoteToDownloadsInternal(url: String): File?</ID>
+    <ID>ReturnCount:ImageDimensionCacheRepository.kt$ImageDimensionCacheRepository$suspend fun persistAll(entries: List&lt;Triple&lt;String, Int, Int&gt;&gt;): Boolean</ID>
     <ID>ReturnCount:ImageDownloader.kt$ImageDownloader$private fun parseImageResponse( response: Response, destinationFile: File? = null ): ImageFetchResult</ID>
     <ID>ReturnCount:ImageDownloader.kt$ImageDownloader$suspend fun executeImageRequest( imageUrl: String, pageUrl: String, priority: ImageRequestPriority, rangeHeader: String? = null, destinationFile: File? = null ): ImageFetchResult</ID>
     <ID>ReturnCount:ImageIntegrity.kt$ImageIntegrity$fun isValidImageFile(file: File): Boolean</ID>
