@@ -6,6 +6,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -26,8 +27,22 @@ class ImageDimensionManagerTest {
         manager.persistImageDimensions("http://img/1.jpg", 800, 1200)
         advanceUntilIdle()
 
-        assertEquals(800 to 1200, manager.resolvedImageDimensions["http://img/1.jpg"])
+        assertEquals(800 to 1200, manager.resolvedDimensions("http://img/1.jpg"))
         assertEquals(listOf(mapOf("http://img/1.jpg" to (800 to 1200))), applier.batches)
+    }
+
+    @Test
+    fun `dimensionState returns the same observable instance and tracks persists`() = runTest {
+        val manager = ImageDimensionManager(this, fakeImageDimensionCacheRepository()) {}
+
+        val state = manager.dimensionState("http://img/1.jpg")
+        assertSame(state, manager.dimensionState("http://img/1.jpg"))
+        assertNull(state.value)
+
+        manager.persistImageDimensions("http://img/1.jpg", 800, 1200)
+        advanceUntilIdle()
+
+        assertEquals(800 to 1200, state.value)
     }
 
     @Test
@@ -55,7 +70,7 @@ class ImageDimensionManagerTest {
         manager.persistImageDimensions("http://img/1.jpg", 900, 1600)
         advanceUntilIdle()
 
-        assertEquals(900 to 1600, manager.resolvedImageDimensions["http://img/1.jpg"])
+        assertEquals(900 to 1600, manager.resolvedDimensions("http://img/1.jpg"))
         assertEquals(2, applier.batches.size)
         assertEquals(mapOf("http://img/1.jpg" to (900 to 1600)), applier.batches[1])
     }
@@ -70,7 +85,7 @@ class ImageDimensionManagerTest {
         manager.persistImageDimensions("http://img/1.jpg", 800, -1)
         advanceUntilIdle()
 
-        assertNull(manager.resolvedImageDimensions["http://img/1.jpg"])
+        assertNull(manager.resolvedDimensions("http://img/1.jpg"))
         assertEquals(0, applier.batches.size)
     }
 }

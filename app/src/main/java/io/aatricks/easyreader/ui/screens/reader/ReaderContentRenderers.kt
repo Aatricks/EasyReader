@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -442,7 +443,12 @@ internal fun ScrollingReaderView(
                 }
 
                 is ContentElement.Image -> {
-                    val resolved = readerViewModel.resolvedImageDimensions[element.url]
+                    // Per-URL State: another image resolving its dimensions must not invalidate
+                    // this item's scope (a map-wide read here caused every visible image to
+                    // recompose on each decode during scroll).
+                    val resolved by remember(element.url) {
+                        readerViewModel.imageDimensionState(element.url)
+                    }
                     val imgW = resolved?.first ?: element.width
                     val imgH = resolved?.second ?: element.height
                     val screenWidthPx = with(LocalDensity.current) {

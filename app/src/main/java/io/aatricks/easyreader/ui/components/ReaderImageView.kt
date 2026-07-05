@@ -118,10 +118,11 @@ fun ReaderImageView(
         dynamicHeight = dynamicHeight
     )
     var runtimeDimensions by remember(imageUrl, pageUrl) { mutableStateOf<ImageDimensions?>(null) }
-    // Shared, fine-grained resolved dimensions (survives this item being recycled). Lets a
+    // Shared, per-URL resolved dimensions (survive this item being recycled). Lets a
     // re-entering item size itself on first composition instead of collapsing to the loading
     // placeholder and re-laying-out — the cause of stutter when dragging up/down quickly.
-    val sharedDimensions = readerViewModel.resolvedImageDimensions[imageUrl]
+    // Reading through a per-URL State means a write for another image cannot invalidate this one.
+    val sharedDimensions by remember(imageUrl) { readerViewModel.imageDimensionState(imageUrl) }
     val effectiveDimensions = effectiveImageDimensions(
         declaredWidth = width,
         declaredHeight = height,

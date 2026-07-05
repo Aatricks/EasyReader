@@ -1,6 +1,8 @@
 package io.aatricks.easyreader.ui.viewmodel
 
-import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
 import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -8,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import android.util.Log
 import io.aatricks.easyreader.util.rethrowCancellation
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Owns the resolved-image-dimension pipeline extracted from ReaderViewModel.
@@ -21,12 +24,14 @@ class ImageDimensionManager(
     private val imageDimensionCache: ImageDimensionCacheRepository,
     private val applyContentDimensions: (Map<String, Pair<Int, Int>>) -> Unit,
 ) {
-    // Resolved intrinsic dimensions keyed by image URL, as fine-grained Compose state. A
-    // ReaderImageView reads its own entry, so a write only recomposes that one image — and an
-    // item scrolled away and back is sized correctly on its FIRST composition (no collapse to the
-    // loading placeholder + relayout). This is what keeps fast up/down dragging smooth; the
-    // debounced content rebuild stays only for persistence / restore math.
-    val resolvedImageDimensions = mutableStateMapOf<String, Pair<Int, Int>>()
+    // Resolved intrinsic dimensions keyed by image URL, one MutableState per URL. A single
+    // SnapshotStateMap would NOT give per-image granularity — its read tracking is per-map, so
+    // any write invalidates every composed reader. With one State per URL, a first-decode write
+    // recomposes only that image — and an item scrolled away and back is sized correctly on its
+    // FIRST composition (no collapse to the loading placeholder + relayout), which is what keeps
+    // fast up/down dragging smooth. The debounced content rebuild stays only for persistence /
+    // restore math.
+    private val dimensionStates = ConcurrentHashMap<String, MutableState<Pair<Int, Int>?>>()
 
     private val pendingImageDimensions = LinkedHashMap<String, Pair<Int, Int>>()
     private val contentDimUpdates = LinkedHashMap<String, Pair<Int, Int>>()
@@ -39,16 +44,27 @@ class ImageDimensionManager(
         private const val CONTENT_DIM_APPLY_DEBOUNCE_MS = 350L
     }
 
+    /**
+     * Composable-friendly per-URL dimension state: a write invalidates only readers of THIS url.
+     * computeIfAbsent (not getOrPut, which is non-atomic on ConcurrentHashMap) guarantees a
+     * single State instance per url, so subscription and later writes always meet.
+     */
+    fun dimensionState(imageUrl: String): State<Pair<Int, Int>?> =
+        dimensionStates.computeIfAbsent(imageUrl) { mutableStateOf(null) }
+
+    /** Non-observing read for tests and non-compose callers. */
+    fun resolvedDimensions(imageUrl: String): Pair<Int, Int>? = dimensionStates[imageUrl]?.value
+
     fun persistImageDimensions(imageUrl: String, width: Int, height: Int) {
         if (imageUrl.isBlank() || width <= 0 || height <= 0) return
         val dims = width to height
         // A recycled item re-entering composition re-fires AsyncImage.onSuccess with the same
         // dimensions (memory-cache hits included), so during fast up/down scrolling this is
-        // called once per re-entry per image. Skip the whole cascade — snapshot write (which
-        // invalidates every composed reader of the map), Room rewrite, and apply-job churn —
-        // when nothing actually changed.
-        if (resolvedImageDimensions[imageUrl] == dims) return
-        resolvedImageDimensions[imageUrl] = dims
+        // called once per re-entry per image. Skip the whole cascade — snapshot write, Room
+        // rewrite, and apply-job churn — when nothing actually changed.
+        val state = dimensionStates.computeIfAbsent(imageUrl) { mutableStateOf(null) }
+        if (state.value == dims) return
+        state.value = dims
         pendingImageDimensions[imageUrl] = dims
         contentDimUpdates[imageUrl] = dims
         scheduleDimensionDbFlush()
@@ -103,6 +119,6 @@ class ImageDimensionManager(
     fun reset() {
         contentDimApplyJob?.cancel()
         contentDimUpdates.clear()
-        resolvedImageDimensions.clear()
+        dimensionStates.clear()
     }
 }

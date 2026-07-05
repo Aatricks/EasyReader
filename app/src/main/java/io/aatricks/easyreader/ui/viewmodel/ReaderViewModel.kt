@@ -73,18 +73,20 @@ class ReaderViewModel @Inject constructor(
         progressController.beginRestore()
     }
 
-    // Resolved intrinsic dimensions keyed by image URL, as fine-grained Compose state. A
-    // ReaderImageView reads its own entry, so a write only recomposes that one image — and an
-    // item scrolled away and back is sized correctly on its FIRST composition (no collapse to the
-    // loading placeholder + relayout). This is what keeps fast up/down dragging smooth; the
-    // debounced `content` rebuild below stays only for persistence / restore math.
+    // Resolved intrinsic dimensions keyed by image URL, one Compose State per URL. A
+    // ReaderImageView subscribes to its own url's State, so a write only recomposes that one
+    // image — and an item scrolled away and back is sized correctly on its FIRST composition
+    // (no collapse to the loading placeholder + relayout). This is what keeps fast up/down
+    // dragging smooth; the debounced `content` rebuild below stays only for persistence /
+    // restore math.
     private val imageDimensionManager = ImageDimensionManager(
         scope = viewModelScope,
         imageDimensionCache = imageDimensionCache,
         applyContentDimensions = ::updateCurrentContentImageDimensions,
     )
 
-    val resolvedImageDimensions get() = imageDimensionManager.resolvedImageDimensions
+    fun imageDimensionState(imageUrl: String): androidx.compose.runtime.State<Pair<Int, Int>?> =
+        imageDimensionManager.dimensionState(imageUrl)
 
     fun persistImageDimensions(imageUrl: String, width: Int, height: Int) =
         imageDimensionManager.persistImageDimensions(imageUrl, width, height)
