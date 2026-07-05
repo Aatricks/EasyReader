@@ -41,9 +41,16 @@ class ImageDimensionManager(
 
     fun persistImageDimensions(imageUrl: String, width: Int, height: Int) {
         if (imageUrl.isBlank() || width <= 0 || height <= 0) return
-        resolvedImageDimensions[imageUrl] = width to height
-        pendingImageDimensions[imageUrl] = width to height
-        contentDimUpdates[imageUrl] = width to height
+        val dims = width to height
+        // A recycled item re-entering composition re-fires AsyncImage.onSuccess with the same
+        // dimensions (memory-cache hits included), so during fast up/down scrolling this is
+        // called once per re-entry per image. Skip the whole cascade — snapshot write (which
+        // invalidates every composed reader of the map), Room rewrite, and apply-job churn —
+        // when nothing actually changed.
+        if (resolvedImageDimensions[imageUrl] == dims) return
+        resolvedImageDimensions[imageUrl] = dims
+        pendingImageDimensions[imageUrl] = dims
+        contentDimUpdates[imageUrl] = dims
         scheduleDimensionDbFlush()
         scheduleContentDimApply()
     }
