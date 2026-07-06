@@ -1,13 +1,27 @@
 package io.aatricks.easyreader.data.repository.source
 
 import io.aatricks.easyreader.data.local.PreferencesManager
+import io.aatricks.easyreader.data.model.ChapterInfo
+import kotlinx.coroutines.runBlocking
+import okhttp3.Call
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.jsoup.Jsoup
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
+import java.io.IOException
 
 class NovelightSourceTest {
 
@@ -107,5 +121,115 @@ class NovelightSourceTest {
         assertEquals("Novelight", source.name)
         assertEquals("https://novelight.net", source.baseUrl)
         assertTrue(source.baseUrl.startsWith("https://"))
+    }
+
+    // --- Chapter paging orchestration (assembleChapters) -------------------------------------
+    //
+    // Regression cover for the "jumps from ch. 102 to 403" bug: novelight's pagination clamps
+    // out-of-range pages to the last page's content instead of returning empty, and failed pages
+    // used to be silently dropped, persisting a chapter list with holes.
+
+    private fun loadedPage(numbers: IntRange): NovelightSource.PageOutcome.Loaded =
+        NovelightSource.PageOutcome.Loaded(
+            numbers.map { ChapterInfo(title = "Chapter $it", url = "/book/chapter/$it", number = it.toDouble()) }
+        )
+
+    // Newest page is 1 (131..180) down to a short last page 4 (1..30); pages beyond 4 clamp to page
+    // 4's content, exactly like novelight's real endpoint.
+    private val bookPages = mapOf(1 to 131..180, 2 to 81..130, 3 to 31..80, 4 to 1..30)
+    private fun bookPageOrClamp(page: Int) = loadedPage(bookPages[page] ?: bookPages.getValue(4))
+
+    @Test
+    fun `assembleChapters collects every page with no gap and without flooding`() = runBlocking {
+        var calls = 0
+        val chapters = source.assembleChapters { page ->
+            calls++
+            bookPageOrClamp(page)
+        }
+        assertEquals((1..180).toList(), chapters.mapNotNull { it.number?.toInt() })
+        assertTrue("should stop at the real last page, not flood; was $calls calls", calls < 10)
+    }
+
+    @Test
+    fun `assembleChapters stops at the clamped out-of-range page instead of looping to the cap`() = runBlocking {
+        // All four pages are full (50 each), so the only stop signal is the clamp repeating page 4.
+        val fullBook = mapOf(1 to 151..200, 2 to 101..150, 3 to 51..100, 4 to 1..50)
+        var calls = 0
+        val chapters = source.assembleChapters { page ->
+            calls++
+            loadedPage(fullBook[page] ?: fullBook.getValue(4))
+        }
+        assertEquals(200, chapters.size)
+        assertEquals((1..200).toList(), chapters.mapNotNull { it.number?.toInt() })
+        assertTrue("should detect the clamp and stop; was $calls calls", calls < 12)
+    }
+
+    @Test
+    fun `assembleChapters aborts rather than persist a hole when a known page never recovers`() {
+        assertThrows(IOException::class.java) {
+            runBlocking {
+                source.assembleChapters { page ->
+                    if (page == 3) NovelightSource.PageOutcome.Failed else bookPageOrClamp(page)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `assembleChapters degrades past a gated page without failing the load`() = runBlocking {
+        val chapters = source.assembleChapters { page ->
+            if (page == 2) NovelightSource.PageOutcome.Gated else bookPageOrClamp(page)
+        }
+        val numbers = chapters.mapNotNull { it.number?.toInt() }
+        assertEquals(130, chapters.size) // page 2 (81..130) skipped, the rest still load
+        assertTrue("gated page's chapters are dropped, not backfilled", numbers.none { it in 81..130 })
+    }
+
+    // --- Page fetch retry / status classification (fetchChapterPage) -------------------------
+
+    private fun httpResponse(code: Int): Response = Response.Builder()
+        .request(Request.Builder().url("https://novelight.net/book/ajax/chapter-pagination?book_id=1&page=1").build())
+        .protocol(Protocol.HTTP_1_1)
+        .code(code)
+        .message("msg")
+        .body("".toResponseBody("application/json".toMediaType()))
+        .build()
+
+    private fun sourceWith(client: OkHttpClient) = NovelightSource(mock<PreferencesManager>(), client)
+
+    @Test
+    fun `fetchChapterPage retries a transient 429 then succeeds`() {
+        val call = mock<Call>()
+        val client = mock<OkHttpClient> { whenever(it.newCall(any())).thenReturn(call) }
+        whenever(call.execute()).thenReturn(httpResponse(429), httpResponse(200))
+
+        val outcome = runBlocking { sourceWith(client).fetchChapterPage("1", 5) }
+
+        assertTrue(outcome is NovelightSource.PageOutcome.Loaded)
+        verify(call, times(2)).execute()
+    }
+
+    @Test
+    fun `fetchChapterPage gives up after exhausting retries on persistent 429`() {
+        val call = mock<Call>()
+        val client = mock<OkHttpClient> { whenever(it.newCall(any())).thenReturn(call) }
+        whenever(call.execute()).thenAnswer { httpResponse(429) }
+
+        val outcome = runBlocking { sourceWith(client).fetchChapterPage("1", 5) }
+
+        assertTrue(outcome is NovelightSource.PageOutcome.Failed)
+        verify(call, times(4)).execute() // 1 initial attempt + 3 retries
+    }
+
+    @Test
+    fun `fetchChapterPage treats a 403 as gated without retrying`() {
+        val call = mock<Call>()
+        val client = mock<OkHttpClient> { whenever(it.newCall(any())).thenReturn(call) }
+        whenever(call.execute()).thenReturn(httpResponse(403))
+
+        val outcome = runBlocking { sourceWith(client).fetchChapterPage("1", 5) }
+
+        assertTrue(outcome is NovelightSource.PageOutcome.Gated)
+        verify(call, times(1)).execute()
     }
 }
