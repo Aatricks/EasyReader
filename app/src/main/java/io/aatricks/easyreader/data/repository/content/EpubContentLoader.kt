@@ -148,6 +148,10 @@ class EpubContentLoader @Inject constructor(
         epubDownloadsDir.mkdirs()
     }
 
+    fun trimCache(maxBytes: Long) {
+        FileSizeUtils.trimDirectoryToSize(epubCacheDir, maxBytes)
+    }
+
     fun getCacheSize(): Long {
         return FileSizeUtils.calculateDirectorySize(epubCacheDir)
     }
@@ -597,7 +601,10 @@ class EpubContentLoader @Inject constructor(
 
     private fun resolveEpubFile(path: String, writeTier: StorageTier = StorageTier.CACHE): File {
         return if (path.startsWith("content://")) {
-            findExistingCachedEpubFile(path)?.let { return it }
+            findExistingCachedEpubFile(path)?.let { file ->
+                file.setLastModified(System.currentTimeMillis())
+                return file
+            }
 
             val finalFile = primaryEpubFile(path, writeTier)
             if (!finalFile.exists()) {

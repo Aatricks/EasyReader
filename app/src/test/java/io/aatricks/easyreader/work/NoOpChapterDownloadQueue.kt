@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.flowOf
 class NoOpChapterDownloadQueue : ChapterDownloadQueue {
     override fun enqueue(url: String, replaceExisting: Boolean): Boolean = true
     override fun cancel(url: String) = Unit
+    override fun cancelAll() = Unit
     override fun observeChapter(url: String): Flow<PrefetchResult?> = flowOf(null)
     override fun observeAll(): Flow<Map<String, PrefetchResult>> = flowOf(emptyMap())
     override fun prune() = Unit

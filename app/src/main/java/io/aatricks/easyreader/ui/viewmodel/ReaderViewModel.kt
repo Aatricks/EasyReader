@@ -1168,6 +1168,8 @@ class ReaderViewModel @Inject constructor(
 
     suspend fun getCacheSize(): Long = contentRepository.getCacheSize()
 
+    suspend fun getDownloadsSize(): Long = contentRepository.getDownloadsSize()
+
     fun saveScrollPosition(position: Float): Unit {
         progressController.syncProgressState(
             progressController.progressState.value.copy(

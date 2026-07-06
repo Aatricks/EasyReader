@@ -687,6 +687,65 @@ class LibraryViewModelTest {
         val state = activeViewModel.uiState.value.chapterCacheStates[url]
         assertTrue(state == null || !state.isInProgress)
     }
+
+    @Test
+    fun `clearLibrary cancels all downloads, clears repository, caches, and imported epubs`() = runTest {
+        val queue: ChapterDownloadQueue = mock()
+        whenever(queue.observeAll()).thenReturn(MutableStateFlow(emptyMap()))
+        val activeViewModel = LibraryViewModel(
+            libraryRepository,
+            contentRepository,
+            exploreRepository,
+            queue,
+            reconciler
+        )
+        advanceUntilIdle()
+
+        activeViewModel.clearLibrary()
+        advanceUntilIdle()
+
+        verify(queue).cancelAll()
+        verify(libraryRepository).clearLibrary()
+        verify(contentRepository).clearAllCache()
+        verify(contentRepository).clearAllDownloads()
+        verify(contentRepository).clearImportedEpubs()
+    }
+
+    @Test
+    fun `clearAllDownloads cancels work, clears contentRepository, marksDownloaded false for each, and refreshes badges`() = runTest {
+        val queue: ChapterDownloadQueue = mock()
+        whenever(queue.observeAll()).thenReturn(MutableStateFlow(emptyMap()))
+        val activeViewModel = LibraryViewModel(
+            libraryRepository,
+            contentRepository,
+            exploreRepository,
+            queue,
+            reconciler
+        )
+        advanceUntilIdle()
+
+        val item1 = LibraryItem(id = "id-1", title = "Novel 1", url = "https://example.com/novel-1")
+        val item2 = LibraryItem(id = "id-2", title = "Novel 2", url = "https://example.com/novel-2")
+        val downloaded = listOf(item1, item2)
+        whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(downloaded))
+        whenever(libraryRepository.getDownloadedItems()).thenReturn(downloaded)
+
+        val inspected1 = PrefetchResult(url = item1.url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+        val inspected2 = PrefetchResult(url = item2.url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
+        whenever(contentRepository.inspectCache(item1.url)).thenReturn(inspected1)
+        whenever(contentRepository.inspectCache(item2.url)).thenReturn(inspected2)
+
+        activeViewModel.clearAllDownloads()
+        advanceUntilIdle()
+
+        verify(queue).cancelAll()
+        verify(contentRepository).clearAllDownloads()
+        verify(libraryRepository).markDownloaded("id-1", false)
+        verify(libraryRepository).markDownloaded("id-2", false)
+
+        assertEquals(inspected1, activeViewModel.uiState.value.chapterCacheStates[item1.url])
+        assertEquals(inspected2, activeViewModel.uiState.value.chapterCacheStates[item2.url])
+    }
 }
 
 private data class RecordedEnqueue(val url: String, val replaceExisting: Boolean)
@@ -694,6 +753,7 @@ private data class RecordedEnqueue(val url: String, val replaceExisting: Boolean
 private class RecordingChapterDownloadQueue : ChapterDownloadQueue {
     val enqueued = mutableListOf<RecordedEnqueue>()
     private val results = MutableStateFlow<Map<String, PrefetchResult>>(emptyMap())
+    var cancelAllCalled = false
 
     override fun enqueue(url: String, replaceExisting: Boolean): Boolean {
         enqueued += RecordedEnqueue(url, replaceExisting)
@@ -701,6 +761,10 @@ private class RecordingChapterDownloadQueue : ChapterDownloadQueue {
     }
 
     override fun cancel(url: String) = Unit
+
+    override fun cancelAll() {
+        cancelAllCalled = true
+    }
 
     override fun observeChapter(url: String): Flow<PrefetchResult?> =
         results.map { it[url] }
