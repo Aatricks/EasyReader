@@ -118,4 +118,54 @@ class ChapterListNormalizerTest {
         )
         assertNull(resolved)
     }
+
+    @Test
+    fun `healCurrentChapterLabel swaps the id for the real number and keeps the prefix`() {
+        val healed = healCurrentChapterLabel(
+            currentChapter = "Chapter 141313",
+            currentUrl = "https://novelight.net/book/chapter/141313",
+            chapters = novelightList
+        )
+        assertEquals("Chapter 102", healed)
+    }
+
+    @Test
+    fun `healCurrentChapterLabel handles a bare number label`() {
+        val healed = healCurrentChapterLabel(
+            currentChapter = "141313",
+            currentUrl = "https://novelight.net/book/chapter/141313",
+            chapters = novelightList
+        )
+        assertEquals("102", healed)
+    }
+
+    @Test
+    fun `healCurrentChapterLabel fills in a label with no number`() {
+        val healed = healCurrentChapterLabel(
+            currentChapter = "",
+            currentUrl = "https://novelight.net/book/chapter/141313",
+            chapters = novelightList
+        )
+        assertEquals("Chapter 102", healed)
+    }
+
+    @Test
+    fun `healCurrentChapterLabel is a no-op when the number is already correct`() {
+        val healed = healCurrentChapterLabel(
+            currentChapter = "Chapter 102",
+            currentUrl = "https://novelight.net/book/chapter/141313",
+            chapters = novelightList
+        )
+        assertNull(healed)
+    }
+
+    @Test
+    fun `healCurrentChapterLabel is a no-op when the url is not in the list`() {
+        val healed = healCurrentChapterLabel(
+            currentChapter = "Chapter 5",
+            currentUrl = "https://novelight.net/book/chapter/000000",
+            chapters = novelightList
+        )
+        assertNull(healed)
+    }
 }
