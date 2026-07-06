@@ -9,7 +9,7 @@ import io.aatricks.easyreader.data.model.libraryNovelKey
 import io.aatricks.easyreader.data.model.resolvedChapterNumber
 import io.aatricks.easyreader.data.model.seriesReadingStatus
 
-internal data class DrawerNovelEntry(
+data class DrawerNovelEntry(
     val novelKey: String,
     val displayTitle: String,
     val resumeItem: LibraryItem,
@@ -20,7 +20,7 @@ internal data class DrawerNovelEntry(
     val updateTimestamp: Long
 )
 
-internal data class DrawerNovelSections(
+data class DrawerNovelSections(
     val continueNovel: DrawerNovelEntry?,
     val recentUpdates: List<DrawerNovelEntry>,
     val recentNovels: List<DrawerNovelEntry>

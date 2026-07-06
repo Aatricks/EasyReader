@@ -23,6 +23,9 @@ import kotlinx.coroutines.Job
 import io.aatricks.easyreader.util.rethrowCancellation
 import javax.inject.Inject
 import android.util.Log
+import io.aatricks.easyreader.ui.screens.DrawerNovelSections
+import io.aatricks.easyreader.ui.screens.buildDrawerNovelSections
+import kotlinx.coroutines.Dispatchers
 
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
@@ -32,7 +35,6 @@ class LibraryViewModel @Inject constructor(
     private val downloadQueue: ChapterDownloadQueue,
     private val downloadStatusReconciler: DownloadStatusReconciler
 ) : BaseViewModel<LibraryViewModel.LibraryUiState>(LibraryUiState()) {
-
     private val TAG = "LibraryViewModel"
 
     private val filters = LibraryFilters()
@@ -68,12 +70,92 @@ class LibraryViewModel @Inject constructor(
 
     init {
         _collapsedSources.value = repository.loadCollapsedSources()
-        observeLibraryChanges()
     }
 
     fun reconcileDownloadedItemsOnDemand(): Unit {
         downloadStates.reconcileDownloadedItemsOnDemand()
     }
+
+    override val uiState: StateFlow<LibraryUiState> = combine(
+        combine(
+            repository.libraryItems,
+            selectionManager.selectedItems,
+            _collapsedSources,
+            selectionManager.selectionModeEnabled
+        ) { items, selected, collapsed, selectionModeEnabled ->
+            Triple(items, selected, collapsed) to selectionModeEnabled
+        },
+        combine(
+            downloadStates.chapterCacheStates,
+            deletionCoordinator.pendingDeletion,
+            filters.statusFilter
+        ) { c, p, s ->
+            Triple(c, p, s)
+        },
+        combine(
+            filters.searchQuery,
+            filters.contentTypeFilter,
+            filters.sortMode
+        ) { query, filter, sort ->
+            Triple(query, filter, sort)
+        },
+        _uiState
+    ) { repoState, cachePending, filterParams, manualUiState ->
+        val (repoData, selectionModeEnabled) = repoState
+        val (rawItems, selectedIds, collapsedSources) = repoData
+        val (cacheStates, pendingIds, statusFilter) = cachePending
+        val (query, filter, sort) = filterParams
+
+        val items = if (pendingIds.isEmpty()) rawItems else rawItems.filterNot { it.id in pendingIds }
+        val filteredItems = filters.apply(items, query, filter, sort, statusFilter)
+
+        LibraryUiState(
+            items = items,
+            filteredItems = filteredItems,
+            groupedItems = repository.getGroupedByTitle(filteredItems),
+            groupedBySource = repository.getGroupedBySourceAndTitle(filteredItems),
+            collapsedSources = collapsedSources,
+            isSelectionMode = selectionModeEnabled || selectedIds.isNotEmpty(),
+            selectedIds = selectedIds,
+            selectedCount = selectedIds.size,
+            isEmpty = items.isEmpty(),
+            currentlyReading = items.find { it.isCurrentlyReading },
+            chapterCacheStates = cacheStates,
+            isLoading = manualUiState.isLoading,
+            error = manualUiState.error
+        )
+    }
+    .flowOn(defaultDispatcher)
+    .stateIn(
+        scope = viewModelScope,
+        // Stop the moment no screen observes (library screen / chapter-list sheet). The heavy
+        // getGroupedByTitle/BySource run only while one is on-screen; the last value is retained
+        // (default replayExpiration) so re-entry is warm with no empty flash.
+        started = if (isUnderTest) SharingStarted.Eagerly else SharingStarted.WhileSubscribed(0),
+        initialValue = LibraryUiState()
+    )
+
+    /**
+     * Lean state for the reader's library drawer. The drawer needs ONLY the quick-access sections
+     * and an empty flag, so it deliberately does NOT go through [uiState]'s whole-library
+     * getGroupedByTitle/getGroupedBySourceAndTitle aggregation: opening the drawer over a large
+     * library would otherwise burst-allocate those maps on Default, and the resulting GC could
+     * evict decoded reader bitmaps (re-decode stutter on resume). Recomputed off-main, stopped the
+     * instant the drawer closes.
+     */
+    val drawerUiState: StateFlow<DrawerUiState> = combine(
+        repository.libraryItems,
+        deletionCoordinator.pendingDeletion
+    ) { rawItems, pendingIds ->
+        val items = if (pendingIds.isEmpty()) rawItems else rawItems.filterNot { it.id in pendingIds }
+        DrawerUiState(buildDrawerNovelSections(items), items.isEmpty())
+    }
+        .flowOn(defaultDispatcher)
+        .stateIn(
+            scope = viewModelScope,
+            started = if (isUnderTest) SharingStarted.Eagerly else SharingStarted.WhileSubscribed(0),
+            initialValue = DrawerUiState(DrawerNovelSections(null, emptyList(), emptyList()), true)
+        )
 
     data class LibraryUiState(
         val items: List<LibraryItem> = emptyList(),
@@ -91,57 +173,10 @@ class LibraryViewModel @Inject constructor(
         val chapterCacheStates: Map<String, PrefetchResult> = emptyMap()
     )
 
-    private fun observeLibraryChanges(): Unit {
-        viewModelScope.launch {
-            val repoFlow = combine(
-                repository.libraryItems,
-                selectionManager.selectedItems,
-                _collapsedSources,
-                selectionManager.selectionModeEnabled
-            ) { items, selected, collapsed, selectionModeEnabled ->
-                Triple(items, selected, collapsed) to selectionModeEnabled
-            }
-
-            val cacheAndPending = combine(
-                downloadStates.chapterCacheStates,
-                deletionCoordinator.pendingDeletion,
-                filters.statusFilter
-            ) { c, p, s ->
-                Triple(c, p, s)
-            }
-
-            combine(
-                repoFlow,
-                cacheAndPending,
-                filters.searchQuery,
-                filters.contentTypeFilter,
-                filters.sortMode
-            ) { repoState, cachePending, query, filter, sort ->
-                val (repoData, selectionModeEnabled) = repoState
-                val (rawItems, selectedIds, collapsedSources) = repoData
-                val (cacheStates, pendingIds, statusFilter) = cachePending
-
-                val items = if (pendingIds.isEmpty()) rawItems else rawItems.filterNot { it.id in pendingIds }
-                val filteredItems = filters.apply(items, query, filter, sort, statusFilter)
-
-                LibraryUiState(
-                    items = items,
-                    filteredItems = filteredItems,
-                    groupedItems = repository.getGroupedByTitle(filteredItems),
-                    groupedBySource = repository.getGroupedBySourceAndTitle(filteredItems),
-                    collapsedSources = collapsedSources,
-                    isSelectionMode = selectionModeEnabled || selectedIds.isNotEmpty(),
-                    selectedIds = selectedIds,
-                    selectedCount = selectedIds.size,
-                    isEmpty = items.isEmpty(),
-                    currentlyReading = items.find { it.isCurrentlyReading },
-                    chapterCacheStates = cacheStates
-                )
-            }.collect { newState ->
-                updateState { newState }
-            }
-        }
-    }
+    data class DrawerUiState(
+        val sections: DrawerNovelSections,
+        val isLibraryEmpty: Boolean
+    )
 
 
 
@@ -592,6 +627,10 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    companion object {
+        var defaultDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default
+        var isUnderTest: Boolean = false
+    }
 }
 
 internal fun selectLatestChapter(chapters: List<ChapterInfo>): ChapterInfo? {

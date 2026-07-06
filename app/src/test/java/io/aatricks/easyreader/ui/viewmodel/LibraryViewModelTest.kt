@@ -37,8 +37,11 @@ class LibraryViewModelTest {
 
     @Before
     fun setup() {
-        testDispatcher = StandardTestDispatcher(TestCoroutineScheduler())
+        testDispatcher = StandardTestDispatcher()
         Dispatchers.setMain(testDispatcher)
+        LibraryViewModel.isUnderTest = true
+        LibraryViewModel.defaultDispatcher = testDispatcher
+
         whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(emptyList()))
         whenever(libraryRepository.loadCollapsedSources()).thenReturn(emptySet())
         whenever(libraryRepository.getGroupedByTitle(anyOrNull())).thenReturn(emptyMap())
@@ -62,6 +65,8 @@ class LibraryViewModelTest {
     @After
     fun tearDown() {
         Dispatchers.resetMain()
+        LibraryViewModel.isUnderTest = false
+        LibraryViewModel.defaultDispatcher = Dispatchers.Default
     }
 
     @Test

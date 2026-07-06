@@ -138,13 +138,25 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
     }
 
     private fun buildMemoryCache(context: PlatformContext): MemoryCache {
+        // Manhwa strips are region-decoded into HARDWARE-config slices (~screenWidth x 2048 x 4B
+        // ≈ 9MB each). At 0.25 the strong LRU (~32-64MB) holds only ~4-7 slices — well under one
+        // chapter, so a fast up/down drag or scrolling back re-decodes evicted slices every time.
+        // HARDWARE pixels live in graphics memory (AHardwareBuffer), not the Java heap, so a larger
+        // budget does not raise heap-OOM risk; 0.5 comfortably holds a full oscillation window.
         return MemoryCache.Builder()
-            .maxSizePercent(context, 0.25)
+            .maxSizePercent(context, MEMORY_CACHE_HEAP_FRACTION)
             .build()
     }
 
     companion object {
         private const val TAG = "EasyReaderApplication"
         private const val WEB_OFFLINE_PIPELINE_VERSION = 3
+
+        // Fraction of the app's available memory the Coil image cache may use. Manhwa strips are
+        // decoded into HARDWARE-config slices (~9MB each, in graphics memory not the Java heap), so
+        // a larger budget lets a full up/down oscillation window and >1 chapter's slices stay
+        // resident instead of being evicted and re-decoded on scroll-back. Dial back toward 0.25 if
+        // low-memory devices hit onTrimMemory / AHardwareBuffer-fd pressure.
+        private const val MEMORY_CACHE_HEAP_FRACTION = 0.5
     }
 }
