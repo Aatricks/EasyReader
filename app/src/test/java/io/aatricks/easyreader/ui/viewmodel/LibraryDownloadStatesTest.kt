@@ -354,6 +354,9 @@ private class FakeChapterDownloadQueue : ChapterDownloadQueue {
         cancelled.add(url)
     }
 
+    override fun cancelAll() {
+    }
+
     override fun observeChapter(url: String): Flow<PrefetchResult?> {
         return results.map { it[url] }
     }

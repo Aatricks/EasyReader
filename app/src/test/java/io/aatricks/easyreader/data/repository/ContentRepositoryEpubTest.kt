@@ -49,6 +49,8 @@ class ContentRepositoryEpubTest {
     private lateinit var repository: ContentRepository
     private val chapterCount = 100 // Reduced for CI speed
     private lateinit var mockedUriStatic: MockedStatic<Uri>
+    private lateinit var epubLoader: EpubContentLoader
+    private lateinit var epubCacheDir: File
 
     @Before
     fun setup() {
@@ -68,13 +70,14 @@ class ContentRepositoryEpubTest {
         // Ensure subdirectories exist as ContentRepository expects them
         val htmlCache = File(cacheDir, "html_cache").apply { mkdirs() }
         val mediaCache = File(cacheDir, "media_cache").apply { mkdirs() }
-        val epubCache = File(cacheDir, "epub_cache").apply { mkdirs() }
+        epubCacheDir = File(cacheDir, "epub_cache").apply { mkdirs() }
         val filesDir = File(tempDir, "files").apply { mkdirs() }
         val htmlDownloads = File(filesDir, "downloads/html").apply { mkdirs() }
         val mediaDownloads = File(filesDir, "downloads/media").apply { mkdirs() }
         val epubDownloads = File(filesDir, "downloads/epub").apply { mkdirs() }
 
         whenever(mockContext.cacheDir).thenReturn(cacheDir)
+        whenever(mockContext.filesDir).thenReturn(filesDir)
         whenever(mockContext.contentResolver).thenReturn(mockContentResolver)
 
         // Mock ContentResolver to return stream for our test file when requested
@@ -113,7 +116,7 @@ class ContentRepositoryEpubTest {
             )
         )
         val pdfLoader = PdfContentLoader(mockContext, DefaultPdfDocumentOpener(mockContext))
-        val epubLoader = EpubContentLoader(mockContext, epubCache, epubDownloads, imageDimCache)
+        epubLoader = EpubContentLoader(mockContext, epubCacheDir, epubDownloads, imageDimCache)
         val localLoader = LocalContentLoader(mockContext, mockHtmlParser, pdfLoader, epubLoader, contentUriTypeResolver)
 
         repository = ContentRepository(webLoader, pdfLoader, epubLoader, localLoader, contentUriTypeResolver, mockContext, okHttpClient)
@@ -735,5 +738,35 @@ class ContentRepositoryEpubTest {
         assertEquals("Prologue", success.title)
         assertTrue(text.contains("Prologue body text."))
         assertFalse(text.contains("Table of Contents"))
+    }
+
+    @Test
+    fun testEpubCacheTrimDeletesOldestFirst() = runBlocking {
+        val file1 = File(epubCacheDir, "test1.epub")
+        file1.writeBytes(ByteArray(100))
+        file1.setLastModified(1000L)
+
+        val file2 = File(epubCacheDir, "test2.epub")
+        file2.writeBytes(ByteArray(100))
+        file2.setLastModified(5000L) // newer
+
+        epubLoader.trimCache(150L)
+
+        assertTrue(epubCacheDir.exists())
+        assertFalse(file1.exists())
+        assertTrue(file2.exists())
+    }
+
+    @Test
+    fun testClearImportedEpubsDeletesOrphanedFiles() = runBlocking {
+        val importedEpubs = File(tempDir, "files/imported_epubs").apply { mkdirs() }
+        val orphan = File(importedEpubs, "book.epub")
+        orphan.writeBytes(ByteArray(100))
+        assertTrue(orphan.exists())
+
+        repository.clearImportedEpubs()
+
+        assertFalse(orphan.exists())
+        assertTrue(importedEpubs.exists()) // recreated empty for future imports
     }
 }

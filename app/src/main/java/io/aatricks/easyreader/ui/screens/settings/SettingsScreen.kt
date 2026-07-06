@@ -75,7 +75,9 @@ fun SettingsScreen(
     val summaryUiState by summaryViewModel.uiState.collectAsState()
 
     var cacheBytes by remember { mutableLongStateOf(-1L) }
+    var downloadsBytes by remember { mutableLongStateOf(-1L) }
     var showClearCacheDialog by remember { mutableStateOf(false) }
+    var showClearDownloadsDialog by remember { mutableStateOf(false) }
     var showClearLibraryDialog by remember { mutableStateOf(false) }
     var showEnableAiDialog by remember { mutableStateOf(false) }
     var pendingSettingsImportUri by remember { mutableStateOf<android.net.Uri?>(null) }
@@ -100,6 +102,7 @@ fun SettingsScreen(
 
     LaunchedEffect(refreshKey) {
         cacheBytes = runCatching { readerViewModel.getCacheSize() }.getOrDefault(0L)
+        downloadsBytes = runCatching { readerViewModel.getDownloadsSize() }.getOrDefault(0L)
     }
 
     LaunchedEffect(backupStatus) {
@@ -158,6 +161,23 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
                     Text("Clear cached chapters and images")
+                }
+                SettingsRow(
+                    title = "Downloads size",
+                    subtitle = if (downloadsBytes < 0) "Calculating…" else formatBytes(downloadsBytes)
+                )
+                FilledTonalButton(
+                    onClick = { showClearDownloadsDialog = true },
+                    enabled = downloadsBytes > 0,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
+                    Text("Clear all downloads")
                 }
                 SettingsRow(
                     title = "Library size",
@@ -312,6 +332,34 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showClearCacheDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showClearDownloadsDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDownloadsDialog = false },
+            title = { Text("Clear downloads?") },
+            text = {
+                Text(
+                    "This frees ${formatBytes(downloadsBytes)} of offline downloads. " +
+                        "Your library and reading progress are not affected."
+                )
+            },
+            confirmButton = {
+                FilledTonalButton(onClick = {
+                    libraryViewModel.clearAllDownloads()
+                    showClearDownloadsDialog = false
+                    refreshKey++
+                    scope.launch { snackbarHostState.showSnackbar("Downloads cleared") }
+                }) {
+                    Text("Clear")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDownloadsDialog = false }) {
                     Text("Cancel")
                 }
             }

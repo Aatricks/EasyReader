@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -106,5 +107,27 @@ class PdfContentLoaderTest {
 
         document.close()
         return pdfFile
+    }
+
+    @Test
+    fun `pdf cache trim deletes oldest first`() = runTest {
+        val pdfImagesDir = File(cacheDir, "pdf_images")
+        pdfImagesDir.mkdirs()
+
+        val file1 = File(pdfImagesDir, "page1.png")
+        file1.writeBytes(ByteArray(100))
+        file1.setLastModified(1000L)
+
+        val file2 = File(pdfImagesDir, "page2.png")
+        file2.writeBytes(ByteArray(100))
+        file2.setLastModified(5000L) // newer
+
+        val loader = PdfContentLoader(context, opener)
+        
+        loader.trimCache(150L)
+
+        assertTrue(pdfImagesDir.exists())
+        assertFalse(file1.exists())
+        assertTrue(file2.exists())
     }
 }

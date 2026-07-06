@@ -537,6 +537,10 @@ class PdfContentLoader @Inject constructor(
         clearAllPdfImageCache()
     }
 
+    fun trimCache(maxBytes: Long) {
+        FileSizeUtils.trimDirectoryToSize(File(context.cacheDir, "pdf_images"), maxBytes)
+    }
+
     fun getCacheSize(): Long {
         return FileSizeUtils.calculateDirectorySize(File(context.cacheDir, "pdf_images"))
     }

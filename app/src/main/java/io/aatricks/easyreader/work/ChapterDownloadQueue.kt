@@ -32,6 +32,7 @@ import javax.inject.Singleton
 interface ChapterDownloadQueue {
     fun enqueue(url: String, replaceExisting: Boolean = false): Boolean
     fun cancel(url: String)
+    fun cancelAll()
     fun observeChapter(url: String): Flow<PrefetchResult?>
     fun observeAll(): Flow<Map<String, PrefetchResult>>
     fun prune()
@@ -76,6 +77,12 @@ class WorkManagerChapterDownloadQueue @Inject constructor(
     override fun cancel(url: String) {
         if (url.isBlank()) return
         workManager.cancelUniqueWork(uniqueName(url))
+    }
+
+    override fun cancelAll() {
+        runCatching {
+            workManager.cancelAllWorkByTag(ChapterDownloadQueue.TAG_CHAPTER_DOWNLOAD)
+        }
     }
 
     /** Live progress for a single chapter, regardless of which WorkInfo currently owns it. */

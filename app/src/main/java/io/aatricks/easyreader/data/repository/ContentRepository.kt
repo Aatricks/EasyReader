@@ -41,6 +41,8 @@ class ContentRepository @Inject constructor(
         private const val WEB_CHAPTER_LOAD_TIMEOUT_MS = 25_000L
         private const val MAX_MEDIA_CACHE_BYTES = 512L * 1024L * 1024L
         private const val MAX_HTML_CACHE_BYTES = 64L * 1024L * 1024L
+        private const val MAX_EPUB_CACHE_BYTES = 256L * 1024L * 1024L
+        private const val MAX_PDF_CACHE_BYTES = 256L * 1024L * 1024L
         private const val CACHE_TRIM_INTERVAL_MS = 30_000L
         private const val INSPECT_MEMO_TTL_MS = 3_000L
         private val CHAPTER_URL_PATTERNS = listOf(
@@ -104,9 +106,7 @@ class ContentRepository @Inject constructor(
                     localLoader.loadLocalContent(url, pdfResumeIndex)
                 ContentKind.UNKNOWN -> ContentResult.Error("Unsupported file type")
             }
-            if (resolveContentKind(url) == ContentKind.WEB) {
-                trimCachesInternal(force = true)
-            }
+            trimCachesInternal(force = true)
             result
         } catch (e: TimeoutCancellationException) {
             ContentResult.Error("Timed out loading chapter")
@@ -486,6 +486,12 @@ class ContentRepository @Inject constructor(
         epubLoader.clearAllDownloads()
     }
 
+    suspend fun clearImportedEpubs(): Unit = withContext(Dispatchers.IO) {
+        val importedEpubsDir = File(context.filesDir, "imported_epubs")
+        importedEpubsDir.deleteRecursively()
+        importedEpubsDir.mkdirs()
+    }
+
     suspend fun resetWebOfflinePipelineData(): Unit = withContext(Dispatchers.IO) {
         inspectMemo.clear()
         webLoader.clearAllCache()
@@ -581,6 +587,8 @@ class ContentRepository @Inject constructor(
             maxHtmlBytes = MAX_HTML_CACHE_BYTES,
             maxMediaBytes = MAX_MEDIA_CACHE_BYTES
         )
+        epubLoader.trimCache(MAX_EPUB_CACHE_BYTES)
+        pdfLoader.trimCache(MAX_PDF_CACHE_BYTES)
     }
 
     private fun isRemoteWebUrl(url: String): Boolean =

@@ -584,11 +584,29 @@ class LibraryViewModel @Inject constructor(
     fun clearLibrary(): Unit {
         viewModelScope.launch {
             runCatching {
+                downloadQueue.cancelAll()
                 repository.clearLibrary()
                 contentRepository.clearAllCache()
+                contentRepository.clearAllDownloads()
+                contentRepository.clearImportedEpubs()
                 selectionManager.clear()
             }.onFailure { e ->
                 updateState { it.copy(error = "Failed to clear library: ${e.message}") }
+            }
+        }
+    }
+
+    fun clearAllDownloads(): Unit {
+        viewModelScope.launch {
+            val downloaded = repository.getDownloadedItems()
+            downloadQueue.cancelAll()
+            runCatching {
+                contentRepository.clearAllDownloads()
+                downloaded.forEach { repository.markDownloaded(it.id, false) }
+            }.onSuccess {
+                downloadStates.refreshChapterCacheStates(downloaded.map { it.url })
+            }.onFailure { e ->
+                updateState { it.copy(error = "Failed to clear downloads: ${e.message}") }
             }
         }
     }
