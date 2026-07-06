@@ -1134,7 +1134,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                 .filter { it.startsWith("http") }
         }.getOrDefault(emptyList())
         val hasImageTags = document.select("img[src], image[href], image[xlink|href], source[srcset]").isNotEmpty()
-        val bodyNonEmpty = document.body()?.html()?.isNotBlank() == true
+        val bodyNonEmpty = document.body().html().isNotBlank()
         val hasMangaReaderHints = detectMangaReaderHints(document)
         return ParsedImageMemo(
             mtime = htmlFile?.lastModified() ?: 0L,

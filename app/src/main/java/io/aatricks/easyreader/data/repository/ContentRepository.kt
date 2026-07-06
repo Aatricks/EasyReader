@@ -544,7 +544,7 @@ class ContentRepository @Inject constructor(
         return when {
             url.startsWith("file://") -> File(url.removePrefix("file://")).nameWithoutExtension
             else -> File(url).nameWithoutExtension
-        }?.takeIf { it.isNotBlank() }
+        }.takeIf { it.isNotBlank() }
     }
 
     private fun clearHttpCache() {

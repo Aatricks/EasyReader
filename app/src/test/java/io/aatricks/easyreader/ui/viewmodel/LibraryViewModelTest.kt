@@ -264,7 +264,7 @@ class LibraryViewModelTest {
         assertEquals(baseTitle, insertedBaseTitle.firstValue)
         assertEquals(baseNovelUrl, insertedBaseNovelUrl.firstValue)
         assertEquals(sourceName, insertedSourceName.firstValue)
-        assertEquals(details.chapters.size, insertedTotalChapters.firstValue.toInt())
+        assertEquals(details.chapters.size, insertedTotalChapters.firstValue)
         verify(contentRepository, never()).prefetch(any(), any())
         assertEquals(latestUrl, loadedUrl)
         assertEquals(createdItem.id, loadedId)

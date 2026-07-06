@@ -19,10 +19,7 @@ object WebViewUtils {
             // SECURITY: Disable file and content access to prevent local data exfiltration
             allowFileAccess = false
             allowContentAccess = false
-            
-            // SECURITY: Disable access from file URLs
-            allowFileAccessFromFileURLs = false
-            allowUniversalAccessFromFileURLs = false
+
             
             // SECURITY: Prevent JS from opening new windows or multiple windows
             setSupportMultipleWindows(false)

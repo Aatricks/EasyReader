@@ -92,8 +92,7 @@ class AppUpdateManager @Inject constructor(
                 if (!response.isSuccessful) {
                     return@withContext UpdateCheckResult.Error("HTTP error: ${response.code}")
                 }
-                val bodyString = response.body?.string()
-                    ?: return@withContext UpdateCheckResult.Error("Empty response")
+                val bodyString = response.body.string()
                 val release = json.decodeFromString<GithubRelease>(bodyString)
                 
                 val currentVersion = getAppVersionName()
@@ -163,10 +162,6 @@ class AppUpdateManager @Inject constructor(
                     return@flow
                 }
                 val body = response.body
-                if (body == null) {
-                    emit(DownloadStatus.Error("Response body is empty"))
-                    return@flow
-                }
                 copyStreamToFile(body, apkFile, expectedSize) { status ->
                     emit(status)
                 }

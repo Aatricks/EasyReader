@@ -98,6 +98,7 @@ android {
     kotlin {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            freeCompilerArgs.add("-Xannotation-default-target=param-property")
         }
     }
     ksp {
@@ -108,20 +109,20 @@ android {
     }
     sourceSets {
         getByName("standard") {
-            java.srcDirs("src/standard/java")
+            java.directories.add("src/standard/java")
         }
         getByName("ai") {
-            java.srcDirs("src/ai/java")
+            java.directories.add("src/ai/java")
         }
         getByName("debug") {
-            assets.srcDirs("schemas")
+            assets.directories.add("schemas")
         }
         getByName("test") {
-            java.srcDirs("src/test/java")
+            java.directories.add("src/test/java")
             // Opt-in: pass -PrunBenchmarks=true to include the slow benchmark suite
             // in the standard test task. Default off to keep PR CI fast.
             if (project.findProperty("runBenchmarks") == "true") {
-                java.srcDirs("src/benchmark/java")
+                java.directories.add("src/benchmark/java")
             }
         }
     }

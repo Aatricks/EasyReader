@@ -161,7 +161,7 @@ class AsuraScansSourceTest {
         assertTrue("expected at least 10 items, got ${items.size}", items.size >= 10)
         items.forEach { item ->
             assertTrue("missing cover for ${item.title}: ${item.coverUrl}",
-                !item.coverUrl.isNullOrBlank() && item.coverUrl!!.startsWith("https://"))
+                !item.coverUrl.isNullOrBlank() && item.coverUrl.startsWith("https://"))
         }
     }
 
@@ -174,7 +174,7 @@ class AsuraScansSourceTest {
 
         val item = runBlocking { source.getNovelDetails(seriesUrl) }
         assertTrue("cover missing: ${item.coverUrl}",
-            !item.coverUrl.isNullOrBlank() && item.coverUrl!!.startsWith("https://"))
+            !item.coverUrl.isNullOrBlank() && item.coverUrl.startsWith("https://"))
         assertTrue("expected many chapters, got ${item.chapterCount}", item.chapterCount >= 50)
     }
 
@@ -188,7 +188,7 @@ class AsuraScansSourceTest {
         assertTrue("expected at least 10 items, got ${items.size}", items.size >= 10)
         items.forEach { item ->
             assertTrue("missing cover for ${item.title}: ${item.coverUrl}",
-                !item.coverUrl.isNullOrBlank() && item.coverUrl!!.startsWith("https://"))
+                !item.coverUrl.isNullOrBlank() && item.coverUrl.startsWith("https://"))
         }
     }
 

@@ -29,8 +29,6 @@ class WebViewUtilsTest {
         // Verify hardening settings
         verify(mockSettings).allowFileAccess = false
         verify(mockSettings).allowContentAccess = false
-        verify(mockSettings).allowFileAccessFromFileURLs = false
-        verify(mockSettings).allowUniversalAccessFromFileURLs = false
         verify(mockSettings).setSupportMultipleWindows(false)
         verify(mockSettings).javaScriptCanOpenWindowsAutomatically = false
     }

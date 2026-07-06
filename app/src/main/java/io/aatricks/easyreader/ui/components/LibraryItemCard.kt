@@ -242,9 +242,11 @@ fun LibraryItemCard(
                 val isLastChapter = chapterNumber != null && item.totalChapters > 0 && chapterNumber.toInt() >= item.totalChapters
                 
                 val chapterText = if (isLastChapter) {
-                    val numberStr = chapterNumber?.let { 
-                        if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() 
-                    } ?: item.currentChapter
+                    val numberStr = if (chapterNumber % 1.0 == 0.0) {
+                        chapterNumber.toInt().toString()
+                    } else {
+                        chapterNumber.toString()
+                    }
                     "Last Chapter - $numberStr"
                 } else {
                     "Chapter ${item.currentChapter} / ${item.totalChapters}"

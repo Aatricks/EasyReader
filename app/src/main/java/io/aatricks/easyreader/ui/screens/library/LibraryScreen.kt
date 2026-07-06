@@ -28,7 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -308,10 +308,12 @@ private fun AddNovelSection(
     onAddClick: () -> Unit,
     onOpenPdfClick: () -> Unit
 ): Unit {
-    val clipboard = LocalClipboardManager.current
-    val clipboardUrl = remember(clipboard) {
-        val raw = clipboard.getText()?.text?.trim().orEmpty()
-        if (raw.startsWith("http://") || raw.startsWith("https://")) raw else null
+    var clipboardUrl by remember { mutableStateOf<String?>(null) }
+    val clipboard = LocalClipboard.current
+    LaunchedEffect(clipboard) {
+        val entry = clipboard.getClipEntry()
+        val raw = entry?.clipData?.getItemAt(0)?.text?.toString()?.trim().orEmpty()
+        clipboardUrl = if (raw.startsWith("http://") || raw.startsWith("https://")) raw else null
     }
 
     Surface(
@@ -354,10 +356,11 @@ private fun AddNovelSection(
                 singleLine = true
             )
 
-            if (clipboardUrl != null && urlInput.isBlank()) {
+            val url = clipboardUrl
+            if (url != null && urlInput.isBlank()) {
                 Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
                 AssistChip(
-                    onClick = { onUrlChange(clipboardUrl) },
+                    onClick = { onUrlChange(url) },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Filled.ContentPaste,
@@ -367,7 +370,7 @@ private fun AddNovelSection(
                     },
                     label = {
                         Text(
-                            text = "Paste: ${clipboardUrl.take(48)}${if (clipboardUrl.length > 48) "…" else ""}",
+                            text = "Paste: ${url.take(48)}${if (url.length > 48) "…" else ""}",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }

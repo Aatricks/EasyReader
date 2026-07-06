@@ -508,7 +508,7 @@ class EpubContentLoader @Inject constructor(
             }
         }
 
-        doc.body()?.let { traverse(it) }
+        traverse(doc.body())
     }
 
     private fun addTextBlockElement(
