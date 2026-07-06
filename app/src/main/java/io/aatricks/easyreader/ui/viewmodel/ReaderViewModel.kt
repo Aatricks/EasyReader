@@ -13,6 +13,7 @@ import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.ui.theme.AccentTheme
 import io.aatricks.easyreader.util.normalizeChapterList
+import io.aatricks.easyreader.util.resolveChapterLabelFromList
 import io.aatricks.easyreader.util.TextUtils
 import io.aatricks.easyreader.util.UrlSecurity
 import io.aatricks.easyreader.ui.viewmodel.ReaderProgressController.Companion.PAGED_POSITION_ITEM_SIZE_PX
@@ -603,6 +604,11 @@ class ReaderViewModel @Inject constructor(
             }
         }
 
+        // Prefer the chapter list's label when the content/URL-derived one carries the wrong number
+        // (Novelight reading URLs are /book/chapter/{id}, so the id leaks in as the chapter number).
+        val resolvedChapterTitle =
+            resolveChapterLabelFromList(content.url, chapterTitle, currentFullList) ?: chapterTitle
+
         updateState {
             it.copy(
                 content = content,
@@ -621,7 +627,7 @@ class ReaderViewModel @Inject constructor(
                 targetScrollPosition = initialPosition.targetScrollPosition,
                 hasReachedQuarterScreen = fromBottom || initialPosition.scrollProgress >= 25,
                 novelName = novelName,
-                chapterTitle = chapterTitle,
+                chapterTitle = resolvedChapterTitle,
                 baseTitle = baseTitle,
                 baseNovelUrl = libraryItem?.baseNovelUrl ?: "",
                 sourceName = libraryItem?.sourceName ?: "",
@@ -1354,11 +1360,16 @@ class ReaderViewModel @Inject constructor(
     }
 
     private suspend fun applyFullChapterList(normalizedChapters: List<ChapterInfo>) {
-        updateState {
-            it.copy(
+        updateState { state ->
+            // Now that the authoritative list is loaded, correct the header label if the current
+            // chapter's URL-derived number was wrong (e.g. Novelight's opaque /book/chapter/{id}).
+            val resolvedTitle = state.content?.url
+                ?.let { resolveChapterLabelFromList(it, state.chapterTitle, normalizedChapters) }
+            state.copy(
                 fullChapterList = normalizedChapters,
                 isChaptersLoading = false,
-                isFullChapterListLoaded = true
+                isFullChapterListLoaded = true,
+                chapterTitle = resolvedTitle ?: state.chapterTitle
             )
         }
         updateNavigationUrls()
