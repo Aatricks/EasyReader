@@ -69,4 +69,53 @@ class ChapterListNormalizerTest {
         assertTrue(normalized.chapters.isEmpty())
         assertNull(normalized.readingUrl)
     }
+
+    // Novelight reading URLs are /book/chapter/{id}; the id is not the chapter number, so a
+    // URL-derived label ("Chapter 141313") must be corrected to the chapter list's real label.
+    private val novelightList = listOf(
+        ChapterInfo(title = "Chapter 102 - The Duel", url = "https://novelight.net/book/chapter/141313", number = 102.0),
+        ChapterInfo(title = "Chapter 103 - Aftermath", url = "https://novelight.net/book/chapter/141320", number = 103.0)
+    )
+
+    @Test
+    fun `resolveChapterLabelFromList corrects a wrong url-derived number`() {
+        val resolved = resolveChapterLabelFromList(
+            url = "https://novelight.net/book/chapter/141313",
+            currentLabel = "Chapter 141313",
+            chapters = novelightList
+        )
+        assertEquals("Chapter 102 - The Duel", resolved)
+    }
+
+    @Test
+    fun `resolveChapterLabelFromList is a no-op when the label already has the right number`() {
+        // Sources whose URL encodes the real number already show it — don't override their label.
+        val resolved = resolveChapterLabelFromList(
+            url = "https://novelight.net/book/chapter/141313",
+            currentLabel = "Chapter 102: The Duel (translator note)",
+            chapters = novelightList
+        )
+        assertNull(resolved)
+    }
+
+    @Test
+    fun `resolveChapterLabelFromList returns null when the url is not in the list`() {
+        val resolved = resolveChapterLabelFromList(
+            url = "https://novelight.net/book/chapter/999999",
+            currentLabel = "Chapter 999999",
+            chapters = novelightList
+        )
+        assertNull(resolved)
+    }
+
+    @Test
+    fun `resolveChapterLabelFromList returns null when the list entry has no number`() {
+        val list = listOf(ChapterInfo(title = "Epilogue", url = "https://x/c/1", number = null))
+        val resolved = resolveChapterLabelFromList(
+            url = "https://x/c/1",
+            currentLabel = "Chapter 1",
+            chapters = list
+        )
+        assertNull(resolved)
+    }
 }
