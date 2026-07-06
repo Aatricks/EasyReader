@@ -25,9 +25,7 @@ data class ImportSummary(
     val imported: Int,
     val duplicates: Int,
     val invalid: Int
-) {
-    val skipped: Int get() = duplicates + invalid
-}
+)
 
 @Singleton
 @Suppress("InjectDispatcher")

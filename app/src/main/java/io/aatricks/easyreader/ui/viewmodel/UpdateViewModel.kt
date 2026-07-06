@@ -36,7 +36,7 @@ class UpdateViewModel @Inject constructor(
         val error: String? = null
     )
 
-    fun checkForUpdates(): Unit {
+    fun checkForUpdates() {
         updateState { it.copy(isChecking = true, error = null, updateAvailable = null) }
         viewModelScope.launch {
             val now = System.currentTimeMillis()
@@ -56,7 +56,7 @@ class UpdateViewModel @Inject constructor(
         }
     }
 
-    fun checkForUpdatesIfNeeded(): Unit {
+    fun checkForUpdatesIfNeeded() {
         if (appUpdateManager.isDebugBuild()) return
         val lastCheck = preferencesManager.lastAppUpdateCheckTime
         val now = System.currentTimeMillis()
@@ -82,7 +82,7 @@ class UpdateViewModel @Inject constructor(
         downloadUrl: String,
         versionName: String,
         expectedSize: Long
-    ): Unit {
+    ) {
         viewModelScope.launch {
             appUpdateManager.downloadUpdate(downloadUrl, versionName, expectedSize).collect { status ->
                 updateState { it.copy(downloadStatus = status) }
@@ -90,7 +90,7 @@ class UpdateViewModel @Inject constructor(
         }
     }
 
-    fun installApk(apkFile: java.io.File): Unit {
+    fun installApk(apkFile: java.io.File) {
         appUpdateManager.installApk(apkFile)
     }
 
@@ -113,7 +113,7 @@ class UpdateViewModel @Inject constructor(
         }
     }
 
-    fun clearUpdateState(): Unit {
+    fun clearUpdateState() {
         updateState {
             it.copy(
                 updateAvailable = null,

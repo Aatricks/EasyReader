@@ -1,13 +1,9 @@
 package io.aatricks.easyreader.ui.viewmodel
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.repository.SummaryService
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import android.util.Log
 import javax.inject.Inject
@@ -45,7 +41,7 @@ class SummaryViewModel @Inject constructor(
      * Toggle the AI summary opt-in. Enabling triggers a download/initialize;
      * disabling releases the in-memory engine. Persists across launches.
      */
-    fun setAiSummaryEnabled(enabled: Boolean): Unit {
+    fun setAiSummaryEnabled(enabled: Boolean) {
         if (!_uiState.value.supportsAi) return
         if (_uiState.value.isEnabled == enabled) return
         preferencesManager.aiSummaryEnabled = enabled
@@ -69,7 +65,7 @@ class SummaryViewModel @Inject constructor(
     /**
      * Initialize the summary service (loads AI model)
      */
-    fun initializeSummaryService(): Unit {
+    fun initializeSummaryService() {
         val state = _uiState.value
         if (!state.supportsAi || !state.isEnabled) return
         viewModelScope.launch {
@@ -96,7 +92,7 @@ class SummaryViewModel @Inject constructor(
         chapterTitle: String?,
         content: List<String>,
         onComplete: (String) -> Unit
-    ): Unit {
+    ) {
         _uiState.value.summariesCache[chapterUrl]?.let { cached ->
             updateState { it.copy(currentSummary = cached) }
             onComplete(cached)
@@ -127,7 +123,7 @@ class SummaryViewModel @Inject constructor(
         chapterUrl: String,
         summary: String,
         onComplete: (String) -> Unit
-    ): Unit {
+    ) {
         val updatedCache = _uiState.value.summariesCache.toMutableMap().apply {
             put(chapterUrl, summary)
         }
@@ -141,7 +137,7 @@ class SummaryViewModel @Inject constructor(
         onComplete(summary)
     }
 
-    private fun handleGenerationFailure(e: Throwable): Unit {
+    private fun handleGenerationFailure(e: Throwable) {
         val error = e.message ?: "Failed to generate summary"
         updateState { it.copy(
             isGenerating = false,
@@ -150,20 +146,14 @@ class SummaryViewModel @Inject constructor(
         ) }
     }
 
-    fun cancelGeneration(): Unit {
+    fun cancelGeneration() {
         summaryService.cancelGeneration()
         updateState { it.copy(isGenerating = false, activeChapterUrl = null) }
     }
 
-    fun getCachedSummary(chapterUrl: String): String? = _uiState.value.summariesCache[chapterUrl]
-
-    fun clearError(): Unit {
-        updateState { it.copy(error = null) }
-    }
-
     fun isServiceReady(): Boolean = summaryService.isReady()
 
-    override fun onCleared(): Unit {
+    override fun onCleared() {
         super.onCleared()
         summaryService.release()
     }

@@ -1,7 +1,6 @@
 package io.aatricks.easyreader.ui.viewmodel
 
 import android.util.Log
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.aatricks.easyreader.data.local.PreferencesManager
@@ -21,7 +20,6 @@ import io.aatricks.easyreader.ui.viewmodel.ReaderProgressController.Companion.PA
 import io.aatricks.easyreader.util.FieldUpdate
 import io.aatricks.easyreader.util.computeDownloadCleanup
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -29,7 +27,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
-import kotlin.math.abs
 
 /**
  * ViewModel for the reader screen.
@@ -276,14 +273,6 @@ class ReaderViewModel @Inject constructor(
         val sourceName: String
     )
 
-    data class ReaderDialogState(
-        val pendingExternalUrl: String?,
-        val showExternalUrlConfirmation: Boolean,
-        val pendingFileConfirmationUri: String?,
-        val showFileConfirmationDialog: Boolean,
-        val toastMessage: String?
-    )
-
     /**
      * The anchor `runScrollRestore` applies. `isLiveSource` distinguishes the genuine load/seek
      * path (frozen `uiState` fields) from the bare-recomposition path (live `progressState`).
@@ -313,7 +302,7 @@ class ReaderViewModel @Inject constructor(
         val scrollIndex: Int = 0,
         val restoreElementKey: String = "",
         // Sentinel FRACTION_UNKNOWN (-1f) = no restore pending; 0..1 = pending intra-item fraction.
-        val restoreOffsetFraction: Float = io.aatricks.easyreader.data.model.FRACTION_UNKNOWN,
+        val restoreOffsetFraction: Float = FRACTION_UNKNOWN,
         val isPreciseRestore: Boolean = false,
         val isScrollingDown: Boolean = true,
         val hasReachedQuarterScreen: Boolean = false,
@@ -368,43 +357,21 @@ class ReaderViewModel @Inject constructor(
                 baseNovelUrl = baseNovelUrl,
                 sourceName = sourceName
             )
-
-        val dialogs: ReaderDialogState
-            get() = ReaderDialogState(
-                pendingExternalUrl = pendingExternalUrl,
-                showExternalUrlConfirmation = showExternalUrlConfirmation,
-                pendingFileConfirmationUri = pendingFileConfirmationUri,
-                showFileConfirmationDialog = showFileConfirmationDialog,
-                toastMessage = toastMessage
-            )
-
-        val progressState: ReaderProgressState
-            get() = ReaderProgressState(
-                scrollPosition = scrollPosition,
-                scrollProgress = scrollProgress,
-                scrollIndex = scrollIndex,
-                scrollElementKey = restoreElementKey,
-                scrollOffsetFraction = restoreOffsetFraction,
-                isPreciseRestore = isPreciseRestore,
-                firstVisibleItemSize = 0,
-                seekTrigger = seekTrigger,
-                targetScrollPosition = targetScrollPosition
-            )
     }
 
     private fun syncProgressState(state: ReaderProgressState) {
         progressController.syncProgressState(state)
     }
 
-    fun requestOpenFile(uri: String): Unit {
+    fun requestOpenFile(uri: String) {
         updateState { it.copy(pendingFileConfirmationUri = uri, showFileConfirmationDialog = true) }
     }
 
-    fun dismissFileConfirmation(): Unit {
+    fun dismissFileConfirmation() {
         updateState { it.copy(pendingFileConfirmationUri = null, showFileConfirmationDialog = false) }
     }
 
-    fun requestOpenUrl(url: String): Unit {
+    fun requestOpenUrl(url: String) {
         viewModelScope.launch {
             if (UrlSecurity.isSafeUrl(url)) {
                 updateState { it.copy(pendingExternalUrl = url, showExternalUrlConfirmation = true) }
@@ -414,60 +381,60 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun confirmExternalUrl(): Unit {
+    fun confirmExternalUrl() {
         val url = _uiState.value.pendingExternalUrl ?: return
         updateState { it.copy(pendingExternalUrl = null, showExternalUrlConfirmation = false) }
         loadContent(url)
     }
 
-    fun cancelExternalUrl(): Unit {
+    fun cancelExternalUrl() {
         updateState { it.copy(pendingExternalUrl = null, showExternalUrlConfirmation = false) }
     }
 
-    fun updateFontSize(newSize: Float): Unit {
+    fun updateFontSize(newSize: Float) {
         val size = newSize.coerceIn(12f, 32f)
         preferencesManager.fontSize = size
         updateState { it.copy(fontSize = size) }
     }
 
-    fun updateLineHeight(newHeight: Float): Unit {
+    fun updateLineHeight(newHeight: Float) {
         val height = newHeight.coerceIn(1.0f, 2.5f)
         preferencesManager.lineHeight = height
         updateState { it.copy(lineHeight = height) }
     }
 
-    fun updateFontFamily(newFamily: String): Unit {
+    fun updateFontFamily(newFamily: String) {
         if (preferencesManager.fontFamily == newFamily) return
         preferencesManager.fontFamily = newFamily
         updateState { it.copy(fontFamily = newFamily, toastMessage = "Font: $newFamily") }
     }
 
-    fun updateMargins(newMargins: Int): Unit {
+    fun updateMargins(newMargins: Int) {
         val margins = newMargins.coerceIn(4, 64)
         preferencesManager.margins = margins
         updateState { it.copy(margins = margins) }
     }
 
-    fun updateParagraphSpacing(newSpacing: Float): Unit {
+    fun updateParagraphSpacing(newSpacing: Float) {
         val spacing = newSpacing.coerceIn(0.0f, 3.0f)
         preferencesManager.paragraphSpacing = spacing
         updateState { it.copy(paragraphSpacing = spacing) }
     }
 
-    fun updateReaderTheme(newTheme: ReaderTheme): Unit {
+    fun updateReaderTheme(newTheme: ReaderTheme) {
         if (preferencesManager.readerTheme == newTheme.name) return
         preferencesManager.readerTheme = newTheme.name
         val label = newTheme.name.lowercase().replaceFirstChar { it.uppercase() }
         updateState { it.copy(readerTheme = newTheme, toastMessage = "Theme: $label") }
     }
 
-    fun updateAccentTheme(newAccentTheme: AccentTheme): Unit {
+    fun updateAccentTheme(newAccentTheme: AccentTheme) {
         if (preferencesManager.accentTheme == newAccentTheme.name) return
         preferencesManager.accentTheme = newAccentTheme.name
         updateState { it.copy(accentTheme = newAccentTheme, toastMessage = "Accent: ${newAccentTheme.displayName}") }
     }
 
-    fun clearToast(): Unit {
+    fun clearToast() {
         updateState { it.copy(toastMessage = null) }
     }
 
@@ -476,7 +443,7 @@ class ReaderViewModel @Inject constructor(
         libraryItemId: String? = null,
         fromBottom: Boolean = false,
         isSilent: Boolean = false
-    ): Unit = loadContent(
+    ) = loadContent(
         url = url,
         libraryItemId = libraryItemId,
         fromBottom = fromBottom,
@@ -491,7 +458,7 @@ class ReaderViewModel @Inject constructor(
         isSilent: Boolean = false,
         isExplicitNavigation: Boolean = false,
         resetWebStateBeforeLoad: Boolean = false
-    ): Unit {
+    ) {
         loadJob?.cancel()
         progressController.cancelProgressUpdate()
         loadJob = viewModelScope.launch {
@@ -514,7 +481,7 @@ class ReaderViewModel @Inject constructor(
         isExplicitNavigation: Boolean,
         preloadedResult: ContentResult.Success? = null,
         resetWebStateBeforeLoad: Boolean = false
-    ): Unit {
+    ) {
         try {
             this@ReaderViewModel.isExplicitNavigation = isExplicitNavigation
             if (handleEpubUrl(url, libraryItemId, fromBottom, isSilent)) return
@@ -565,7 +532,7 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    private suspend fun handleEpubUrl(
+    private fun handleEpubUrl(
         url: String,
         libraryItemId: String?,
         fromBottom: Boolean,
@@ -599,7 +566,7 @@ class ReaderViewModel @Inject constructor(
         return libraryItem.takeIf { it.contentType == ContentType.PDF }?.lastReadIndex
     }
 
-    private suspend fun saveCurrentProgress(): Unit {
+    private suspend fun saveCurrentProgress() {
         progressController.saveCurrentProgress(_uiState.value.content)
     }
 
@@ -607,7 +574,7 @@ class ReaderViewModel @Inject constructor(
         result: ContentResult.Success,
         libraryItemId: String?,
         fromBottom: Boolean
-    ): Unit {
+    ) {
         closeContent(_uiState.value.content)
         var effectiveId = libraryItemId ?: libraryRepository.getItemByUrl(result.url)?.id
 
@@ -786,7 +753,7 @@ class ReaderViewModel @Inject constructor(
             ?: TextUtils.extractChapterNumber(currentUrl)
     }
 
-    private fun handleLoadError(result: ContentResult.Error): Unit {
+    private fun handleLoadError(result: ContentResult.Error) {
         updateState { it.copy(isLoading = false, isNavigating = false, error = result.message) }
     }
 
@@ -797,11 +764,11 @@ class ReaderViewModel @Inject constructor(
             ?: ""
     }
 
-    fun navigateToNextChapter(): Unit = navigateToAdjacentChapter(isNext = true)
-    fun navigateToPreviousChapter(fromBottom: Boolean = false): Unit =
+    fun navigateToNextChapter() = navigateToAdjacentChapter(isNext = true)
+    fun navigateToPreviousChapter(fromBottom: Boolean = false) =
         navigateToAdjacentChapter(isNext = false, fromBottom = fromBottom)
 
-    private fun navigateToAdjacentChapter(isNext: Boolean, fromBottom: Boolean = false): Unit {
+    private fun navigateToAdjacentChapter(isNext: Boolean, fromBottom: Boolean = false) {
         updateNavigationUrls()
         val url = if (isNext) _uiState.value.content?.nextChapterUrl else _uiState.value.content?.previousChapterUrl
         if (url == null) return
@@ -890,7 +857,7 @@ class ReaderViewModel @Inject constructor(
         libraryItemId: String? = null,
         fromBottom: Boolean = false,
         isSilent: Boolean = false
-    ): Unit {
+    ) {
         loadJob?.cancel()
         progressController.cancelProgressUpdate()
         loadJob = viewModelScope.launch {
@@ -1035,7 +1002,7 @@ class ReaderViewModel @Inject constructor(
         return formattedElements
     }
 
-    fun onUserInteraction(): Unit {
+    fun onUserInteraction() {
         val pendingFraction = _uiState.value.restoreOffsetFraction
             .takeIf { it >= 0f }
         progressController.onUserInteraction(
@@ -1046,14 +1013,14 @@ class ReaderViewModel @Inject constructor(
                     it.copy(
                         targetScrollPosition = targetScrollPosition,
                         restoreOffsetFraction = pendingRestoreOffsetFraction
-                            ?: io.aatricks.easyreader.data.model.FRACTION_UNKNOWN
+                            ?: FRACTION_UNKNOWN
                     )
                 }
             }
         )
     }
 
-    suspend fun persistLifecycleProgress(): Unit {
+    suspend fun persistLifecycleProgress() {
         val currentChapterUrl = _uiState.value.content?.url ?: return
         val content = _uiState.value.content ?: return
         progressController.cancelProgressUpdate()
@@ -1114,7 +1081,7 @@ class ReaderViewModel @Inject constructor(
         elementKey: String,
         canScrollForward: Boolean = true,
         firstVisibleItemSize: Int = 0
-    ): Unit {
+    ) {
         progressController.updateScrollPosition(
             scrollOffset = scrollOffset,
             maxScrollOffset = maxScrollOffset,
@@ -1137,7 +1104,7 @@ class ReaderViewModel @Inject constructor(
         offsetFraction: Float? = null,
         currentChapterUrl: String? = null,
         forcePersist: Boolean = false
-    ): Unit {
+    ) {
         progressController.updateReadingProgress(
             progress = progress,
             scrollPosition = scrollPosition,
@@ -1150,11 +1117,11 @@ class ReaderViewModel @Inject constructor(
         )
     }
 
-    fun clearError(): Unit {
+    fun clearError() {
         updateState { it.copy(error = null) }
     }
 
-    fun retryLoad(): Unit {
+    fun retryLoad() {
         val url = _uiState.value.lastAttemptedUrl ?: _uiState.value.content?.url
         val fromBottom = _uiState.value.lastFromBottom
         val isExplicit = _uiState.value.lastIsExplicitNavigation
@@ -1173,29 +1140,11 @@ class ReaderViewModel @Inject constructor(
         (content?.paragraphs as? java.io.Closeable)?.close()
     }
 
-    fun isContentCached(url: String): Boolean = contentRepository.isCached(url)
-
-    fun prefetchVisibleImage(imageUrl: String, pageUrl: String): Unit {
+    fun prefetchVisibleImage(imageUrl: String, pageUrl: String) {
         if (!imageUrl.startsWith("http")) return
 
         viewModelScope.launch {
             runCatching { contentRepository.warmImage(imageUrl, pageUrl) }
-        }
-    }
-
-    fun downloadVisibleImage(imageUrl: String, pageUrl: String): Unit {
-        if (!imageUrl.startsWith("http")) return
-
-        viewModelScope.launch {
-            runCatching { contentRepository.downloadAndCacheImage(imageUrl, pageUrl) }
-        }
-    }
-
-    fun repairVisibleImage(imageUrl: String, pageUrl: String): Unit {
-        if (!imageUrl.startsWith("http")) return
-
-        viewModelScope.launch {
-            repairVisibleImageNow(imageUrl, pageUrl)
         }
     }
 
@@ -1213,11 +1162,7 @@ class ReaderViewModel @Inject constructor(
         }.getOrDefault(false)
     }
 
-    fun clearCache(url: String): Unit {
-        viewModelScope.launch { runCatching { contentRepository.clearCache(url) } }
-    }
-
-    fun clearAllCache(): Unit {
+    fun clearAllCache() {
         viewModelScope.launch {
             runCatching { contentRepository.clearAllCache() }
                 .onFailure { e ->
@@ -1232,20 +1177,7 @@ class ReaderViewModel @Inject constructor(
 
     suspend fun getDownloadsSize(): Long = contentRepository.getDownloadsSize()
 
-    fun saveScrollPosition(position: Float): Unit {
-        progressController.syncProgressState(
-            progressController.progressState.value.copy(
-                scrollPosition = position,
-                scrollProgress = position.toInt()
-            )
-        )
-    }
-
-    fun getScrollPosition(): Float = progressController.progressState.value.scrollPosition
-
-    fun latestProgressSnapshot(): ReaderProgressState = progressController.progressState.value
-
-    fun seekToProgress(progress: Float): Unit {
+    fun seekToProgress(progress: Float) {
         val targetPercent = progress.coerceIn(0f, 100f)
         val content = _uiState.value.content
         val totalItems = content?.paragraphs?.size ?: 0
@@ -1304,7 +1236,7 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    override fun onCleared(): Unit {
+    override fun onCleared() {
         val content = _uiState.value.content
         val progressToPersist = currentPersistedSnapshot()
         val chapterUrl = content?.url
@@ -1326,19 +1258,19 @@ class ReaderViewModel @Inject constructor(
         closeContent(content)
     }
 
-    fun toggleControls(): Unit = updateState { it.copy(showControls = !it.showControls) }
+    fun toggleControls() = updateState { it.copy(showControls = !it.showControls) }
 
-    fun hideControls(): Unit {
+    fun hideControls() {
         if (!_uiState.value.showControls) return
         updateState { it.copy(showControls = false) }
     }
 
-    fun toggleReadingMode(): Unit {
+    fun toggleReadingMode() {
         val newMode = !uiState.value.isPagedMode
         setPagedMode(newMode)
     }
 
-    fun setPagedMode(isPagedMode: Boolean): Unit {
+    fun setPagedMode(isPagedMode: Boolean) {
         val newMode = isPagedMode
         val current = uiState.value.isPagedMode
         updateState {
@@ -1356,14 +1288,12 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun toggleRtl(): Unit = setRtl(!uiState.value.isRtl)
-
-    fun setRtl(isRtl: Boolean): Unit = updateState {
+    fun setRtl(isRtl: Boolean) = updateState {
         if (it.isRtl == isRtl) it
         else it.copy(isRtl = isRtl, toastMessage = if (isRtl) "Direction: RTL" else "Direction: LTR")
     }
 
-    fun navigateToChapter(url: String, title: String): Unit {
+    fun navigateToChapter(url: String, title: String) {
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             isExplicitNavigation = false
@@ -1403,7 +1333,7 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun loadFullChapterList(baseUrl: String, sourceName: String): Unit {
+    fun loadFullChapterList(baseUrl: String, sourceName: String) {
         viewModelScope.launch {
             val cached = chapterListCache.load(baseUrl, sourceName)
             if (cached != null && cached.chapters.isNotEmpty()) {
@@ -1475,7 +1405,7 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    private fun updateNavigationUrls(): Unit {
+    private fun updateNavigationUrls() {
         val state = _uiState.value
         if (!state.isFullChapterListLoaded) return
         val currentUrl = state.content?.url ?: return

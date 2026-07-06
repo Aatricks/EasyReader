@@ -71,7 +71,7 @@ internal fun PagedReaderView(
     textColor: Color,
     readerViewModel: ReaderViewModel,
     isZoomable: Boolean
-): Unit {
+) {
     val zoomedPages = remember(content.url) { mutableStateMapOf<Int, Boolean>() }
     val isCurrentPageZoomed = zoomedPages[pagerState.currentPage] == true
 
@@ -252,7 +252,7 @@ private fun PagedImageGroupView(
     readerViewModel: ReaderViewModel,
     enableZoom: Boolean,
     onPageZoomChanged: (Boolean) -> Unit
-): Unit {
+) {
     val scrollModifier = Modifier
         .fillMaxSize()
         .verticalScroll(rememberScrollState())
@@ -324,7 +324,7 @@ internal fun ScrollingReaderView(
     bgColor: Color,
     textColor: Color,
     readerViewModel: ReaderViewModel
-): Unit {
+) {
     LaunchedEffect(uiState.targetScrollPosition, listState.canScrollForward) {
         if (uiState.targetScrollPosition == 100f && content.paragraphs.isNotEmpty() && listState.canScrollForward) {
             listState.scrollToItem(content.paragraphs.size - 1, 10000000)
