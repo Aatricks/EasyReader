@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -293,6 +295,16 @@ internal fun ContentArea(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                // Single full-screen tap authority for toggling the reader controls. The
+                // per-item clickables only cover text glyphs, so horizontal margins,
+                // inter-paragraph gaps, and empty space below a short chapter were dead
+                // zones where a tap did nothing — felt like the tap "didn't register",
+                // worst when dismissing the menu (its bars shrink the reliable target).
+                // detectTapGestures cancels on any consumed movement, so the LazyColumn /
+                // pager still win drags; only clean taps that no child consumed reach here.
+                .pointerInput(Unit) {
+                    detectTapGestures { readerViewModel.toggleControls() }
+                }
                 .drawWithContent {
                     if (uiState.showControls && edgeBlurCaptureGeneration != edgeBlurLastCaptured) {
                         edgeBlurLayer.record(
