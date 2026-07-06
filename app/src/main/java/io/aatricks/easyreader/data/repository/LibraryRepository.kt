@@ -147,6 +147,26 @@ class LibraryRepository @Inject constructor(
         true
     } ?: false
 
+    /**
+     * Update only chapter-metadata columns via targeted UPDATEs, never touching progress
+     * columns. Used by the reader's chapter-list heal, which previously did a whole-row
+     * `updateItem` (REPLACE) outside `progressMutex` — a lost-update window that could revert a
+     * concurrent progress write. Targeted column writes make that read→write gap harmless, so
+     * no mutex is needed (same approach as the background-refresh path). Pass `null` to leave a
+     * field unchanged.
+     */
+    suspend fun healChapterMetadata(
+        itemId: String,
+        totalChapters: Int?,
+        currentChapter: String?,
+        markHasUpdates: Boolean
+    ): Boolean = runRepoCatching("Failed to heal chapter metadata", false) {
+        totalChapters?.let { libraryDao.updateTotalChapters(itemId, it) }
+        currentChapter?.let { libraryDao.updateCurrentChapter(itemId, it) }
+        if (markHasUpdates) libraryDao.markHasUpdates(itemId)
+        true
+    } ?: false
+
     suspend fun updateReadingMode(itemId: String, readingMode: ReadingMode): Boolean =
         runRepoCatching("Failed to update reading mode", false) {
             libraryDao.getItemById(itemId)?.let { item ->

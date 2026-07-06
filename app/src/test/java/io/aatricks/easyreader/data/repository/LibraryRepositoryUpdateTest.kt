@@ -47,6 +47,46 @@ class LibraryRepositoryUpdateTest {
     }
 
     @Test
+    fun `healChapterMetadata writes only targeted meta columns and never a whole-row replace`() = runBlocking {
+        val itemId = "heal-id"
+
+        val result = repository.healChapterMetadata(
+            itemId = itemId,
+            totalChapters = 42,
+            currentChapter = "Chapter 42",
+            markHasUpdates = true
+        )
+
+        assertTrue(result)
+        verify(libraryDao).updateTotalChapters(itemId, 42)
+        verify(libraryDao).updateCurrentChapter(itemId, "Chapter 42")
+        verify(libraryDao).markHasUpdates(itemId)
+        // The whole point of the fix: no whole-row REPLACE, so a concurrent progress write can
+        // never be clobbered. insertItem is the REPLACE funnel used by updateItem/progress writes.
+        verify(libraryDao, never()).insertItem(any())
+        verify(libraryDao, never()).getItemById(any())
+        Unit
+    }
+
+    @Test
+    fun `healChapterMetadata skips null fields and the unset updates flag`() = runBlocking {
+        val itemId = "heal-id"
+
+        repository.healChapterMetadata(
+            itemId = itemId,
+            totalChapters = null,
+            currentChapter = "Chapter 7",
+            markHasUpdates = false
+        )
+
+        verify(libraryDao, never()).updateTotalChapters(any(), any())
+        verify(libraryDao).updateCurrentChapter(itemId, "Chapter 7")
+        verify(libraryDao, never()).markHasUpdates(any())
+        verify(libraryDao, never()).insertItem(any())
+        Unit
+    }
+
+    @Test
     fun testUpdateNovelInfo_CallsDaoUpdate() = runBlocking {
         val itemId = "test-id"
         // Mock the updateNovelInfo call to return 1 (success)

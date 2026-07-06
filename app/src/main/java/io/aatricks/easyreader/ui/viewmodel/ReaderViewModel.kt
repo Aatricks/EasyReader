@@ -75,6 +75,53 @@ class ReaderViewModel @Inject constructor(
         progressController.beginRestore()
     }
 
+    // Survives recomposition because ReaderViewModel is activity-scoped. Tracks the last
+    // restore-request id the UI restore path already consumed, so a bare recomposition — the
+    // reader being disposed and recreated on a library round-trip, with no new load/seek —
+    // is told to re-apply the live scrolled position instead of replaying the frozen load/seek
+    // anchor from uiState, which is what silently clobbered progress.
+    private var lastConsumedRestoreId: Long = 0L
+
+    /**
+     * Called once per `runScrollRestore` entry. Decides whether this restore is a GENUINE
+     * load/seek (replay the frozen `uiState` anchor — unchanged behavior) or a BARE
+     * RECOMPOSITION (re-apply the live `progressState` position), marks the request consumed,
+     * and returns the anchor to apply. The decision lives here — not in the composable — so it
+     * is unit-testable.
+     */
+    fun consumeRestoreAnchor(): RestoreAnchor {
+        val pendingId = progressController.restoreRequestId
+        val isGenuine = pendingId != lastConsumedRestoreId
+        lastConsumedRestoreId = pendingId
+        return if (isGenuine) {
+            val ui = _uiState.value
+            RestoreAnchor(
+                elementKey = ui.restoreElementKey,
+                scrollIndex = ui.scrollIndex,
+                offsetFraction = ui.restoreOffsetFraction,
+                scrollPosition = ui.scrollPosition,
+                isPreciseRestore = ui.isPreciseRestore,
+                targetScrollPosition = ui.targetScrollPosition,
+                isLiveSource = false
+            )
+        } else {
+            val live = progressController.progressState.value
+            RestoreAnchor(
+                elementKey = live.scrollElementKey,
+                scrollIndex = live.scrollIndex,
+                offsetFraction = live.scrollOffsetFraction,
+                scrollPosition = live.scrollPosition,
+                isPreciseRestore = live.isPreciseRestore,
+                // Hard-null: never replay a from-bottom / seek-to-end one-shot on a bare return.
+                // That one-shot is only meaningful for a genuine load/seek (which always take the
+                // genuine branch above). The live scrollIndex/fraction/percent already encode a
+                // real end-of-chapter landing if that is where the user actually is.
+                targetScrollPosition = null,
+                isLiveSource = true
+            )
+        }
+    }
+
     // Resolved intrinsic dimensions keyed by image URL, one Compose State per URL. A
     // ReaderImageView subscribes to its own url's State, so a write only recomposes that one
     // image — and an item scrolled away and back is sized correctly on its FIRST composition
@@ -235,6 +282,21 @@ class ReaderViewModel @Inject constructor(
         val pendingFileConfirmationUri: String?,
         val showFileConfirmationDialog: Boolean,
         val toastMessage: String?
+    )
+
+    /**
+     * The anchor `runScrollRestore` applies. `isLiveSource` distinguishes the genuine load/seek
+     * path (frozen `uiState` fields) from the bare-recomposition path (live `progressState`).
+     * See [consumeRestoreAnchor].
+     */
+    data class RestoreAnchor(
+        val elementKey: String,
+        val scrollIndex: Int,
+        val offsetFraction: Float,
+        val scrollPosition: Float,
+        val isPreciseRestore: Boolean,
+        val targetScrollPosition: Float?,
+        val isLiveSource: Boolean
     )
 
     data class ReaderUiState(
@@ -1225,6 +1287,9 @@ class ReaderViewModel @Inject constructor(
         // the restore loop triggered by seekTrigger does not later suppress saves, and
         // pass forcePersist=true to bypass the upstream-layout-stability gate (which
         // would otherwise reject seeks into chapters with unmeasured images).
+        // requestRestore() makes the seekTrigger-driven runScrollRestore read the fresh
+        // uiState seek anchor (genuine branch) rather than the live progressState.
+        progressController.requestRestore()
         progressController.markUserDragged()
 
         viewModelScope.launch {
@@ -1398,12 +1463,14 @@ class ReaderViewModel @Inject constructor(
                 markerChapterNumber != null &&
                 markerChapterNumber >= item.totalChapters.toDouble() &&
                 item.hasFinishedProgress()
-            libraryRepository.updateItem(
-                item.copy(
-                    totalChapters = if (countChanged) newCount else item.totalChapters,
-                    currentChapter = healedChapter ?: item.currentChapter,
-                    hasUpdates = if (wasCaughtUp) true else item.hasUpdates
-                )
+            // Targeted metadata write (not a whole-row REPLACE) so a concurrent progress write
+            // between the getItemById above and here is never clobbered. healedChapter is
+            // already null unless the label changed; markHasUpdates only ever sets the flag.
+            libraryRepository.healChapterMetadata(
+                itemId = id,
+                totalChapters = if (countChanged) newCount else null,
+                currentChapter = healedChapter,
+                markHasUpdates = wasCaughtUp
             )
         }
     }

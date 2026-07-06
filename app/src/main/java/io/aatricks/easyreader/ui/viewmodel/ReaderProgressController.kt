@@ -74,6 +74,21 @@ class ReaderProgressController(
      */
     var restoreInProgress: Boolean = false
 
+    /**
+     * Monotonic restore-request counter. Bumped ONLY at genuine restore chokepoints
+     * (`calculateInitialPosition` = a new chapter load, and `seekToProgress` via
+     * `requestRestore()`). A bare recomposition — e.g. returning from the full library screen,
+     * which disposes and recreates the reader composition — does NOT bump it. The UI restore
+     * path uses this to distinguish "replay the frozen load/seek anchor" from "re-apply the
+     * live scrolled position", which is what stops a library round-trip from clobbering progress.
+     */
+    var restoreRequestId: Long = 0L
+        private set
+
+    fun requestRestore() {
+        restoreRequestId++
+    }
+
     private var lastRawScrollOffset: Float = -1f
     private var lastReportedIndex: Int = -1
     private var lastReportedFractionMillis: Int = -1
@@ -135,6 +150,7 @@ class ReaderProgressController(
         fromBottom: Boolean,
         isExplicitNavigation: Boolean
     ): ReaderProgressState {
+        requestRestore()
         suppressAutoNavUntilUserInteraction = true
         hasUserInteractedSinceLoad = false
         userHasDragged = false
