@@ -41,6 +41,32 @@ internal fun resolveChapterLabelFromList(
     return match?.title?.trim()?.takeIf { it.isNotBlank() && differs }
 }
 
+private fun formatChapterNum(n: Double): String =
+    if (n % 1.0 == 0.0) n.toInt().toString() else n.toString()
+
+/**
+ * Heal a stored `currentChapter` label whose number came from a Novelight `/book/chapter/{id}` URL
+ * (the id, not the chapter number). Given the current reading [currentUrl] and the authoritative
+ * [chapters] list, swap the label's number for the list's real one, preserving whatever prefix the
+ * label uses ("Chapter 141313" -> "Chapter 102", "141313" -> "102"). Returns null when the url isn't
+ * in the list or the number is already correct, so the caller leaves the stored value untouched.
+ */
+internal fun healCurrentChapterLabel(
+    currentChapter: String,
+    currentUrl: String?,
+    chapters: List<ChapterInfo>
+): String? {
+    val listNumber = currentUrl
+        ?.let { url -> chapters.firstOrNull { it.url == url.trim() } }
+        ?.number
+    val currentNumber = TextUtils.extractChapterNumber(currentChapter)
+    if (listNumber == null || currentNumber == listNumber) return null
+    val listStr = formatChapterNum(listNumber)
+    return currentNumber
+        ?.let { currentChapter.replaceFirst(formatChapterNum(it), listStr) }
+        ?: "Chapter $listStr"
+}
+
 internal fun normalizeExploreItemDetails(item: ExploreItem): ExploreItem {
     val normalizedChapters = normalizeChapterList(item.chapters)
     val normalizedReadingUrl = item.readingUrl?.trim().takeUnless { it.isNullOrBlank() }

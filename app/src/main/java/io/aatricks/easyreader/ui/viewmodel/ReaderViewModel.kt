@@ -12,6 +12,7 @@ import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.ui.theme.AccentTheme
+import io.aatricks.easyreader.util.healCurrentChapterLabel
 import io.aatricks.easyreader.util.normalizeChapterList
 import io.aatricks.easyreader.util.resolveChapterLabelFromList
 import io.aatricks.easyreader.util.TextUtils
@@ -1374,23 +1375,34 @@ class ReaderViewModel @Inject constructor(
             )
         }
         updateNavigationUrls()
-        currentLibraryItemId?.let { id ->
-            libraryRepository.getItemById(id)?.let { item ->
-                val newCount = normalizedChapters.size
-                if (item.totalChapters != newCount) {
-                    val markerChapterNumber = item.resolvedChapterNumber()
-                    val wasCaughtUp = newCount > item.totalChapters &&
-                        item.totalChapters > 0 &&
-                        markerChapterNumber != null &&
-                        markerChapterNumber >= item.totalChapters.toDouble() &&
-                        item.hasFinishedProgress()
-                    val updated = item.copy(
-                        totalChapters = newCount,
-                        hasUpdates = if (wasCaughtUp) true else item.hasUpdates
-                    )
-                    libraryRepository.updateItem(updated)
-                }
-            }
+        healLibraryItemForChapterList(normalizedChapters)
+    }
+
+    private suspend fun healLibraryItemForChapterList(normalizedChapters: List<ChapterInfo>) {
+        val id = currentLibraryItemId ?: return
+        val item = libraryRepository.getItemById(id) ?: return
+        val newCount = normalizedChapters.size
+        // Novelight stores the /book/chapter/{id} id as the current-chapter number; once the real
+        // list is loaded, rewrite it so the library card shows the right chapter.
+        val healedChapter = healCurrentChapterLabel(
+            item.currentChapter, _uiState.value.content?.url, normalizedChapters
+        )
+        val countChanged = item.totalChapters != newCount
+        if (countChanged || healedChapter != null) {
+            val markerChapterNumber = item.resolvedChapterNumber()
+            val wasCaughtUp = countChanged &&
+                newCount > item.totalChapters &&
+                item.totalChapters > 0 &&
+                markerChapterNumber != null &&
+                markerChapterNumber >= item.totalChapters.toDouble() &&
+                item.hasFinishedProgress()
+            libraryRepository.updateItem(
+                item.copy(
+                    totalChapters = if (countChanged) newCount else item.totalChapters,
+                    currentChapter = healedChapter ?: item.currentChapter,
+                    hasUpdates = if (wasCaughtUp) true else item.hasUpdates
+                )
+            )
         }
     }
 
