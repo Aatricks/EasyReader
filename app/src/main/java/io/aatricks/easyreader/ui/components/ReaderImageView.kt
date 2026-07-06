@@ -118,10 +118,11 @@ fun ReaderImageView(
         dynamicHeight = dynamicHeight
     )
     var runtimeDimensions by remember(imageUrl, pageUrl) { mutableStateOf<ImageDimensions?>(null) }
-    // Shared, fine-grained resolved dimensions (survives this item being recycled). Lets a
+    // Shared, per-URL resolved dimensions (survive this item being recycled). Lets a
     // re-entering item size itself on first composition instead of collapsing to the loading
     // placeholder and re-laying-out — the cause of stutter when dragging up/down quickly.
-    val sharedDimensions = readerViewModel.resolvedImageDimensions[imageUrl]
+    // Reading through a per-URL State means a write for another image cannot invalidate this one.
+    val sharedDimensions by remember(imageUrl) { readerViewModel.imageDimensionState(imageUrl) }
     val effectiveDimensions = effectiveImageDimensions(
         declaredWidth = width,
         declaredHeight = height,
@@ -133,14 +134,22 @@ fun ReaderImageView(
     val aspectRatioModifier = Modifier.imageAspectRatio(side, effectiveWidth, effectiveHeight)
     val hasResolvedAspectRatio = effectiveDimensions != null
 
-    // Single, idempotent cache probe used to seed loading state and the loading UI choice.
-    // Performed once per imageUrl on the Composition thread (down from 3–4 File ops previously).
-    // Coil's HttpMediaCacheFetcher owns the authoritative disk check inside its own dispatcher.
+    // Single, idempotent cache probe shared with the request cache key below (one
+    // getLikelyMediaState call per composition entry — the repository memoizes it, so item
+    // re-entries during a scroll don't re-stat disk on the main thread). Coil's
+    // HttpMediaCacheFetcher owns the authoritative disk check inside its own dispatcher.
+    var retryTrigger by remember(imageUrl, pageUrl) { mutableStateOf(0L) }
+    val localMediaState = remember(imageUrl, retryTrigger) {
+        if (imageUrl.startsWith("http")) {
+            readerViewModel.contentRepository.getLikelyMediaState(imageUrl)
+        } else {
+            ""
+        }
+    }
     val isInitiallyCached = remember(imageUrl) {
         when {
             imageUrl.startsWith("file") -> true
-            imageUrl.startsWith("http") ->
-                readerViewModel.contentRepository.getLikelyMediaState(imageUrl) != "missing"
+            imageUrl.startsWith("http") -> localMediaState != "missing"
             else -> false
         }
     }
@@ -213,14 +222,6 @@ fun ReaderImageView(
         isCached = isInitiallyCached
     )
 
-    var retryTrigger by remember(imageUrl, pageUrl) { mutableStateOf(0L) }
-    val localMediaState = remember(imageUrl, retryTrigger) {
-        if (imageUrl.startsWith("http")) {
-            readerViewModel.contentRepository.getLikelyMediaState(imageUrl)
-        } else {
-            ""
-        }
-    }
     // Keys are only the inputs that actually change the request. isInitiallyCached is stable
     // for the lifetime of the composition, so it does not need to be a key — capturing the
     // value once avoids the re-fetch loop that previously fired when the success handler

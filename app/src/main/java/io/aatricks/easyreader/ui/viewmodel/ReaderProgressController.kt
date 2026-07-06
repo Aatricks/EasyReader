@@ -80,6 +80,18 @@ class ReaderProgressController(
     private var lastReportedProgress: Float = -1f
 
     private var progressUpdateJob: Job? = null
+    private var lastUpdateTime: Long = 0L
+    private var pendingUpdate: PendingProgressUpdate? = null
+
+    private data class PendingProgressUpdate(
+        val progress: Int,
+        val scrollPosition: Float,
+        val index: Int,
+        val elementKey: String,
+        val offsetFraction: Float,
+        val content: ChapterContent?,
+        val forcePersist: Boolean
+    )
 
     companion object {
         private const val TAG = "ReaderProgress"
@@ -460,21 +472,44 @@ class ReaderProgressController(
             return
         }
 
-        progressUpdateJob?.cancel()
-        progressUpdateJob = scope.launch {
-            delay(100)
-            if (progressInt >= 0) {
-                updateReadingProgress(
-                    progress = progressInt,
-                    scrollPosition = progress,
-                    index = index,
-                    elementKey = elementKey,
-                    offsetFraction = effectiveFraction,
-                    content = content,
-                    forcePersist = isTerminal
-                )
+        lastUpdateTime = System.currentTimeMillis()
+        pendingUpdate = PendingProgressUpdate(
+            progress = progressInt,
+            scrollPosition = progress,
+            index = index,
+            elementKey = elementKey,
+            offsetFraction = effectiveFraction,
+            content = content,
+            forcePersist = isTerminal
+        )
+
+        if (progressUpdateJob?.isActive != true) {
+            progressUpdateJob = scope.launch {
+                var update = pendingUpdate
+                if (update != null) {
+                    val now = System.currentTimeMillis()
+                    val elapsed = now - lastUpdateTime
+                    if (elapsed < 100) {
+                        delay(100 - elapsed)
+                    }
+                    update = pendingUpdate
+                    if (update != null) {
+                        if (update.progress >= 0) {
+                            updateReadingProgress(
+                                progress = update.progress,
+                                scrollPosition = update.scrollPosition,
+                                index = update.index,
+                                elementKey = update.elementKey,
+                                offsetFraction = update.offsetFraction,
+                                content = update.content,
+                                forcePersist = update.forcePersist
+                            )
+                        }
+                        pendingUpdate = null
+                    }
+                }
+                lastRawScrollOffset = scrollOffset
             }
-            lastRawScrollOffset = scrollOffset
         }
     }
 
@@ -546,10 +581,12 @@ class ReaderProgressController(
         lastReportedFractionMillis = -1
         lastReportedProgress = -1f
         progressUpdateJob?.cancel()
+        pendingUpdate = null
     }
 
     fun cancelProgressUpdate() {
         progressUpdateJob?.cancel()
+        pendingUpdate = null
     }
 }
 

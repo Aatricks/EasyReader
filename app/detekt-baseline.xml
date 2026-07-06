@@ -70,7 +70,7 @@
     <ID>FunctionNaming:FileConfirmationDialog.kt$@Composable fun FileConfirmationDialog( fileUri: String, onConfirm: () -&gt; Unit, onCancel: () -&gt; Unit )</ID>
     <ID>FunctionNaming:GridStateTiles.kt$@Composable fun ErrorTile( message: String, onRetry: (() -&gt; Unit)? = null, modifier: Modifier = Modifier )</ID>
     <ID>FunctionNaming:GridStateTiles.kt$@Composable fun LoadingTile( modifier: Modifier = Modifier, height: androidx.compose.ui.unit.Dp = 180.dp )</ID>
-    <ID>FunctionNaming:LibraryDrawerContent.kt$@Composable fun LibraryDrawerContent( libraryViewModel: LibraryViewModel, readerViewModel: ReaderViewModel, navController: NavController, onOpenFilePicker: () -&gt; Unit, onCloseDrawer: () -&gt; Unit ): Unit</ID>
+    <ID>FunctionNaming:LibraryDrawerContent.kt$@Composable fun LibraryDrawerContent( drawerSections: DrawerNovelSections, isLibraryEmpty: Boolean, onOpenFilePicker: () -&gt; Unit, onCloseDrawer: () -&gt; Unit, onLibraryClick: () -&gt; Unit, onDiscoverClick: () -&gt; Unit, onOpenLibraryItem: (LibraryItem) -&gt; Unit, onOpenLatestUpdate: (LibraryItem) -&gt; Unit ): Unit</ID>
     <ID>FunctionNaming:LibraryDrawerContent.kt$@Composable private fun ContinueReadingCard( item: LibraryItem, onClick: () -&gt; Unit ): Unit</ID>
     <ID>FunctionNaming:LibraryDrawerContent.kt$@Composable private fun DrawerSectionLabel(text: String): Unit</ID>
     <ID>FunctionNaming:LibraryDrawerContent.kt$@Composable private fun EmptyQuickAccessState(): Unit</ID>
@@ -149,7 +149,7 @@
     <ID>LongMethod:ExploreScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ExploreScreen( exploreViewModel: ExploreViewModel, libraryViewModel: LibraryViewModel, onNavigateBack: () -&gt; Unit, onReadItem: (ExploreItem) -&gt; Unit ): Unit</ID>
     <ID>LongMethod:ExploreScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun ActiveFilterBar( uiState: ExploreViewModel.ExploreUiState, hasActiveFilters: Boolean, onOpenFilters: () -&gt; Unit, onSourceSelect: (String?) -&gt; Unit, onTagToggle: (String) -&gt; Unit, onClearFilters: () -&gt; Unit ): Unit</ID>
     <ID>LongMethod:ExploreScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable private fun FiltersBottomSheetContent( uiState: ExploreViewModel.ExploreUiState, onSourceSelect: (String?) -&gt; Unit, onTagToggle: (String) -&gt; Unit, onClearTags: () -&gt; Unit, onClose: () -&gt; Unit ): Unit</ID>
-    <ID>LongMethod:LibraryDrawerContent.kt$@Composable fun LibraryDrawerContent( libraryViewModel: LibraryViewModel, readerViewModel: ReaderViewModel, navController: NavController, onOpenFilePicker: () -&gt; Unit, onCloseDrawer: () -&gt; Unit ): Unit</ID>
+    <ID>LongMethod:LibraryDrawerContent.kt$@Composable fun LibraryDrawerContent( drawerSections: DrawerNovelSections, isLibraryEmpty: Boolean, onOpenFilePicker: () -&gt; Unit, onCloseDrawer: () -&gt; Unit, onLibraryClick: () -&gt; Unit, onDiscoverClick: () -&gt; Unit, onOpenLibraryItem: (LibraryItem) -&gt; Unit, onOpenLatestUpdate: (LibraryItem) -&gt; Unit ): Unit</ID>
     <ID>LongMethod:LibraryItemCard.kt$@OptIn(ExperimentalFoundationApi::class) @Composable fun LibraryItemCard( item: LibraryItem, isSelected: Boolean, isCurrent: Boolean, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, onNewTagClick: (() -&gt; Unit)? = null, onDelete: (() -&gt; Unit)? = null, onResetProgress: (() -&gt; Unit)? = null, onMarkFinished: (() -&gt; Unit)? = null )</ID>
     <ID>LongMethod:LibraryRepository.kt$LibraryRepository$suspend fun refreshLibraryUpdates( exploreRepository: ExploreRepository, ignoreActivityThreshold: Boolean = false ): Unit</ID>
     <ID>LongMethod:LibraryScreen.kt$@Composable private fun AddNovelSection( urlInput: String, onUrlChange: (String) -&gt; Unit, onAddClick: () -&gt; Unit, onOpenPdfClick: () -&gt; Unit ): Unit</ID>
@@ -184,6 +184,7 @@
     <ID>LongParameterList:ExploreGridSection.kt$( gridState: LazyGridState, modifier: Modifier = Modifier, uiState: ExploreViewModel.ExploreUiState, hasActiveFilters: Boolean, onItemSelect: (ExploreItem) -&gt; Unit, onLoadMore: () -&gt; Unit, onClearFilters: () -&gt; Unit, onRetryFailedSource: (String) -&gt; Unit )</ID>
     <ID>LongParameterList:ExploreScreen.kt$( uiState: ExploreViewModel.ExploreUiState, hasActiveFilters: Boolean, onOpenFilters: () -&gt; Unit, onSourceSelect: (String?) -&gt; Unit, onTagToggle: (String) -&gt; Unit, onClearFilters: () -&gt; Unit )</ID>
     <ID>LongParameterList:ExploreScreen.kt$( uiState: ExploreViewModel.ExploreUiState, modifier: Modifier = Modifier, hasActiveFilters: Boolean, onSearchQueryChange: (String) -&gt; Unit, onPerformSearch: () -&gt; Unit, onOpenFilters: () -&gt; Unit, onClearFilters: () -&gt; Unit, onSetBrowseMode: (BrowseMode) -&gt; Unit, onSourceSelect: (String?) -&gt; Unit, onTagToggle: (String) -&gt; Unit, onItemSelect: (ExploreItem) -&gt; Unit, onLoadMore: () -&gt; Unit, onRetryFailedSource: (String) -&gt; Unit )</ID>
+    <ID>LongParameterList:LibraryDrawerContent.kt$( drawerSections: DrawerNovelSections, isLibraryEmpty: Boolean, onOpenFilePicker: () -&gt; Unit, onCloseDrawer: () -&gt; Unit, onLibraryClick: () -&gt; Unit, onDiscoverClick: () -&gt; Unit, onOpenLibraryItem: (LibraryItem) -&gt; Unit, onOpenLatestUpdate: (LibraryItem) -&gt; Unit )</ID>
     <ID>LongParameterList:LibraryItemCard.kt$( item: LibraryItem, isSelected: Boolean, isCurrent: Boolean, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, onNewTagClick: (() -&gt; Unit)? = null, onDelete: (() -&gt; Unit)? = null, onResetProgress: (() -&gt; Unit)? = null, onMarkFinished: (() -&gt; Unit)? = null )</ID>
     <ID>LongParameterList:LibraryRepository.kt$LibraryRepository$( itemId: String, currentChapter: String = "", progress: FieldUpdate&lt;Int&gt; = FieldUpdate.Unchanged, currentChapterUrl: FieldUpdate&lt;String&gt; = FieldUpdate.Unchanged, lastScrollProgress: FieldUpdate&lt;Float&gt; = FieldUpdate.Unchanged, lastReadIndex: FieldUpdate&lt;Int&gt; = FieldUpdate.Unchanged, lastReadElementKey: FieldUpdate&lt;String&gt; = FieldUpdate.Unchanged, lastReadOffsetFraction: FieldUpdate&lt;Float&gt; = FieldUpdate.Unchanged )</ID>
     <ID>LongParameterList:LibraryRepository.kt$LibraryRepository$( itemId: String, currentChapter: String, progress: Int, currentChapterUrl: String? = null, lastScrollProgress: Float? = null, lastReadIndex: Int? = null, lastReadElementKey: String? = null, lastReadOffsetFraction: Float? = null )</ID>
@@ -301,12 +302,8 @@
     <ID>MagicNumber:BaseJsoupSource.kt$BaseJsoupSource$15000L</ID>
     <ID>MagicNumber:CacheKeyUtils.kt$CacheKeyUtils$0xff</ID>
     <ID>MagicNumber:CacheKeyUtils.kt$CacheKeyUtils$4</ID>
-    <ID>MagicNumber:ChapterDownloadQueue.kt$WorkManagerChapterDownloadQueue$3</ID>
     <ID>MagicNumber:ChapterDownloadQueue.kt$WorkManagerChapterDownloadQueue$30</ID>
-    <ID>MagicNumber:ChapterDownloadQueue.kt$WorkManagerChapterDownloadQueue$4</ID>
-    <ID>MagicNumber:ChapterDownloadQueue.kt$WorkManagerChapterDownloadQueue$5</ID>
     <ID>MagicNumber:ChapterListSheet.kt$100</ID>
-    <ID>MagicNumber:EasyReaderApplication.kt$EasyReaderApplication$0.25</ID>
     <ID>MagicNumber:EpubContentLoader.kt$EpubContentLoader$1024</ID>
     <ID>MagicNumber:EpubContentLoader.kt$EpubContentLoader$50</ID>
     <ID>MagicNumber:EpubContentLoader.kt$EpubContentLoader.&lt;no name provided&gt;$5</ID>
@@ -579,6 +576,8 @@
     <ID>MaxLineLength:ReaderProgressController.kt$ReaderProgressController$"saveProgress url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(resolvedChapterUrl)} index=$lastIndex elementKey=${if (lastElementKey.isNotEmpty()) "&lt;set&gt;" else "&lt;empty&gt;"} fraction=$lastFraction firstVisibleItemSize=${latest.firstVisibleItemSize}"</ID>
     <ID>MaxLineLength:ReaderProgressController.kt$ReaderProgressController$maxScrollOffset &gt; viewportHeight -&gt; ((scrollOffset / (maxScrollOffset - viewportHeight)) * 100f).coerceIn(0f, 100f)</ID>
     <ID>MaxLineLength:ReaderProgressController.kt$ReaderProgressController$val nextUiPendingRestoreOffsetFraction = if (uiPendingRestoreOffsetFraction != null) null else uiPendingRestoreOffsetFraction</ID>
+    <ID>MaxLineLength:ReaderScreen.kt$libraryViewModel</ID>
+    <ID>MaxLineLength:ReaderScreen.kt$val loadUrl = if (item.currentChapterUrl.isNotBlank()) item.currentChapterUrl else item.url</ID>
     <ID>MaxLineLength:ReaderViewModel.kt$ReaderViewModel$"persistLifecycleProgress skip snap-to-top url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(currentChapterUrl)} dbProgress=${existing.progress}"</ID>
     <ID>MaxLineLength:ReaderViewModel.kt$ReaderViewModel$"persistLifecycleProgress skip unstable url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(currentChapterUrl)} firstVisibleItemSize=${latest.firstVisibleItemSize} fraction=${latest.scrollOffsetFraction}"</ID>
     <ID>MaxLineLength:ReaderViewModel.kt$ReaderViewModel$"persistLifecycleProgress url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(currentChapterUrl)} index=${latest.scrollIndex} fraction=${latest.scrollOffsetFraction} firstVisibleItemSize=${latest.firstVisibleItemSize}"</ID>
@@ -630,8 +629,9 @@
     <ID>ReturnCount:ImageBoundsParser.kt$ImageBoundsParser$private fun parseJpeg(bytes: ByteArray): Pair&lt;Int, Int&gt;?</ID>
     <ID>ReturnCount:ImageBoundsParser.kt$ImageBoundsParser$private fun parsePng(bytes: ByteArray): Pair&lt;Int, Int&gt;?</ID>
     <ID>ReturnCount:ImageBoundsParser.kt$ImageBoundsParser$private fun parseWebP(bytes: ByteArray): Pair&lt;Int, Int&gt;?</ID>
-    <ID>ReturnCount:ImageCache.kt$ImageCache$fun promoteToDownloads(url: String): File?</ID>
     <ID>ReturnCount:ImageCache.kt$ImageCache$private fun File.isCachedImageValid(): Boolean</ID>
+    <ID>ReturnCount:ImageCache.kt$ImageCache$private fun promoteToDownloadsInternal(url: String): File?</ID>
+    <ID>ReturnCount:ImageDimensionCacheRepository.kt$ImageDimensionCacheRepository$suspend fun persistAll(entries: List&lt;Triple&lt;String, Int, Int&gt;&gt;): Boolean</ID>
     <ID>ReturnCount:ImageDownloader.kt$ImageDownloader$private fun parseImageResponse( response: Response, destinationFile: File? = null ): ImageFetchResult</ID>
     <ID>ReturnCount:ImageDownloader.kt$ImageDownloader$suspend fun executeImageRequest( imageUrl: String, pageUrl: String, priority: ImageRequestPriority, rangeHeader: String? = null, destinationFile: File? = null ): ImageFetchResult</ID>
     <ID>ReturnCount:ImageIntegrity.kt$ImageIntegrity$fun isValidImageFile(file: File): Boolean</ID>

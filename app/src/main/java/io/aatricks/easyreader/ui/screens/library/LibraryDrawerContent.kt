@@ -12,35 +12,26 @@ import androidx.compose.material.icons.filled.ArrowOutward
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavController
 import io.aatricks.easyreader.data.model.LibraryItem
-import io.aatricks.easyreader.ui.ExploreRoute
-import io.aatricks.easyreader.ui.LibraryRoute
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
-import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
-import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 
 @Composable
 fun LibraryDrawerContent(
-    libraryViewModel: LibraryViewModel,
-    readerViewModel: ReaderViewModel,
-    navController: NavController,
+    drawerSections: DrawerNovelSections,
+    isLibraryEmpty: Boolean,
     onOpenFilePicker: () -> Unit,
-    onCloseDrawer: () -> Unit
+    onCloseDrawer: () -> Unit,
+    onLibraryClick: () -> Unit,
+    onDiscoverClick: () -> Unit,
+    onOpenLibraryItem: (LibraryItem) -> Unit,
+    onOpenLatestUpdate: (LibraryItem) -> Unit
 ): Unit {
-    val libraryUiState by libraryViewModel.uiState.collectAsState()
-    val drawerSections = remember(libraryUiState.items) {
-        buildDrawerNovelSections(libraryUiState.items)
-    }
     val continueNovel = drawerSections.continueNovel
     val recentUpdates = drawerSections.recentUpdates
     val recentItems = drawerSections.recentNovels
@@ -60,9 +51,7 @@ fun LibraryDrawerContent(
                 FilledTonalButton(
                     onClick = {
                         onCloseDrawer()
-                        navController.navigate(LibraryRoute) {
-                            launchSingleTop = true
-                        }
+                        onLibraryClick()
                     },
                     modifier = Modifier.weight(1f)
                 ) {
@@ -71,9 +60,7 @@ fun LibraryDrawerContent(
                 OutlinedButton(
                     onClick = {
                         onCloseDrawer()
-                        navController.navigate(ExploreRoute) {
-                            launchSingleTop = true
-                        }
+                        onDiscoverClick()
                     },
                     modifier = Modifier.weight(1f)
                 ) {
@@ -105,12 +92,8 @@ fun LibraryDrawerContent(
                 ContinueReadingCard(
                     item = continueNovel.resumeItem,
                     onClick = {
-                        openLibraryItem(
-                            item = continueNovel.resumeItem,
-                            libraryViewModel = libraryViewModel,
-                            readerViewModel = readerViewModel,
-                            onCloseDrawer = onCloseDrawer
-                        )
+                        onOpenLibraryItem(continueNovel.resumeItem)
+                        onCloseDrawer()
                     }
                 )
             }
@@ -124,12 +107,8 @@ fun LibraryDrawerContent(
                     supportingText = "Start at the newest chapter",
                     trailingLabel = "Open latest",
                     onClick = {
-                        openLatestUpdateItem(
-                            item = novel.updateItem,
-                            libraryViewModel = libraryViewModel,
-                            readerViewModel = readerViewModel,
-                            onCloseDrawer = onCloseDrawer
-                        )
+                        onOpenLatestUpdate(novel.updateItem)
+                        onCloseDrawer()
                     }
                 )
             }
@@ -145,56 +124,18 @@ fun LibraryDrawerContent(
                             if (chapter.startsWith("Resume")) chapter else "Resume $chapter"
                         },
                     onClick = {
-                        openLibraryItem(
-                            item = novel.resumeItem,
-                            libraryViewModel = libraryViewModel,
-                            readerViewModel = readerViewModel,
-                            onCloseDrawer = onCloseDrawer
-                        )
+                        onOpenLibraryItem(novel.resumeItem)
+                        onCloseDrawer()
                     }
                 )
             }
         }
 
-        if (libraryUiState.items.isEmpty()) {
+        if (isLibraryEmpty) {
             item {
                 EmptyQuickAccessState()
             }
         }
-    }
-}
-
-private fun openLibraryItem(
-    item: LibraryItem,
-    libraryViewModel: LibraryViewModel,
-    readerViewModel: ReaderViewModel,
-    onCloseDrawer: () -> Unit
-): Unit {
-    val loadUrl = if (item.currentChapterUrl.isNotBlank()) item.currentChapterUrl else item.url
-    readerViewModel.loadContent(loadUrl, item.id)
-    libraryViewModel.markAsCurrentlyReading(item.id)
-    onCloseDrawer()
-}
-
-private fun openLatestUpdateItem(
-    item: LibraryItem,
-    libraryViewModel: LibraryViewModel,
-    readerViewModel: ReaderViewModel,
-    onCloseDrawer: () -> Unit
-): Unit {
-    val baseTitle = item.baseTitle.ifBlank { item.title }
-    if (item.baseNovelUrl.isBlank() || item.sourceName.isBlank()) {
-        val loadUrl = if (item.currentChapterUrl.isNotBlank()) item.currentChapterUrl else item.url
-        readerViewModel.openChapterFromStart(loadUrl, item.id)
-        libraryViewModel.markAsCurrentlyReading(item.id)
-        onCloseDrawer()
-        return
-    }
-
-    libraryViewModel.openNewChapter(baseTitle, item.baseNovelUrl, item.sourceName) { url, id ->
-        readerViewModel.openChapterFromStart(url, id)
-        libraryViewModel.markAsCurrentlyReading(id)
-        onCloseDrawer()
     }
 }
 

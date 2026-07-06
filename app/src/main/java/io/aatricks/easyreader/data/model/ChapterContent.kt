@@ -70,12 +70,15 @@ data class ChapterContent(
     )
     
     /**
-     * Get all image URLs
+     * Get all image URLs, including images nested inside [ContentElement.PageContent]
      */
-    fun getAllImageUrls(): List<String> = paragraphs.flatMap { 
+    fun getAllImageUrls(): List<String> = collectImageUrls(paragraphs)
+
+    private fun collectImageUrls(elements: List<ContentElement>): List<String> = elements.flatMap {
         when (it) {
             is ContentElement.Image -> listOf(it.url)
             is ContentElement.ImageGroup -> it.images.map { img -> img.url }
+            is ContentElement.PageContent -> collectImageUrls(it.elements)
             else -> emptyList()
         }
     }

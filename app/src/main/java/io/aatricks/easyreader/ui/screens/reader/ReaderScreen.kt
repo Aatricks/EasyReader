@@ -165,6 +165,11 @@ fun ReaderScreen(
     ModalNavigationDrawer(
         drawerState = drawerState,
         modifier = modifier,
+        // Edge-swipe opens the drawer in continuous (manhwa/webtoon) scrolling, where the
+        // horizontal edge drag never conflicts with the vertical scroll. In paged mode the left
+        // edge belongs to horizontal page-turns, so only allow the swipe once the drawer is
+        // already open (to close it) — it's still reachable there via the toolbar/back button.
+        gesturesEnabled = drawerState.isOpen || !uiState.isPagedMode,
         drawerContent = {
             ModalDrawerSheet(
                 modifier = Modifier.width(320.dp)
@@ -174,16 +179,41 @@ fun ReaderScreen(
                         drawerState.targetValue == DrawerValue.Open
                 if (drawerIsOpeningOrOpen) {
                     val libraryViewModel = libraryViewModelProvider()
-                    LaunchedEffect(libraryViewModel) {
-                        libraryViewModel.reconcileDownloadedItemsOnDemand()
-                    }
+                    val drawerUi by libraryViewModel.drawerUiState.collectAsState()
                     LibraryDrawerContent(
-                        libraryViewModel = libraryViewModel,
-                        readerViewModel = readerViewModel,
-                        navController = navController,
+                        drawerSections = drawerUi.sections,
+                        isLibraryEmpty = drawerUi.isLibraryEmpty,
                         onOpenFilePicker = onOpenFilePicker,
                         onCloseDrawer = {
                             scope.launch { drawerState.close() }
+                        },
+                        onLibraryClick = {
+                            navController.navigate(LibraryRoute) {
+                                launchSingleTop = true
+                            }
+                        },
+                        onDiscoverClick = {
+                            navController.navigate(io.aatricks.easyreader.ui.ExploreRoute) {
+                                launchSingleTop = true
+                            }
+                        },
+                        onOpenLibraryItem = { item ->
+                            val loadUrl = if (item.currentChapterUrl.isNotBlank()) item.currentChapterUrl else item.url
+                            readerViewModel.loadContent(loadUrl, item.id)
+                            libraryViewModel.markAsCurrentlyReading(item.id)
+                        },
+                        onOpenLatestUpdate = { item ->
+                            val baseTitle = item.baseTitle.ifBlank { item.title }
+                            if (item.baseNovelUrl.isBlank() || item.sourceName.isBlank()) {
+                                val loadUrl = if (item.currentChapterUrl.isNotBlank()) item.currentChapterUrl else item.url
+                                readerViewModel.openChapterFromStart(loadUrl, item.id)
+                                libraryViewModel.markAsCurrentlyReading(item.id)
+                            } else {
+                                libraryViewModel.openNewChapter(baseTitle, item.baseNovelUrl, item.sourceName) { url, id ->
+                                    readerViewModel.openChapterFromStart(url, id)
+                                    libraryViewModel.markAsCurrentlyReading(id)
+                                }
+                            }
                         }
                     )
                 }

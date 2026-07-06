@@ -28,7 +28,7 @@ object FileSizeUtils {
         return size
     }
 
-    fun trimDirectoryToSize(dir: File, maxBytes: Long): Long {
+    fun trimDirectoryToSize(dir: File, maxBytes: Long, onDelete: (File) -> Unit = {}): Long {
         if (!dir.exists()) return 0L
         val files = dir.walkTopDown()
             .filter { it.isFile && !it.name.endsWith(".tmp") }
@@ -41,6 +41,7 @@ object FileSizeUtils {
             val length = file.length()
             if (file.delete()) {
                 total -= length
+                onDelete(file)
             }
         }
         return total

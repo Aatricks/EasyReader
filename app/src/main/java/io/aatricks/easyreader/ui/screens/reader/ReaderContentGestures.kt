@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -146,46 +147,54 @@ internal fun rememberReaderNestedScrollConnection(
     onNavigatePrevious: () -> Unit,
     onNavigateNext: () -> Unit
 ): NestedScrollConnection {
+    val currentUiState by rememberUpdatedState(uiState)
+    val currentOnHideControls by rememberUpdatedState(onHideControls)
+    val currentOnUserInteraction by rememberUpdatedState(onUserInteraction)
+    val currentOnPullAmountChange by rememberUpdatedState(onPullAmountChange)
+    val currentOnNavigatePrevious by rememberUpdatedState(onNavigatePrevious)
+    val currentOnNavigateNext by rememberUpdatedState(onNavigateNext)
+
     var pullAmount by remember { mutableFloatStateOf(0f) }
     var handledUserScrollStart by remember { mutableStateOf(false) }
 
-    return remember(content, uiState.isPagedMode, uiState.isRtl, pagerState.currentPage) {
+    return remember(content, pagerState, listState, threshold) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val state = currentUiState
                 if (source == NestedScrollSource.UserInput &&
                     shouldDispatchReaderScrollStart(available, handledUserScrollStart)
                 ) {
-                    if (uiState.showControls) {
-                        onHideControls()
+                    if (state.showControls) {
+                        currentOnHideControls()
                     }
-                    onUserInteraction()
+                    currentOnUserInteraction()
                     handledUserScrollStart = true
                 }
 
-                if (uiState.isPagedMode) {
+                if (state.isPagedMode) {
                     if (pullAmount > 0 && available.x < 0) {
                         val consumed = available.x.coerceAtLeast(-pullAmount)
                         pullAmount += consumed
-                        onPullAmountChange(pullAmount)
+                        currentOnPullAmountChange(pullAmount)
                         return Offset(consumed, 0f)
                     }
                     if (pullAmount < 0 && available.x > 0) {
                         val consumed = available.x.coerceAtMost(-pullAmount)
                         pullAmount += consumed
-                        onPullAmountChange(pullAmount)
+                        currentOnPullAmountChange(pullAmount)
                         return Offset(consumed, 0f)
                     }
                 } else {
                     if (pullAmount > 0 && available.y < 0) {
                         val consumed = available.y.coerceAtLeast(-pullAmount)
                         pullAmount += consumed
-                        onPullAmountChange(pullAmount)
+                        currentOnPullAmountChange(pullAmount)
                         return Offset(0f, consumed)
                     }
                     if (pullAmount < 0 && available.y > 0) {
                         val consumed = available.y.coerceAtMost(-pullAmount)
                         pullAmount += consumed
-                        onPullAmountChange(pullAmount)
+                        currentOnPullAmountChange(pullAmount)
                         return Offset(0f, consumed)
                     }
                 }
@@ -198,77 +207,79 @@ internal fun rememberReaderNestedScrollConnection(
                 source: NestedScrollSource
             ): Offset {
                 if (source != NestedScrollSource.UserInput) return Offset.Zero
+                val state = currentUiState
 
-                if (uiState.isPagedMode) {
+                if (state.isPagedMode) {
                     val isAtStart = pagerState.currentPage == 0
                     val isAtEnd = pagerState.currentPage == content.paragraphs.size - 1
                     val isAtAnyEdge = isAtStart || isAtEnd
 
-                    if (uiState.isRtl) {
-                        if (available.x < 0 && isAtStart && uiState.canNavigatePrevious) {
+                    if (state.isRtl) {
+                        if (available.x < 0 && isAtStart && state.canNavigatePrevious) {
                             pullAmount += available.x * 0.5f
-                            onPullAmountChange(pullAmount)
+                            currentOnPullAmountChange(pullAmount)
                             return Offset(available.x, 0f)
-                        } else if (available.x > 0 && isAtEnd && uiState.canNavigateNext) {
+                        } else if (available.x > 0 && isAtEnd && state.canNavigateNext) {
                             pullAmount += available.x * 0.5f
-                            onPullAmountChange(pullAmount)
+                            currentOnPullAmountChange(pullAmount)
                             return Offset(available.x, 0f)
                         }
                     } else {
-                        if (available.x > 0 && isAtStart && uiState.canNavigatePrevious) {
+                        if (available.x > 0 && isAtStart && state.canNavigatePrevious) {
                             pullAmount += available.x * 0.5f
-                            onPullAmountChange(pullAmount)
+                            currentOnPullAmountChange(pullAmount)
                             return Offset(available.x, 0f)
-                        } else if (available.x < 0 && isAtEnd && uiState.canNavigateNext) {
+                        } else if (available.x < 0 && isAtEnd && state.canNavigateNext) {
                             pullAmount += available.x * 0.5f
-                            onPullAmountChange(pullAmount)
+                            currentOnPullAmountChange(pullAmount)
                             return Offset(available.x, 0f)
                         }
                     }
 
                     if (pullAmount != 0f && !isAtAnyEdge) {
                         pullAmount = 0f
-                        onPullAmountChange(0f)
+                        currentOnPullAmountChange(0f)
                     }
                 } else {
                     val isAtTop = !listState.canScrollBackward
                     val isAtBottom = !listState.canScrollForward
 
-                    if (available.y > 0 && isAtTop && uiState.canNavigatePrevious) {
+                    if (available.y > 0 && isAtTop && state.canNavigatePrevious) {
                         pullAmount += available.y * 0.5f
-                        onPullAmountChange(pullAmount)
+                        currentOnPullAmountChange(pullAmount)
                         return Offset(0f, available.y)
-                    } else if (available.y < 0 && isAtBottom && uiState.canNavigateNext) {
+                    } else if (available.y < 0 && isAtBottom && state.canNavigateNext) {
                         pullAmount += available.y * 0.5f
-                        onPullAmountChange(pullAmount)
+                        currentOnPullAmountChange(pullAmount)
                         return Offset(0f, available.y)
                     }
 
                     if (pullAmount != 0f && !isAtTop && !isAtBottom) {
                         pullAmount = 0f
-                        onPullAmountChange(0f)
+                        currentOnPullAmountChange(0f)
                     }
                 }
                 return Offset.Zero
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
+                val state = currentUiState
                 if (abs(pullAmount) >= threshold) {
-                    val isPrevious = if (uiState.isPagedMode) {
-                        if (uiState.isRtl) pullAmount < 0 else pullAmount > 0
+                    val isPrevious = if (state.isPagedMode) {
+                        if (state.isRtl) pullAmount < 0 else pullAmount > 0
                     } else {
                         pullAmount > 0
                     }
 
                     if (isPrevious) {
-                        onNavigatePrevious()
+                        currentOnNavigatePrevious()
                     } else {
-                        onNavigateNext()
+                        currentOnNavigateNext()
                     }
                 }
                 pullAmount = 0f
                 handledUserScrollStart = false
-                onPullAmountChange(0f)
+                currentOnPullAmountChange(0f)
                 return Velocity.Zero
             }
 

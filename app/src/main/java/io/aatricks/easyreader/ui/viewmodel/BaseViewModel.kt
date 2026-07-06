@@ -12,7 +12,7 @@ import kotlinx.coroutines.launch
 
 abstract class BaseViewModel<S>(initialState: S) : ViewModel() {
     protected val _uiState = MutableStateFlow(initialState)
-    val uiState: StateFlow<S> = _uiState.asStateFlow()
+    open val uiState: StateFlow<S> = _uiState.asStateFlow()
 
     protected fun updateState(block: (S) -> S): Unit {
         _uiState.update(block)

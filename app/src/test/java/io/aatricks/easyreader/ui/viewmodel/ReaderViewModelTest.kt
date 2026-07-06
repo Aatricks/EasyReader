@@ -765,6 +765,36 @@ class ReaderViewModelTest {
     }
 
     @Test
+    fun `navigating to a new chapter prunes previous chapter dimension state`() = runTest {
+        val itemId = "item-1"
+        val urlA = "https://example.com/webtoon/chapter-10"
+        val urlB = "https://example.com/webtoon/chapter-11"
+        val imageA = "https://cdn.example.com/panel-a.jpg"
+        val imageB = "https://cdn.example.com/panel-b.jpg"
+
+        whenever(contentRepository.loadContent(urlA)).thenReturn(
+            ContentResult.Success(elements = listOf(ContentElement.Image(imageA)), title = "Chapter 10", url = urlA)
+        )
+        whenever(contentRepository.loadContent(urlB)).thenReturn(
+            ContentResult.Success(elements = listOf(ContentElement.Image(imageB)), title = "Chapter 11", url = urlB)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(
+            LibraryItem(id = itemId, title = "Chapter 10", url = urlA)
+        )
+
+        viewModel.loadContent(urlA, itemId)
+        advanceUntilIdle()
+        viewModel.persistImageDimensions(imageA, 1080, 1920)
+        advanceUntilIdle()
+        assertEquals(1080 to 1920, viewModel.imageDimensionState(imageA).value)
+
+        viewModel.loadContent(urlB, itemId)
+        advanceUntilIdle()
+
+        assertNull(viewModel.imageDimensionState(imageA).value)
+    }
+
+    @Test
     fun `scroll progress saves when current item is stable even before upstream image resolves`() = runTest {
         val itemId = "item-1"
         val url = "https://example.com/webtoon/chapter-11"

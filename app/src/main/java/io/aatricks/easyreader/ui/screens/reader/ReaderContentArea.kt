@@ -102,6 +102,12 @@ internal fun ContentArea(
         isManhwaByUrl || (content.getImageCount() > content.getTextCount() && content.getImageCount() > 2)
     }
 
+    val stableKeys = remember(content) {
+        content.paragraphs.mapIndexed { idx, element ->
+            stableContentElementKey(content.url, idx, element)
+        }
+    }
+
     // No init values — single restore path through LaunchedEffect below. Initial values would
     // race with the LaunchedEffect and create the "two paths, one of them silently wrong" bug.
     val listState = key(content.url) { rememberLazyListState() }
@@ -149,15 +155,23 @@ internal fun ContentArea(
         }
     }
 
-    LaunchedEffect(listState.firstVisibleItemIndex, pagerState.currentPage, content.url) {
-        val currentIndex = if (uiState.isPagedMode) pagerState.currentPage else listState.firstVisibleItemIndex
-        prefetchImages(currentIndex, content, requestedIndices) { url ->
-            readerViewModel.prefetchVisibleImage(url, content.url)
+    // snapshotFlow instead of effect keys: reading firstVisibleItemIndex during composition
+    // recomposed this whole scope — and cancelled/relaunched the effect — on every item
+    // boundary crossed while scrolling. The captured `content` may be an older copy after a
+    // dimension rebuild, which is fine: prefetch only reads the element urls, identical
+    // across copies of the same chapter.
+    LaunchedEffect(content.url, uiState.isPagedMode) {
+        snapshotFlow {
+            if (uiState.isPagedMode) pagerState.currentPage else listState.firstVisibleItemIndex
+        }.collect { currentIndex ->
+            prefetchImages(currentIndex, content, requestedIndices) { url ->
+                readerViewModel.prefetchVisibleImage(url, content.url)
+            }
         }
     }
 
     LaunchedEffect(content.url, uiState.seekTrigger) {
-        runScrollRestore(content, uiState, listState, pagerState, readerViewModel)
+        runScrollRestore(content, listState, pagerState, readerViewModel, stableKeys)
     }
 
     // Detect genuine user drags on the LazyList. Programmatic scrollToItem calls do NOT
@@ -178,9 +192,7 @@ internal fun ContentArea(
         LaunchedEffect(pagerState.currentPage) {
             val totalItems = content.paragraphs.size
             val currentItem = pagerState.currentPage
-            val currentKey = content.paragraphs.getOrNull(currentItem)
-                ?.let { stableContentElementKey(content.url, currentItem, it) }
-                ?: ""
+            val currentKey = stableKeys.getOrNull(currentItem) ?: ""
 
             readerViewModel.updateScrollPosition(
                 scrollOffset = currentItem.toFloat(),
@@ -206,7 +218,7 @@ internal fun ContentArea(
                     return@LifecycleEventObserver
                 }
 
-                val snapshot = buildScrollSnapshot(listState, content) ?: return@LifecycleEventObserver
+                val snapshot = buildScrollSnapshot(listState, content, stableKeys) ?: return@LifecycleEventObserver
                 readerViewModel.updateScrollPosition(
                     scrollOffset = snapshot.scrollOffset,
                     maxScrollOffset = snapshot.maxScrollOffset,
@@ -236,7 +248,7 @@ internal fun ContentArea(
             }
                 .conflate()
                 .collect {
-                    val snapshot = buildScrollSnapshot(listState, content) ?: return@collect
+                    val snapshot = buildScrollSnapshot(listState, content, stableKeys) ?: return@collect
                     readerViewModel.updateScrollPosition(
                         scrollOffset = snapshot.scrollOffset,
                         maxScrollOffset = snapshot.maxScrollOffset,
@@ -386,10 +398,10 @@ internal fun ContentArea(
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private suspend fun runScrollRestore(
     content: ChapterContent,
-    uiState: ReaderViewModel.ReaderUiState,
     listState: LazyListState,
     pagerState: androidx.compose.foundation.pager.PagerState,
     readerViewModel: ReaderViewModel,
+    stableKeys: List<String>,
 ) {
     // ─── Unified restore path ───────────────────────────────────────────────
     // Single entry point handles BOTH initial load and seek-bar drags. Resolution order:
@@ -407,7 +419,8 @@ private suspend fun runScrollRestore(
         return
     }
 
-    val targetIndex = resolveRestoreIndex(content, uiState)
+    val uiState = readerViewModel.uiState.value
+    val targetIndex = resolveRestoreIndex(uiState, stableKeys)
         .coerceIn(0, content.paragraphs.lastIndex)
     val targetFraction = uiState.restoreOffsetFraction
         .takeIf { it >= 0f }
@@ -524,29 +537,32 @@ private suspend fun awaitStableRestore(
 }
 
 private fun resolveRestoreIndex(
-    content: ChapterContent,
-    uiState: ReaderViewModel.ReaderUiState
+    uiState: ReaderViewModel.ReaderUiState,
+    stableKeys: List<String>
 ): Int {
     val key = uiState.restoreElementKey
     if (key.isNotEmpty()) {
-        content.paragraphs.forEachIndexed { idx, element ->
-            if (stableContentElementKey(content.url, idx, element) == key) return idx
-        }
+        val idx = stableKeys.indexOf(key)
+        if (idx >= 0) return idx
     }
     return uiState.scrollIndex
 }
 
 private fun computeVisiblePercent(listState: LazyListState, totalItems: Int): Float? {
-    if (totalItems <= 0) return null
     val layoutInfo = listState.layoutInfo
     val visibleItems = layoutInfo.visibleItemsInfo
-    val firstItem = visibleItems.firstOrNull() ?: return null
-    if (firstItem.size <= 0) return null
+    val firstItem = visibleItems.firstOrNull()
+    if (totalItems <= 0 || firstItem == null || firstItem.size <= 0) {
+        return null
+    }
     val viewportPx = layoutInfo.viewportSize.height.toFloat().coerceAtLeast(1f)
-    val avgItemSizePx = visibleItems.map { it.size.toFloat() }
-        .average()
-        .toFloat()
-        .coerceAtLeast(1f)
+    val avgItemSizePx = if (visibleItems.isEmpty()) 1f else {
+        var sum = 0f
+        for (i in 0 until visibleItems.size) {
+            sum += visibleItems[i].size
+        }
+        (sum / visibleItems.size).coerceAtLeast(1f)
+    }
     val totalContentPx = totalItems.toFloat() * avgItemSizePx
     val pixelsBeforeFirst = firstItem.index.toFloat() * avgItemSizePx
     val currentPixelOffset = pixelsBeforeFirst + listState.firstVisibleItemScrollOffset.toFloat()
@@ -559,18 +575,21 @@ internal fun shouldRunPercentRestoreFallback(
     targetFraction: Float?
 ): Boolean = !isPreciseRestore || targetFraction == null || targetFraction == 0f
 
-private fun buildScrollSnapshot(listState: LazyListState, content: ChapterContent): ReaderScrollSnapshot? {
-    if (content.paragraphs.isEmpty()) return null
+private fun buildScrollSnapshot(
+    listState: LazyListState,
+    content: ChapterContent,
+    stableKeys: List<String>
+): ReaderScrollSnapshot? {
     val layoutInfo = listState.layoutInfo
     val visibleItems = layoutInfo.visibleItemsInfo
-    val firstItem = visibleItems.firstOrNull() ?: return null
-    if (firstItem.size <= 0) return null
+    val firstItem = visibleItems.firstOrNull()
+    if (content.paragraphs.isEmpty() || firstItem == null || firstItem.size <= 0) {
+        return null
+    }
 
     val itemSize = firstItem.size.coerceAtLeast(1)
     val offsetFraction = (listState.firstVisibleItemScrollOffset.toFloat() / itemSize.toFloat()).coerceIn(0f, 1f)
-    val elementKey = content.paragraphs.getOrNull(firstItem.index)
-        ?.let { stableContentElementKey(content.url, firstItem.index, it) }
-        ?: ""
+    val elementKey = stableKeys.getOrNull(firstItem.index) ?: ""
 
     // Pixel-weighted progress: stable across image-decode reflow that would otherwise
     // drag percent down as items grow. Unmeasured items off-screen are estimated via the
@@ -578,10 +597,13 @@ private fun buildScrollSnapshot(listState: LazyListState, content: ChapterConten
     // so the estimate is accurate enough to keep the seek bar from sliding backward.
     val totalItems = layoutInfo.totalItemsCount.coerceAtLeast(1)
     val viewportPx = layoutInfo.viewportSize.height.toFloat().coerceAtLeast(1f)
-    val avgItemSizePx = visibleItems.map { it.size.toFloat() }
-        .average()
-        .toFloat()
-        .coerceAtLeast(1f)
+    val avgItemSizePx = if (visibleItems.isEmpty()) 1f else {
+        var sum = 0f
+        for (i in 0 until visibleItems.size) {
+            sum += visibleItems[i].size
+        }
+        (sum / visibleItems.size).coerceAtLeast(1f)
+    }
     val totalContentPx = totalItems.toFloat() * avgItemSizePx
     val pixelsBeforeFirst = firstItem.index.toFloat() * avgItemSizePx
     val currentPixelOffset = pixelsBeforeFirst + listState.firstVisibleItemScrollOffset.toFloat()

@@ -73,18 +73,20 @@ class ReaderViewModel @Inject constructor(
         progressController.beginRestore()
     }
 
-    // Resolved intrinsic dimensions keyed by image URL, as fine-grained Compose state. A
-    // ReaderImageView reads its own entry, so a write only recomposes that one image — and an
-    // item scrolled away and back is sized correctly on its FIRST composition (no collapse to the
-    // loading placeholder + relayout). This is what keeps fast up/down dragging smooth; the
-    // debounced `content` rebuild below stays only for persistence / restore math.
+    // Resolved intrinsic dimensions keyed by image URL, one Compose State per URL. A
+    // ReaderImageView subscribes to its own url's State, so a write only recomposes that one
+    // image — and an item scrolled away and back is sized correctly on its FIRST composition
+    // (no collapse to the loading placeholder + relayout). This is what keeps fast up/down
+    // dragging smooth; the debounced `content` rebuild below stays only for persistence /
+    // restore math.
     private val imageDimensionManager = ImageDimensionManager(
         scope = viewModelScope,
         imageDimensionCache = imageDimensionCache,
         applyContentDimensions = ::updateCurrentContentImageDimensions,
     )
 
-    val resolvedImageDimensions get() = imageDimensionManager.resolvedImageDimensions
+    fun imageDimensionState(imageUrl: String): androidx.compose.runtime.State<Pair<Int, Int>?> =
+        imageDimensionManager.dimensionState(imageUrl)
 
     fun persistImageDimensions(imageUrl: String, width: Int, height: Int) =
         imageDimensionManager.persistImageDimensions(imageUrl, width, height)
@@ -566,7 +568,6 @@ class ReaderViewModel @Inject constructor(
             preCalculatedTextCount = result.textCount,
             preCalculatedImageCount = result.imageCount
         )
-
         val libraryItem = effectiveId?.let { libraryRepository.getItemById(it) }
         val baseTitle = getBaseTitle(content, libraryItem)
         val novelName = baseTitle.ifBlank { content.title ?: libraryItem?.title ?: "" }
@@ -630,6 +631,12 @@ class ReaderViewModel @Inject constructor(
             )
         }
         syncProgressState(initialPosition)
+
+        // Prune only AFTER the new content is committed to uiState: during the (suspending)
+        // load above the old chapter is still composed, and pruning it early would strip its
+        // shared dimensions mid-display while late decodes re-inserted just-pruned entries.
+        // A failed load never reaches this line, so an on-screen chapter is never pruned.
+        imageDimensionManager.pruneForChapter(content.getAllImageUrls().toSet())
 
         updateNavigationUrls()
         maybeWarmNextChapter(_uiState.value.content?.nextChapterUrl)
@@ -901,6 +908,9 @@ class ReaderViewModel @Inject constructor(
             }
             syncProgressState(initialPosition)
 
+            // After the content swap, for the same reasons as in handleLoadSuccess.
+            imageDimensionManager.pruneForChapter(content.getAllImageUrls().toSet())
+
             preferencesManager.batchUpdateLastRead(content.url, effectiveLibraryItemId)
 
             effectiveLibraryItemId?.let { id ->
@@ -1088,15 +1098,6 @@ class ReaderViewModel @Inject constructor(
                 resetWebStateBeforeLoad = true
             )
         }
-    }
-
-    fun resetState(): Unit {
-        closeContent(_uiState.value.content)
-        _uiState.value = ReaderUiState()
-        progressController.resetState()
-        isExplicitNavigation = false
-        lastRawScrollOffset = -1f
-        imageDimensionManager.reset()
     }
 
     private fun closeContent(content: ChapterContent?) {

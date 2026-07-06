@@ -99,6 +99,75 @@ class ImageCacheTest {
     }
 
     @Test
+    fun `getLikelyMediaState memoizes until invalidated`() {
+        val url = "https://example.com/memo.jpg"
+        assertEquals("missing", imageCache.getLikelyMediaState(url))
+
+        // File appears on disk behind the memo's back: the memoized "missing" is served...
+        val file = File(cacheDir, CacheKeyUtils.keyFor(url)).apply { writeBytes(validJpegBytes()) }
+        assertEquals("missing", imageCache.getLikelyMediaState(url))
+
+        // ...until the url is invalidated (as every production write path does).
+        imageCache.invalidateMediaState(url)
+        val state = imageCache.getLikelyMediaState(url)
+        assertTrue(state.startsWith(file.absolutePath))
+    }
+
+    @Test
+    fun `deleteCachedMediaFiles refreshes media state`() {
+        val url = "https://example.com/delete-refresh.jpg"
+        File(cacheDir, CacheKeyUtils.keyFor(url)).writeBytes(validJpegBytes())
+        assertNotEquals("missing", imageCache.getLikelyMediaState(url))
+
+        imageCache.deleteCachedMediaFiles(url)
+
+        assertEquals("missing", imageCache.getLikelyMediaState(url))
+    }
+
+    @Test
+    fun `clearAll and trimToSize drop the media state memo`() {
+        val url = "https://example.com/clear-refresh.jpg"
+        File(cacheDir, CacheKeyUtils.keyFor(url)).writeBytes(validJpegBytes())
+        assertNotEquals("missing", imageCache.getLikelyMediaState(url))
+
+        imageCache.clearAll()
+        assertEquals("missing", imageCache.getLikelyMediaState(url))
+
+        File(cacheDir, CacheKeyUtils.keyFor(url)).writeBytes(validJpegBytes())
+        imageCache.invalidateMediaState(url)
+        assertNotEquals("missing", imageCache.getLikelyMediaState(url))
+        imageCache.trimToSize(0)
+        assertEquals("missing", imageCache.getLikelyMediaState(url))
+    }
+
+    @Test
+    fun `trimToSize keeps the memo when nothing is deleted`() {
+        val url = "https://example.com/trim-noop.jpg"
+        val file = File(cacheDir, CacheKeyUtils.keyFor(url)).apply { writeBytes(validJpegBytes()) }
+        val memoized = imageCache.getLikelyMediaState(url)
+
+        // Delete behind the memo's back, then trim with a budget that deletes nothing:
+        // the memo must survive (trim runs every ~30s during prefetch — wiping it on
+        // no-op trims would defeat the memoization).
+        file.delete()
+        imageCache.trimToSize(Long.MAX_VALUE)
+
+        assertEquals(memoized, imageCache.getLikelyMediaState(url))
+    }
+
+    @Test
+    fun `promoteToDownloads refreshes media state to the downloads path`() {
+        val url = "https://example.com/promote-refresh.jpg"
+        val key = CacheKeyUtils.keyFor(url)
+        File(cacheDir, key).writeBytes(validJpegBytes())
+        assertTrue(imageCache.getLikelyMediaState(url).startsWith(File(cacheDir, key).absolutePath))
+
+        imageCache.promoteToDownloads(url)
+
+        assertTrue(imageCache.getLikelyMediaState(url).startsWith(File(downloadsDir, key).absolutePath))
+    }
+
+    @Test
     fun `promoteToDownloads replaces invalid existing download target`() {
         val url = "https://example.com/promote.jpg"
         val key = CacheKeyUtils.keyFor(url)

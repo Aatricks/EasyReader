@@ -1018,6 +1018,12 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                     }
                 }.also { created ->
                     created.invokeOnCompletion {
+                        // Invalidate here — when the download attempt itself finishes — not in
+                        // the awaiter: the deferred is shared and outlives a cancelled awaiter
+                        // (Coil disposing a request mid-download), and an awaiter-side
+                        // invalidation would fire before the file lands, letting a probe
+                        // re-memoize "missing" that nothing ever corrects.
+                        imageCache.invalidateMediaState(imageUrl)
                         repositoryScope.launch {
                             imageDownloadMutex.withLock {
                                 if (inFlightImageDownloads[imageUrl]?.deferred === created) {

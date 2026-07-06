@@ -41,8 +41,9 @@ class ImageDimensionCacheRepository @Inject constructor(
         }
     }
 
-    suspend fun persistAll(entries: List<Triple<String, Int, Int>>) {
-        if (entries.isEmpty()) return
+    /** @return true when the rows reached the DB (or there was nothing valid to write). */
+    suspend fun persistAll(entries: List<Triple<String, Int, Int>>): Boolean {
+        if (entries.isEmpty()) return true
         val now = System.currentTimeMillis()
         val rows = entries
             .filter { it.first.isNotBlank() && it.second > 0 && it.third > 0 }
@@ -55,8 +56,8 @@ class ImageDimensionCacheRepository @Inject constructor(
                     parserVersion = CURRENT_PARSER_VERSION
                 )
             }
-        if (rows.isEmpty()) return
-        runCatching { dao.upsertAll(rows) }
+        if (rows.isEmpty()) return true
+        return runCatching { dao.upsertAll(rows) }.isSuccess
     }
 
     suspend fun prune(ttlMs: Long = DEFAULT_TTL_MS) {
