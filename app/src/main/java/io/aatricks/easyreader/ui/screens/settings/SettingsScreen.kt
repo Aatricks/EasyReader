@@ -53,6 +53,9 @@ import io.aatricks.easyreader.ui.viewmodel.BackupViewModel
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import io.aatricks.easyreader.ui.viewmodel.SummaryViewModel
+import io.aatricks.easyreader.ui.viewmodel.UpdateViewModel
+import io.aatricks.easyreader.updater.DownloadStatus
+import io.aatricks.easyreader.updater.UpdateCheckResult
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -73,6 +76,8 @@ fun SettingsScreen(
     val backupStatus by backupViewModel.status.collectAsState()
     val summaryViewModel: SummaryViewModel = hiltViewModel()
     val summaryUiState by summaryViewModel.uiState.collectAsState()
+    val updateViewModel: UpdateViewModel = hiltViewModel()
+    val updateState by updateViewModel.uiState.collectAsState()
 
     var cacheBytes by remember { mutableLongStateOf(-1L) }
     var downloadsBytes by remember { mutableLongStateOf(-1L) }
@@ -80,6 +85,7 @@ fun SettingsScreen(
     var showClearDownloadsDialog by remember { mutableStateOf(false) }
     var showClearLibraryDialog by remember { mutableStateOf(false) }
     var showEnableAiDialog by remember { mutableStateOf(false) }
+    var userTriggeredCheck by remember { mutableStateOf(false) }
     var pendingSettingsImportUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var pendingLibraryImportUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var refreshKey by remember { mutableStateOf(0) }
@@ -119,6 +125,21 @@ fun SettingsScreen(
             else -> Unit
         }
     }
+
+    LaunchedEffect(updateState.isChecking) {
+        if (userTriggeredCheck && !updateState.isChecking) {
+            val err = updateState.error
+            val update = updateState.updateAvailable
+            if (err != null) {
+                snackbarHostState.showSnackbar("Error checking updates: $err")
+            } else if (update == null) {
+                snackbarHostState.showSnackbar("EasyReader is up to date (${updateState.currentVersion})")
+            }
+            userTriggeredCheck = false
+        }
+    }
+
+
 
     Scaffold(
         topBar = {
@@ -285,8 +306,62 @@ fun SettingsScreen(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
             SettingsSection(title = "About") {
-                SettingsRow(title = "App", subtitle = "EasyReader")
+                SettingsRow(title = "App", subtitle = "EasyReader (${updateState.currentVersion})")
                 SettingsRow(title = "License", subtitle = "GPL-3.0")
+                
+                val isChecking = updateState.isChecking
+                val downloadStatus = updateState.downloadStatus
+                
+                if (isChecking) {
+                    SettingsRow(title = "Status", subtitle = "Checking for updates…")
+                } else {
+                    when (downloadStatus) {
+                        is DownloadStatus.Progress -> {
+                            val percent = if (downloadStatus.totalBytes > 0) {
+                                val bytes = downloadStatus.bytesDownloaded
+                                val total = downloadStatus.totalBytes
+                                (bytes * PERCENT_MULTIPLIER / total).toInt()
+                            } else {
+                                -1
+                            }
+                            val progressText = if (percent >= 0) {
+                                "Downloading update ($percent%)…"
+                            } else {
+                                "Downloading update…"
+                            }
+                            SettingsRow(title = "Status", subtitle = progressText)
+                        }
+                        is DownloadStatus.Success -> {
+                            FilledTonalButton(
+                                onClick = {
+                                    if (updateViewModel.canInstallPackages()) {
+                                        updateViewModel.installApk(downloadStatus.apkFile)
+                                    } else {
+                                        val intent = updateViewModel.requestInstallPermissionIntent()
+                                        if (intent != null) {
+                                            runCatching { context.startActivity(intent) }
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Install downloaded update")
+                            }
+                        }
+                        else -> {
+                            FilledTonalButton(
+                                onClick = {
+                                    userTriggeredCheck = true
+                                    updateViewModel.checkForUpdates()
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Check for updates")
+                            }
+                        }
+                    }
+                }
+
                 TextButton(
                     onClick = {
                         runCatching {
@@ -474,6 +549,8 @@ fun SettingsScreen(
             }
         )
     }
+
+
 }
 
 private fun defaultSettingsFilename(): String =
@@ -544,3 +621,5 @@ private fun formatBytes(bytes: Long): String {
     return if (unit == 0) "${value.toLong()} ${units[unit]}"
     else String.format("%.1f %s", value, units[unit])
 }
+
+private const val PERCENT_MULTIPLIER = 100

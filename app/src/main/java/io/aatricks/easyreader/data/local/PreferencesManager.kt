@@ -124,6 +124,11 @@ class PreferencesManager @Inject constructor(
     var lastUpdateCheckTime: Long
         get() = prefs.getLong(KEY_LAST_UPDATE_CHECK, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_UPDATE_CHECK, value).apply()
+
+    // Last app update check time
+    var lastAppUpdateCheckTime: Long
+        get() = prefs.getLong(KEY_LAST_APP_UPDATE_CHECK, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_APP_UPDATE_CHECK, value).apply()
         
     // Reader Settings
     var fontSize: Float
@@ -202,6 +207,7 @@ class PreferencesManager @Inject constructor(
         private const val KEY_LIBRARY_ITEMS = "library_items"
         private const val KEY_COLLAPSED_SOURCES = "collapsed_sources"
         private const val KEY_LAST_UPDATE_CHECK = "last_update_check"
+        private const val KEY_LAST_APP_UPDATE_CHECK = "last_app_update_check"
         
         // Reader Settings Keys
         private const val KEY_FONT_SIZE = "reader_font_size"

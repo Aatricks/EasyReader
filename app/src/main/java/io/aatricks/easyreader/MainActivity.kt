@@ -43,7 +43,9 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 import androidx.hilt.navigation.compose.hiltViewModel
+import io.aatricks.easyreader.ui.components.appUpdateHandler
 import io.aatricks.easyreader.ui.viewmodel.ExploreViewModel
+import io.aatricks.easyreader.ui.viewmodel.UpdateViewModel
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -85,6 +87,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val readerUiState by readerViewModel.uiState.collectAsState()
+            val updateViewModel: UpdateViewModel = hiltViewModel()
+            val updateState by updateViewModel.uiState.collectAsState()
 
             NovelScraperTheme(
                 darkTheme = androidx.compose.foundation.isSystemInDarkTheme(),
@@ -124,6 +128,8 @@ class MainActivity : ComponentActivity() {
                             onCancel = { readerViewModel.dismissFileConfirmation() }
                         )
                     }
+
+                appUpdateHandler(updateViewModel, updateState)
 
                 NavHost(navController = navController, startDestination = ReaderRoute) {
                     composable<ReaderRoute> {
@@ -171,6 +177,8 @@ class MainActivity : ComponentActivity() {
         scheduleLibraryUpdatesAfterReaderLaunch()
         handleIntent(intent)
     }
+
+
 
     private fun scheduleLibraryUpdatesAfterReaderLaunch() {
         lifecycleScope.launch {
