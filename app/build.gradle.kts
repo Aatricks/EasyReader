@@ -165,6 +165,23 @@ android {
         checkReleaseBuilds = true
         abortOnError = true
     }
+
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+            isUniversalApk = false
+        }
+    }
+
+    packaging {
+        resources {
+            excludes.add("org/bouncycastle/pqc/crypto/**/*.properties")
+            excludes.add("com/itextpdf/io/font/cmap/*")
+            excludes.add("com/itextpdf/hyph/*")
+        }
+    }
 }
 
 dependencies {
