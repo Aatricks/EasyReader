@@ -22,6 +22,11 @@ class ChapterListCache @Inject constructor(
 ) {
     companion object {
         const val FRESH_WINDOW_MS = 6L * 60 * 60 * 1000 // 6 hours
+
+        // Bump when a source's chapter-list parsing changes in a way that should invalidate every
+        // already-cached list. Entries written before versioning default to 0, so a bump forces a
+        // one-time refetch on next open (e.g. the Novelight paging fix that recovers dropped pages).
+        const val CACHE_VERSION = 1
     }
 
     @Serializable
@@ -29,7 +34,8 @@ class ChapterListCache @Inject constructor(
         val chapters: List<ChapterInfo>,
         val fetchedAt: Long,
         val baseNovelUrl: String,
-        val sourceName: String
+        val sourceName: String,
+        val version: Int = 0
     )
 
     fun load(baseNovelUrl: String, sourceName: String): Entry? {
@@ -50,7 +56,8 @@ class ChapterListCache @Inject constructor(
                 chapters = chapters,
                 fetchedAt = System.currentTimeMillis(),
                 baseNovelUrl = baseNovelUrl,
-                sourceName = sourceName
+                sourceName = sourceName,
+                version = CACHE_VERSION
             )
             val temp = File.createTempFile("${file.name}.", ".tmp", file.parentFile)
             try {
@@ -75,7 +82,7 @@ class ChapterListCache @Inject constructor(
     }
 
     fun isFresh(entry: Entry): Boolean =
-        (System.currentTimeMillis() - entry.fetchedAt) < FRESH_WINDOW_MS
+        entry.version == CACHE_VERSION && (System.currentTimeMillis() - entry.fetchedAt) < FRESH_WINDOW_MS
 
     private fun fileFor(baseNovelUrl: String, sourceName: String): File =
         File(cacheDir, "${CacheKeyUtils.keyFor("$sourceName|$baseNovelUrl")}.json")
