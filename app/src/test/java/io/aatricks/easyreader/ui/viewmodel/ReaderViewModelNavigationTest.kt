@@ -297,7 +297,7 @@ class ReaderViewModelNavigationTest {
         whenever(contentRepository.incrementChapterUrl(currentUrl)).thenReturn("http://example.com/guessed-next")
         whenever(contentRepository.decrementChapterUrl(currentUrl)).thenReturn("http://example.com/ch1")
         whenever(libraryRepository.getItemById(currentItem.id)).thenReturn(currentItem)
-        whenever(libraryRepository.updateItem(any())).thenReturn(true)
+        whenever(libraryRepository.healChapterMetadata(any(), anyOrNull(), anyOrNull(), any())).thenReturn(true)
         whenever(exploreRepository.getNovelDetails(baseUrl, sourceName)).thenReturn(details)
 
         viewModel.loadContent(currentUrl, currentItem.id)
@@ -307,9 +307,13 @@ class ReaderViewModelNavigationTest {
             listOf("http://example.com/ch1", currentUrl, "http://example.com/ch3"),
             viewModel.uiState.value.fullChapterList.map { it.url }
         )
-        verify(libraryRepository).updateItem(check<LibraryItem> {
-            assertEquals(currentItem.id, it.id)
-            assertEquals(3, it.totalChapters)
-        })
+        // Heal writes only metadata via targeted UPDATEs (never a whole-row replace), so it can't
+        // clobber a concurrent progress write. totalChapters goes 1 -> 3; no label heal here.
+        verify(libraryRepository).healChapterMetadata(
+            eq(currentItem.id),
+            eq(3),
+            anyOrNull(),
+            eq(false)
+        )
     }
 }

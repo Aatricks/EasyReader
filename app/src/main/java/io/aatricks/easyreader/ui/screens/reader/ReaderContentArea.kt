@@ -431,10 +431,16 @@ private suspend fun runScrollRestore(
         return
     }
 
-    val uiState = readerViewModel.uiState.value
-    val targetIndex = resolveRestoreIndex(uiState, stableKeys)
+    // isPagedMode is a UI-mode flag, not a stale-able progress field — always read it live.
+    val isPagedMode = readerViewModel.uiState.value.isPagedMode
+    // Anchor source: a genuine load/seek replays the frozen uiState anchor (unchanged
+    // behavior); a bare recomposition (e.g. returning from the full library screen) re-applies
+    // the live progressState position, so the user is never yanked back to a stale open-time
+    // anchor and no stale value is later persisted.
+    val anchor = readerViewModel.consumeRestoreAnchor()
+    val targetIndex = resolveRestoreIndex(anchor.elementKey, anchor.scrollIndex, stableKeys)
         .coerceIn(0, content.paragraphs.lastIndex)
-    val targetFraction = uiState.restoreOffsetFraction
+    val targetFraction = anchor.offsetFraction
         .takeIf { it >= 0f }
         ?.coerceIn(0f, 1f)
 
@@ -442,11 +448,11 @@ private suspend fun runScrollRestore(
     // navigation seeks the final item end. Anything else lands at the item and then chases
     // the intra-item fraction via the watch-until-stable loop below.
     val handledAsOneShot = when {
-        uiState.isPagedMode -> {
+        isPagedMode -> {
             runCatching { pagerState.scrollToPage(targetIndex) }
             true
         }
-        uiState.targetScrollPosition == 100f -> {
+        anchor.targetScrollPosition == 100f -> {
             runCatching { listState.scrollToItem(content.paragraphs.lastIndex, Int.MAX_VALUE) }
             true
         }
@@ -466,12 +472,12 @@ private suspend fun runScrollRestore(
         // intra-item fraction — catches "landed at the wrong index but seek bar says 89%".
         if (!readerViewModel.userHasDragged &&
             shouldRunPercentRestoreFallback(
-                isPreciseRestore = uiState.isPreciseRestore,
+                isPreciseRestore = anchor.isPreciseRestore,
                 targetFraction = targetFraction
             )
         ) {
             val visiblePercent = computeVisiblePercent(listState, content.paragraphs.size)
-            val targetPercent = uiState.scrollPosition
+            val targetPercent = anchor.scrollPosition
             if (visiblePercent != null && abs(visiblePercent - targetPercent) > RESTORE_PERCENT_TOLERANCE) {
                 val fallbackIndex = ((targetPercent / 100f) * content.paragraphs.lastIndex).toInt()
                     .coerceIn(0, content.paragraphs.lastIndex)
@@ -549,15 +555,15 @@ private suspend fun awaitStableRestore(
 }
 
 private fun resolveRestoreIndex(
-    uiState: ReaderViewModel.ReaderUiState,
+    elementKey: String,
+    fallbackIndex: Int,
     stableKeys: List<String>
 ): Int {
-    val key = uiState.restoreElementKey
-    if (key.isNotEmpty()) {
-        val idx = stableKeys.indexOf(key)
+    if (elementKey.isNotEmpty()) {
+        val idx = stableKeys.indexOf(elementKey)
         if (idx >= 0) return idx
     }
-    return uiState.scrollIndex
+    return fallbackIndex
 }
 
 private fun computeVisiblePercent(listState: LazyListState, totalItems: Int): Float? {

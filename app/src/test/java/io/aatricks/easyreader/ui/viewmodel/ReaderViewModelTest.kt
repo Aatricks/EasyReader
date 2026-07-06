@@ -505,6 +505,139 @@ class ReaderViewModelTest {
     }
 
     @Test
+    fun `consumeRestoreAnchor returns frozen uiState anchor on genuine load`() = runTest {
+        val itemId = "web-item"
+        val url = "https://example.com/chapter-10"
+        val savedItem = LibraryItem(
+            id = itemId,
+            title = "Chapter 10",
+            url = url,
+            progress = 55,
+            lastReadIndex = 4,
+            lastReadOffsetFraction = 0.6f,
+            lastScrollPosition = 55f
+        )
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(List(10) { ContentElement.Text("Paragraph $it") }, "Chapter 10", url)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(savedItem)
+
+        viewModel.loadContent(url, itemId)
+        advanceUntilIdle()
+
+        val anchor = viewModel.consumeRestoreAnchor()
+        val ui = viewModel.uiState.value
+        assertFalse(anchor.isLiveSource)
+        assertEquals(ui.scrollIndex, anchor.scrollIndex)
+        assertEquals(ui.restoreElementKey, anchor.elementKey)
+        assertEquals(ui.restoreOffsetFraction, anchor.offsetFraction, 0.001f)
+    }
+
+    @Test
+    fun `consumeRestoreAnchor returns live progressState anchor on bare recomposition after scroll`() = runTest {
+        val itemId = "item-1"
+        val url = "https://example.com/1"
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(listOf(ContentElement.Text("Test")), "Test", url)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(
+            LibraryItem(id = itemId, title = "Test", url = url)
+        )
+
+        viewModel.loadContent(url, itemId)
+        advanceUntilIdle()
+        // First consume = the genuine restore for this load (marks the request id consumed).
+        viewModel.consumeRestoreAnchor()
+
+        // onUserInteraction() first is load-bearing: it clears the restore/suppress gates so the
+        // scroll sample actually reaches _progressState (otherwise this would pass vacuously).
+        viewModel.onUserInteraction()
+        viewModel.updateScrollPosition(
+            scrollOffset = 50f,
+            maxScrollOffset = 100f,
+            viewportHeight = 10f,
+            index = 5,
+            offsetFraction = 0.1f,
+            elementKey = "txt:$url:5:abc",
+            firstVisibleItemSize = 100
+        )
+
+        // Second consume with no intervening load/seek = a bare recomposition (the library
+        // round-trip). Must resolve to the LIVE scrolled position, not the frozen uiState.
+        val anchor = viewModel.consumeRestoreAnchor()
+        assertTrue(anchor.isLiveSource)
+        assertEquals(5, anchor.scrollIndex)
+        assertEquals("txt:$url:5:abc", anchor.elementKey)
+        assertEquals(0.1f, anchor.offsetFraction, 0.001f)
+        // The frozen uiState still holds the open-time top (index 0) — proves we did NOT read it.
+        assertEquals(0, viewModel.uiState.value.scrollIndex)
+    }
+
+    @Test
+    fun `consumeRestoreAnchor returns genuine anchor after seek`() = runTest {
+        val itemId = "item-1"
+        val url = "https://example.com/1"
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(List(10) { ContentElement.Text("Paragraph $it") }, "Test", url)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(
+            LibraryItem(id = itemId, title = "Test", url = url)
+        )
+
+        viewModel.loadContent(url, itemId)
+        advanceUntilIdle()
+        viewModel.consumeRestoreAnchor() // consume the load's request id
+
+        viewModel.seekToProgress(42f)
+
+        // A seek bumps the restore-request id, so the seekTrigger-driven restore is genuine and
+        // reads the fresh seek anchor from uiState. (Index can't discriminate the branch here,
+        // because seekToProgress syncs uiState and progressState to the same values.)
+        val anchor = viewModel.consumeRestoreAnchor()
+        assertFalse(anchor.isLiveSource)
+    }
+
+    @Test
+    fun `consumeRestoreAnchor hard-nulls targetScrollPosition on bare recomposition`() = runTest {
+        val itemId = "web-item"
+        val url = "https://example.com/chapter-end"
+        val savedItem = LibraryItem(
+            id = itemId,
+            title = "Chapter End",
+            url = url,
+            progress = 100,
+            lastReadIndex = 9,
+            lastScrollPosition = 100f
+        )
+        whenever(contentRepository.loadContent(url)).thenReturn(
+            ContentResult.Success(List(10) { ContentElement.Text("Paragraph $it") }, "Chapter End", url)
+        )
+        whenever(libraryRepository.getItemById(itemId)).thenReturn(savedItem)
+
+        viewModel.loadContent(url, itemId)
+        advanceUntilIdle()
+
+        // Genuine branch honors the end-of-chapter one-shot.
+        val genuine = viewModel.consumeRestoreAnchor()
+        assertEquals(100f, genuine.targetScrollPosition!!, 0.001f)
+
+        // User scrolls up, then returns from the library (bare recomposition).
+        viewModel.onUserInteraction()
+        viewModel.updateScrollPosition(
+            scrollOffset = 30f,
+            maxScrollOffset = 100f,
+            viewportHeight = 10f,
+            index = 3,
+            offsetFraction = 0.0f,
+            elementKey = "txt:$url:3:abc",
+            firstVisibleItemSize = 100
+        )
+        val bare = viewModel.consumeRestoreAnchor()
+        assertTrue(bare.isLiveSource)
+        assertNull(bare.targetScrollPosition) // never yanked back to the chapter end
+    }
+
+    @Test
     fun `persistLifecycleProgress persists untouched chapter start as true top snapshot`() = runTest {
         val itemId = "item-1"
         val url = "https://example.com/1"

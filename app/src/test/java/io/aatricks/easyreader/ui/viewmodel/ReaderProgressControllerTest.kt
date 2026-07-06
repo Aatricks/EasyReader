@@ -58,6 +58,30 @@ class ReaderProgressControllerTest {
     }
 
     @Test
+    fun `calculateInitialPosition increments restoreRequestId`() = runTest {
+        val controller = ReaderProgressController(libraryRepository, this)
+        val content = ChapterContent(
+            paragraphs = List(10) { ContentElement.Text("Text $it") },
+            title = "Chapter 1",
+            url = "http://example.com/1"
+        )
+        val libraryItem = LibraryItem(
+            id = "test-id",
+            url = "http://example.com/1",
+            title = "Novel",
+            progress = 40,
+            lastScrollPosition = 40f
+        )
+
+        assertEquals(0L, controller.restoreRequestId)
+        controller.calculateInitialPosition(content, libraryItem, fromBottom = false, isExplicitNavigation = false)
+        assertEquals(1L, controller.restoreRequestId)
+        // The explicit-nav path (which ignores the saved item) still counts as a genuine request.
+        controller.calculateInitialPosition(content, libraryItem, fromBottom = false, isExplicitNavigation = true)
+        assertEquals(2L, controller.restoreRequestId)
+    }
+
+    @Test
     fun `calculateInitialPosition restores via element key when present`() = runTest {
         val controller = ReaderProgressController(libraryRepository, this)
 
