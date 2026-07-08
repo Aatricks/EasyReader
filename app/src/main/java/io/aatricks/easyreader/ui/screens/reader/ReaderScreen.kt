@@ -271,6 +271,7 @@ fun ReaderScreen(
             onUpdateLineHeight = { readerViewModel.updateLineHeight(it) },
             onUpdateFontFamily = { readerViewModel.updateFontFamily(it) },
             onUpdateMargins = { readerViewModel.updateMargins(it) },
+            onUpdateVerticalMargins = { readerViewModel.updateVerticalMargins(it) },
             onUpdateParagraphSpacing = { readerViewModel.updateParagraphSpacing(it) },
             onUpdateReaderTheme = { readerViewModel.updateReaderTheme(it) },
             sheetState = settingsSheetState

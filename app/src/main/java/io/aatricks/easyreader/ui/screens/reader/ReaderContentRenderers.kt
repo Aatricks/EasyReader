@@ -6,6 +6,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -312,6 +313,13 @@ internal fun ScrollingReaderView(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
+        // Vertical margin at the top and bottom of the light-novel scroll view. Manhwa reads
+        // edge-to-edge, so the padding is suppressed there.
+        contentPadding = if (isManhwa) {
+            PaddingValues(0.dp)
+        } else {
+            PaddingValues(vertical = uiState.verticalMargins.dp)
+        },
         verticalArrangement = if (isManhwa) {
             Arrangement.spacedBy(0.dp)
         } else {

@@ -59,6 +59,7 @@ class ReaderViewModelNavigationTest {
                     lineHeight = 1.5f,
                     fontFamily = "Default",
                     margins = 16,
+                    verticalMargins = 0,
                     paragraphSpacing = 1.0f,
                     readerTheme = ReaderTheme.DARK.name,
                     accentTheme = io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name

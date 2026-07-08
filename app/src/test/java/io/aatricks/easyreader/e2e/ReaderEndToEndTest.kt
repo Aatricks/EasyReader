@@ -130,6 +130,7 @@ class ReaderEndToEndTest {
                     lineHeight = FLOAT_ONE_POINT_FIVE,
                     fontFamily = "Default",
                     margins = NUM_MARGINS_DEFAULT,
+                    verticalMargins = 0,
                     paragraphSpacing = FLOAT_SPACING_DEFAULT,
                     readerTheme = ReaderTheme.DARK.name,
                     accentTheme = AccentTheme.MOSS.name

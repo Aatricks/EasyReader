@@ -20,6 +20,7 @@ data class ReaderSettingsPayload(
     val lineHeight: Float,
     val fontFamily: String,
     val margins: Int,
+    val verticalMargins: Int = 0,
     val paragraphSpacing: Float,
     val readerTheme: String,
     val accentTheme: String

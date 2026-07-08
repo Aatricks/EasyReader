@@ -99,6 +99,7 @@
     <string name="reader_slider_font_size">Font size</string>
     <string name="reader_slider_line_height">Line height</string>
     <string name="reader_slider_margins">Margins</string>
+    <string name="reader_slider_vertical_margins">Vertical margins</string>
     <string name="reader_slider_paragraph_spacing">Paragraph spacing</string>
     <string name="reader_font_default">Default</string>
     <string name="reader_font_serif">Serif</string>

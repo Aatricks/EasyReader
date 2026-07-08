@@ -202,6 +202,7 @@ class ReaderViewModel @Inject constructor(
                 lineHeight = snapshot.lineHeight,
                 fontFamily = snapshot.fontFamily,
                 margins = snapshot.margins,
+                verticalMargins = snapshot.verticalMargins,
                 paragraphSpacing = snapshot.paragraphSpacing,
                 readerTheme = runCatching { ReaderTheme.valueOf(snapshot.readerTheme) }
                     .getOrDefault(ReaderTheme.DARK),
@@ -255,6 +256,7 @@ class ReaderViewModel @Inject constructor(
         val lineHeight: Float,
         val fontFamily: String,
         val margins: Int,
+        val verticalMargins: Int,
         val paragraphSpacing: Float,
         val readerTheme: ReaderTheme,
         val accentTheme: AccentTheme,
@@ -325,6 +327,7 @@ class ReaderViewModel @Inject constructor(
         val lineHeight: Float = 1.5f,
         val fontFamily: String = "Default",
         val margins: Int = 16,
+        val verticalMargins: Int = 0,
         val paragraphSpacing: Float = 1.0f,
         val readerTheme: ReaderTheme = ReaderTheme.DARK,
         val accentTheme: AccentTheme = AccentTheme.MOSS,
@@ -339,6 +342,7 @@ class ReaderViewModel @Inject constructor(
                 lineHeight = lineHeight,
                 fontFamily = fontFamily,
                 margins = margins,
+                verticalMargins = verticalMargins,
                 paragraphSpacing = paragraphSpacing,
                 readerTheme = readerTheme,
                 accentTheme = accentTheme,
@@ -413,6 +417,12 @@ class ReaderViewModel @Inject constructor(
         val margins = newMargins.coerceIn(4, 64)
         preferencesManager.margins = margins
         updateState { it.copy(margins = margins) }
+    }
+
+    fun updateVerticalMargins(newMargins: Int) {
+        val verticalMargins = newMargins.coerceIn(0, 160)
+        preferencesManager.verticalMargins = verticalMargins
+        updateState { it.copy(verticalMargins = verticalMargins) }
     }
 
     fun updateParagraphSpacing(newSpacing: Float) {

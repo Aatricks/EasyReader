@@ -25,6 +25,7 @@ data class ReaderSettingsSnapshot(
     val lineHeight: Float,
     val fontFamily: String,
     val margins: Int,
+    val verticalMargins: Int,
     val paragraphSpacing: Float,
     val readerTheme: String,
     val accentTheme: String
@@ -79,6 +80,7 @@ class PreferencesManager @Inject constructor(
         lineHeight = prefs.getFloat(KEY_LINE_HEIGHT, 1.5f),
         fontFamily = prefs.getString(KEY_FONT_FAMILY, "Default") ?: "Default",
         margins = prefs.getInt(KEY_MARGINS, 16),
+        verticalMargins = prefs.getInt(KEY_VERTICAL_MARGINS, 0),
         paragraphSpacing = prefs.getFloat(KEY_PARAGRAPH_SPACING, 1.0f),
         readerTheme = prefs.getString(KEY_READER_THEME, io.aatricks.easyreader.data.model.ReaderTheme.DARK.name)
             ?: io.aatricks.easyreader.data.model.ReaderTheme.DARK.name,
@@ -173,6 +175,10 @@ class PreferencesManager @Inject constructor(
         get() = prefs.getInt(KEY_MARGINS, 16)
         set(value) = prefs.edit().putInt(KEY_MARGINS, value).apply()
 
+    var verticalMargins: Int
+        get() = prefs.getInt(KEY_VERTICAL_MARGINS, 0)
+        set(value) = prefs.edit().putInt(KEY_VERTICAL_MARGINS, value).apply()
+
     var paragraphSpacing: Float
         get() = prefs.getFloat(KEY_PARAGRAPH_SPACING, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_PARAGRAPH_SPACING, value).apply()
@@ -210,6 +216,7 @@ class PreferencesManager @Inject constructor(
         lineHeight: Float? = null,
         fontFamily: String? = null,
         margins: Int? = null,
+        verticalMargins: Int? = null,
         paragraphSpacing: Float? = null,
         readerTheme: String? = null,
         accentTheme: String? = null
@@ -219,6 +226,7 @@ class PreferencesManager @Inject constructor(
         lineHeight?.let { editor.putFloat(KEY_LINE_HEIGHT, it) }
         fontFamily?.let { editor.putString(KEY_FONT_FAMILY, it) }
         margins?.let { editor.putInt(KEY_MARGINS, it) }
+        verticalMargins?.let { editor.putInt(KEY_VERTICAL_MARGINS, it) }
         paragraphSpacing?.let { editor.putFloat(KEY_PARAGRAPH_SPACING, it) }
         readerTheme?.let { editor.putString(KEY_READER_THEME, it) }
         accentTheme?.let { editor.putString(KEY_ACCENT_THEME, it) }
@@ -240,6 +248,7 @@ class PreferencesManager @Inject constructor(
         private const val KEY_LINE_HEIGHT = "reader_line_height"
         private const val KEY_FONT_FAMILY = "reader_font_family"
         private const val KEY_MARGINS = "reader_margins"
+        private const val KEY_VERTICAL_MARGINS = "reader_vertical_margins"
         private const val KEY_PARAGRAPH_SPACING = "reader_paragraph_spacing"
         private const val KEY_READER_THEME = "reader_theme"
         private const val KEY_ACCENT_THEME = "accent_theme"
@@ -256,6 +265,7 @@ class PreferencesManager @Inject constructor(
             KEY_LINE_HEIGHT,
             KEY_FONT_FAMILY,
             KEY_MARGINS,
+            KEY_VERTICAL_MARGINS,
             KEY_PARAGRAPH_SPACING,
             KEY_READER_THEME,
             KEY_ACCENT_THEME

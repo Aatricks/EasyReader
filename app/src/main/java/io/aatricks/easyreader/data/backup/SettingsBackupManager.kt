@@ -37,6 +37,7 @@ class SettingsBackupManager @Inject constructor(
                     lineHeight = preferencesManager.lineHeight,
                     fontFamily = preferencesManager.fontFamily,
                     margins = preferencesManager.margins,
+                    verticalMargins = preferencesManager.verticalMargins,
                     paragraphSpacing = preferencesManager.paragraphSpacing,
                     readerTheme = preferencesManager.readerTheme,
                     accentTheme = preferencesManager.accentTheme
@@ -68,6 +69,7 @@ class SettingsBackupManager @Inject constructor(
                 lineHeight = r.lineHeight,
                 fontFamily = r.fontFamily,
                 margins = r.margins,
+                verticalMargins = r.verticalMargins,
                 paragraphSpacing = r.paragraphSpacing,
                 readerTheme = r.readerTheme,
                 accentTheme = r.accentTheme

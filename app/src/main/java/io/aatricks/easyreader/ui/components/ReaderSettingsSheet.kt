@@ -149,6 +149,7 @@ fun ReaderSettingsSheet(
     onUpdateLineHeight: (Float) -> Unit,
     onUpdateFontFamily: (String) -> Unit,
     onUpdateMargins: (Int) -> Unit,
+    onUpdateVerticalMargins: (Int) -> Unit,
     onUpdateParagraphSpacing: (Float) -> Unit,
     onUpdateReaderTheme: (ReaderTheme) -> Unit,
     sheetState: SheetState
@@ -277,6 +278,15 @@ fun ReaderSettingsSheet(
                 valueRange = 4f..64f,
                 steps = 14,
                 displayValue = "${uiState.margins} dp"
+            )
+
+            SettingSlider(
+                label = stringResource(R.string.reader_slider_vertical_margins),
+                value = uiState.verticalMargins.toFloat(),
+                onValueChange = { onUpdateVerticalMargins(it.toInt()) },
+                valueRange = 0f..160f,
+                steps = 15,
+                displayValue = "${uiState.verticalMargins} dp"
             )
 
             SettingSlider(
