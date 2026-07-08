@@ -47,7 +47,6 @@ import io.aatricks.easyreader.ui.util.toFontFamily
 import androidx.compose.ui.unit.dp
 import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.ReaderTheme
-import io.aatricks.easyreader.ui.theme.AccentTheme
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 
@@ -118,27 +117,6 @@ private fun ReaderThemeOption(
     }
 }
 
-@Composable
-private fun AccentThemeChip(
-    accentTheme: AccentTheme,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    FilterChip(
-        selected = isSelected,
-        onClick = onClick,
-        label = { Text(accentTheme.displayName) },
-        leadingIcon = {
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .clip(CircleShape)
-                    .background(accentTheme.previewColor)
-            )
-        },
-        colors = settingsChipColors()
-    )
-}
 
 @Composable
 private fun FontFamilyChip(
@@ -173,7 +151,6 @@ fun ReaderSettingsSheet(
     onUpdateMargins: (Int) -> Unit,
     onUpdateParagraphSpacing: (Float) -> Unit,
     onUpdateReaderTheme: (ReaderTheme) -> Unit,
-    onUpdateAccentTheme: (AccentTheme) -> Unit,
     sheetState: SheetState
 ) {
     ModalBottomSheet(
@@ -274,23 +251,6 @@ fun ReaderSettingsSheet(
                 }
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
-                SettingsSectionLabel(stringResource(R.string.reader_settings_section_accent))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
-                ) {
-                    AccentTheme.entries.forEach { accentTheme ->
-                        AccentThemeChip(
-                            accentTheme = accentTheme,
-                            isSelected = uiState.accentTheme == accentTheme,
-                            onClick = { onUpdateAccentTheme(accentTheme) }
-                        )
-                    }
-                }
-            }
 
             SettingSlider(
                 label = stringResource(R.string.reader_slider_font_size),

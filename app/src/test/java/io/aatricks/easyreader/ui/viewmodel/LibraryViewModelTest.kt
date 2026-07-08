@@ -41,6 +41,7 @@ class LibraryViewModelTest {
         Dispatchers.setMain(testDispatcher)
         LibraryViewModel.isUnderTest = true
         LibraryViewModel.defaultDispatcher = testDispatcher
+        LibraryViewModel.coversBackfillAttempted.set(false)
 
         whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(emptyList()))
         whenever(libraryRepository.loadCollapsedSources()).thenReturn(emptySet())
@@ -49,6 +50,7 @@ class LibraryViewModelTest {
         runTest {
             whenever(libraryRepository.clearUpdateIndicator(any())).thenReturn(false)
             whenever(libraryRepository.updateItem(any())).thenReturn(true)
+            whenever(libraryRepository.getAllItemsSnapshot()).thenReturn(emptyList())
         }
 
         reconciler = DownloadStatusReconciler(libraryRepository)
@@ -848,6 +850,140 @@ class LibraryViewModelTest {
             coverImageUrl = eq(item.coverUrl!!)
         )
         assertNull(viewModel.uiState.value.error)
+    }
+
+    @Test
+    fun `backfillMissingCovers updates blank covers from explore details once per novel`() = runTest {
+        LibraryViewModel.coversBackfillAttempted.set(false)
+        val item1 = LibraryItem(
+            id = "id-1",
+            title = "Novel 1 - Chapter 1",
+            url = "https://example.com/novel-1/chapter-1",
+            baseTitle = "Novel 1",
+            baseNovelUrl = "https://example.com/novel-1",
+            sourceName = "Source1",
+            contentType = ContentType.WEB,
+            coverImageUrl = ""
+        )
+        val item2 = LibraryItem(
+            id = "id-2",
+            title = "Novel 1 - Chapter 2",
+            url = "https://example.com/novel-1/chapter-2",
+            baseTitle = "Novel 1",
+            baseNovelUrl = "https://example.com/novel-1",
+            sourceName = "Source1",
+            contentType = ContentType.WEB,
+            coverImageUrl = ""
+        )
+        
+        whenever(libraryRepository.getAllItemsSnapshot()).thenReturn(listOf(item1, item2))
+        whenever(exploreRepository.getSourceNames()).thenReturn(listOf("Source1"))
+        whenever(exploreRepository.getNovelDetails("https://example.com/novel-1", "Source1")).thenReturn(
+            ExploreItem(
+                title = "Novel 1",
+                url = "https://example.com/novel-1",
+                source = "Source1",
+                coverUrl = "https://example.com/novel-1/cover.jpg"
+            )
+        )
+        whenever(libraryRepository.updateCoverImageUrl(any(), any(), any())).thenReturn(true)
+        
+        val testViewModel = LibraryViewModel(
+            libraryRepository,
+            contentRepository,
+            exploreRepository,
+            io.aatricks.easyreader.work.NoOpChapterDownloadQueue(),
+            reconciler
+        )
+        advanceUntilIdle()
+        
+        verify(exploreRepository, times(1)).getNovelDetails("https://example.com/novel-1", "Source1")
+        verify(libraryRepository, times(1)).updateCoverImageUrl("Novel 1", "Source1", "https://example.com/novel-1/cover.jpg")
+    }
+
+    @Test
+    fun `backfillMissingCovers does not touch items that already have covers`() = runTest {
+        LibraryViewModel.coversBackfillAttempted.set(false)
+        val itemWithCover = LibraryItem(
+            id = "id-1",
+            title = "Novel 1 - Chapter 1",
+            url = "https://example.com/novel-1/chapter-1",
+            baseTitle = "Novel 1",
+            baseNovelUrl = "https://example.com/novel-1",
+            sourceName = "Source1",
+            contentType = ContentType.WEB,
+            coverImageUrl = "https://example.com/novel-1/cover.jpg"
+        )
+        
+        whenever(libraryRepository.getAllItemsSnapshot()).thenReturn(listOf(itemWithCover))
+        
+        val testViewModel = LibraryViewModel(
+            libraryRepository,
+            contentRepository,
+            exploreRepository,
+            io.aatricks.easyreader.work.NoOpChapterDownloadQueue(),
+            reconciler
+        )
+        advanceUntilIdle()
+        
+        verify(exploreRepository, never()).getNovelDetails(any(), any())
+        verify(libraryRepository, never()).updateCoverImageUrl(any(), any(), any())
+    }
+
+    @Test
+    fun `backfillMissingCovers failure for one novel does not prevent others from backfilling`() = runTest {
+        LibraryViewModel.coversBackfillAttempted.set(false)
+        val item1 = LibraryItem(
+            id = "id-1",
+            title = "Novel 1 - Chapter 1",
+            url = "https://example.com/novel-1/chapter-1",
+            baseTitle = "Novel 1",
+            baseNovelUrl = "https://example.com/novel-1",
+            sourceName = "Source1",
+            contentType = ContentType.WEB,
+            coverImageUrl = ""
+        )
+        val item2 = LibraryItem(
+            id = "id-2",
+            title = "Novel 2 - Chapter 1",
+            url = "https://example.com/novel-2/chapter-1",
+            baseTitle = "Novel 2",
+            baseNovelUrl = "https://example.com/novel-2",
+            sourceName = "Source2",
+            contentType = ContentType.WEB,
+            coverImageUrl = ""
+        )
+        
+        whenever(libraryRepository.getAllItemsSnapshot()).thenReturn(listOf(item1, item2))
+        whenever(exploreRepository.getSourceNames()).thenReturn(listOf("Source1", "Source2"))
+        
+        // Novel 1 fails
+        whenever(exploreRepository.getNovelDetails("https://example.com/novel-1", "Source1"))
+            .thenThrow(RuntimeException("Network error"))
+            
+        // Novel 2 succeeds
+        whenever(exploreRepository.getNovelDetails("https://example.com/novel-2", "Source2")).thenReturn(
+            ExploreItem(
+                title = "Novel 2",
+                url = "https://example.com/novel-2",
+                source = "Source2",
+                coverUrl = "https://example.com/novel-2/cover.jpg"
+            )
+        )
+        whenever(libraryRepository.updateCoverImageUrl(any(), any(), any())).thenReturn(true)
+        
+        val testViewModel = LibraryViewModel(
+            libraryRepository,
+            contentRepository,
+            exploreRepository,
+            io.aatricks.easyreader.work.NoOpChapterDownloadQueue(),
+            reconciler
+        )
+        advanceUntilIdle()
+        
+        verify(exploreRepository, times(1)).getNovelDetails("https://example.com/novel-1", "Source1")
+        verify(exploreRepository, times(1)).getNovelDetails("https://example.com/novel-2", "Source2")
+        verify(libraryRepository, times(1)).updateCoverImageUrl("Novel 2", "Source2", "https://example.com/novel-2/cover.jpg")
     }
 }
 

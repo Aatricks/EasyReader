@@ -274,7 +274,6 @@ fun ReaderScreen(
             onUpdateMargins = { readerViewModel.updateMargins(it) },
             onUpdateParagraphSpacing = { readerViewModel.updateParagraphSpacing(it) },
             onUpdateReaderTheme = { readerViewModel.updateReaderTheme(it) },
-            onUpdateAccentTheme = { readerViewModel.updateAccentTheme(it) },
             sheetState = settingsSheetState
         )
     }

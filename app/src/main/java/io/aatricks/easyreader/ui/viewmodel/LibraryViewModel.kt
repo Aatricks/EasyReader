@@ -26,6 +26,13 @@ import android.util.Log
 import io.aatricks.easyreader.ui.screens.DrawerNovelSections
 import io.aatricks.easyreader.ui.screens.buildDrawerNovelSections
 import kotlinx.coroutines.Dispatchers
+import io.aatricks.easyreader.data.model.libraryDisplayTitle
+import io.aatricks.easyreader.data.model.libraryNovelKey
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
@@ -70,6 +77,49 @@ class LibraryViewModel @Inject constructor(
 
     init {
         _collapsedSources.value = repository.loadCollapsedSources()
+        backfillMissingCovers()
+    }
+
+    private fun backfillMissingCovers() {
+        if (coversBackfillAttempted.compareAndSet(false, true)) {
+            viewModelScope.launch(defaultDispatcher) {
+                runCatching {
+                    val items = repository.getAllItemsSnapshot()
+                    val itemsToBackfill = items.filter {
+                        it.coverImageUrl.isBlank() && it.contentType == ContentType.WEB
+                    }
+                    if (itemsToBackfill.isEmpty()) return@launch
+
+                    val grouped = itemsToBackfill.groupBy { it.libraryNovelKey() }
+                    val semaphore = Semaphore(BACKFILL_CONCURRENCY)
+                    val jobs = grouped.values.map { novelGroup ->
+                        async {
+                            semaphore.withPermit {
+                                val firstItem = novelGroup.first()
+                                val url = firstItem.baseNovelUrl.ifBlank { firstItem.url }
+                                val sourceName = firstItem.sourceName
+                                val displayTitle = firstItem.libraryDisplayTitle()
+                                
+                                runCatching {
+                                    val knownSources = exploreRepository.getSourceNames()
+                                    val details = if (knownSources.contains(sourceName)) {
+                                        exploreRepository.getNovelDetails(url, sourceName)
+                                    } else {
+                                        exploreRepository.getNovelDetailsByUrl(url)
+                                    }
+                                    
+                                    val coverUrl = details?.coverUrl
+                                    if (!coverUrl.isNullOrBlank()) {
+                                        repository.updateCoverImageUrl(displayTitle, sourceName, coverUrl)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    jobs.awaitAll()
+                }
+            }
+        }
     }
 
     fun reconcileDownloadedItemsOnDemand(): Unit {
@@ -686,6 +736,8 @@ class LibraryViewModel @Inject constructor(
     companion object {
         var defaultDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default
         var isUnderTest: Boolean = false
+        val coversBackfillAttempted = AtomicBoolean(false)
+        private const val BACKFILL_CONCURRENCY = 3
     }
 }
 

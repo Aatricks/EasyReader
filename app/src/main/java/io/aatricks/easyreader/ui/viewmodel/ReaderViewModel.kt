@@ -428,11 +428,6 @@ class ReaderViewModel @Inject constructor(
         updateState { it.copy(readerTheme = newTheme, toastMessage = "Theme: $label") }
     }
 
-    fun updateAccentTheme(newAccentTheme: AccentTheme) {
-        if (preferencesManager.accentTheme == newAccentTheme.name) return
-        preferencesManager.accentTheme = newAccentTheme.name
-        updateState { it.copy(accentTheme = newAccentTheme, toastMessage = "Accent: ${newAccentTheme.displayName}") }
-    }
 
     fun clearToast() {
         updateState { it.copy(toastMessage = null) }

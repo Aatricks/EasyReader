@@ -177,6 +177,11 @@ class LibraryRepository @Inject constructor(
             } ?: false
         } ?: false
 
+    suspend fun updateCoverImageUrl(displayTitle: String, sourceName: String, cover: String): Boolean =
+        runRepoCatching("Failed to update cover image URL", false) {
+            libraryDao.updateCoverImageUrl(displayTitle, sourceName, cover) > 0
+        } ?: false
+
     suspend fun updateNovelInfo(itemId: String, baseNovelUrl: String, sourceName: String): Boolean =
         runRepoCatching("Failed to update novel info", false) {
             val updatedCount = libraryDao.updateNovelInfo(itemId, baseNovelUrl, sourceName)
