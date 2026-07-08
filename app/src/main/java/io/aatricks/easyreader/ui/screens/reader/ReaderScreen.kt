@@ -171,12 +171,11 @@ fun ReaderScreen(
     ModalNavigationDrawer(
         drawerState = drawerState,
         modifier = modifier,
-        // Edge-swipe opens the drawer in continuous (manhwa/webtoon) scrolling, but only while the
-        // controls are visible — during immersive reading a mostly-vertical drag near the left edge
-        // was opening it by accident. In paged mode the left edge belongs to horizontal page-turns,
-        // so only allow the swipe once the drawer is already open (to close it). It's always
-        // reachable via the toolbar library button and the back button.
-        gesturesEnabled = drawerState.isOpen || (!uiState.isPagedMode && uiState.showControls),
+        // Native swipe follows the finger and detects a horizontal drag anywhere on screen, so it
+        // never needs the left edge -- that keeps it clear of the system back gesture. Committing
+        // requires dragging past half the drawer width or a flick, so a vertical scroll won't open
+        // it. Disabled in paged mode, where the left edge belongs to horizontal page-turns.
+        gesturesEnabled = drawerState.isOpen || !uiState.isPagedMode,
         drawerContent = {
             ModalDrawerSheet(
                 modifier = Modifier.width(320.dp)

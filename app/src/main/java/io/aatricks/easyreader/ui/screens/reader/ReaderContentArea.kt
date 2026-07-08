@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
@@ -93,6 +95,13 @@ private const val RESTORE_MAX_WAIT_MS = 3_000L
 // the last applied size. Without it a slow image decode produces 5–10 visible position
 // hops as the LazyList re-measures intermediate sizes.
 private const val RESTORE_REJUMP_THRESHOLD = 0.20f
+
+// The native drawer opens whenever a drag's horizontal component crosses touch-slop before the
+// vertical one, which lets fairly diagonal flicks open it. This raises that bar: the drawer is
+// only allowed to claim a drag whose horizontal travel leads vertical by at least this factor
+// (~30deg from horizontal). Diagonal flicks between here and 45deg are swallowed so they neither
+// open the drawer nor scroll; steeper drags fall through to the native follow-the-finger gesture.
+private const val DRAWER_OPEN_ANGLE_RATIO = 1.75f
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -299,6 +308,42 @@ internal fun ContentArea(
         modifier = Modifier
             .fillMaxSize()
             .nestedScroll(nestedScrollConnection)
+            // Angle gate for the native drawer's open-swipe. Runs on the Main pass ahead of the
+            // drawer's own draggable (an ancestor), so consuming a change here cancels the drawer's
+            // slop detection (DragGestureDetector bails on a consumed change) -- but only for drags
+            // that aren't horizontal enough. Steep-horizontal drags are left untouched so the
+            // native follow-the-finger open still works; vertical drags are left for the list.
+            .pointerInput(uiState.isPagedMode) {
+                if (uiState.isPagedMode) return@pointerInput
+                val slop = viewConfiguration.touchSlop
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var blocking = false
+                    var tracking = true
+                    while (tracking) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id }
+                        val adx = change?.let { kotlin.math.abs(it.position.x - down.position.x) } ?: 0f
+                        val ady = change?.let { kotlin.math.abs(it.position.y - down.position.y) } ?: 0f
+                        when {
+                            change == null || !change.pressed -> tracking = false
+                            blocking -> change.consume()
+                            // Something deeper (the list) already took it -- leave it alone.
+                            change.isConsumed -> tracking = false
+                            adx < slop && ady < slop -> Unit // below slop: undecided, keep waiting
+                            // Steep-horizontal: hand off to the native drawer gesture.
+                            adx >= ady * DRAWER_OPEN_ANGLE_RATIO -> tracking = false
+                            // Vertical-dominant: it's a scroll, let the list have it.
+                            ady > adx -> tracking = false
+                            // Diagonal-but-not-steep: swallow so the drawer can't open on it.
+                            else -> {
+                                blocking = true
+                                change.consume()
+                            }
+                        }
+                    }
+                }
+            }
             .background(bgColor)
     ) {
         Box(
