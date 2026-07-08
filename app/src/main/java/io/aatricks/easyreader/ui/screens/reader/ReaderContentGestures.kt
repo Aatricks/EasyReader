@@ -37,6 +37,8 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import io.aatricks.easyreader.data.model.ChapterContent
 import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
@@ -154,11 +156,29 @@ internal fun rememberReaderNestedScrollConnection(
     val currentOnNavigatePrevious by rememberUpdatedState(onNavigatePrevious)
     val currentOnNavigateNext by rememberUpdatedState(onNavigateNext)
 
+    val hapticFeedback = LocalHapticFeedback.current
     var pullAmount by remember { mutableFloatStateOf(0f) }
+    var wasThresholdReached by remember { mutableStateOf(false) }
     var handledUserScrollStart by remember { mutableStateOf(false) }
 
     return remember(content, pagerState, listState, threshold) {
         object : NestedScrollConnection {
+            private fun updatePullAmount(newValue: Float) {
+                val isReached = abs(newValue) >= threshold
+                if (isReached != wasThresholdReached) {
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+                    wasThresholdReached = isReached
+                }
+                pullAmount = newValue
+                currentOnPullAmountChange(newValue)
+            }
+
+            private fun resetPullAmount() {
+                wasThresholdReached = false
+                pullAmount = 0f
+                currentOnPullAmountChange(0f)
+            }
+
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 val state = currentUiState
                 if (source == NestedScrollSource.UserInput &&
@@ -174,27 +194,23 @@ internal fun rememberReaderNestedScrollConnection(
                 if (state.isPagedMode) {
                     if (pullAmount > 0 && available.x < 0) {
                         val consumed = available.x.coerceAtLeast(-pullAmount)
-                        pullAmount += consumed
-                        currentOnPullAmountChange(pullAmount)
+                        updatePullAmount(pullAmount + consumed)
                         return Offset(consumed, 0f)
                     }
                     if (pullAmount < 0 && available.x > 0) {
                         val consumed = available.x.coerceAtMost(-pullAmount)
-                        pullAmount += consumed
-                        currentOnPullAmountChange(pullAmount)
+                        updatePullAmount(pullAmount + consumed)
                         return Offset(consumed, 0f)
                     }
                 } else {
                     if (pullAmount > 0 && available.y < 0) {
                         val consumed = available.y.coerceAtLeast(-pullAmount)
-                        pullAmount += consumed
-                        currentOnPullAmountChange(pullAmount)
+                        updatePullAmount(pullAmount + consumed)
                         return Offset(0f, consumed)
                     }
                     if (pullAmount < 0 && available.y > 0) {
                         val consumed = available.y.coerceAtMost(-pullAmount)
-                        pullAmount += consumed
-                        currentOnPullAmountChange(pullAmount)
+                        updatePullAmount(pullAmount + consumed)
                         return Offset(0f, consumed)
                     }
                 }
@@ -216,47 +232,39 @@ internal fun rememberReaderNestedScrollConnection(
 
                     if (state.isRtl) {
                         if (available.x < 0 && isAtStart && state.canNavigatePrevious) {
-                            pullAmount += available.x * 0.5f
-                            currentOnPullAmountChange(pullAmount)
+                            updatePullAmount(pullAmount + available.x * 0.5f)
                             return Offset(available.x, 0f)
                         } else if (available.x > 0 && isAtEnd && state.canNavigateNext) {
-                            pullAmount += available.x * 0.5f
-                            currentOnPullAmountChange(pullAmount)
+                            updatePullAmount(pullAmount + available.x * 0.5f)
                             return Offset(available.x, 0f)
                         }
                     } else {
                         if (available.x > 0 && isAtStart && state.canNavigatePrevious) {
-                            pullAmount += available.x * 0.5f
-                            currentOnPullAmountChange(pullAmount)
+                            updatePullAmount(pullAmount + available.x * 0.5f)
                             return Offset(available.x, 0f)
                         } else if (available.x < 0 && isAtEnd && state.canNavigateNext) {
-                            pullAmount += available.x * 0.5f
-                            currentOnPullAmountChange(pullAmount)
+                            updatePullAmount(pullAmount + available.x * 0.5f)
                             return Offset(available.x, 0f)
                         }
                     }
 
                     if (pullAmount != 0f && !isAtAnyEdge) {
-                        pullAmount = 0f
-                        currentOnPullAmountChange(0f)
+                        resetPullAmount()
                     }
                 } else {
                     val isAtTop = !listState.canScrollBackward
                     val isAtBottom = !listState.canScrollForward
 
                     if (available.y > 0 && isAtTop && state.canNavigatePrevious) {
-                        pullAmount += available.y * 0.5f
-                        currentOnPullAmountChange(pullAmount)
+                        updatePullAmount(pullAmount + available.y * 0.5f)
                         return Offset(0f, available.y)
                     } else if (available.y < 0 && isAtBottom && state.canNavigateNext) {
-                        pullAmount += available.y * 0.5f
-                        currentOnPullAmountChange(pullAmount)
+                        updatePullAmount(pullAmount + available.y * 0.5f)
                         return Offset(0f, available.y)
                     }
 
                     if (pullAmount != 0f && !isAtTop && !isAtBottom) {
-                        pullAmount = 0f
-                        currentOnPullAmountChange(0f)
+                        resetPullAmount()
                     }
                 }
                 return Offset.Zero
@@ -277,9 +285,8 @@ internal fun rememberReaderNestedScrollConnection(
                         currentOnNavigateNext()
                     }
                 }
-                pullAmount = 0f
+                resetPullAmount()
                 handledUserScrollStart = false
-                currentOnPullAmountChange(0f)
                 return Velocity.Zero
             }
 

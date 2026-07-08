@@ -12,6 +12,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -282,12 +284,18 @@ private fun SelectableClickBox(
     onLongClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
+    val hapticFeedback = LocalHapticFeedback.current
     Box(
         modifier = modifier.then(
             if (onClick != null || onLongClick != null) {
                 Modifier.combinedClickable(
                     onClick = { onClick?.invoke() },
-                    onLongClick = onLongClick
+                    onLongClick = {
+                        if (onLongClick != null) {
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onLongClick.invoke()
+                        }
+                    }
                 )
             } else {
                 Modifier

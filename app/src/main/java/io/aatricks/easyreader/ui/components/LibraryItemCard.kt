@@ -26,6 +26,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -63,6 +65,7 @@ fun LibraryItemCard(
     onResetProgress: (() -> Unit)? = null,
     onMarkFinished: (() -> Unit)? = null
 ) {
+    val hapticFeedback = LocalHapticFeedback.current
     var menuExpanded by remember { mutableStateOf(false) }
     val targetBackgroundColor = when {
         isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
@@ -111,7 +114,10 @@ fun LibraryItemCard(
             )
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = onLongClick
+                onLongClick = {
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onLongClick()
+                }
             ),
         colors = CardDefaults.cardColors(
             containerColor = backgroundColor

@@ -96,10 +96,6 @@ fun ReaderScreen(
         readerViewModel.hideControls()
     }
 
-    BackHandler(enabled = !drawerState.isOpen && !uiState.showControls && uiState.content != null) {
-        scope.launch { drawerState.open() }
-    }
-
     LaunchedEffect(uiState.error) {
         if (uiState.error?.contains("403") == true || uiState.error?.contains("503") == true) {
             cloudflareUrl = uiState.lastAttemptedUrl ?: uiState.content?.url ?: ""
