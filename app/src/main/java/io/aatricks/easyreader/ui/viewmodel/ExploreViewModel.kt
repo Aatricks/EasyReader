@@ -32,7 +32,8 @@ class ExploreViewModel @Inject constructor(
         val sources: List<String> = emptyList(),
         val canLoadMore: Boolean = true,
         val browseMode: BrowseMode = BrowseMode.POPULAR,
-        val searchFailures: List<SourceFailure> = emptyList()
+        val searchFailures: List<SourceFailure> = emptyList(),
+        val hasError: Boolean = false
     )
 
     private val _searchQueryFlow = MutableStateFlow("")
@@ -64,7 +65,8 @@ class ExploreViewModel @Inject constructor(
             updateState {
                 it.copy(
                     isLoading = true,
-                    canLoadMore = true
+                    canLoadMore = true,
+                    hasError = false
                 )
             }
             runCatching {
@@ -74,18 +76,24 @@ class ExploreViewModel @Inject constructor(
                         availableTags = tags,
                     )
                 }
-                val novels = exploreRepository.getNovels(_uiState.value.browseMode, 1, _uiState.value.selectedSource, _uiState.value.selectedTags.toList())
+                val outcome = exploreRepository.getNovelsDetailed(
+                    _uiState.value.browseMode,
+                    1,
+                    _uiState.value.selectedSource,
+                    _uiState.value.selectedTags.toList()
+                )
                 updateState {
                     it.copy(
-                        items = novels,
+                        items = outcome.items,
                         isLoading = false,
                         page = 1,
-                        canLoadMore = novels.isNotEmpty()
+                        canLoadMore = outcome.items.isNotEmpty(),
+                        hasError = outcome.items.isEmpty() && outcome.failures.isNotEmpty()
                     )
                 }
             }.onFailure {
                 if (it is kotlinx.coroutines.CancellationException) throw it
-                updateState { it.copy(isLoading = false, canLoadMore = false) }
+                updateState { it.copy(isLoading = false, canLoadMore = false, hasError = true) }
             }
         }
     }
@@ -120,7 +128,8 @@ class ExploreViewModel @Inject constructor(
                         selectedItem = null,
                         selectedItemDetails = null,
                         isFetchingDetails = false,
-                        canLoadMore = true
+                        canLoadMore = true,
+                        hasError = false
                     )
                 }
                 val tags = exploreRepository.getTags(sourceName)
@@ -131,8 +140,14 @@ class ExploreViewModel @Inject constructor(
                     novels = outcome.items
                     failures = outcome.failures
                 } else {
-                    novels = exploreRepository.getNovels(_uiState.value.browseMode, 1, sourceName, emptyList())
-                    failures = emptyList()
+                    val outcome = exploreRepository.getNovelsDetailed(
+                        _uiState.value.browseMode,
+                        1,
+                        sourceName,
+                        emptyList()
+                    )
+                    novels = outcome.items
+                    failures = outcome.failures
                 }
                 updateState {
                     it.copy(
@@ -141,12 +156,13 @@ class ExploreViewModel @Inject constructor(
                         availableTags = tags,
                         isSearching = searchQuery.isNotBlank(),
                         canLoadMore = novels.isNotEmpty(),
-                        searchFailures = failures
+                        searchFailures = if (searchQuery.isNotBlank()) failures else emptyList(),
+                        hasError = novels.isEmpty() && failures.isNotEmpty()
                     )
                 }
             }.onFailure {
                 if (it is kotlinx.coroutines.CancellationException) throw it
-                updateState { it.copy(isLoading = false, canLoadMore = false) }
+                updateState { it.copy(isLoading = false, canLoadMore = false, hasError = true) }
             }
         }
     }
@@ -160,12 +176,32 @@ class ExploreViewModel @Inject constructor(
                 } else {
                     _uiState.value.selectedTags + tag
                 }
-                updateState { it.copy(selectedTags = newTags, isLoading = true, page = 1, canLoadMore = true) }
-                val novels = exploreRepository.getNovels(_uiState.value.browseMode, 1, _uiState.value.selectedSource, newTags.toList())
-                updateState { it.copy(items = novels, isLoading = false, canLoadMore = novels.isNotEmpty()) }
+                updateState {
+                    it.copy(
+                        selectedTags = newTags,
+                        isLoading = true,
+                        page = 1,
+                        canLoadMore = true,
+                        hasError = false
+                    )
+                }
+                val outcome = exploreRepository.getNovelsDetailed(
+                    _uiState.value.browseMode,
+                    1,
+                    _uiState.value.selectedSource,
+                    newTags.toList()
+                )
+                updateState {
+                    it.copy(
+                        items = outcome.items,
+                        isLoading = false,
+                        canLoadMore = outcome.items.isNotEmpty(),
+                        hasError = outcome.items.isEmpty() && outcome.failures.isNotEmpty()
+                    )
+                }
             }.onFailure {
                 if (it is kotlinx.coroutines.CancellationException) throw it
-                updateState { it.copy(isLoading = false, canLoadMore = false) }
+                updateState { it.copy(isLoading = false, canLoadMore = false, hasError = true) }
             }
         }
     }
@@ -174,12 +210,32 @@ class ExploreViewModel @Inject constructor(
         currentJob?.cancel()
         currentJob = viewModelScope.launch {
             runCatching {
-                updateState { it.copy(selectedTags = emptySet(), isLoading = true, page = 1, canLoadMore = true) }
-                val novels = exploreRepository.getNovels(_uiState.value.browseMode, 1, _uiState.value.selectedSource, emptyList())
-                updateState { it.copy(items = novels, isLoading = false, canLoadMore = novels.isNotEmpty()) }
+                updateState {
+                    it.copy(
+                        selectedTags = emptySet(),
+                        isLoading = true,
+                        page = 1,
+                        canLoadMore = true,
+                        hasError = false
+                    )
+                }
+                val outcome = exploreRepository.getNovelsDetailed(
+                    _uiState.value.browseMode,
+                    1,
+                    _uiState.value.selectedSource,
+                    emptyList()
+                )
+                updateState {
+                    it.copy(
+                        items = outcome.items,
+                        isLoading = false,
+                        canLoadMore = outcome.items.isNotEmpty(),
+                        hasError = outcome.items.isEmpty() && outcome.failures.isNotEmpty()
+                    )
+                }
             }.onFailure {
                 if (it is kotlinx.coroutines.CancellationException) throw it
-                updateState { it.copy(isLoading = false, canLoadMore = false) }
+                updateState { it.copy(isLoading = false, canLoadMore = false, hasError = true) }
             }
         }
     }
@@ -202,7 +258,8 @@ class ExploreViewModel @Inject constructor(
                         isLoading = true,
                         page = 1,
                         canLoadMore = true,
-                        searchFailures = emptyList()
+                        searchFailures = emptyList(),
+                        hasError = false
                     )
                 }
                 val outcome = exploreRepository.searchNovelsDetailed(
@@ -215,17 +272,22 @@ class ExploreViewModel @Inject constructor(
                         items = outcome.items,
                         isLoading = false,
                         canLoadMore = outcome.items.isNotEmpty(),
-                        searchFailures = outcome.failures
+                        searchFailures = outcome.failures,
+                        hasError = outcome.items.isEmpty() && outcome.failures.isNotEmpty()
                     )
                 }
             }.onFailure {
                 if (it is kotlinx.coroutines.CancellationException) throw it
-                updateState { it.copy(isLoading = false, canLoadMore = false) }
+                updateState { it.copy(isLoading = false, canLoadMore = false, hasError = true) }
             }
         }
     }
 
     fun retryFailedSearchSource(sourceName: String): Unit {
+        if (sourceName.isBlank()) {
+            retry()
+            return
+        }
         if (_uiState.value.searchQuery.isBlank()) return
         viewModelScope.launch {
             runCatching {
@@ -318,6 +380,14 @@ class ExploreViewModel @Inject constructor(
         }
         _searchQueryFlow.value = ""
         loadInitialData()
+    }
+
+    fun retry() {
+        if (_uiState.value.searchQuery.isNotBlank()) {
+            performSearch()
+        } else {
+            loadInitialData()
+        }
     }
 
 }

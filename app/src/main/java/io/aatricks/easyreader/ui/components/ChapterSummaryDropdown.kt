@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 
 @Composable
 fun ChapterSummaryDropdown(
@@ -40,8 +41,8 @@ fun ChapterSummaryDropdown(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(EasyReaderSpacing.sm),
+            verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
@@ -49,7 +50,7 @@ fun ChapterSummaryDropdown(
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
 
                 when {
                     !aiSupportedInBuild -> {
@@ -58,7 +59,7 @@ fun ChapterSummaryDropdown(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
                         Text(
                             text = "Install the AI variant to enable on-device chapter recaps.",
                             style = MaterialTheme.typography.bodySmall,
@@ -72,7 +73,7 @@ fun ChapterSummaryDropdown(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
                         Text(
                             text = "The AI model is downloaded once (a few hundred MB) and then runs offline.",
                             style = MaterialTheme.typography.bodySmall,
@@ -88,7 +89,7 @@ fun ChapterSummaryDropdown(
                     isInitializing && !isReady -> {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             CircularProgressIndicator(
@@ -105,10 +106,10 @@ fun ChapterSummaryDropdown(
                     }
 
                     isGenerating -> {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 CircularProgressIndicator(

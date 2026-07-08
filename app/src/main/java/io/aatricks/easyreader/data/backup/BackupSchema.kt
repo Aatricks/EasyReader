@@ -64,5 +64,6 @@ data class LibraryItemBackup(
     val sourceName: String,
     val isDownloaded: Boolean = false,
     val downloadedAt: Long? = null,
-    val bundledEpubPath: String? = null
+    val bundledEpubPath: String? = null,
+    val coverImageUrl: String = ""
 )

@@ -12,6 +12,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -46,6 +48,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,7 +66,12 @@ import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.ContentResult
 import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.model.LibraryItem
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import io.aatricks.easyreader.ui.components.ChapterSummaryDropdown
+import io.aatricks.easyreader.ui.components.rememberLibraryCoverImageRequest
 import io.aatricks.easyreader.ui.theme.EasyReaderMotion
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
@@ -281,12 +289,18 @@ private fun SelectableClickBox(
     onLongClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
+    val hapticFeedback = LocalHapticFeedback.current
     Box(
         modifier = modifier.then(
             if (onClick != null || onLongClick != null) {
                 Modifier.combinedClickable(
                     onClick = { onClick?.invoke() },
-                    onLongClick = onLongClick
+                    onLongClick = {
+                        if (onLongClick != null) {
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onLongClick.invoke()
+                        }
+                    }
                 )
             } else {
                 Modifier
@@ -339,7 +353,24 @@ private fun NovelGroupHeader(
             },
             onLongClick = onToggleSelection
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val coverItem = items.firstOrNull { it.coverImageUrl.isNotBlank() }
+                if (coverItem != null) {
+                    AsyncImage(
+                        model = rememberLibraryCoverImageRequest(coverItem),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .width(48.dp)
+                            .aspectRatio(GROUP_COVER_ASPECT_RATIO)
+                            .clip(MaterialTheme.shapes.small),
+                        contentScale = ContentScale.Crop
+                    )
+                    Spacer(modifier = Modifier.width(EasyReaderSpacing.sm))
+                }
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
@@ -348,7 +379,7 @@ private fun NovelGroupHeader(
                 if (!isExpanded) {
                     Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
                     Text(
-                        text = "Resume ${resumeItem.currentChapter.ifBlank { "Chapter 1" }}",
+                        text = getLibraryItemResumeLabel(resumeItem),
                         style = MaterialTheme.typography.bodySmall,
                         color = if (hasGroupSelection && !isGroupSelected) {
                             MaterialTheme.colorScheme.primary
@@ -366,6 +397,7 @@ private fun NovelGroupHeader(
                         )
                     }
                 }
+            }
             }
         }
 
@@ -437,7 +469,7 @@ private fun NovelChapterList(
     Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
 
     val lastRead = items.find { it.isCurrentlyReading } ?: items.maxByOrNull { it.lastRead }
-    if (!uiState.isSelectionMode && lastRead != null && lastRead.progress > 0) {
+    if (!uiState.isSelectionMode && lastRead != null) {
         Button(
             onClick = { onChapterClick(lastRead) },
             modifier = Modifier.fillMaxWidth(),
@@ -447,7 +479,13 @@ private fun NovelChapterList(
             ),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Text("Resume ${lastRead.currentChapter.ifBlank { "reading" }}")
+            Text(
+                if (lastRead.progress == 0 && lastRead.currentChapterUrl.isBlank()) {
+                    "Start reading"
+                } else {
+                    "Resume ${lastRead.currentChapter.ifBlank { "reading" }}"
+                }
+            )
         }
         Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
     }
@@ -505,7 +543,7 @@ private fun NovelChapterList(
                                             tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(14.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
                                     }
                                     Text(
                                         text = chapterItem.currentChapter.ifBlank { "Chapter 1" },
@@ -528,7 +566,7 @@ private fun NovelChapterList(
                                 if (chapterItem.isDownloaded) {
                                     IconButton(
                                         onClick = { libraryViewModel.removeDownload(chapterItem.id) },
-                                        modifier = Modifier.size(32.dp)
+                                        modifier = Modifier.minimumInteractiveComponentSize()
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.DownloadDone,
@@ -604,3 +642,5 @@ private fun NovelChapterList(
         }
     }
 }
+
+private const val GROUP_COVER_ASPECT_RATIO = 2f / 3f

@@ -20,6 +20,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
+import coil3.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import io.aatricks.easyreader.ui.components.rememberLibraryCoverImageRequest
+
+private val DRAWER_HERO_COVER_WIDTH = 56.dp
+private val DRAWER_COVER_WIDTH = 40.dp
+private const val COVER_ASPECT_RATIO = 0.6666667f
 
 @Composable
 fun LibraryDrawerContent(
@@ -119,10 +126,14 @@ fun LibraryDrawerContent(
             items(recentItems, key = { "recent_${it.novelKey}" }) { novel ->
                 QuickLibraryItem(
                     item = novel.resumeItem,
-                    supportingText = novel.resumeItem.currentChapter.ifBlank { "Resume where you left off" }
-                        .let { chapter ->
-                            if (chapter.startsWith("Resume")) chapter else "Resume $chapter"
-                        },
+                    supportingText = if (novel.resumeItem.progress == 0 &&
+                        novel.resumeItem.currentChapterUrl.isBlank()
+                    ) {
+                        "Start reading"
+                    } else {
+                        val chapter = novel.resumeItem.currentChapter.ifBlank { "Resume where you left off" }
+                        if (chapter.startsWith("Resume")) chapter else "Resume $chapter"
+                    },
                     onClick = {
                         onOpenLibraryItem(novel.resumeItem)
                         onCloseDrawer()
@@ -150,37 +161,55 @@ private fun ContinueReadingCard(
         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
         contentColor = MaterialTheme.colorScheme.onSurface
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(EasyReaderSpacing.lg),
-            verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Continue Reading",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                text = item.baseTitle.ifBlank { item.title },
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = item.currentChapter.ifBlank { "Pick up where you left off" },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            LinearProgressIndicator(
-                progress = { item.progress / 100f },
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+            if (item.coverImageUrl.isNotBlank()) {
+                val imageRequest = rememberLibraryCoverImageRequest(item)
+                AsyncImage(
+                    model = imageRequest,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .width(DRAWER_HERO_COVER_WIDTH)
+                        .aspectRatio(COVER_ASPECT_RATIO)
+                        .clip(MaterialTheme.shapes.small),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(modifier = Modifier.width(EasyReaderSpacing.md))
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)
+            ) {
+                Text(
+                    text = "Continue Reading",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = item.baseTitle.ifBlank { item.title },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = item.currentChapter.ifBlank { "Pick up where you left off" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                LinearProgressIndicator(
+                    progress = { item.progress / 100f },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            }
         }
     }
 }
@@ -195,6 +224,23 @@ private fun DrawerSectionLabel(text: String): Unit {
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@Composable
+private fun QuickLibraryItemCover(item: LibraryItem): Unit {
+    if (item.coverImageUrl.isNotBlank()) {
+        val imageRequest = rememberLibraryCoverImageRequest(item)
+        AsyncImage(
+            model = imageRequest,
+            contentDescription = null,
+            modifier = Modifier
+                .width(DRAWER_COVER_WIDTH)
+                .aspectRatio(COVER_ASPECT_RATIO)
+                .clip(MaterialTheme.shapes.small),
+            contentScale = ContentScale.Crop
+        )
+        Spacer(modifier = Modifier.width(EasyReaderSpacing.md))
     }
 }
 
@@ -219,6 +265,7 @@ private fun QuickLibraryItem(
                 .padding(horizontal = EasyReaderSpacing.md, vertical = EasyReaderSpacing.sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            QuickLibraryItemCover(item)
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)
@@ -239,6 +286,7 @@ private fun QuickLibraryItem(
                 )
             }
             if (trailingLabel != null) {
+                Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
                 AssistChip(
                     onClick = onClick,
                     label = { Text(trailingLabel) }

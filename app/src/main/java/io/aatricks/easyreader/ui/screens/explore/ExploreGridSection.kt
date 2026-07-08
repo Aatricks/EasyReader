@@ -105,11 +105,19 @@ internal fun ExploreGrid(
 
                 uiState.items.isEmpty() -> {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        EmptyExploreState(
-                            query = uiState.searchQuery,
-                            hasActiveFilters = hasActiveFilters,
-                            onClearFilters = onClearFilters
-                        )
+                        if (uiState.hasError || uiState.searchFailures.isNotEmpty()) {
+                            ErrorTile(
+                                message = "Offline or failed to fetch results. Check your connection.",
+                                onRetry = { onRetryFailedSource("") },
+                                modifier = Modifier.padding(top = EasyReaderSpacing.xxl)
+                            )
+                        } else {
+                            EmptyExploreState(
+                                query = uiState.searchQuery,
+                                hasActiveFilters = hasActiveFilters,
+                                onClearFilters = onClearFilters
+                            )
+                        }
                     }
                 }
 

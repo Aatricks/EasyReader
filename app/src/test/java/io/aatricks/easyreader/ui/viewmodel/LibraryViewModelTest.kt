@@ -41,6 +41,7 @@ class LibraryViewModelTest {
         Dispatchers.setMain(testDispatcher)
         LibraryViewModel.isUnderTest = true
         LibraryViewModel.defaultDispatcher = testDispatcher
+        LibraryViewModel.coversBackfillAttempted.set(false)
 
         whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(emptyList()))
         whenever(libraryRepository.loadCollapsedSources()).thenReturn(emptySet())
@@ -49,6 +50,7 @@ class LibraryViewModelTest {
         runTest {
             whenever(libraryRepository.clearUpdateIndicator(any())).thenReturn(false)
             whenever(libraryRepository.updateItem(any())).thenReturn(true)
+            whenever(libraryRepository.getAllItemsSnapshot()).thenReturn(emptyList())
         }
 
         reconciler = DownloadStatusReconciler(libraryRepository)
@@ -237,6 +239,7 @@ class LibraryViewModelTest {
                 any(),
                 any(),
                 any(),
+                any(),
                 any()
             )
         ).thenReturn(createdItem)
@@ -255,7 +258,8 @@ class LibraryViewModelTest {
             insertedBaseTitle.capture(),
             insertedBaseNovelUrl.capture(),
             insertedSourceName.capture(),
-            insertedTotalChapters.capture()
+            insertedTotalChapters.capture(),
+            any()
         )
         assertEquals("Chapter 10", insertedTitle.firstValue)
         assertEquals(latestUrl, insertedUrl.firstValue)
@@ -337,6 +341,7 @@ class LibraryViewModelTest {
                 any(),
                 any(),
                 any(),
+                any(),
                 any()
             )
         ).thenReturn(
@@ -395,7 +400,7 @@ class LibraryViewModelTest {
         )
         advanceUntilIdle()
 
-        verify(libraryRepository, never()).addItem(any(), any(), any(), any(), any(), any(), any(), any())
+        verify(libraryRepository, never()).addItem(any(), any(), any(), any(), any(), any(), any(), any(), any())
         assertEquals(listOf(RecordedEnqueue(chapter.url, replaceExisting = false)), queue.enqueued)
         verify(contentRepository, never()).prefetchWithProgress(any(), any(), any())
         verify(libraryRepository, never()).markDownloaded(existingItem.id, true)
@@ -505,7 +510,7 @@ class LibraryViewModelTest {
 
         whenever(libraryRepository.getItemByUrl(chapter.url)).thenReturn(null)
         whenever(
-            libraryRepository.addItem(any(), any(), any(), any(), any(), any(), any(), any())
+            libraryRepository.addItem(any(), any(), any(), any(), any(), any(), any(), any(), any())
         ).thenReturn(
             LibraryItem(
                 id = "chapter-14-id",
@@ -745,6 +750,240 @@ class LibraryViewModelTest {
 
         assertEquals(inspected1, activeViewModel.uiState.value.chapterCacheStates[item1.url])
         assertEquals(inspected2, activeViewModel.uiState.value.chapterCacheStates[item2.url])
+    }
+
+    @Test
+    fun `fetchAndAdd success sets snackbarMessage and clears error`() = runTest {
+        val url = "https://example.com/novel/chapter-1"
+        whenever(libraryRepository.getItemByUrl(url)).thenReturn(null)
+        whenever(contentRepository.inferContentType(url)).thenReturn(ContentType.EPUB)
+        whenever(contentRepository.fetchTitle(url)).thenReturn("Novel Title")
+
+        viewModel.fetchAndAdd(url)
+        advanceUntilIdle()
+
+        assertEquals("Added \"Novel Title\" to library", viewModel.uiState.value.snackbarMessage)
+        assertNull(viewModel.uiState.value.error)
+
+        viewModel.consumeSnackbarMessage()
+        advanceUntilIdle()
+        assertNull(viewModel.uiState.value.snackbarMessage)
+    }
+
+    @Test
+    fun `fetchAndAdd failure sets error`() = runTest {
+        val url = "https://example.com/novel/chapter-1"
+        whenever(libraryRepository.getItemByUrl(url)).thenReturn(null)
+        whenever(contentRepository.inferContentType(url)).thenReturn(ContentType.EPUB)
+        whenever(contentRepository.fetchTitle(url)).thenReturn("Novel Title")
+        whenever(
+            libraryRepository.addItem(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any()
+            )
+        ).thenThrow(RuntimeException("Database write failed"))
+
+        viewModel.fetchAndAdd(url)
+        advanceUntilIdle()
+
+        assertEquals("Failed to add item: Database write failed", viewModel.uiState.value.error)
+        assertNull(viewModel.uiState.value.snackbarMessage)
+
+        viewModel.consumeError()
+        advanceUntilIdle()
+        assertNull(viewModel.uiState.value.error)
+    }
+
+    @Test
+    fun `addExploreItem successfully adds item with cover image URL`() = runTest {
+        val item = ExploreItem(
+            title = "Novel Title",
+            url = "https://example.com/novel",
+            coverUrl = "https://example.com/cover.jpg",
+            source = "Source1",
+            readingUrl = "https://example.com/novel/read",
+            chapterCount = 42
+        )
+        whenever(libraryRepository.getItemByUrl(item.readingUrl!!)).thenReturn(null)
+        val expectedItem = LibraryItem(
+            id = "new-id",
+            title = item.title,
+            url = item.readingUrl!!,
+            baseTitle = item.title,
+            baseNovelUrl = item.url,
+            sourceName = item.source,
+            coverImageUrl = item.coverUrl!!
+        )
+        whenever(
+            libraryRepository.addItem(
+                title = eq("Novel Title - Chapter 1"),
+                url = eq(item.readingUrl!!),
+                contentType = eq(ContentType.WEB),
+                currentChapter = eq("Chapter 1"),
+                baseTitle = eq(item.title),
+                baseNovelUrl = eq(item.url),
+                sourceName = eq(item.source),
+                totalChapters = eq(item.chapterCount),
+                coverImageUrl = eq(item.coverUrl!!)
+            )
+        ).thenReturn(expectedItem)
+
+        viewModel.addExploreItem(item)
+        advanceUntilIdle()
+
+        verify(libraryRepository).addItem(
+            title = eq("Novel Title - Chapter 1"),
+            url = eq(item.readingUrl!!),
+            contentType = eq(ContentType.WEB),
+            currentChapter = eq("Chapter 1"),
+            baseTitle = eq(item.title),
+            baseNovelUrl = eq(item.url),
+            sourceName = eq(item.source),
+            totalChapters = eq(item.chapterCount),
+            coverImageUrl = eq(item.coverUrl!!)
+        )
+        assertNull(viewModel.uiState.value.error)
+    }
+
+    @Test
+    fun `backfillMissingCovers updates blank covers from explore details once per novel`() = runTest {
+        LibraryViewModel.coversBackfillAttempted.set(false)
+        val item1 = LibraryItem(
+            id = "id-1",
+            title = "Novel 1 - Chapter 1",
+            url = "https://example.com/novel-1/chapter-1",
+            baseTitle = "Novel 1",
+            baseNovelUrl = "https://example.com/novel-1",
+            sourceName = "Source1",
+            contentType = ContentType.WEB,
+            coverImageUrl = ""
+        )
+        val item2 = LibraryItem(
+            id = "id-2",
+            title = "Novel 1 - Chapter 2",
+            url = "https://example.com/novel-1/chapter-2",
+            baseTitle = "Novel 1",
+            baseNovelUrl = "https://example.com/novel-1",
+            sourceName = "Source1",
+            contentType = ContentType.WEB,
+            coverImageUrl = ""
+        )
+        
+        whenever(libraryRepository.getAllItemsSnapshot()).thenReturn(listOf(item1, item2))
+        whenever(exploreRepository.getSourceNames()).thenReturn(listOf("Source1"))
+        whenever(exploreRepository.getNovelDetails("https://example.com/novel-1", "Source1")).thenReturn(
+            ExploreItem(
+                title = "Novel 1",
+                url = "https://example.com/novel-1",
+                source = "Source1",
+                coverUrl = "https://example.com/novel-1/cover.jpg"
+            )
+        )
+        whenever(libraryRepository.updateCoverImageUrl(any(), any(), any())).thenReturn(true)
+        
+        val testViewModel = LibraryViewModel(
+            libraryRepository,
+            contentRepository,
+            exploreRepository,
+            io.aatricks.easyreader.work.NoOpChapterDownloadQueue(),
+            reconciler
+        )
+        advanceUntilIdle()
+        
+        verify(exploreRepository, times(1)).getNovelDetails("https://example.com/novel-1", "Source1")
+        verify(libraryRepository, times(1)).updateCoverImageUrl("Novel 1", "Source1", "https://example.com/novel-1/cover.jpg")
+    }
+
+    @Test
+    fun `backfillMissingCovers does not touch items that already have covers`() = runTest {
+        LibraryViewModel.coversBackfillAttempted.set(false)
+        val itemWithCover = LibraryItem(
+            id = "id-1",
+            title = "Novel 1 - Chapter 1",
+            url = "https://example.com/novel-1/chapter-1",
+            baseTitle = "Novel 1",
+            baseNovelUrl = "https://example.com/novel-1",
+            sourceName = "Source1",
+            contentType = ContentType.WEB,
+            coverImageUrl = "https://example.com/novel-1/cover.jpg"
+        )
+        
+        whenever(libraryRepository.getAllItemsSnapshot()).thenReturn(listOf(itemWithCover))
+        
+        val testViewModel = LibraryViewModel(
+            libraryRepository,
+            contentRepository,
+            exploreRepository,
+            io.aatricks.easyreader.work.NoOpChapterDownloadQueue(),
+            reconciler
+        )
+        advanceUntilIdle()
+        
+        verify(exploreRepository, never()).getNovelDetails(any(), any())
+        verify(libraryRepository, never()).updateCoverImageUrl(any(), any(), any())
+    }
+
+    @Test
+    fun `backfillMissingCovers failure for one novel does not prevent others from backfilling`() = runTest {
+        LibraryViewModel.coversBackfillAttempted.set(false)
+        val item1 = LibraryItem(
+            id = "id-1",
+            title = "Novel 1 - Chapter 1",
+            url = "https://example.com/novel-1/chapter-1",
+            baseTitle = "Novel 1",
+            baseNovelUrl = "https://example.com/novel-1",
+            sourceName = "Source1",
+            contentType = ContentType.WEB,
+            coverImageUrl = ""
+        )
+        val item2 = LibraryItem(
+            id = "id-2",
+            title = "Novel 2 - Chapter 1",
+            url = "https://example.com/novel-2/chapter-1",
+            baseTitle = "Novel 2",
+            baseNovelUrl = "https://example.com/novel-2",
+            sourceName = "Source2",
+            contentType = ContentType.WEB,
+            coverImageUrl = ""
+        )
+        
+        whenever(libraryRepository.getAllItemsSnapshot()).thenReturn(listOf(item1, item2))
+        whenever(exploreRepository.getSourceNames()).thenReturn(listOf("Source1", "Source2"))
+        
+        // Novel 1 fails
+        whenever(exploreRepository.getNovelDetails("https://example.com/novel-1", "Source1"))
+            .thenThrow(RuntimeException("Network error"))
+            
+        // Novel 2 succeeds
+        whenever(exploreRepository.getNovelDetails("https://example.com/novel-2", "Source2")).thenReturn(
+            ExploreItem(
+                title = "Novel 2",
+                url = "https://example.com/novel-2",
+                source = "Source2",
+                coverUrl = "https://example.com/novel-2/cover.jpg"
+            )
+        )
+        whenever(libraryRepository.updateCoverImageUrl(any(), any(), any())).thenReturn(true)
+        
+        val testViewModel = LibraryViewModel(
+            libraryRepository,
+            contentRepository,
+            exploreRepository,
+            io.aatricks.easyreader.work.NoOpChapterDownloadQueue(),
+            reconciler
+        )
+        advanceUntilIdle()
+        
+        verify(exploreRepository, times(1)).getNovelDetails("https://example.com/novel-1", "Source1")
+        verify(exploreRepository, times(1)).getNovelDetails("https://example.com/novel-2", "Source2")
+        verify(libraryRepository, times(1)).updateCoverImageUrl("Novel 2", "Source2", "https://example.com/novel-2/cover.jpg")
     }
 }
 

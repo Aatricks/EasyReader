@@ -100,6 +100,17 @@ fun LibraryScreen(
         }
     }
 
+    LaunchedEffect(libraryUiState.snackbarMessage, libraryUiState.error) {
+        libraryUiState.snackbarMessage?.let { msg ->
+            snackbarHostState.showSnackbar(message = msg, duration = SnackbarDuration.Short)
+            libraryViewModel.consumeSnackbarMessage()
+        }
+        libraryUiState.error?.let { err ->
+            snackbarHostState.showSnackbar(message = err, duration = SnackbarDuration.Short)
+            libraryViewModel.consumeError()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -213,15 +224,15 @@ fun LibraryScreen(
 
             if (libraryUiState.items.isEmpty()) {
                 EmptyLibraryState(
-                    isSearchEmpty = searchQuery.isNotBlank() && libraryUiState.isEmpty.not(),
                     isFilteredEmpty = searchQuery.isNotBlank(),
-                    onClearSearch = { libraryViewModel.updateSearchQuery("") }
+                    onClearSearch = { libraryViewModel.updateSearchQuery("") },
+                    onBrowseSources = { navController.navigate(ExploreRoute) },
+                    onImportFile = onOpenFilePicker
                 )
             } else if (libraryUiState.filteredItems.isEmpty() &&
                 (searchQuery.isNotBlank() || statusFilter != SeriesReadingStatus.ALL)
             ) {
                 EmptyLibraryState(
-                    isSearchEmpty = true,
                     isFilteredEmpty = true,
                     onClearSearch = {
                         libraryViewModel.updateSearchQuery("")
@@ -522,9 +533,10 @@ private fun SelectionActions(
 
 @Composable
 private fun EmptyLibraryState(
-    isSearchEmpty: Boolean = false,
     isFilteredEmpty: Boolean = false,
     onClearSearch: () -> Unit = {},
+    onBrowseSources: () -> Unit = {},
+    onImportFile: () -> Unit = {},
     query: String = ""
 ) {
     Box(
@@ -567,6 +579,18 @@ private fun EmptyLibraryState(
                     Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
                     FilledTonalButton(onClick = onClearSearch) {
                         Text("Clear search")
+                    }
+                } else {
+                    Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)
+                    ) {
+                        Button(onClick = onBrowseSources) {
+                            Text("Browse sources")
+                        }
+                        OutlinedButton(onClick = onImportFile) {
+                            Text("Import file")
+                        }
                     }
                 }
             }

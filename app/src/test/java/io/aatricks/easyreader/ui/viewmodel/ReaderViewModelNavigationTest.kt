@@ -200,7 +200,7 @@ class ReaderViewModelNavigationTest {
         whenever(libraryRepository.getItemById(currentItem.id)).thenReturn(currentItem)
         whenever(libraryRepository.getItemById(nextItem.id)).thenReturn(nextItem)
         whenever(libraryRepository.getChaptersByBaseTitle(currentItem.baseTitle)).thenReturn(listOf(currentItem, nextItem))
-        whenever(libraryRepository.addItem(any(), eq(nextUrl), eq(ContentType.WEB), any(), any(), any(), any(), any()))
+        whenever(libraryRepository.addItem(any(), eq(nextUrl), eq(ContentType.WEB), any(), any(), any(), any(), any(), any()))
             .thenReturn(nextItem)
         whenever(exploreRepository.getNovelDetails(any(), any())).thenReturn(null)
 
@@ -250,7 +250,7 @@ class ReaderViewModelNavigationTest {
         whenever(libraryRepository.getItemById(currentItem.id)).thenReturn(currentItem)
         whenever(libraryRepository.getItemById(targetItem.id)).thenReturn(targetItem)
         whenever(libraryRepository.getChaptersByBaseTitle(currentItem.baseTitle)).thenReturn(listOf(currentItem, targetItem))
-        whenever(libraryRepository.addItem(any(), eq(targetUrl), eq(ContentType.WEB), any(), any(), any(), any(), any()))
+        whenever(libraryRepository.addItem(any(), eq(targetUrl), eq(ContentType.WEB), any(), any(), any(), any(), any(), any()))
             .thenReturn(targetItem)
         whenever(exploreRepository.getNovelDetails(any(), any())).thenReturn(null)
 

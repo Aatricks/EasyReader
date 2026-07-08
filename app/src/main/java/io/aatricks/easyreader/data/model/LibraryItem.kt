@@ -47,7 +47,8 @@ data class LibraryItem(
     val baseNovelUrl: String = "",
     val sourceName: String = "",
     val isDownloaded: Boolean = false,
-    val downloadedAt: Long? = null
+    val downloadedAt: Long? = null,
+    val coverImageUrl: String = ""
 ) {
     init {
         require(title.isNotBlank()) { "Title cannot be blank" }

@@ -3,6 +3,7 @@ package io.aatricks.easyreader.ui.screens.settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -47,7 +48,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import io.aatricks.easyreader.ui.screens.countDistinctNovelTitles
 import androidx.hilt.navigation.compose.hiltViewModel
+import io.aatricks.easyreader.ui.theme.AccentTheme
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.BackupViewModel
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
@@ -67,7 +78,8 @@ fun SettingsScreen(
     readerViewModel: ReaderViewModel,
     libraryViewModel: LibraryViewModel,
     onNavigateBack: () -> Unit,
-    backupViewModel: BackupViewModel = hiltViewModel()
+    backupViewModel: BackupViewModel = hiltViewModel(),
+    settingsViewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -78,6 +90,8 @@ fun SettingsScreen(
     val summaryUiState by summaryViewModel.uiState.collectAsState()
     val updateViewModel: UpdateViewModel = hiltViewModel()
     val updateState by updateViewModel.uiState.collectAsState()
+    val appearanceSettings by settingsViewModel.appearanceSettings.collectAsState()
+    val readerSettings by settingsViewModel.readerSettings.collectAsState()
 
     var cacheBytes by remember { mutableLongStateOf(-1L) }
     var downloadsBytes by remember { mutableLongStateOf(-1L) }
@@ -165,6 +179,107 @@ fun SettingsScreen(
                 .padding(horizontal = EasyReaderSpacing.md, vertical = EasyReaderSpacing.md),
             verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.lg)
         ) {
+            SettingsSection(title = "Appearance") {
+                Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)) {
+                    Text(
+                        text = "Theme",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
+                    ) {
+                        val themes = listOf("SYSTEM" to "System", "LIGHT" to "Light", "DARK" to "Dark")
+                        themes.forEach { (mode, label) ->
+                            FilterChip(
+                                selected = appearanceSettings.themeMode == mode,
+                                onClick = { settingsViewModel.setThemeMode(mode) },
+                                label = {
+                                    Text(
+                                        text = label,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = settingsChipColors()
+                            )
+                        }
+                    }
+                }
+
+                val showDynamicColor = android.os.Build.VERSION.SDK_INT >= ANDROID_12_SDK_INT
+                if (showDynamicColor) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleable(
+                                value = appearanceSettings.dynamicColor,
+                                role = Role.Switch,
+                                onValueChange = { settingsViewModel.setDynamicColor(it) }
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Dynamic color",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Use wallpaper colors",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.size(EasyReaderSpacing.sm))
+                        Switch(
+                            checked = appearanceSettings.dynamicColor,
+                            onCheckedChange = null
+                        )
+                    }
+                }
+
+                val accentEnabled = !appearanceSettings.dynamicColor
+                Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)) {
+                    Text(
+                        text = "Accent",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (accentEnabled) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        }
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
+                    ) {
+                        AccentTheme.entries.forEach { accentTheme ->
+                            AccentThemeChip(
+                                accentTheme = accentTheme,
+                                isSelected = readerSettings.accentTheme == accentTheme.name,
+                                enabled = accentEnabled,
+                                onClick = { settingsViewModel.setAccentTheme(accentTheme) }
+                            )
+                        }
+                    }
+                    if (!accentEnabled) {
+                        Text(
+                            text = "Dynamic color is active. Disable it to customize accent color.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
             SettingsSection(title = "Storage") {
                 SettingsRow(
                     title = "Cache size",
@@ -200,9 +315,15 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
                     Text("Clear all downloads")
                 }
+                val titlesCount = countDistinctNovelTitles(libraryState.items)
+                val entriesCount = libraryState.items.size
                 SettingsRow(
                     title = "Library size",
-                    subtitle = "${libraryState.items.size} items"
+                    subtitle = if (titlesCount == 1) {
+                        "1 title · $entriesCount entries"
+                    } else {
+                        "$titlesCount titles · $entriesCount entries"
+                    }
                 )
                 OutlinedButton(
                     onClick = { showClearLibraryDialog = true },
@@ -218,7 +339,19 @@ fun SettingsScreen(
             if (summaryUiState.supportsAi) {
                 SettingsSection(title = "AI features") {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleable(
+                                value = summaryUiState.isEnabled,
+                                role = Role.Switch,
+                                onValueChange = { wantEnabled ->
+                                    if (wantEnabled && !summaryUiState.isEnabled) {
+                                        showEnableAiDialog = true
+                                    } else if (!wantEnabled) {
+                                        summaryViewModel.setAiSummaryEnabled(false)
+                                    }
+                                }
+                            ),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -241,13 +374,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.size(EasyReaderSpacing.sm))
                         Switch(
                             checked = summaryUiState.isEnabled,
-                            onCheckedChange = { wantEnabled ->
-                                if (wantEnabled && !summaryUiState.isEnabled) {
-                                    showEnableAiDialog = true
-                                } else if (!wantEnabled) {
-                                    summaryViewModel.setAiSummaryEnabled(false)
-                                }
-                            }
+                            onCheckedChange = null
                         )
                     }
                     if (summaryUiState.isInitializing) {
@@ -622,4 +749,39 @@ private fun formatBytes(bytes: Long): String {
     else String.format("%.1f %s", value, units[unit])
 }
 
+@Composable
+private fun settingsChipColors() = FilterChipDefaults.filterChipColors(
+    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer
+)
+
+@Composable
+private fun AccentThemeChip(
+    accentTheme: AccentTheme,
+    isSelected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    FilterChip(
+        selected = isSelected,
+        onClick = onClick,
+        enabled = enabled,
+        label = { Text(accentTheme.displayName) },
+        leadingIcon = {
+            Box(
+                modifier = Modifier
+                    .size(12.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (enabled) accentTheme.previewColor
+                        else accentTheme.previewColor.copy(alpha = 0.38f)
+                    )
+            )
+        },
+        colors = settingsChipColors()
+    )
+}
+
 private const val PERCENT_MULTIPLIER = 100
+private const val ANDROID_12_SDK_INT = 31

@@ -102,13 +102,7 @@ internal fun PagedReaderView(
                 when (el) {
                     is ContentElement.Placeholder -> {
                         Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = { readerViewModel.toggleControls() }
-                                ),
+                            modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -127,11 +121,6 @@ internal fun PagedReaderView(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .verticalScroll(rememberScrollState())
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = { readerViewModel.toggleControls() }
-                                )
                                 .padding(uiState.margins.dp),
                             verticalArrangement = Arrangement.spacedBy((uiState.fontSize * uiState.paragraphSpacing).dp)
                         ) {
@@ -168,7 +157,7 @@ internal fun PagedReaderView(
                                             onDimensionsResolved = { url, w, h ->
                                                 readerViewModel.persistImageDimensions(url, w, h)
                                             },
-                                            onTap = { readerViewModel.toggleControls() }
+                                            onTap = null
                                         )
                                     }
 
@@ -183,11 +172,6 @@ internal fun PagedReaderView(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .verticalScroll(rememberScrollState())
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = { readerViewModel.toggleControls() }
-                                )
                         ) {
                             Text(
                                 text = el.content,
@@ -222,7 +206,7 @@ internal fun PagedReaderView(
                             onDimensionsResolved = { url, w, h ->
                                 readerViewModel.persistImageDimensions(url, w, h)
                             },
-                            onTap = { readerViewModel.toggleControls() }
+                            onTap = null
                         )
                     }
 
@@ -288,13 +272,7 @@ private fun PagedImageGroupView(
 
     if (!enableZoom) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = { readerViewModel.toggleControls() }
-                )
+            modifier = Modifier.fillMaxSize()
         ) {
             contentColumn()
         }
@@ -308,7 +286,7 @@ private fun PagedImageGroupView(
         zoomStateKey = "${pageUrl}_${pageIndex}_group",
         onZoomChanged = onPageZoomChanged,
         lockTapWhileZoomed = true,
-        onTap = { readerViewModel.toggleControls() }
+        onTap = null
     ) {
         contentColumn()
     }

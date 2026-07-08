@@ -9,6 +9,7 @@ import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListState
@@ -36,6 +37,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -52,8 +54,12 @@ import io.aatricks.easyreader.ui.viewmodel.stableContentElementKey
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import io.aatricks.easyreader.ui.components.ReaderBottomEdgeBlur
 import io.aatricks.easyreader.ui.components.ReaderTopEdgeBlur
 import io.aatricks.easyreader.ui.components.applyReaderEdgeBlur
@@ -63,6 +69,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import io.aatricks.easyreader.ui.screens.reader.ReaderTapAction
+import io.aatricks.easyreader.ui.screens.reader.resolveReaderTapAction
 
 // Post-restore smoke check: if the landed visible percent drifts more than this many
 // percentage points from the saved percent, assume async image resize knocked us off and
@@ -128,6 +136,7 @@ internal fun ContentArea(
     val coroutineScope = rememberCoroutineScope()
 
     val density = LocalDensity.current
+    val hapticFeedback = LocalHapticFeedback.current
 
     val edgeBlurLayer = rememberGraphicsLayer()
     var edgeBlurCaptureGeneration by remember(content.url) { mutableIntStateOf(0) }
@@ -302,8 +311,46 @@ internal fun ContentArea(
                 // worst when dismissing the menu (its bars shrink the reliable target).
                 // detectTapGestures cancels on any consumed movement, so the LazyColumn /
                 // pager still win drags; only clean taps that no child consumed reach here.
-                .pointerInput(Unit) {
-                    detectTapGestures { readerViewModel.toggleControls() }
+                .pointerInput(
+                    uiState.isPagedMode,
+                    uiState.isRtl,
+                    uiState.canNavigateNext,
+                    uiState.canNavigatePrevious,
+                    pagerState.pageCount
+                ) {
+                    detectTapGestures { offset ->
+                        val xFraction = offset.x / size.width.toFloat()
+                        val action = resolveReaderTapAction(
+                            xFraction = xFraction,
+                            isPaged = uiState.isPagedMode,
+                            isRtl = uiState.isRtl
+                        )
+                        when (action) {
+                            ReaderTapAction.TOGGLE_CONTROLS -> readerViewModel.toggleControls()
+                            ReaderTapAction.PAGE_FORWARD -> {
+                                val nextPage = pagerState.currentPage + 1
+                                if (nextPage < pagerState.pageCount) {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(nextPage)
+                                    }
+                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                                } else if (uiState.canNavigateNext) {
+                                    readerViewModel.navigateToNextChapter()
+                                }
+                            }
+                            ReaderTapAction.PAGE_BACK -> {
+                                val prevPage = pagerState.currentPage - 1
+                                if (prevPage >= 0) {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(prevPage)
+                                    }
+                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                                } else if (uiState.canNavigatePrevious) {
+                                    readerViewModel.navigateToPreviousChapter(fromBottom = true)
+                                }
+                            }
+                        }
+                    }
                 }
                 .drawWithContent {
                     if (uiState.showControls && edgeBlurCaptureGeneration != edgeBlurLastCaptured) {
@@ -361,13 +408,26 @@ internal fun ContentArea(
             exit = slideOutVertically(targetOffsetY = { -it }),
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
-            TopInfoBar(
-                novelName = uiState.novelName,
-                chapterTitle = uiState.chapterTitle,
-                onLibraryClick = onLibraryClick,
-                onShowChapterList = onShowChapterList,
-                onShowSettings = onShowSettings
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0.35f),
+                                Color.Transparent
+                            )
+                        )
+                    )
+            ) {
+                TopInfoBar(
+                    novelName = uiState.novelName,
+                    chapterTitle = uiState.chapterTitle,
+                    onLibraryClick = onLibraryClick,
+                    onShowChapterList = onShowChapterList,
+                    onShowSettings = onShowSettings
+                )
+            }
         }
 
         AnimatedVisibility(
@@ -376,14 +436,27 @@ internal fun ContentArea(
             exit = slideOutVertically(targetOffsetY = { it }),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
-            ReaderBottomNavigationBar(
-                readerViewModel = readerViewModel,
-                canNavigatePrevious = uiState.canNavigatePrevious,
-                canNavigateNext = uiState.canNavigateNext,
-                onPreviousClick = { readerViewModel.navigateToPreviousChapter(fromBottom = true) },
-                onNextClick = { readerViewModel.navigateToNextChapter() },
-                onProgressChange = { readerViewModel.seekToProgress(it) }
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.35f)
+                            )
+                        )
+                    )
+            ) {
+                ReaderBottomNavigationBar(
+                    readerViewModel = readerViewModel,
+                    canNavigatePrevious = uiState.canNavigatePrevious,
+                    canNavigateNext = uiState.canNavigateNext,
+                    onPreviousClick = { readerViewModel.navigateToPreviousChapter(fromBottom = true) },
+                    onNextClick = { readerViewModel.navigateToNextChapter() },
+                    onProgressChange = { readerViewModel.seekToProgress(it) }
+                )
+            }
         }
 
         PullToNavigateOverlay(
@@ -669,13 +742,13 @@ private fun EdgeHintChip(
     icon: ImageVector
 ) {
     androidx.compose.material3.Surface(
-        modifier = Modifier.padding(vertical = 12.dp, horizontal = 16.dp),
+        modifier = Modifier.padding(vertical = EasyReaderSpacing.sm, horizontal = EasyReaderSpacing.md),
         shape = androidx.compose.material3.MaterialTheme.shapes.extraLarge,
         color = androidx.compose.material3.MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
         contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
     ) {
         androidx.compose.foundation.layout.Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {

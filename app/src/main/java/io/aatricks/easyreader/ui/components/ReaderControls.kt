@@ -22,6 +22,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpSize
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 
 @Composable
 fun TopInfoBar(
@@ -68,7 +70,7 @@ fun TopInfoBar(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (chapterTitle.isNotBlank()) {
@@ -140,7 +142,7 @@ fun BottomNavigationBar(
     ) {
         Column(
             modifier = Modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
         ) {
             var sliderValue by remember(progress) { mutableFloatStateOf(progress) }
             val sliderInteractionSource = remember { MutableInteractionSource() }
@@ -156,7 +158,7 @@ fun BottomNavigationBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Progress",
+                    text = "Chapter progress",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -168,7 +170,7 @@ fun BottomNavigationBar(
                 ) {
                     Text(
                         text = "${sliderValue.toInt()}%",
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = EasyReaderSpacing.xxs),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -182,7 +184,7 @@ fun BottomNavigationBar(
                 valueRange = 0f..100f,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .semantics { contentDescription = "Reading progress, ${sliderValue.toInt()} percent" },
+                    .semantics { contentDescription = "Chapter progress, ${sliderValue.toInt()} percent" },
                 colors = sliderColors,
                 interactionSource = sliderInteractionSource,
                 thumb = {
@@ -234,8 +236,12 @@ private fun ChapterNavButton(
     onClick: () -> Unit,
     leading: Boolean
 ) {
+    val hapticFeedback = LocalHapticFeedback.current
     FilledTonalButton(
-        onClick = onClick,
+        onClick = {
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+            onClick()
+        },
         enabled = enabled,
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
         modifier = Modifier.height(48.dp)

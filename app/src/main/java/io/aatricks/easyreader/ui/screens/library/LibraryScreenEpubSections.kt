@@ -4,6 +4,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -49,6 +51,7 @@ internal fun EpubItemCard(
     libraryViewModel: LibraryViewModel,
     onCloseLibrary: () -> Unit
 ): Unit {
+    val hapticFeedback = LocalHapticFeedback.current
     var epubBook by remember { mutableStateOf<EpubBook?>(null) }
     var isExpanded by remember { mutableStateOf(false) }
     val isSelected = item.id in uiState.selectedIds
@@ -98,7 +101,10 @@ internal fun EpubItemCard(
                                     }
                                 }
                             },
-                            onLongClick = { libraryViewModel.toggleSelection(item.id) }
+                            onLongClick = {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                libraryViewModel.toggleSelection(item.id)
+                            }
                         )
                 ) {
                     Text(
@@ -160,8 +166,8 @@ private fun EpubTocItemView(
     var isExpanded by remember { mutableStateOf(false) }
     val startPadding = when (depth) {
         0 -> 0.dp
-        1 -> 16.dp
-        2 -> 32.dp
+        1 -> EasyReaderSpacing.md
+        2 -> EasyReaderSpacing.xxl
         else -> 48.dp
     }
 
@@ -191,9 +197,9 @@ private fun EpubTocItemView(
                         modifier = Modifier.size(16.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
             } else {
-                Spacer(modifier = Modifier.width(24.dp))
+                Spacer(modifier = Modifier.width(EasyReaderSpacing.xl))
             }
 
             Text(

@@ -45,6 +45,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -77,6 +78,7 @@ fun ReaderScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
 
     var showCloudflareWebView by rememberSaveable { mutableStateOf(false) }
     var cloudflareUrl by rememberSaveable { mutableStateOf("") }
@@ -94,10 +96,6 @@ fun ReaderScreen(
 
     BackHandler(enabled = !drawerState.isOpen && uiState.showControls) {
         readerViewModel.hideControls()
-    }
-
-    BackHandler(enabled = !drawerState.isOpen && !uiState.showControls && uiState.content != null) {
-        scope.launch { drawerState.open() }
     }
 
     LaunchedEffect(uiState.error) {
@@ -119,26 +117,31 @@ fun ReaderScreen(
     val view = LocalView.current
     val window = (view.context as? Activity)?.window
     val readerTheme = uiState.readerTheme
+    val appIsDark = isSystemInDarkTheme()
+    val currentAppIsDark by rememberUpdatedState(appIsDark)
 
-    LaunchedEffect(uiState.showControls, readerTheme, uiState.content) {
+    LaunchedEffect(uiState.showControls, readerTheme, uiState.content, appIsDark) {
         if (window != null) {
             val windowInsetsController = WindowCompat.getInsetsController(window, view)
             windowInsetsController.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 
-            val isDarkReader = readerTheme == ReaderTheme.DARK ||
-                               readerTheme == ReaderTheme.OLED
+            val isDark = if (uiState.content != null) {
+                readerTheme == ReaderTheme.DARK || readerTheme == ReaderTheme.OLED
+            } else {
+                appIsDark
+            }
             val systemBars = WindowInsetsCompat.Type.systemBars()
             val isReading = uiState.content != null
 
             if (isReading && !uiState.showControls) {
                 windowInsetsController.hide(systemBars)
-                windowInsetsController.isAppearanceLightStatusBars = !isDarkReader
-                windowInsetsController.isAppearanceLightNavigationBars = !isDarkReader
+                windowInsetsController.isAppearanceLightStatusBars = !isDark
+                windowInsetsController.isAppearanceLightNavigationBars = !isDark
             } else {
                 windowInsetsController.show(systemBars)
-                windowInsetsController.isAppearanceLightStatusBars = !isDarkReader
-                windowInsetsController.isAppearanceLightNavigationBars = !isDarkReader
+                windowInsetsController.isAppearanceLightStatusBars = !isDark
+                windowInsetsController.isAppearanceLightNavigationBars = !isDark
             }
         }
     }
@@ -146,7 +149,10 @@ fun ReaderScreen(
     DisposableEffect(Unit) {
         onDispose {
             window?.let {
-                WindowCompat.getInsetsController(it, view).show(WindowInsetsCompat.Type.systemBars())
+                val windowInsetsController = WindowCompat.getInsetsController(it, view)
+                windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+                windowInsetsController.isAppearanceLightStatusBars = !currentAppIsDark
+                windowInsetsController.isAppearanceLightNavigationBars = !currentAppIsDark
             }
         }
     }
@@ -223,8 +229,9 @@ fun ReaderScreen(
     ) {
         @Suppress("UnusedMaterial3ScaffoldPaddingParameter")
         Scaffold(
-            containerColor = Color.Black,
-            contentWindowInsets = WindowInsets(0, 0, 0, 0)
+            containerColor = if (uiState.content != null) Color.Black else MaterialTheme.colorScheme.background,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
         ) {
             // Reader content is always edge-to-edge -- it must not depend on Scaffold's
             // (system-bar) inset padding, which Android keeps reporting as non-zero while
@@ -267,7 +274,6 @@ fun ReaderScreen(
             onUpdateMargins = { readerViewModel.updateMargins(it) },
             onUpdateParagraphSpacing = { readerViewModel.updateParagraphSpacing(it) },
             onUpdateReaderTheme = { readerViewModel.updateReaderTheme(it) },
-            onUpdateAccentTheme = { readerViewModel.updateAccentTheme(it) },
             sheetState = settingsSheetState
         )
     }
@@ -282,6 +288,11 @@ fun ReaderScreen(
                     bottomSheetState.hide()
                     showChapterList = false
                     readerViewModel.navigateToChapter(url, title)
+                }
+            },
+            onDownloadRemoved = {
+                scope.launch {
+                    snackbarHostState.showSnackbar("Chapter download removed")
                 }
             },
             sheetState = bottomSheetState
@@ -316,7 +327,7 @@ private fun CloudflareDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(EasyReaderSpacing.md),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -343,7 +354,7 @@ private fun CloudflareDialog(
                 if (webViewError != null) {
                     Text(
                         text = "Error: $webViewError",
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier.padding(horizontal = EasyReaderSpacing.md),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.labelSmall
                     )
@@ -353,7 +364,7 @@ private fun CloudflareDialog(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(horizontal = 16.dp)
+                        .padding(horizontal = EasyReaderSpacing.md)
                         .clip(RoundedCornerShape(8.dp))
                         .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
                         .background(Color.White)
@@ -411,7 +422,7 @@ private fun CloudflareDialog(
                                 webViewError = null
                                 internalWebView?.reload()
                             },
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(EasyReaderSpacing.md)
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = "Reload")
                         }
@@ -422,8 +433,8 @@ private fun CloudflareDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        .padding(EasyReaderSpacing.md),
+                    horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(
@@ -435,7 +446,7 @@ private fun CloudflareDialog(
                         }
                     ) {
                         Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
+                        Spacer(Modifier.width(EasyReaderSpacing.xxs))
                         Text("Open in Browser")
                     }
 

@@ -116,3 +116,12 @@ private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
         updateTimestamp = items.filter { it.hasActionableUpdate() }.maxOfOrNull { it.dateAdded } ?: Long.MIN_VALUE
     )
 }
+
+internal fun getLibraryItemResumeLabel(item: LibraryItem): String {
+    return if (item.progress == 0 && item.currentChapterUrl.isBlank()) {
+        "Start reading"
+    } else {
+        "Resume ${item.currentChapter.ifBlank { "Chapter 1" }}"
+    }
+}
+

@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.R
 
 @Composable
@@ -36,13 +37,13 @@ fun ExternalUrlConfirmationDialog(
         text = {
             Column {
                 Text(stringResource(R.string.url_confirm_intro))
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(EasyReaderSpacing.xs))
                 Text(
                     text = url,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(EasyReaderSpacing.md))
                 Text(
                     text = stringResource(R.string.url_confirm_transient),
                     style = MaterialTheme.typography.bodyMedium

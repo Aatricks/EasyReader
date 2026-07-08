@@ -25,12 +25,53 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.hasActionableUpdate
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import coil3.compose.AsyncImage
+import coil3.network.NetworkHeaders
+import coil3.network.httpHeaders
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+
+@Composable
+fun rememberLibraryCoverImageRequest(item: LibraryItem): ImageRequest {
+    val context = LocalContext.current
+
+    return remember(item.coverImageUrl, item.url, item.sourceName) {
+        val refererUrl = item.baseNovelUrl.ifBlank { item.url }
+        val uri = try {
+            java.net.URI(refererUrl)
+        } catch (_: Exception) {
+            null
+        }
+
+        var referer = if (uri != null) "${uri.scheme}://${uri.host}/" else refererUrl
+        if (item.sourceName == "MangaBat" || referer.contains("mangabat")) {
+            referer = "https://www.mangabats.com/"
+        } else if (referer.contains("manganato")) {
+            referer = "https://manganato.com/"
+        }
+
+        ImageRequest.Builder(context)
+            .data(item.coverImageUrl)
+            .httpHeaders(NetworkHeaders.Builder().set("Referer", referer).build())
+            .crossfade(true)
+            .build()
+    }
+}
+
+private val COVER_THUMBNAIL_WIDTH = 56.dp
+private const val COVER_ASPECT_RATIO = 0.6666667f
 
 /**
  * Library item card component displaying novel information and progress.
@@ -63,6 +104,7 @@ fun LibraryItemCard(
     onResetProgress: (() -> Unit)? = null,
     onMarkFinished: (() -> Unit)? = null
 ) {
+    val hapticFeedback = LocalHapticFeedback.current
     var menuExpanded by remember { mutableStateOf(false) }
     val targetBackgroundColor = when {
         isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
@@ -111,8 +153,14 @@ fun LibraryItemCard(
             )
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = onLongClick
-            ),
+                onLongClick = {
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onLongClick()
+                }
+            )
+            .semantics {
+                selected = isSelected
+            },
         colors = CardDefaults.cardColors(
             containerColor = backgroundColor
         ),
@@ -120,187 +168,210 @@ fun LibraryItemCard(
             defaultElevation = if (isSelected) 4.dp else 1.dp
         )
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp)
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Title Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+            if (item.coverImageUrl.isNotBlank()) {
+                val imageRequest = rememberLibraryCoverImageRequest(item)
+                AsyncImage(
+                    model = imageRequest,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .width(COVER_THUMBNAIL_WIDTH)
+                        .aspectRatio(COVER_ASPECT_RATIO)
+                        .clip(MaterialTheme.shapes.small),
+                    contentScale = ContentScale.Crop
                 )
-                
-                // Current reading badge
-                if (isCurrent) {
-                    Badge(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(start = 8.dp)
-                    ) {
-                        Text(
-                            text = "Reading",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                    }
-                } else if (item.hasActionableUpdate()) {
-                    Badge(
-                        containerColor = MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier
-                            .padding(start = 8.dp)
-                            .then(
-                                if (onNewTagClick != null) {
-                                    Modifier.clickable { onNewTagClick() }
-                                } else Modifier
-                            )
-                    ) {
-                        Text(
-                            text = "New",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onTertiary
-                        )
-                    }
-                }
-                
-                // Selection indicator
-                if (isSelected) {
-                    Icon(
-                        imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = "Selected",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .padding(start = 8.dp)
-                            .size(22.dp)
-                    )
-                } else if (onDelete != null || onResetProgress != null || onMarkFinished != null) {
-                    Box {
-                        IconButton(
-                            onClick = { menuExpanded = true },
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.MoreVert,
-                                contentDescription = "More actions",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false }
-                        ) {
-                            if (onMarkFinished != null && item.progress < 100) {
-                                DropdownMenuItem(
-                                    text = { Text("Mark as finished") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        onMarkFinished()
-                                    }
-                                )
-                            }
-                            if (onResetProgress != null && item.progress > 0) {
-                                DropdownMenuItem(
-                                    text = { Text("Reset progress") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        onResetProgress()
-                                    }
-                                )
-                            }
-                            if (onDelete != null) {
-                                DropdownMenuItem(
-                                    text = { Text("Remove from library") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        onDelete()
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
+                Spacer(modifier = Modifier.width(14.dp))
             }
-            
-            Spacer(modifier = Modifier.height(10.dp))
-            
-            // Chapter Progress
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val chapterNumber = io.aatricks.easyreader.util.TextUtils.extractChapterNumber(item.currentChapter)
-                val isLastChapter = chapterNumber != null && item.totalChapters > 0 && chapterNumber.toInt() >= item.totalChapters
-                
-                val chapterText = if (isLastChapter) {
-                    val numberStr = if (chapterNumber % 1.0 == 0.0) {
-                        chapterNumber.toInt().toString()
-                    } else {
-                        chapterNumber.toString()
-                    }
-                    "Last Chapter - $numberStr"
-                } else {
-                    "Chapter ${item.currentChapter} / ${item.totalChapters}"
-                }
-
-                Text(
-                    text = chapterText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                
-                Text(
-                    text = "${item.progress}%",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium,
-                    color = if (item.progress == 100) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(6.dp))
-            
-            // Progress Bar
-            LinearProgressIndicator(
-                progress = { item.progress / 100f },
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(5.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .semantics { contentDescription = "${item.progress} percent read" },
-                color = when {
-                    item.progress == 100 -> MaterialTheme.colorScheme.primary
-                    item.progress > 50 -> MaterialTheme.colorScheme.secondary
-                    else -> MaterialTheme.colorScheme.tertiary
-                },
-                trackColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-            
-            // Download status indicator (if applicable)
-            if (item.isDownloading) {
-                Spacer(modifier = Modifier.height(8.dp))
+                    .weight(1f)
+            ) {
+                // Title Row
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
                     Text(
-                        text = "Downloading...",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.secondary
+                        text = item.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isCurrent) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
+                    
+                    // Current reading badge
+                    if (isCurrent) {
+                        Badge(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = EasyReaderSpacing.xs)
+                        ) {
+                            Text(
+                                text = "Reading",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                    } else if (item.hasActionableUpdate()) {
+                        Badge(
+                            containerColor = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier
+                                .padding(start = EasyReaderSpacing.xs)
+                                .then(
+                                    if (onNewTagClick != null) {
+                                        Modifier.clickable { onNewTagClick() }
+                                    } else Modifier
+                                )
+                        ) {
+                            Text(
+                                text = "New",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onTertiary
+                            )
+                        }
+                    }
+                    
+                    // Selection indicator
+                    if (isSelected) {
+                        Icon(
+                            imageVector = Icons.Filled.CheckCircle,
+                            contentDescription = "Selected",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .padding(start = EasyReaderSpacing.xs)
+                                .size(22.dp)
+                        )
+                    } else if (onDelete != null || onResetProgress != null || onMarkFinished != null) {
+                        Box {
+                            IconButton(
+                                onClick = { menuExpanded = true },
+                                modifier = Modifier.minimumInteractiveComponentSize()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.MoreVert,
+                                    contentDescription = "More actions",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false }
+                            ) {
+                                if (onMarkFinished != null && item.progress < 100) {
+                                    DropdownMenuItem(
+                                        text = { Text("Mark as finished") },
+                                        onClick = {
+                                            menuExpanded = false
+                                            onMarkFinished()
+                                        }
+                                    )
+                                }
+                                if (onResetProgress != null && item.progress > 0) {
+                                    DropdownMenuItem(
+                                        text = { Text("Reset progress") },
+                                        onClick = {
+                                            menuExpanded = false
+                                            onResetProgress()
+                                        }
+                                    )
+                                }
+                                if (onDelete != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("Remove from library") },
+                                        onClick = {
+                                            menuExpanded = false
+                                            onDelete()
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(10.dp))
+                
+                // Chapter Progress
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val chapterNumber = io.aatricks.easyreader.util.TextUtils.extractChapterNumber(item.currentChapter)
+                    val isLastChapter = chapterNumber != null && item.totalChapters > 0 && chapterNumber.toInt() >= item.totalChapters
+                    
+                    val chapterText = if (isLastChapter) {
+                        val numberStr = if (chapterNumber % 1.0 == 0.0) {
+                            chapterNumber.toInt().toString()
+                        } else {
+                            chapterNumber.toString()
+                        }
+                        "Last Chapter - $numberStr"
+                    } else {
+                        "Chapter ${item.currentChapter} / ${item.totalChapters}"
+                    }
+    
+                    Text(
+                        text = chapterText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Text(
+                        text = "${item.progress}%",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = if (item.progress == 100) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(6.dp))
+                
+                // Progress Bar
+                LinearProgressIndicator(
+                    progress = { item.progress / 100f },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .semantics { contentDescription = "${item.progress} percent read" },
+                    color = when {
+                        item.progress == 100 -> MaterialTheme.colorScheme.primary
+                        item.progress > 50 -> MaterialTheme.colorScheme.secondary
+                        else -> MaterialTheme.colorScheme.tertiary
+                    },
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+                
+                // Download status indicator (if applicable)
+                if (item.isDownloading) {
+                    Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                        Text(
+                            text = "Downloading...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
                 }
             }
         }
@@ -315,8 +386,8 @@ fun LibraryItemCardPreview() {
     Column(
         modifier = Modifier
             .background(Color.Black)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(EasyReaderSpacing.md),
+        verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)
     ) {
         LibraryItemCard(
             item = LibraryItem(

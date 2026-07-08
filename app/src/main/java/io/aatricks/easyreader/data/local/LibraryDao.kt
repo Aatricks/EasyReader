@@ -49,6 +49,13 @@ interface LibraryDao {
     @Query("UPDATE library_items SET readingMode = :readingMode WHERE baseTitle = :baseTitle")
     suspend fun updateReadingModeByBaseTitle(baseTitle: String, readingMode: ReadingMode)
 
+    @Query(
+        "UPDATE library_items SET coverImageUrl = :cover " +
+        "WHERE (baseTitle = :displayTitle OR (baseTitle = '' AND title = :displayTitle)) " +
+        "AND sourceName = :sourceName"
+    )
+    suspend fun updateCoverImageUrl(displayTitle: String, sourceName: String, cover: String): Int
+
     @Query("UPDATE library_items SET isDownloaded = :downloaded, downloadedAt = :timestamp WHERE id = :id")
     suspend fun setDownloaded(id: String, downloaded: Boolean, timestamp: Long?)
 

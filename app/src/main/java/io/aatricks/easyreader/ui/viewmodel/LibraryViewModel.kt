@@ -26,6 +26,13 @@ import android.util.Log
 import io.aatricks.easyreader.ui.screens.DrawerNovelSections
 import io.aatricks.easyreader.ui.screens.buildDrawerNovelSections
 import kotlinx.coroutines.Dispatchers
+import io.aatricks.easyreader.data.model.libraryDisplayTitle
+import io.aatricks.easyreader.data.model.libraryNovelKey
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
@@ -70,6 +77,49 @@ class LibraryViewModel @Inject constructor(
 
     init {
         _collapsedSources.value = repository.loadCollapsedSources()
+        backfillMissingCovers()
+    }
+
+    private fun backfillMissingCovers() {
+        if (coversBackfillAttempted.compareAndSet(false, true)) {
+            viewModelScope.launch(defaultDispatcher) {
+                runCatching {
+                    val items = repository.getAllItemsSnapshot()
+                    val itemsToBackfill = items.filter {
+                        it.coverImageUrl.isBlank() && it.contentType == ContentType.WEB
+                    }
+                    if (itemsToBackfill.isEmpty()) return@launch
+
+                    val grouped = itemsToBackfill.groupBy { it.libraryNovelKey() }
+                    val semaphore = Semaphore(BACKFILL_CONCURRENCY)
+                    val jobs = grouped.values.map { novelGroup ->
+                        async {
+                            semaphore.withPermit {
+                                val firstItem = novelGroup.first()
+                                val url = firstItem.baseNovelUrl.ifBlank { firstItem.url }
+                                val sourceName = firstItem.sourceName
+                                val displayTitle = firstItem.libraryDisplayTitle()
+                                
+                                runCatching {
+                                    val knownSources = exploreRepository.getSourceNames()
+                                    val details = if (knownSources.contains(sourceName)) {
+                                        exploreRepository.getNovelDetails(url, sourceName)
+                                    } else {
+                                        exploreRepository.getNovelDetailsByUrl(url)
+                                    }
+                                    
+                                    val coverUrl = details?.coverUrl
+                                    if (!coverUrl.isNullOrBlank()) {
+                                        repository.updateCoverImageUrl(displayTitle, sourceName, coverUrl)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    jobs.awaitAll()
+                }
+            }
+        }
     }
 
     fun reconcileDownloadedItemsOnDemand(): Unit {
@@ -122,7 +172,8 @@ class LibraryViewModel @Inject constructor(
             currentlyReading = items.find { it.isCurrentlyReading },
             chapterCacheStates = cacheStates,
             isLoading = manualUiState.isLoading,
-            error = manualUiState.error
+            error = manualUiState.error,
+            snackbarMessage = manualUiState.snackbarMessage
         )
     }
     .flowOn(defaultDispatcher)
@@ -165,6 +216,7 @@ class LibraryViewModel @Inject constructor(
         val collapsedSources: Set<String> = emptySet(),
         val isLoading: Boolean = false,
         val error: String? = null,
+        val snackbarMessage: String? = null,
         val isSelectionMode: Boolean = false,
         val selectedIds: Set<String> = emptySet(),
         val selectedCount: Int = 0,
@@ -241,8 +293,11 @@ class LibraryViewModel @Inject constructor(
      * "open new chapter" work. Caller owns the coroutine + loading/error state.
      */
     private suspend fun addExploreItemInternal(item: ExploreItem) {
+        val details = if (item.readingUrl == null) {
+            exploreRepository.getNovelDetails(item.url, item.source)
+        } else null
         val readingUrl = item.readingUrl
-            ?: exploreRepository.getNovelDetails(item.url, item.source)?.readingUrl
+            ?: details?.readingUrl
             ?: item.url
 
         if (repository.getItemByUrl(readingUrl) != null) {
@@ -250,8 +305,9 @@ class LibraryViewModel @Inject constructor(
         }
 
         val contentType = determineContentType(readingUrl)
+        val coverImageUrl = item.coverUrl ?: details?.coverUrl ?: ""
         if (contentType == ContentType.WEB) {
-            addWebExploreItem(item, readingUrl)
+            addWebExploreItem(item.copy(coverUrl = coverImageUrl), readingUrl)
         } else {
             repository.addItem(
                 title = item.title,
@@ -261,7 +317,8 @@ class LibraryViewModel @Inject constructor(
                 baseTitle = item.title,
                 baseNovelUrl = item.url,
                 sourceName = item.source,
-                totalChapters = item.chapterCount
+                totalChapters = item.chapterCount,
+                coverImageUrl = coverImageUrl
             )
         }
     }
@@ -292,7 +349,8 @@ class LibraryViewModel @Inject constructor(
             baseTitle = item.title,
             baseNovelUrl = item.url,
             sourceName = item.source,
-            totalChapters = item.chapterCount
+            totalChapters = item.chapterCount,
+            coverImageUrl = item.coverUrl.orEmpty()
         )
     }
 
@@ -341,52 +399,81 @@ class LibraryViewModel @Inject constructor(
     fun fetchAndAdd(url: String): Unit {
         viewModelScope.launch {
             runCatching {
-                updateState { it.copy(isLoading = true, error = null) }
+                updateState {
+                    it.copy(
+                        isLoading = true,
+                        error = null,
+                        snackbarMessage = null
+                    )
+                }
                 val trimmed = url.trim()
                 if (repository.getItemByUrl(trimmed) != null) {
                     throw Exception("This item already exists in your library")
                 }
                 val contentType = contentRepository.inferContentType(trimmed)
 
-                when {
+                val addedTitle = when {
                     contentType == ContentType.EPUB -> {
-                        val fetchedTitle = runCatching { contentRepository.fetchTitle(trimmed) }.getOrNull() ?: trimmed
+                        val fetched = runCatching { contentRepository.fetchTitle(trimmed) }
+                        val fetchedTitle = fetched.getOrNull() ?: trimmed
+                        val finalTitle = fetchedTitle.trim().ifBlank { trimmed }
                         repository.addItem(
-                            title = fetchedTitle.trim().ifBlank { trimmed },
+                            title = finalTitle,
                             url = trimmed,
                             contentType = ContentType.EPUB,
                             currentChapter = "Chapter 1",
-                            baseTitle = fetchedTitle.trim().ifBlank { trimmed },
+                            baseTitle = finalTitle,
                             baseNovelUrl = trimmed,
                             sourceName = "EPUB"
                         )
+                        finalTitle
                     }
-                    // A web series URL: resolve it to a source (Novelight/NovelFire/… by host, or
-                    // SmartSource) and add it as a proper, paginating series with its chapter list.
-                    contentType == ContentType.WEB && trimmed.startsWith("http") &&
-                        addResolvedSeries(trimmed) -> Unit
-                    // Fallback: not resolvable as a series (arbitrary page or local file) — keep the
-                    // legacy single-item behaviour so pasting a lone chapter URL still works.
+                    contentType == ContentType.WEB && trimmed.startsWith("http") -> {
+                        val resolvedTitle = addResolvedSeries(trimmed)
+                        resolvedTitle ?: addUnresolvedItem(trimmed, contentType)
+                    }
                     else -> addUnresolvedItem(trimmed, contentType)
                 }
-                updateState { it.copy(isLoading = false) }
+                updateState {
+                    it.copy(
+                        isLoading = false,
+                        snackbarMessage = "Added \"$addedTitle\" to library",
+                        error = null
+                    )
+                }
             }.onFailure { e ->
-                updateState { it.copy(isLoading = false, error = "Failed to add item: ${e.message}") }
+                updateState {
+                    it.copy(
+                        isLoading = false,
+                        error = "Failed to add item: ${e.message}"
+                    )
+                }
             }
         }
     }
 
-    /** Returns true if [url] resolved to a source series (with chapters) and was added. */
-    private suspend fun addResolvedSeries(url: String): Boolean {
+    /**
+     * Returns the series title if [url] resolved to a source series
+     * (with chapters) and was added, null otherwise.
+     */
+    private suspend fun addResolvedSeries(url: String): String? {
         val item = runCatching { exploreRepository.getNovelDetailsByUrl(url) }.getOrNull()
-        if (item == null || item.chapters.isEmpty()) return false
+        if (item == null || item.chapters.isEmpty()) return null
         addExploreItemInternal(item)
-        return true
+        return item.title
+    }
+
+    fun consumeSnackbarMessage() {
+        updateState { it.copy(snackbarMessage = null) }
+    }
+
+    fun consumeError() {
+        updateState { it.copy(error = null) }
     }
 
     private var openNewChapterJob: Job? = null
 
-    private suspend fun addUnresolvedItem(url: String, contentType: ContentType) {
+    private suspend fun addUnresolvedItem(url: String, contentType: ContentType): String {
         val fetchedTitle = runCatching { contentRepository.fetchTitle(url) }.getOrNull() ?: url
         val fullTitle = fetchedTitle.trim().ifBlank { url }
         val baseTitle = TextUtils.extractBaseTitle(fullTitle, contentType)
@@ -399,6 +486,7 @@ class LibraryViewModel @Inject constructor(
             baseNovelUrl = url,
             sourceName = if (url.startsWith("http")) "Web" else "File"
         )
+        return baseTitle.ifBlank { fullTitle }
     }
 
     fun openNewChapter(
@@ -648,6 +736,8 @@ class LibraryViewModel @Inject constructor(
     companion object {
         var defaultDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default
         var isUnderTest: Boolean = false
+        val coversBackfillAttempted = AtomicBoolean(false)
+        private const val BACKFILL_CONCURRENCY = 3
     }
 }
 

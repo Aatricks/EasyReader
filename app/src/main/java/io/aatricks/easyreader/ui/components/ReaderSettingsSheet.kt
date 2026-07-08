@@ -37,14 +37,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import io.aatricks.easyreader.ui.util.toFontFamily
 import androidx.compose.ui.unit.dp
 import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.ReaderTheme
-import io.aatricks.easyreader.ui.theme.AccentTheme
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 
@@ -82,7 +84,11 @@ private fun ReaderThemeOption(
             .background(theme.backgroundColor)
             .border(borderWidth, borderColor, CircleShape)
             .clickable(onClick = onClick)
-            .semantics { contentDescription = "Theme ${theme.name.lowercase()}" },
+            .semantics {
+                contentDescription = "Theme ${theme.name.lowercase()}"
+                role = Role.Button
+                selected = isSelected
+            },
         contentAlignment = Alignment.Center
     ) {
         if (isSelected) {
@@ -111,27 +117,6 @@ private fun ReaderThemeOption(
     }
 }
 
-@Composable
-private fun AccentThemeChip(
-    accentTheme: AccentTheme,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    FilterChip(
-        selected = isSelected,
-        onClick = onClick,
-        label = { Text(accentTheme.displayName) },
-        leadingIcon = {
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .clip(CircleShape)
-                    .background(accentTheme.previewColor)
-            )
-        },
-        colors = settingsChipColors()
-    )
-}
 
 @Composable
 private fun FontFamilyChip(
@@ -166,7 +151,6 @@ fun ReaderSettingsSheet(
     onUpdateMargins: (Int) -> Unit,
     onUpdateParagraphSpacing: (Float) -> Unit,
     onUpdateReaderTheme: (ReaderTheme) -> Unit,
-    onUpdateAccentTheme: (AccentTheme) -> Unit,
     sheetState: SheetState
 ) {
     ModalBottomSheet(
@@ -267,23 +251,6 @@ fun ReaderSettingsSheet(
                 }
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
-                SettingsSectionLabel(stringResource(R.string.reader_settings_section_accent))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
-                ) {
-                    AccentTheme.entries.forEach { accentTheme ->
-                        AccentThemeChip(
-                            accentTheme = accentTheme,
-                            isSelected = uiState.accentTheme == accentTheme,
-                            onClick = { onUpdateAccentTheme(accentTheme) }
-                        )
-                    }
-                }
-            }
 
             SettingSlider(
                 label = stringResource(R.string.reader_slider_font_size),
@@ -345,7 +312,7 @@ fun ReaderSettingsSheet(
                 ) {
                     Text(
                         text = stringResource(R.string.reader_preview_pangram),
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = EasyReaderSpacing.sm),
                         style = MaterialTheme.typography.bodyMedium,
                         fontFamily = previewFont
                     )

@@ -327,6 +327,81 @@ class AppDatabaseMigrationTest {
     }
 
     @Test
+    fun migrate9To10() {
+        val dbName = migrationDbName("9-to-10")
+        createDatabaseAtVersion(
+            dbName = dbName,
+            version = 9,
+            createTableSql = """
+                CREATE TABLE library_items (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    progress INTEGER NOT NULL,
+                    isCurrentlyReading INTEGER NOT NULL,
+                    currentChapter TEXT NOT NULL,
+                    currentChapterUrl TEXT NOT NULL,
+                    totalChapters INTEGER NOT NULL,
+                    contentType TEXT NOT NULL,
+                    dateAdded INTEGER NOT NULL,
+                    lastRead INTEGER NOT NULL,
+                    isDownloading INTEGER NOT NULL,
+                    lastScrollPosition REAL NOT NULL,
+                    lastReadIndex INTEGER NOT NULL,
+                    lastReadElementKey TEXT NOT NULL DEFAULT '',
+                    lastReadOffsetFraction REAL NOT NULL DEFAULT -1,
+                    hasUpdates INTEGER NOT NULL,
+                    chapterSummaries TEXT NOT NULL,
+                    baseTitle TEXT NOT NULL,
+                    readingMode TEXT NOT NULL,
+                    baseNovelUrl TEXT NOT NULL,
+                    sourceName TEXT NOT NULL,
+                    isDownloaded INTEGER NOT NULL DEFAULT 0,
+                    downloadedAt INTEGER
+                )
+            """.trimIndent(),
+            indexSqls = CURRENT_INDEX_SQL + listOf(
+                """
+                    CREATE TABLE IF NOT EXISTS chapter_image_state (
+                        chapterUrl TEXT NOT NULL,
+                        imageUrl TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        attempts INTEGER NOT NULL,
+                        lastAttemptMs INTEGER NOT NULL,
+                        httpStatusCode INTEGER,
+                        PRIMARY KEY(chapterUrl, imageUrl)
+                    )
+                """.trimIndent(),
+                "CREATE INDEX IF NOT EXISTS index_chapter_image_state_chapterUrl ON chapter_image_state (chapterUrl)",
+                "CREATE INDEX IF NOT EXISTS index_chapter_image_state_status ON chapter_image_state (status)",
+                """
+                    CREATE TABLE IF NOT EXISTS image_dimension_cache (
+                        imageUrl TEXT NOT NULL PRIMARY KEY,
+                        width INTEGER NOT NULL,
+                        height INTEGER NOT NULL,
+                        cachedAtMs INTEGER NOT NULL,
+                        parserVersion INTEGER NOT NULL
+                    )
+                """.trimIndent()
+            ),
+            insertSqls = emptyList()
+        )
+
+        migrationTestHelper.runMigrationsAndValidate(
+            dbName,
+            10,
+            true,
+            AppDatabase.MIGRATION_9_10
+        ).use { database ->
+            assertTrue(hasColumn(database, "coverImageUrl"))
+            database.query(SimpleSQLiteQuery("SELECT coverImageUrl FROM library_items")).use { cursor ->
+                assertNotNull(cursor)
+            }
+        }
+    }
+
+    @Test
     fun migrate4To5() {
         val dbName = migrationDbName("4-to-5")
         createVersion4Database(dbName)
@@ -696,7 +771,7 @@ class AppDatabaseMigrationTest {
     """.trimIndent()
 
     companion object {
-        private const val CURRENT_VERSION = 9
+        private const val CURRENT_VERSION = 10
         private val ALL_MIGRATIONS = arrayOf(
             AppDatabase.MIGRATION_1_2,
             AppDatabase.MIGRATION_2_3,
@@ -705,7 +780,8 @@ class AppDatabaseMigrationTest {
             AppDatabase.MIGRATION_5_6,
             AppDatabase.MIGRATION_6_7,
             AppDatabase.MIGRATION_7_8,
-            AppDatabase.MIGRATION_8_9
+            AppDatabase.MIGRATION_8_9,
+            AppDatabase.MIGRATION_9_10
         )
         private val CURRENT_INDEX_SQL = listOf(
             "CREATE UNIQUE INDEX index_library_items_url ON library_items (url)",
