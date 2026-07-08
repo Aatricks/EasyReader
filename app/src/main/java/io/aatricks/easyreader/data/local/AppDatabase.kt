@@ -11,7 +11,7 @@ import io.aatricks.easyreader.data.model.LibraryItem
 
 @Database(
     entities = [LibraryItem::class, ChapterImageStateEntity::class, ImageDimensionEntity::class],
-    version = 9,
+    version = 10,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -21,6 +21,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun imageDimensionDao(): ImageDimensionDao
 
     companion object {
+        private const val DB_VERSION_9 = 9
+        private const val DB_VERSION_10 = 10
+
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Remove the redundant 'type' column by recreating the table
@@ -297,6 +300,12 @@ abstract class AppDatabase : RoomDatabase() {
                         parserVersion INTEGER NOT NULL
                     )
                 """.trimIndent())
+            }
+        }
+
+        val MIGRATION_9_10 = object : Migration(DB_VERSION_9, DB_VERSION_10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE library_items ADD COLUMN coverImageUrl TEXT NOT NULL DEFAULT ''")
             }
         }
     }

@@ -237,6 +237,7 @@ class LibraryViewModelTest {
                 any(),
                 any(),
                 any(),
+                any(),
                 any()
             )
         ).thenReturn(createdItem)
@@ -255,7 +256,8 @@ class LibraryViewModelTest {
             insertedBaseTitle.capture(),
             insertedBaseNovelUrl.capture(),
             insertedSourceName.capture(),
-            insertedTotalChapters.capture()
+            insertedTotalChapters.capture(),
+            any()
         )
         assertEquals("Chapter 10", insertedTitle.firstValue)
         assertEquals(latestUrl, insertedUrl.firstValue)
@@ -337,6 +339,7 @@ class LibraryViewModelTest {
                 any(),
                 any(),
                 any(),
+                any(),
                 any()
             )
         ).thenReturn(
@@ -395,7 +398,7 @@ class LibraryViewModelTest {
         )
         advanceUntilIdle()
 
-        verify(libraryRepository, never()).addItem(any(), any(), any(), any(), any(), any(), any(), any())
+        verify(libraryRepository, never()).addItem(any(), any(), any(), any(), any(), any(), any(), any(), any())
         assertEquals(listOf(RecordedEnqueue(chapter.url, replaceExisting = false)), queue.enqueued)
         verify(contentRepository, never()).prefetchWithProgress(any(), any(), any())
         verify(libraryRepository, never()).markDownloaded(existingItem.id, true)
@@ -505,7 +508,7 @@ class LibraryViewModelTest {
 
         whenever(libraryRepository.getItemByUrl(chapter.url)).thenReturn(null)
         whenever(
-            libraryRepository.addItem(any(), any(), any(), any(), any(), any(), any(), any())
+            libraryRepository.addItem(any(), any(), any(), any(), any(), any(), any(), any(), any())
         ).thenReturn(
             LibraryItem(
                 id = "chapter-14-id",
@@ -780,6 +783,7 @@ class LibraryViewModelTest {
                 any(),
                 any(),
                 any(),
+                any(),
                 any()
             )
         ).thenThrow(RuntimeException("Database write failed"))
@@ -792,6 +796,57 @@ class LibraryViewModelTest {
 
         viewModel.consumeError()
         advanceUntilIdle()
+        assertNull(viewModel.uiState.value.error)
+    }
+
+    @Test
+    fun `addExploreItem successfully adds item with cover image URL`() = runTest {
+        val item = ExploreItem(
+            title = "Novel Title",
+            url = "https://example.com/novel",
+            coverUrl = "https://example.com/cover.jpg",
+            source = "Source1",
+            readingUrl = "https://example.com/novel/read",
+            chapterCount = 42
+        )
+        whenever(libraryRepository.getItemByUrl(item.readingUrl!!)).thenReturn(null)
+        val expectedItem = LibraryItem(
+            id = "new-id",
+            title = item.title,
+            url = item.readingUrl!!,
+            baseTitle = item.title,
+            baseNovelUrl = item.url,
+            sourceName = item.source,
+            coverImageUrl = item.coverUrl!!
+        )
+        whenever(
+            libraryRepository.addItem(
+                title = eq("Novel Title - Chapter 1"),
+                url = eq(item.readingUrl!!),
+                contentType = eq(ContentType.WEB),
+                currentChapter = eq("Chapter 1"),
+                baseTitle = eq(item.title),
+                baseNovelUrl = eq(item.url),
+                sourceName = eq(item.source),
+                totalChapters = eq(item.chapterCount),
+                coverImageUrl = eq(item.coverUrl!!)
+            )
+        ).thenReturn(expectedItem)
+
+        viewModel.addExploreItem(item)
+        advanceUntilIdle()
+
+        verify(libraryRepository).addItem(
+            title = eq("Novel Title - Chapter 1"),
+            url = eq(item.readingUrl!!),
+            contentType = eq(ContentType.WEB),
+            currentChapter = eq("Chapter 1"),
+            baseTitle = eq(item.title),
+            baseNovelUrl = eq(item.url),
+            sourceName = eq(item.source),
+            totalChapters = eq(item.chapterCount),
+            coverImageUrl = eq(item.coverUrl!!)
+        )
         assertNull(viewModel.uiState.value.error)
     }
 }

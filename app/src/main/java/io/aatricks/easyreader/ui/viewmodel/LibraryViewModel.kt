@@ -243,8 +243,11 @@ class LibraryViewModel @Inject constructor(
      * "open new chapter" work. Caller owns the coroutine + loading/error state.
      */
     private suspend fun addExploreItemInternal(item: ExploreItem) {
+        val details = if (item.readingUrl == null) {
+            exploreRepository.getNovelDetails(item.url, item.source)
+        } else null
         val readingUrl = item.readingUrl
-            ?: exploreRepository.getNovelDetails(item.url, item.source)?.readingUrl
+            ?: details?.readingUrl
             ?: item.url
 
         if (repository.getItemByUrl(readingUrl) != null) {
@@ -252,8 +255,9 @@ class LibraryViewModel @Inject constructor(
         }
 
         val contentType = determineContentType(readingUrl)
+        val coverImageUrl = item.coverUrl ?: details?.coverUrl ?: ""
         if (contentType == ContentType.WEB) {
-            addWebExploreItem(item, readingUrl)
+            addWebExploreItem(item.copy(coverUrl = coverImageUrl), readingUrl)
         } else {
             repository.addItem(
                 title = item.title,
@@ -263,7 +267,8 @@ class LibraryViewModel @Inject constructor(
                 baseTitle = item.title,
                 baseNovelUrl = item.url,
                 sourceName = item.source,
-                totalChapters = item.chapterCount
+                totalChapters = item.chapterCount,
+                coverImageUrl = coverImageUrl
             )
         }
     }
@@ -294,7 +299,8 @@ class LibraryViewModel @Inject constructor(
             baseTitle = item.title,
             baseNovelUrl = item.url,
             sourceName = item.source,
-            totalChapters = item.chapterCount
+            totalChapters = item.chapterCount,
+            coverImageUrl = item.coverUrl.orEmpty()
         )
     }
 

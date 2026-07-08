@@ -250,7 +250,8 @@ private fun LibraryItem.toBackup(bundledPath: String?): LibraryItemBackup = Libr
     sourceName = sourceName,
     isDownloaded = isDownloaded,
     downloadedAt = downloadedAt,
-    bundledEpubPath = bundledPath
+    bundledEpubPath = bundledPath,
+    coverImageUrl = coverImageUrl
 )
 
 private fun LibraryItemBackup.toEntity(rewrittenUrl: String, fileVerified: Boolean): LibraryItem = LibraryItem(
@@ -278,5 +279,6 @@ private fun LibraryItemBackup.toEntity(rewrittenUrl: String, fileVerified: Boole
     baseNovelUrl = baseNovelUrl,
     sourceName = sourceName,
     isDownloaded = isDownloaded && fileVerified,
-    downloadedAt = if (isDownloaded && fileVerified) downloadedAt else null
+    downloadedAt = if (isDownloaded && fileVerified) downloadedAt else null,
+    coverImageUrl = coverImageUrl
 )

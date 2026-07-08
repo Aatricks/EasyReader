@@ -109,7 +109,8 @@ class LibraryRepository @Inject constructor(
         baseTitle: String = title,
         baseNovelUrl: String = "",
         sourceName: String = "",
-        totalChapters: Int = 0
+        totalChapters: Int = 0,
+        coverImageUrl: String = ""
     ): LibraryItem = io {
         val newItem = LibraryItem(
             id = UUID.randomUUID().toString(),
@@ -123,7 +124,8 @@ class LibraryRepository @Inject constructor(
             baseTitle = baseTitle,
             baseNovelUrl = baseNovelUrl,
             sourceName = sourceName,
-            totalChapters = totalChapters
+            totalChapters = totalChapters,
+            coverImageUrl = coverImageUrl
         )
 
         libraryDao.insertItem(newItem)
