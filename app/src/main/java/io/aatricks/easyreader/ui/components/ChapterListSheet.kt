@@ -73,6 +73,7 @@ fun ChapterListSheet(
     libraryViewModel: LibraryViewModel,
     onDismiss: () -> Unit,
     onNavigateToChapter: (String, String) -> Unit,
+    onDownloadRemoved: () -> Unit,
     sheetState: SheetState
 ) {
     var isSelectionMode by remember { mutableStateOf(false) }
@@ -316,7 +317,10 @@ fun ChapterListSheet(
                                 if (!isSelectionMode && !isCurrent && !isDownloading) {
                                     if (isOfflineReady && libraryItem != null) {
                                         IconButton(
-                                            onClick = { libraryViewModel.removeDownload(libraryItem.id) }
+                                            onClick = {
+                                                libraryViewModel.removeDownload(libraryItem.id)
+                                                onDownloadRemoved()
+                                            }
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.DownloadDone,

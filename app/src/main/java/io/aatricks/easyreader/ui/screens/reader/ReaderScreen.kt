@@ -77,6 +77,7 @@ fun ReaderScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
 
     var showCloudflareWebView by rememberSaveable { mutableStateOf(false) }
     var cloudflareUrl by rememberSaveable { mutableStateOf("") }
@@ -228,7 +229,8 @@ fun ReaderScreen(
         @Suppress("UnusedMaterial3ScaffoldPaddingParameter")
         Scaffold(
             containerColor = if (uiState.content != null) Color.Black else MaterialTheme.colorScheme.background,
-            contentWindowInsets = WindowInsets(0, 0, 0, 0)
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
         ) {
             // Reader content is always edge-to-edge -- it must not depend on Scaffold's
             // (system-bar) inset padding, which Android keeps reporting as non-zero while
@@ -286,6 +288,11 @@ fun ReaderScreen(
                     bottomSheetState.hide()
                     showChapterList = false
                     readerViewModel.navigateToChapter(url, title)
+                }
+            },
+            onDownloadRemoved = {
+                scope.launch {
+                    snackbarHostState.showSnackbar("Chapter download removed")
                 }
             },
             sheetState = bottomSheetState

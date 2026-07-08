@@ -37,7 +37,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import io.aatricks.easyreader.ui.util.toFontFamily
@@ -82,7 +85,11 @@ private fun ReaderThemeOption(
             .background(theme.backgroundColor)
             .border(borderWidth, borderColor, CircleShape)
             .clickable(onClick = onClick)
-            .semantics { contentDescription = "Theme ${theme.name.lowercase()}" },
+            .semantics {
+                contentDescription = "Theme ${theme.name.lowercase()}"
+                role = Role.Button
+                selected = isSelected
+            },
         contentAlignment = Alignment.Center
     ) {
         if (isSelected) {

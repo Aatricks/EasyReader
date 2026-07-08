@@ -43,6 +43,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 import androidx.hilt.navigation.compose.hiltViewModel
+import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.ui.components.appUpdateHandler
 import io.aatricks.easyreader.ui.viewmodel.ExploreViewModel
 import io.aatricks.easyreader.ui.viewmodel.UpdateViewModel
@@ -60,6 +61,7 @@ class MainActivity : ComponentActivity() {
     private val libraryViewModel: LibraryViewModel by viewModels()
     
     @Inject lateinit var contentRepository: ContentRepository
+    @Inject lateinit var preferencesManager: PreferencesManager
 
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -89,10 +91,18 @@ class MainActivity : ComponentActivity() {
             val readerUiState by readerViewModel.uiState.collectAsState()
             val updateViewModel: UpdateViewModel = hiltViewModel()
             val updateState by updateViewModel.uiState.collectAsState()
+            val appearanceSettings by preferencesManager.appearanceSettings.collectAsState()
+
+            val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
+            val darkTheme = when (appearanceSettings.themeMode) {
+                "LIGHT" -> false
+                "DARK" -> true
+                else -> isSystemDark
+            }
 
             NovelScraperTheme(
-                darkTheme = androidx.compose.foundation.isSystemInDarkTheme(),
-                dynamicColor = false,
+                darkTheme = darkTheme,
+                dynamicColor = appearanceSettings.dynamicColor,
                 accentTheme = readerUiState.accentTheme
             ) {
                 val navController = rememberNavController()

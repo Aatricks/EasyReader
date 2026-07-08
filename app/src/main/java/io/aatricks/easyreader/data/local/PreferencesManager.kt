@@ -30,6 +30,11 @@ data class ReaderSettingsSnapshot(
     val accentTheme: String
 )
 
+data class AppearanceSettingsSnapshot(
+    val themeMode: String,
+    val dynamicColor: Boolean
+)
+
 /**
  * SharedPreferences wrapper for type-safe preferences access
  */
@@ -50,10 +55,18 @@ class PreferencesManager @Inject constructor(
     /** Reactive view of every reader-facing preference. Emits on any mutation. */
     val readerSettings: StateFlow<ReaderSettingsSnapshot> = _readerSettings.asStateFlow()
 
+    private val _appearanceSettings = MutableStateFlow(readAppearanceSettingsSnapshot())
+
+    /** Reactive view of appearance settings. Emits on any mutation. */
+    val appearanceSettings: StateFlow<AppearanceSettingsSnapshot> = _appearanceSettings.asStateFlow()
+
     // Held in a field so the SharedPreferences weak-ref doesn't drop it.
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == null || key in READER_SETTINGS_KEYS) {
             _readerSettings.value = readReaderSettingsSnapshot()
+        }
+        if (key == null || key in APPEARANCE_SETTINGS_KEYS) {
+            _appearanceSettings.value = readAppearanceSettingsSnapshot()
         }
     }
 
@@ -72,6 +85,19 @@ class PreferencesManager @Inject constructor(
         accentTheme = prefs.getString(KEY_ACCENT_THEME, io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name)
             ?: io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name
     )
+
+    private fun readAppearanceSettingsSnapshot(): AppearanceSettingsSnapshot = AppearanceSettingsSnapshot(
+        themeMode = prefs.getString(KEY_THEME_MODE, "SYSTEM") ?: "SYSTEM",
+        dynamicColor = prefs.getBoolean(KEY_DYNAMIC_COLOR, false)
+    )
+
+    var themeMode: String
+        get() = prefs.getString(KEY_THEME_MODE, "SYSTEM") ?: "SYSTEM"
+        set(value) = prefs.edit().putString(KEY_THEME_MODE, value).apply()
+
+    var dynamicColor: Boolean
+        get() = prefs.getBoolean(KEY_DYNAMIC_COLOR, false)
+        set(value) = prefs.edit().putBoolean(KEY_DYNAMIC_COLOR, value).apply()
     
     // Last-read chapter URL, mirrored on every successful chapter load so cold launch can
     // restore the reader without waiting for the Room currently-reading query.
@@ -221,6 +247,10 @@ class PreferencesManager @Inject constructor(
         private const val KEY_AI_SUMMARY_ENABLED = "ai_summary_enabled"
         private const val KEY_WEB_OFFLINE_PIPELINE_VERSION = "web_offline_pipeline_version"
 
+        // Appearance Settings Keys
+        private const val KEY_THEME_MODE = "appearance_theme_mode"
+        private const val KEY_DYNAMIC_COLOR = "appearance_dynamic_color"
+
         private val READER_SETTINGS_KEYS = setOf(
             KEY_FONT_SIZE,
             KEY_LINE_HEIGHT,
@@ -229,6 +259,11 @@ class PreferencesManager @Inject constructor(
             KEY_PARAGRAPH_SPACING,
             KEY_READER_THEME,
             KEY_ACCENT_THEME
+        )
+
+        private val APPEARANCE_SETTINGS_KEYS = setOf(
+            KEY_THEME_MODE,
+            KEY_DYNAMIC_COLOR
         )
     }
 }

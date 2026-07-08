@@ -309,6 +309,7 @@ private fun ActiveFilterBar(
                 selected = true,
                 onClick = { onSourceSelect(null) },
                 label = { Text(source) },
+                modifier = Modifier.minimumInteractiveComponentSize(),
                 trailingIcon = {
                     Icon(
                         imageVector = Icons.Default.Close,
@@ -324,6 +325,7 @@ private fun ActiveFilterBar(
                 selected = true,
                 onClick = { onTagToggle(tag) },
                 label = { Text(tag) },
+                modifier = Modifier.minimumInteractiveComponentSize(),
                 trailingIcon = {
                     Icon(
                         imageVector = Icons.Default.Close,
