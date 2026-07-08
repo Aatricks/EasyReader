@@ -66,7 +66,12 @@ import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.ContentResult
 import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.model.LibraryItem
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import io.aatricks.easyreader.ui.components.ChapterSummaryDropdown
+import io.aatricks.easyreader.ui.components.rememberLibraryCoverImageRequest
 import io.aatricks.easyreader.ui.theme.EasyReaderMotion
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
@@ -348,7 +353,24 @@ private fun NovelGroupHeader(
             },
             onLongClick = onToggleSelection
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val coverItem = items.firstOrNull { it.coverImageUrl.isNotBlank() }
+                if (coverItem != null) {
+                    AsyncImage(
+                        model = rememberLibraryCoverImageRequest(coverItem),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .width(48.dp)
+                            .aspectRatio(GROUP_COVER_ASPECT_RATIO)
+                            .clip(MaterialTheme.shapes.small),
+                        contentScale = ContentScale.Crop
+                    )
+                    Spacer(modifier = Modifier.width(EasyReaderSpacing.sm))
+                }
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
@@ -375,6 +397,7 @@ private fun NovelGroupHeader(
                         )
                     }
                 }
+            }
             }
         }
 
@@ -619,3 +642,5 @@ private fun NovelChapterList(
         }
     }
 }
+
+private const val GROUP_COVER_ASPECT_RATIO = 2f / 3f
