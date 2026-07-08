@@ -74,6 +74,9 @@ android {
                 "proguard-rules.pro"
             )
             signingConfig = signingConfigs.getByName("release")
+            installation {
+                enableBaselineProfile = false
+            }
         }
         debug {
             isMinifyEnabled = false
