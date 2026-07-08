@@ -47,6 +47,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
+import io.aatricks.easyreader.ui.screens.countDistinctNovelTitles
 import androidx.hilt.navigation.compose.hiltViewModel
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.BackupViewModel
@@ -200,9 +203,15 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
                     Text("Clear all downloads")
                 }
+                val titlesCount = countDistinctNovelTitles(libraryState.items)
+                val entriesCount = libraryState.items.size
                 SettingsRow(
                     title = "Library size",
-                    subtitle = "${libraryState.items.size} items"
+                    subtitle = if (titlesCount == 1) {
+                        "1 title · $entriesCount entries"
+                    } else {
+                        "$titlesCount titles · $entriesCount entries"
+                    }
                 )
                 OutlinedButton(
                     onClick = { showClearLibraryDialog = true },
@@ -218,7 +227,19 @@ fun SettingsScreen(
             if (summaryUiState.supportsAi) {
                 SettingsSection(title = "AI features") {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleable(
+                                value = summaryUiState.isEnabled,
+                                role = Role.Switch,
+                                onValueChange = { wantEnabled ->
+                                    if (wantEnabled && !summaryUiState.isEnabled) {
+                                        showEnableAiDialog = true
+                                    } else if (!wantEnabled) {
+                                        summaryViewModel.setAiSummaryEnabled(false)
+                                    }
+                                }
+                            ),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -241,13 +262,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.size(EasyReaderSpacing.sm))
                         Switch(
                             checked = summaryUiState.isEnabled,
-                            onCheckedChange = { wantEnabled ->
-                                if (wantEnabled && !summaryUiState.isEnabled) {
-                                    showEnableAiDialog = true
-                                } else if (!wantEnabled) {
-                                    summaryViewModel.setAiSummaryEnabled(false)
-                                }
-                            }
+                            onCheckedChange = null
                         )
                     }
                     if (summaryUiState.isInitializing) {

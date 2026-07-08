@@ -119,26 +119,31 @@ fun ReaderScreen(
     val view = LocalView.current
     val window = (view.context as? Activity)?.window
     val readerTheme = uiState.readerTheme
+    val appIsDark = isSystemInDarkTheme()
+    val currentAppIsDark by rememberUpdatedState(appIsDark)
 
-    LaunchedEffect(uiState.showControls, readerTheme, uiState.content) {
+    LaunchedEffect(uiState.showControls, readerTheme, uiState.content, appIsDark) {
         if (window != null) {
             val windowInsetsController = WindowCompat.getInsetsController(window, view)
             windowInsetsController.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 
-            val isDarkReader = readerTheme == ReaderTheme.DARK ||
-                               readerTheme == ReaderTheme.OLED
+            val isDark = if (uiState.content != null) {
+                readerTheme == ReaderTheme.DARK || readerTheme == ReaderTheme.OLED
+            } else {
+                appIsDark
+            }
             val systemBars = WindowInsetsCompat.Type.systemBars()
             val isReading = uiState.content != null
 
             if (isReading && !uiState.showControls) {
                 windowInsetsController.hide(systemBars)
-                windowInsetsController.isAppearanceLightStatusBars = !isDarkReader
-                windowInsetsController.isAppearanceLightNavigationBars = !isDarkReader
+                windowInsetsController.isAppearanceLightStatusBars = !isDark
+                windowInsetsController.isAppearanceLightNavigationBars = !isDark
             } else {
                 windowInsetsController.show(systemBars)
-                windowInsetsController.isAppearanceLightStatusBars = !isDarkReader
-                windowInsetsController.isAppearanceLightNavigationBars = !isDarkReader
+                windowInsetsController.isAppearanceLightStatusBars = !isDark
+                windowInsetsController.isAppearanceLightNavigationBars = !isDark
             }
         }
     }
@@ -146,7 +151,10 @@ fun ReaderScreen(
     DisposableEffect(Unit) {
         onDispose {
             window?.let {
-                WindowCompat.getInsetsController(it, view).show(WindowInsetsCompat.Type.systemBars())
+                val windowInsetsController = WindowCompat.getInsetsController(it, view)
+                windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+                windowInsetsController.isAppearanceLightStatusBars = !currentAppIsDark
+                windowInsetsController.isAppearanceLightNavigationBars = !currentAppIsDark
             }
         }
     }
@@ -223,7 +231,7 @@ fun ReaderScreen(
     ) {
         @Suppress("UnusedMaterial3ScaffoldPaddingParameter")
         Scaffold(
-            containerColor = Color.Black,
+            containerColor = if (uiState.content != null) Color.Black else MaterialTheme.colorScheme.background,
             contentWindowInsets = WindowInsets(0, 0, 0, 0)
         ) {
             // Reader content is always edge-to-edge -- it must not depend on Scaffold's

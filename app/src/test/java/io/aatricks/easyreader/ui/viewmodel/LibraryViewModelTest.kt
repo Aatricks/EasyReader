@@ -746,6 +746,54 @@ class LibraryViewModelTest {
         assertEquals(inspected1, activeViewModel.uiState.value.chapterCacheStates[item1.url])
         assertEquals(inspected2, activeViewModel.uiState.value.chapterCacheStates[item2.url])
     }
+
+    @Test
+    fun `fetchAndAdd success sets snackbarMessage and clears error`() = runTest {
+        val url = "https://example.com/novel/chapter-1"
+        whenever(libraryRepository.getItemByUrl(url)).thenReturn(null)
+        whenever(contentRepository.inferContentType(url)).thenReturn(ContentType.EPUB)
+        whenever(contentRepository.fetchTitle(url)).thenReturn("Novel Title")
+
+        viewModel.fetchAndAdd(url)
+        advanceUntilIdle()
+
+        assertEquals("Added \"Novel Title\" to library", viewModel.uiState.value.snackbarMessage)
+        assertNull(viewModel.uiState.value.error)
+
+        viewModel.consumeSnackbarMessage()
+        advanceUntilIdle()
+        assertNull(viewModel.uiState.value.snackbarMessage)
+    }
+
+    @Test
+    fun `fetchAndAdd failure sets error`() = runTest {
+        val url = "https://example.com/novel/chapter-1"
+        whenever(libraryRepository.getItemByUrl(url)).thenReturn(null)
+        whenever(contentRepository.inferContentType(url)).thenReturn(ContentType.EPUB)
+        whenever(contentRepository.fetchTitle(url)).thenReturn("Novel Title")
+        whenever(
+            libraryRepository.addItem(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any()
+            )
+        ).thenThrow(RuntimeException("Database write failed"))
+
+        viewModel.fetchAndAdd(url)
+        advanceUntilIdle()
+
+        assertEquals("Failed to add item: Database write failed", viewModel.uiState.value.error)
+        assertNull(viewModel.uiState.value.snackbarMessage)
+
+        viewModel.consumeError()
+        advanceUntilIdle()
+        assertNull(viewModel.uiState.value.error)
+    }
 }
 
 private data class RecordedEnqueue(val url: String, val replaceExisting: Boolean)

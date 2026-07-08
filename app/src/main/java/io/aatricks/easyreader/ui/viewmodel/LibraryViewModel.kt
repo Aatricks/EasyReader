@@ -122,7 +122,8 @@ class LibraryViewModel @Inject constructor(
             currentlyReading = items.find { it.isCurrentlyReading },
             chapterCacheStates = cacheStates,
             isLoading = manualUiState.isLoading,
-            error = manualUiState.error
+            error = manualUiState.error,
+            snackbarMessage = manualUiState.snackbarMessage
         )
     }
     .flowOn(defaultDispatcher)
@@ -165,6 +166,7 @@ class LibraryViewModel @Inject constructor(
         val collapsedSources: Set<String> = emptySet(),
         val isLoading: Boolean = false,
         val error: String? = null,
+        val snackbarMessage: String? = null,
         val isSelectionMode: Boolean = false,
         val selectedIds: Set<String> = emptySet(),
         val selectedCount: Int = 0,
@@ -341,52 +343,81 @@ class LibraryViewModel @Inject constructor(
     fun fetchAndAdd(url: String): Unit {
         viewModelScope.launch {
             runCatching {
-                updateState { it.copy(isLoading = true, error = null) }
+                updateState {
+                    it.copy(
+                        isLoading = true,
+                        error = null,
+                        snackbarMessage = null
+                    )
+                }
                 val trimmed = url.trim()
                 if (repository.getItemByUrl(trimmed) != null) {
                     throw Exception("This item already exists in your library")
                 }
                 val contentType = contentRepository.inferContentType(trimmed)
 
-                when {
+                val addedTitle = when {
                     contentType == ContentType.EPUB -> {
-                        val fetchedTitle = runCatching { contentRepository.fetchTitle(trimmed) }.getOrNull() ?: trimmed
+                        val fetched = runCatching { contentRepository.fetchTitle(trimmed) }
+                        val fetchedTitle = fetched.getOrNull() ?: trimmed
+                        val finalTitle = fetchedTitle.trim().ifBlank { trimmed }
                         repository.addItem(
-                            title = fetchedTitle.trim().ifBlank { trimmed },
+                            title = finalTitle,
                             url = trimmed,
                             contentType = ContentType.EPUB,
                             currentChapter = "Chapter 1",
-                            baseTitle = fetchedTitle.trim().ifBlank { trimmed },
+                            baseTitle = finalTitle,
                             baseNovelUrl = trimmed,
                             sourceName = "EPUB"
                         )
+                        finalTitle
                     }
-                    // A web series URL: resolve it to a source (Novelight/NovelFire/… by host, or
-                    // SmartSource) and add it as a proper, paginating series with its chapter list.
-                    contentType == ContentType.WEB && trimmed.startsWith("http") &&
-                        addResolvedSeries(trimmed) -> Unit
-                    // Fallback: not resolvable as a series (arbitrary page or local file) — keep the
-                    // legacy single-item behaviour so pasting a lone chapter URL still works.
+                    contentType == ContentType.WEB && trimmed.startsWith("http") -> {
+                        val resolvedTitle = addResolvedSeries(trimmed)
+                        resolvedTitle ?: addUnresolvedItem(trimmed, contentType)
+                    }
                     else -> addUnresolvedItem(trimmed, contentType)
                 }
-                updateState { it.copy(isLoading = false) }
+                updateState {
+                    it.copy(
+                        isLoading = false,
+                        snackbarMessage = "Added \"$addedTitle\" to library",
+                        error = null
+                    )
+                }
             }.onFailure { e ->
-                updateState { it.copy(isLoading = false, error = "Failed to add item: ${e.message}") }
+                updateState {
+                    it.copy(
+                        isLoading = false,
+                        error = "Failed to add item: ${e.message}"
+                    )
+                }
             }
         }
     }
 
-    /** Returns true if [url] resolved to a source series (with chapters) and was added. */
-    private suspend fun addResolvedSeries(url: String): Boolean {
+    /**
+     * Returns the series title if [url] resolved to a source series
+     * (with chapters) and was added, null otherwise.
+     */
+    private suspend fun addResolvedSeries(url: String): String? {
         val item = runCatching { exploreRepository.getNovelDetailsByUrl(url) }.getOrNull()
-        if (item == null || item.chapters.isEmpty()) return false
+        if (item == null || item.chapters.isEmpty()) return null
         addExploreItemInternal(item)
-        return true
+        return item.title
+    }
+
+    fun consumeSnackbarMessage() {
+        updateState { it.copy(snackbarMessage = null) }
+    }
+
+    fun consumeError() {
+        updateState { it.copy(error = null) }
     }
 
     private var openNewChapterJob: Job? = null
 
-    private suspend fun addUnresolvedItem(url: String, contentType: ContentType) {
+    private suspend fun addUnresolvedItem(url: String, contentType: ContentType): String {
         val fetchedTitle = runCatching { contentRepository.fetchTitle(url) }.getOrNull() ?: url
         val fullTitle = fetchedTitle.trim().ifBlank { url }
         val baseTitle = TextUtils.extractBaseTitle(fullTitle, contentType)
@@ -399,6 +430,7 @@ class LibraryViewModel @Inject constructor(
             baseNovelUrl = url,
             sourceName = if (url.startsWith("http")) "Web" else "File"
         )
+        return baseTitle.ifBlank { fullTitle }
     }
 
     fun openNewChapter(

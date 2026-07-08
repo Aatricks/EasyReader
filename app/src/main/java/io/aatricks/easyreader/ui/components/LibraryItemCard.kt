@@ -186,7 +186,7 @@ fun LibraryItemCard(
                     Box {
                         IconButton(
                             onClick = { menuExpanded = true },
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.minimumInteractiveComponentSize()
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.MoreVert,

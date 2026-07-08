@@ -20,6 +20,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.isNull
@@ -119,5 +120,21 @@ class ExploreViewModelTest {
         assertNull(state.selectedItem)
         assertNull(state.selectedItemDetails)
         assertFalse(state.isSearching)
+    }
+
+    @Test
+    fun `IOException during loadInitialData results in hasError state`() = runTest {
+        val failingRepository: ExploreRepository = mock()
+        whenever(failingRepository.getSourceNames()).thenReturn(listOf("NovelFire", "MangaBat"))
+        whenever(failingRepository.getTags(any())).thenAnswer { emptyList<String>() }
+        whenever(failingRepository.getNovels(any(), any(), anyOrNull(), any())).thenAnswer {
+            throw java.io.IOException("No internet connection")
+        }
+
+        val errorViewModel = ExploreViewModel(failingRepository)
+        advanceUntilIdle()
+
+        assertTrue(errorViewModel.uiState.value.hasError)
+        assertFalse(errorViewModel.uiState.value.isLoading)
     }
 }

@@ -46,6 +46,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -348,7 +349,7 @@ private fun NovelGroupHeader(
                 if (!isExpanded) {
                     Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
                     Text(
-                        text = "Resume ${resumeItem.currentChapter.ifBlank { "Chapter 1" }}",
+                        text = getLibraryItemResumeLabel(resumeItem),
                         style = MaterialTheme.typography.bodySmall,
                         color = if (hasGroupSelection && !isGroupSelected) {
                             MaterialTheme.colorScheme.primary
@@ -437,7 +438,7 @@ private fun NovelChapterList(
     Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
 
     val lastRead = items.find { it.isCurrentlyReading } ?: items.maxByOrNull { it.lastRead }
-    if (!uiState.isSelectionMode && lastRead != null && lastRead.progress > 0) {
+    if (!uiState.isSelectionMode && lastRead != null) {
         Button(
             onClick = { onChapterClick(lastRead) },
             modifier = Modifier.fillMaxWidth(),
@@ -447,7 +448,13 @@ private fun NovelChapterList(
             ),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Text("Resume ${lastRead.currentChapter.ifBlank { "reading" }}")
+            Text(
+                if (lastRead.progress == 0 && lastRead.currentChapterUrl.isBlank()) {
+                    "Start reading"
+                } else {
+                    "Resume ${lastRead.currentChapter.ifBlank { "reading" }}"
+                }
+            )
         }
         Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
     }
@@ -528,7 +535,7 @@ private fun NovelChapterList(
                                 if (chapterItem.isDownloaded) {
                                     IconButton(
                                         onClick = { libraryViewModel.removeDownload(chapterItem.id) },
-                                        modifier = Modifier.size(32.dp)
+                                        modifier = Modifier.minimumInteractiveComponentSize()
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.DownloadDone,

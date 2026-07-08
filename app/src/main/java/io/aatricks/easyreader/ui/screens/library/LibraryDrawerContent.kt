@@ -119,10 +119,14 @@ fun LibraryDrawerContent(
             items(recentItems, key = { "recent_${it.novelKey}" }) { novel ->
                 QuickLibraryItem(
                     item = novel.resumeItem,
-                    supportingText = novel.resumeItem.currentChapter.ifBlank { "Resume where you left off" }
-                        .let { chapter ->
-                            if (chapter.startsWith("Resume")) chapter else "Resume $chapter"
-                        },
+                    supportingText = if (novel.resumeItem.progress == 0 &&
+                        novel.resumeItem.currentChapterUrl.isBlank()
+                    ) {
+                        "Start reading"
+                    } else {
+                        val chapter = novel.resumeItem.currentChapter.ifBlank { "Resume where you left off" }
+                        if (chapter.startsWith("Resume")) chapter else "Resume $chapter"
+                    },
                     onClick = {
                         onOpenLibraryItem(novel.resumeItem)
                         onCloseDrawer()

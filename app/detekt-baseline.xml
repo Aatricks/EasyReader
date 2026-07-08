@@ -78,7 +78,7 @@
     <ID>FunctionNaming:LibraryItemCard.kt$@Composable fun LibraryItemCardPreview()</ID>
     <ID>FunctionNaming:LibraryItemCard.kt$@OptIn(ExperimentalFoundationApi::class) @Composable fun LibraryItemCard( item: LibraryItem, isSelected: Boolean, isCurrent: Boolean, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, onNewTagClick: (() -&gt; Unit)? = null, onDelete: (() -&gt; Unit)? = null, onResetProgress: (() -&gt; Unit)? = null, onMarkFinished: (() -&gt; Unit)? = null )</ID>
     <ID>FunctionNaming:LibraryScreen.kt$@Composable private fun AddNovelSection( urlInput: String, onUrlChange: (String) -&gt; Unit, onAddClick: () -&gt; Unit, onOpenPdfClick: () -&gt; Unit ): Unit</ID>
-    <ID>FunctionNaming:LibraryScreen.kt$@Composable private fun EmptyLibraryState( isSearchEmpty: Boolean = false, isFilteredEmpty: Boolean = false, onClearSearch: () -&gt; Unit = {}, query: String = "" )</ID>
+    <ID>FunctionNaming:LibraryScreen.kt$@Composable private fun EmptyLibraryState( isFilteredEmpty: Boolean = false, onClearSearch: () -&gt; Unit = {}, onBrowseSources: () -&gt; Unit = {}, onImportFile: () -&gt; Unit = {}, query: String = "" )</ID>
     <ID>FunctionNaming:LibraryScreen.kt$@Composable private fun LibraryStatusRow( query: String, totalCount: Int, visibleCount: Int, isSelectionMode: Boolean, selectedCount: Int, onSelectionClick: () -&gt; Unit ): Unit</ID>
     <ID>FunctionNaming:LibraryScreen.kt$@Composable private fun ReadingStatusFilterRow( selected: SeriesReadingStatus, counts: Map&lt;SeriesReadingStatus, Int&gt;, onSelect: (SeriesReadingStatus) -&gt; Unit )</ID>
     <ID>FunctionNaming:LibraryScreen.kt$@Composable private fun SearchLibraryField( query: String, onQueryChange: (String) -&gt; Unit ): Unit</ID>
@@ -427,7 +427,6 @@
     <ID>MagicNumber:ReaderTheme.kt$ReaderTheme.LIGHT$0xFFFFFFFF</ID>
     <ID>MagicNumber:ReaderTheme.kt$ReaderTheme.OLED$0xFF000000</ID>
     <ID>MagicNumber:ReaderTheme.kt$ReaderTheme.OLED$0xFFFFFFFF</ID>
-    <ID>MagicNumber:ReaderTheme.kt$ReaderTheme.PAPER$0xFF657B83</ID>
     <ID>MagicNumber:ReaderTheme.kt$ReaderTheme.PAPER$0xFFFDF6E3</ID>
     <ID>MagicNumber:ReaderTheme.kt$ReaderTheme.SEPIA$0xFF5B4636</ID>
     <ID>MagicNumber:ReaderTheme.kt$ReaderTheme.SEPIA$0xFFF4ECD8</ID>
@@ -532,8 +531,6 @@
     <ID>MaxLineLength:ExploreScreen.kt$"${uiState.selectedSource} + ${uiState.selectedTags.size} genre${if (uiState.selectedTags.size &gt; 1) "s" else ""}"</ID>
     <ID>MaxLineLength:ExploreViewModel.kt$ExploreViewModel$exploreRepository.getNovels(_uiState.value.browseMode, page, _uiState.value.selectedSource, _uiState.value.selectedTags.toList())</ID>
     <ID>MaxLineLength:ExploreViewModel.kt$ExploreViewModel$val novels = exploreRepository.getNovels(_uiState.value.browseMode, 1, _uiState.value.selectedSource, _uiState.value.selectedTags.toList())</ID>
-    <ID>MaxLineLength:ExploreViewModel.kt$ExploreViewModel$val novels = exploreRepository.getNovels(_uiState.value.browseMode, 1, _uiState.value.selectedSource, emptyList())</ID>
-    <ID>MaxLineLength:ExploreViewModel.kt$ExploreViewModel$val novels = exploreRepository.getNovels(_uiState.value.browseMode, 1, _uiState.value.selectedSource, newTags.toList())</ID>
     <ID>MaxLineLength:HtmlParser.kt$HtmlParser$Regex(""""url"\s*(?::|,)\s*\[?\s*\d*\s*,?\s*"(https?://[^"]+\.(?:webp|jpg|jpeg|png|gif))""""", RegexOption.IGNORE_CASE)</ID>
     <ID>MaxLineLength:HtmlParser.kt$HtmlParser$document.select("img[alt*='credit'], img[alt*='recommend'], img[src*='credit'], img[src*='recommend'], img[alt*='ei0qg'], img[title*='ei0qg']").remove()</ID>
     <ID>MaxLineLength:HtmlParser.kt$HtmlParser$if (p.isEmpty() || p.matches(DIGIT_ONLY_REGEX) || CHAPTER_CLEANUP_PATTERN.containsMatchIn(p)) return@filter false</ID>
@@ -748,7 +745,6 @@
     <ID>TooManyFunctions:WebOfflineChapterStore.kt$WebOfflineChapterStore</ID>
     <ID>UnusedParameter:AsuraScansSource.kt$AsuraScansSource$seriesUrl: String</ID>
     <ID>UnusedParameter:ComposeUtils.kt$height: Int</ID>
-    <ID>UnusedParameter:LibraryScreen.kt$isSearchEmpty: Boolean = false</ID>
     <ID>UnusedParameter:NovelFireSource.kt$NovelFireSource$chaptersUrl: String</ID>
     <ID>UnusedParameter:SummaryService.kt$SummaryService$selectedContent: String</ID>
     <ID>UnusedParameter:TextFormattingPipeline.kt$TextFormattingPipeline$original: String</ID>

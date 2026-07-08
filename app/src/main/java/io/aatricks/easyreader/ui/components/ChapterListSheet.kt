@@ -167,7 +167,7 @@ fun ChapterListSheet(
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.PlaylistAddCheck,
-                                contentDescription = null,
+                                contentDescription = stringResource(R.string.chapter_filter_unread),
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -184,7 +184,7 @@ fun ChapterListSheet(
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.LibraryAddCheck,
-                                contentDescription = null,
+                                contentDescription = stringResource(R.string.chapter_filter_in_library),
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -226,7 +226,11 @@ fun ChapterListSheet(
                     ) {
                         Icon(
                             imageVector = if (isDeleteMode) Icons.Default.Delete else Icons.Default.Download,
-                            contentDescription = null,
+                            contentDescription = if (isDeleteMode) {
+                                stringResource(R.string.common_delete)
+                            } else {
+                                stringResource(R.string.download_button)
+                            },
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
