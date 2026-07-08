@@ -39,21 +39,49 @@ class ExploreRepository @Inject constructor(
         page: Int = 1,
         sourceName: String? = null,
         tags: List<String> = emptyList()
-    ): List<ExploreItem> = coroutineScope {
+    ): List<ExploreItem> = getNovelsDetailed(mode, page, sourceName, tags).items
+
+    /**
+     * Browse variant that returns per-source failure information alongside the
+     * merged items, mirroring [searchNovelsDetailed]. Sources fail independently;
+     * the multi-tag intersection path swallows failures internally and reports none.
+     */
+    suspend fun getNovelsDetailed(
+        mode: BrowseMode = BrowseMode.POPULAR,
+        page: Int = 1,
+        sourceName: String? = null,
+        tags: List<String> = emptyList()
+    ): SearchOutcome = coroutineScope {
         val activeSources = filterSources(sourceName)
 
         val normalizedTags = tags.map { it.trim() }.filter { it.isNotBlank() }.distinct()
-        val results = if (normalizedTags.size <= 1) {
-            activeSources.map { source ->
-                async { runCatching { source.getNovels(mode, page, normalizedTags) }.getOrDefault(emptyList()) }
-            }.awaitAll().flatten()
+        if (normalizedTags.size <= 1) {
+            val outcomes = activeSources.map { source ->
+                async {
+                    runCatching { source.getNovels(mode, page, normalizedTags) }.fold(
+                        onSuccess = { items -> source to Result.success(items) },
+                        onFailure = { e -> source to Result.failure(e) }
+                    )
+                }
+            }.awaitAll()
+
+            val items = outcomes.flatMap { (_, result) -> result.getOrDefault(emptyList()) }
+            val failures = outcomes.mapNotNull { (source, result) ->
+                result.exceptionOrNull()?.let { e ->
+                    SourceFailure(
+                        sourceName = source.name,
+                        reason = e.message?.takeIf { it.isNotBlank() } ?: e::class.simpleName,
+                        cause = e
+                    )
+                }
+            }
+            SearchOutcome(if (sourceName == null) items.shuffled() else items, failures)
         } else {
-            activeSources.map { source ->
+            val results = activeSources.map { source ->
                 async { loadNovelsWithTagIntersection(source, mode, page, normalizedTags) }
             }.awaitAll().flatten()
+            SearchOutcome(if (sourceName == null) results.shuffled() else results, emptyList())
         }
-
-        if (sourceName == null) results.shuffled() else results
     }
     
     suspend fun getTags(sourceName: String?): List<String> = coroutineScope {

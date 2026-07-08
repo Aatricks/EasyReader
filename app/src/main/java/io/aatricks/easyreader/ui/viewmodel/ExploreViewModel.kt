@@ -76,14 +76,19 @@ class ExploreViewModel @Inject constructor(
                         availableTags = tags,
                     )
                 }
-                val novels = exploreRepository.getNovels(_uiState.value.browseMode, 1, _uiState.value.selectedSource, _uiState.value.selectedTags.toList())
+                val outcome = exploreRepository.getNovelsDetailed(
+                    _uiState.value.browseMode,
+                    1,
+                    _uiState.value.selectedSource,
+                    _uiState.value.selectedTags.toList()
+                )
                 updateState {
                     it.copy(
-                        items = novels,
+                        items = outcome.items,
                         isLoading = false,
                         page = 1,
-                        canLoadMore = novels.isNotEmpty(),
-                        hasError = false
+                        canLoadMore = outcome.items.isNotEmpty(),
+                        hasError = outcome.items.isEmpty() && outcome.failures.isNotEmpty()
                     )
                 }
             }.onFailure {
@@ -135,8 +140,14 @@ class ExploreViewModel @Inject constructor(
                     novels = outcome.items
                     failures = outcome.failures
                 } else {
-                    novels = exploreRepository.getNovels(_uiState.value.browseMode, 1, sourceName, emptyList())
-                    failures = emptyList()
+                    val outcome = exploreRepository.getNovelsDetailed(
+                        _uiState.value.browseMode,
+                        1,
+                        sourceName,
+                        emptyList()
+                    )
+                    novels = outcome.items
+                    failures = outcome.failures
                 }
                 updateState {
                     it.copy(
@@ -145,8 +156,8 @@ class ExploreViewModel @Inject constructor(
                         availableTags = tags,
                         isSearching = searchQuery.isNotBlank(),
                         canLoadMore = novels.isNotEmpty(),
-                        searchFailures = failures,
-                        hasError = false
+                        searchFailures = if (searchQuery.isNotBlank()) failures else emptyList(),
+                        hasError = novels.isEmpty() && failures.isNotEmpty()
                     )
                 }
             }.onFailure {
@@ -174,7 +185,7 @@ class ExploreViewModel @Inject constructor(
                         hasError = false
                     )
                 }
-                val novels = exploreRepository.getNovels(
+                val outcome = exploreRepository.getNovelsDetailed(
                     _uiState.value.browseMode,
                     1,
                     _uiState.value.selectedSource,
@@ -182,10 +193,10 @@ class ExploreViewModel @Inject constructor(
                 )
                 updateState {
                     it.copy(
-                        items = novels,
+                        items = outcome.items,
                         isLoading = false,
-                        canLoadMore = novels.isNotEmpty(),
-                        hasError = false
+                        canLoadMore = outcome.items.isNotEmpty(),
+                        hasError = outcome.items.isEmpty() && outcome.failures.isNotEmpty()
                     )
                 }
             }.onFailure {
@@ -208,7 +219,7 @@ class ExploreViewModel @Inject constructor(
                         hasError = false
                     )
                 }
-                val novels = exploreRepository.getNovels(
+                val outcome = exploreRepository.getNovelsDetailed(
                     _uiState.value.browseMode,
                     1,
                     _uiState.value.selectedSource,
@@ -216,10 +227,10 @@ class ExploreViewModel @Inject constructor(
                 )
                 updateState {
                     it.copy(
-                        items = novels,
+                        items = outcome.items,
                         isLoading = false,
-                        canLoadMore = novels.isNotEmpty(),
-                        hasError = false
+                        canLoadMore = outcome.items.isNotEmpty(),
+                        hasError = outcome.items.isEmpty() && outcome.failures.isNotEmpty()
                     )
                 }
             }.onFailure {
