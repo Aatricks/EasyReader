@@ -99,6 +99,7 @@
     <string name="reader_slider_font_size">Taille de police</string>
     <string name="reader_slider_line_height">Hauteur de ligne</string>
     <string name="reader_slider_margins">Marges</string>
+    <string name="reader_slider_vertical_margins">Marges verticales</string>
     <string name="reader_slider_paragraph_spacing">Espacement des paragraphes</string>
     <string name="reader_font_default">Par défaut</string>
     <string name="reader_font_serif">Serif</string>
