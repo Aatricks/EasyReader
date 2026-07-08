@@ -142,7 +142,7 @@ fun BottomNavigationBar(
     ) {
         Column(
             modifier = Modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
         ) {
             var sliderValue by remember(progress) { mutableFloatStateOf(progress) }
             val sliderInteractionSource = remember { MutableInteractionSource() }
@@ -170,7 +170,7 @@ fun BottomNavigationBar(
                 ) {
                     Text(
                         text = "${sliderValue.toInt()}%",
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = EasyReaderSpacing.xxs),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold
                     )

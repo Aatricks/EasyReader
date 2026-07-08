@@ -352,7 +352,7 @@ fun ReaderSettingsSheet(
                 ) {
                     Text(
                         text = stringResource(R.string.reader_preview_pangram),
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = EasyReaderSpacing.sm),
                         style = MaterialTheme.typography.bodyMedium,
                         fontFamily = previewFont
                     )

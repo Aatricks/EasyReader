@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.network.NetworkHeaders
@@ -365,7 +366,7 @@ fun ReaderImageView(
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .padding(16.dp)
+                    .padding(EasyReaderSpacing.md)
                     .clickable {
                         isError = false
                         isLoadingHoisted = true
@@ -381,7 +382,7 @@ fun ReaderImageView(
                     text = if (imageUrl.startsWith("http")) "Tap to retry" else "Tap to reload",
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(top = 4.dp)
+                    modifier = Modifier.padding(top = EasyReaderSpacing.xxs)
                 )
             }
         }

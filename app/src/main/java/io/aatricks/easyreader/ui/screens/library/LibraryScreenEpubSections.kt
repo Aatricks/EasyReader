@@ -166,8 +166,8 @@ private fun EpubTocItemView(
     var isExpanded by remember { mutableStateOf(false) }
     val startPadding = when (depth) {
         0 -> 0.dp
-        1 -> 16.dp
-        2 -> 32.dp
+        1 -> EasyReaderSpacing.md
+        2 -> EasyReaderSpacing.xxl
         else -> 48.dp
     }
 
@@ -197,9 +197,9 @@ private fun EpubTocItemView(
                         modifier = Modifier.size(16.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
             } else {
-                Spacer(modifier = Modifier.width(24.dp))
+                Spacer(modifier = Modifier.width(EasyReaderSpacing.xl))
             }
 
             Text(

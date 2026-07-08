@@ -15,6 +15,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.util.ErrorMessages
 
 @Composable
@@ -82,7 +83,7 @@ private fun ReaderStatePanel(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 24.dp, vertical = 32.dp),
+            .padding(horizontal = EasyReaderSpacing.xl, vertical = EasyReaderSpacing.xxl),
         contentAlignment = Alignment.Center
     ) {
         Surface(
@@ -92,7 +93,7 @@ private fun ReaderStatePanel(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 28.dp),
+                    .padding(horizontal = EasyReaderSpacing.xl, vertical = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
@@ -116,7 +117,7 @@ private fun ReaderStatePanel(
                     modifier = Modifier.semantics { contentDescription = body }
                 )
                 if (action != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
                     action()
                 }
             }

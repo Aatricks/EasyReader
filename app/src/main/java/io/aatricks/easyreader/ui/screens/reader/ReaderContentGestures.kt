@@ -37,6 +37,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import io.aatricks.easyreader.data.model.ChapterContent
@@ -98,7 +99,7 @@ internal fun PullToNavigateOverlay(
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(32.dp)
+            modifier = Modifier.padding(EasyReaderSpacing.xxl)
         ) {
             val icon = when {
                 isPagedMode && isPrevious -> if (isRtl) Icons.AutoMirrored.Filled.ArrowBack else Icons.AutoMirrored.Filled.ArrowForward
@@ -120,7 +121,7 @@ internal fun PullToNavigateOverlay(
                     .size(48.dp)
                     .rotate(if (isPagedMode) 0f else rotation)
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
             Text(
                 text = when {
                     isPrevious && isThresholdReached -> "Release for Previous Chapter"

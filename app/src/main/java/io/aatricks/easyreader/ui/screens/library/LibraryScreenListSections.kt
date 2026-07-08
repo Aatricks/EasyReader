@@ -520,7 +520,7 @@ private fun NovelChapterList(
                                             tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(14.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
                                     }
                                     Text(
                                         text = chapterItem.currentChapter.ifBlank { "Chapter 1" },

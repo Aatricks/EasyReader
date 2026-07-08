@@ -339,7 +339,7 @@ private fun ActiveFilterBar(
         if (hasActiveFilters) {
             TextButton(
                 onClick = onClearFilters,
-                contentPadding = PaddingValues(horizontal = 8.dp)
+                contentPadding = PaddingValues(horizontal = EasyReaderSpacing.xs)
             ) {
                 Text("Clear")
             }

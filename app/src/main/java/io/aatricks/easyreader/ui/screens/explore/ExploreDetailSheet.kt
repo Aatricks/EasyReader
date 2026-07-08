@@ -90,7 +90,7 @@ fun ExploreItemDetailSheet(
                 if (isInLibrary) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)
                     ) {
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
@@ -117,7 +117,7 @@ fun ExploreItemDetailSheet(
                 if (item.chapterCount > 0) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)
                     ) {
                         Icon(
                             imageVector = Icons.Default.AutoStories,

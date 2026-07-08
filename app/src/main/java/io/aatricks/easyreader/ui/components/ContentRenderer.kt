@@ -23,6 +23,7 @@ import coil3.request.crossfade
 import coil3.network.NetworkHeaders
 import coil3.network.httpHeaders
 import androidx.compose.ui.graphics.graphicsLayer
+import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.ui.util.imageAspectRatio
 import io.aatricks.easyreader.ui.util.splitImageLayer
@@ -39,8 +40,8 @@ fun ContentRenderer(
         modifier = modifier
             .fillMaxSize()
             .background(backgroundColor)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(EasyReaderSpacing.md),
+        verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)
     ) {
         items(elements) { element ->
             when (element) {
@@ -59,7 +60,7 @@ fun ContentRenderer(
                     }
                 }
                 is ContentElement.PageContent -> {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
                         element.elements.forEach { subElement ->
                             when (subElement) {
                                 is ContentElement.Text -> {
@@ -80,7 +81,7 @@ fun ContentRenderer(
                                     )
                                 }
                                 is ContentElement.ImageGroup -> {
-                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)) {
                                         subElement.images.forEach { image ->
                                             AsyncImageElement(
                                                 url = image.url, 
@@ -203,7 +204,7 @@ fun AsyncImageElement(
             Text(
                 text = altText ?: "Failed to load image",
                 color = Color.Gray,
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier.padding(EasyReaderSpacing.md)
             )
         }
     }

@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.hasActionableUpdate
 import androidx.compose.ui.layout.ContentScale
@@ -214,7 +215,7 @@ fun LibraryItemCard(
                     if (isCurrent) {
                         Badge(
                             containerColor = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 8.dp)
+                            modifier = Modifier.padding(start = EasyReaderSpacing.xs)
                         ) {
                             Text(
                                 text = "Reading",
@@ -226,7 +227,7 @@ fun LibraryItemCard(
                         Badge(
                             containerColor = MaterialTheme.colorScheme.tertiary,
                             modifier = Modifier
-                                .padding(start = 8.dp)
+                                .padding(start = EasyReaderSpacing.xs)
                                 .then(
                                     if (onNewTagClick != null) {
                                         Modifier.clickable { onNewTagClick() }
@@ -248,7 +249,7 @@ fun LibraryItemCard(
                             contentDescription = "Selected",
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
-                                .padding(start = 8.dp)
+                                .padding(start = EasyReaderSpacing.xs)
                                 .size(22.dp)
                         )
                     } else if (onDelete != null || onResetProgress != null || onMarkFinished != null) {
@@ -355,7 +356,7 @@ fun LibraryItemCard(
                 
                 // Download status indicator (if applicable)
                 if (item.isDownloading) {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -385,8 +386,8 @@ fun LibraryItemCardPreview() {
     Column(
         modifier = Modifier
             .background(Color.Black)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(EasyReaderSpacing.md),
+        verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)
     ) {
         LibraryItemCard(
             item = LibraryItem(
