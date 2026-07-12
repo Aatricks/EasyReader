@@ -49,6 +49,7 @@ import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.ReaderTheme
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
+import kotlin.math.roundToInt
 
 @Composable
 private fun settingsChipColors() = FilterChipDefaults.filterChipColors(
@@ -151,6 +152,7 @@ fun ReaderSettingsSheet(
     onUpdateMargins: (Int) -> Unit,
     onUpdateVerticalMargins: (Int) -> Unit,
     onUpdateParagraphSpacing: (Float) -> Unit,
+    onUpdateBrightness: (Float) -> Unit,
     onUpdateReaderTheme: (ReaderTheme) -> Unit,
     sheetState: SheetState
 ) {
@@ -252,6 +254,15 @@ fun ReaderSettingsSheet(
                 }
             }
 
+
+            SettingSlider(
+                label = stringResource(R.string.reader_slider_brightness),
+                value = uiState.brightness,
+                onValueChange = onUpdateBrightness,
+                valueRange = 0.1f..1.0f,
+                steps = 8,
+                displayValue = "${(uiState.brightness * 100).roundToInt()}%"
+            )
 
             SettingSlider(
                 label = stringResource(R.string.reader_slider_font_size),

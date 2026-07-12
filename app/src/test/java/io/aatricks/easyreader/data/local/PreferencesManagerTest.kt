@@ -50,4 +50,15 @@ class PreferencesManagerTest {
         val snapshot = preferencesManager.appearanceSettings.first()
         assertTrue(snapshot.dynamicColor)
     }
+
+    @Test
+    fun `brightness defaults to full and persists in reader snapshot`() = runBlocking {
+        assertEquals(1.0f, preferencesManager.brightness, 0.001f)
+        assertEquals(1.0f, preferencesManager.readerSettings.first().brightness, 0.001f)
+
+        preferencesManager.brightness = 0.45f
+
+        assertEquals(0.45f, preferencesManager.brightness, 0.001f)
+        assertEquals(0.45f, preferencesManager.readerSettings.first().brightness, 0.001f)
+    }
 }

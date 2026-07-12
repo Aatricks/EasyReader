@@ -28,7 +28,8 @@ data class ReaderSettingsSnapshot(
     val verticalMargins: Int,
     val paragraphSpacing: Float,
     val readerTheme: String,
-    val accentTheme: String
+    val accentTheme: String,
+    val brightness: Float = 1.0f
 )
 
 data class AppearanceSettingsSnapshot(
@@ -85,7 +86,8 @@ class PreferencesManager @Inject constructor(
         readerTheme = prefs.getString(KEY_READER_THEME, io.aatricks.easyreader.data.model.ReaderTheme.DARK.name)
             ?: io.aatricks.easyreader.data.model.ReaderTheme.DARK.name,
         accentTheme = prefs.getString(KEY_ACCENT_THEME, io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name)
-            ?: io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name
+            ?: io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name,
+        brightness = brightness
     )
 
     private fun readAppearanceSettingsSnapshot(): AppearanceSettingsSnapshot = AppearanceSettingsSnapshot(
@@ -187,6 +189,13 @@ class PreferencesManager @Inject constructor(
         get() = prefs.getFloat(KEY_PARAGRAPH_SPACING, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_PARAGRAPH_SPACING, value).apply()
 
+    var brightness: Float
+        get() = prefs.getFloat(KEY_BRIGHTNESS, MAX_READER_BRIGHTNESS)
+            .coerceIn(MIN_READER_BRIGHTNESS, MAX_READER_BRIGHTNESS)
+        set(value) = prefs.edit()
+            .putFloat(KEY_BRIGHTNESS, value.coerceIn(MIN_READER_BRIGHTNESS, MAX_READER_BRIGHTNESS))
+            .apply()
+
     var readerTheme: String
         get() = prefs.getString(KEY_READER_THEME, io.aatricks.easyreader.data.model.ReaderTheme.DARK.name) 
             ?: io.aatricks.easyreader.data.model.ReaderTheme.DARK.name
@@ -222,6 +231,7 @@ class PreferencesManager @Inject constructor(
         margins: Int? = null,
         verticalMargins: Int? = null,
         paragraphSpacing: Float? = null,
+        brightness: Float? = null,
         readerTheme: String? = null,
         accentTheme: String? = null
     ) {
@@ -232,6 +242,9 @@ class PreferencesManager @Inject constructor(
         margins?.let { editor.putInt(KEY_MARGINS, it) }
         verticalMargins?.let { editor.putInt(KEY_VERTICAL_MARGINS, it) }
         paragraphSpacing?.let { editor.putFloat(KEY_PARAGRAPH_SPACING, it) }
+        brightness?.let {
+            editor.putFloat(KEY_BRIGHTNESS, it.coerceIn(MIN_READER_BRIGHTNESS, MAX_READER_BRIGHTNESS))
+        }
         readerTheme?.let { editor.putString(KEY_READER_THEME, it) }
         accentTheme?.let { editor.putString(KEY_ACCENT_THEME, it) }
         editor.apply()
@@ -255,6 +268,7 @@ class PreferencesManager @Inject constructor(
         private const val KEY_MARGINS = "reader_margins"
         private const val KEY_VERTICAL_MARGINS = "reader_vertical_margins"
         private const val KEY_PARAGRAPH_SPACING = "reader_paragraph_spacing"
+        private const val KEY_BRIGHTNESS = "reader_brightness"
         private const val KEY_READER_THEME = "reader_theme"
         private const val KEY_ACCENT_THEME = "accent_theme"
 
@@ -272,6 +286,7 @@ class PreferencesManager @Inject constructor(
             KEY_MARGINS,
             KEY_VERTICAL_MARGINS,
             KEY_PARAGRAPH_SPACING,
+            KEY_BRIGHTNESS,
             KEY_READER_THEME,
             KEY_ACCENT_THEME
         )
@@ -280,5 +295,8 @@ class PreferencesManager @Inject constructor(
             KEY_THEME_MODE,
             KEY_DYNAMIC_COLOR
         )
+
+        private const val MIN_READER_BRIGHTNESS = 0.1f
+        private const val MAX_READER_BRIGHTNESS = 1.0f
     }
 }

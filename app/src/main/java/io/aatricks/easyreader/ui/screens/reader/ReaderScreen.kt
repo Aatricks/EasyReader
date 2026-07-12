@@ -66,6 +66,9 @@ import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlin.math.abs
 
+private const val MIN_READER_BRIGHTNESS = 0.1f
+private const val MAX_READER_BRIGHTNESS = 1.0f
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ReaderScreen(
@@ -241,6 +244,7 @@ fun ReaderScreen(
             Box(
                 modifier = Modifier.fillMaxSize()
             ) {
+                val overlayAlpha = brightnessOverlayAlpha(uiState.brightness)
                 ReaderContent(
                     uiState = uiState,
                     readerViewModel = readerViewModel,
@@ -253,6 +257,14 @@ fun ReaderScreen(
                     onShowChapterList = { showChapterList = true },
                     onShowSettings = { showSettings = true }
                 )
+
+                if (uiState.content != null && overlayAlpha > 0f) {
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = overlayAlpha))
+                    )
+                }
 
                 if (uiState.isNavigating) {
                     NavigationOverlay()
@@ -273,6 +285,7 @@ fun ReaderScreen(
             onUpdateMargins = { readerViewModel.updateMargins(it) },
             onUpdateVerticalMargins = { readerViewModel.updateVerticalMargins(it) },
             onUpdateParagraphSpacing = { readerViewModel.updateParagraphSpacing(it) },
+            onUpdateBrightness = { readerViewModel.updateBrightness(it) },
             onUpdateReaderTheme = { readerViewModel.updateReaderTheme(it) },
             sheetState = settingsSheetState
         )
@@ -300,6 +313,9 @@ fun ReaderScreen(
     }
 
 }
+
+internal fun brightnessOverlayAlpha(brightness: Float): Float =
+    MAX_READER_BRIGHTNESS - brightness.coerceIn(MIN_READER_BRIGHTNESS, MAX_READER_BRIGHTNESS)
 
 @Composable
 private fun CloudflareDialog(

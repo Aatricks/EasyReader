@@ -96,6 +96,7 @@
     <string name="reader_direction_ltr">GAD</string>
     <string name="reader_direction_rtl">DAG</string>
     <string name="reader_direction_disabled_hint">Passez en mode Pages pour changer le sens de lecture.</string>
+    <string name="reader_slider_brightness">Luminosité</string>
     <string name="reader_slider_font_size">Taille de police</string>
     <string name="reader_slider_line_height">Hauteur de ligne</string>
     <string name="reader_slider_margins">Marges</string>

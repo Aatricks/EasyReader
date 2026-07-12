@@ -46,6 +46,8 @@ class ReaderViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "ReaderViewModel"
+        private const val MIN_READER_BRIGHTNESS = 0.1f
+        private const val MAX_READER_BRIGHTNESS = 1.0f
         private val DOUBLE_NEWLINE_REGEX = Regex("""\n\s*\n""")
     }
 
@@ -204,6 +206,7 @@ class ReaderViewModel @Inject constructor(
                 margins = snapshot.margins,
                 verticalMargins = snapshot.verticalMargins,
                 paragraphSpacing = snapshot.paragraphSpacing,
+                brightness = snapshot.brightness,
                 readerTheme = runCatching { ReaderTheme.valueOf(snapshot.readerTheme) }
                     .getOrDefault(ReaderTheme.DARK),
                 accentTheme = runCatching { AccentTheme.valueOf(snapshot.accentTheme) }
@@ -258,6 +261,7 @@ class ReaderViewModel @Inject constructor(
         val margins: Int,
         val verticalMargins: Int,
         val paragraphSpacing: Float,
+        val brightness: Float,
         val readerTheme: ReaderTheme,
         val accentTheme: AccentTheme,
         val isPagedMode: Boolean,
@@ -329,6 +333,7 @@ class ReaderViewModel @Inject constructor(
         val margins: Int = 16,
         val verticalMargins: Int = 0,
         val paragraphSpacing: Float = 1.0f,
+        val brightness: Float = 1.0f,
         val readerTheme: ReaderTheme = ReaderTheme.DARK,
         val accentTheme: AccentTheme = AccentTheme.MOSS,
         val pendingExternalUrl: String? = null,
@@ -344,6 +349,7 @@ class ReaderViewModel @Inject constructor(
                 margins = margins,
                 verticalMargins = verticalMargins,
                 paragraphSpacing = paragraphSpacing,
+                brightness = brightness,
                 readerTheme = readerTheme,
                 accentTheme = accentTheme,
                 isPagedMode = isPagedMode,
@@ -429,6 +435,12 @@ class ReaderViewModel @Inject constructor(
         val spacing = newSpacing.coerceIn(0.0f, 3.0f)
         preferencesManager.paragraphSpacing = spacing
         updateState { it.copy(paragraphSpacing = spacing) }
+    }
+
+    fun updateBrightness(newBrightness: Float) {
+        val brightness = newBrightness.coerceIn(MIN_READER_BRIGHTNESS, MAX_READER_BRIGHTNESS)
+        preferencesManager.brightness = brightness
+        updateState { it.copy(brightness = brightness) }
     }
 
     fun updateReaderTheme(newTheme: ReaderTheme) {

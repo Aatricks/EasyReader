@@ -40,7 +40,8 @@ class SettingsBackupManager @Inject constructor(
                     verticalMargins = preferencesManager.verticalMargins,
                     paragraphSpacing = preferencesManager.paragraphSpacing,
                     readerTheme = preferencesManager.readerTheme,
-                    accentTheme = preferencesManager.accentTheme
+                    accentTheme = preferencesManager.accentTheme,
+                    brightness = preferencesManager.brightness
                 )
             )
             val text = json.encodeToString(payload)
@@ -71,6 +72,7 @@ class SettingsBackupManager @Inject constructor(
                 margins = r.margins,
                 verticalMargins = r.verticalMargins,
                 paragraphSpacing = r.paragraphSpacing,
+                brightness = r.brightness,
                 readerTheme = r.readerTheme,
                 accentTheme = r.accentTheme
             )

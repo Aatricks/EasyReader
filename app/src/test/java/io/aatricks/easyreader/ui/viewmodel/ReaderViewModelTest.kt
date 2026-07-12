@@ -57,6 +57,7 @@ class ReaderViewModelTest {
         whenever(preferencesManager.readerTheme).thenReturn(ReaderTheme.DARK.name)
         whenever(preferencesManager.margins).thenReturn(16)
         whenever(preferencesManager.paragraphSpacing).thenReturn(1.0f)
+        whenever(preferencesManager.brightness).thenReturn(0.65f)
         whenever(preferencesManager.readerSettings).thenReturn(
             MutableStateFlow(
                 io.aatricks.easyreader.data.local.ReaderSettingsSnapshot(
@@ -67,7 +68,8 @@ class ReaderViewModelTest {
                     verticalMargins = 0,
                     paragraphSpacing = 1.0f,
                     readerTheme = ReaderTheme.DARK.name,
-                    accentTheme = io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name
+                    accentTheme = io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name,
+                    brightness = 0.65f
                 )
             )
         )
@@ -119,6 +121,20 @@ class ReaderViewModelTest {
         val state = viewModel.uiState.value
         assertEquals(18f, state.fontSize)
         assertEquals(ReaderTheme.DARK, state.readerTheme)
+        assertEquals(0.65f, state.brightness, 0.001f)
+    }
+
+    @Test
+    fun `updateBrightness clamps persists and updates state`() {
+        viewModel.updateBrightness(0f)
+
+        verify(preferencesManager).brightness = 0.1f
+        assertEquals(0.1f, viewModel.uiState.value.brightness, 0.001f)
+
+        viewModel.updateBrightness(2f)
+
+        verify(preferencesManager).brightness = 1.0f
+        assertEquals(1.0f, viewModel.uiState.value.brightness, 0.001f)
     }
 
     @Test

@@ -96,6 +96,7 @@
     <string name="reader_direction_ltr">LTR</string>
     <string name="reader_direction_rtl">RTL</string>
     <string name="reader_direction_disabled_hint">Switch Layout to Paged to change reading direction.</string>
+    <string name="reader_slider_brightness">Brightness</string>
     <string name="reader_slider_font_size">Font size</string>
     <string name="reader_slider_line_height">Line height</string>
     <string name="reader_slider_margins">Margins</string>
