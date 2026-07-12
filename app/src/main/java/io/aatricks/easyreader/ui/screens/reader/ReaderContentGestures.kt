@@ -228,7 +228,7 @@ internal fun rememberReaderNestedScrollConnection(
 
                 if (state.isPagedMode) {
                     val isAtStart = pagerState.currentPage == 0
-                    val isAtEnd = pagerState.currentPage == content.paragraphs.size - 1
+                    val isAtEnd = pagerState.currentPage == pagerState.pageCount - 1
                     val isAtAnyEdge = isAtStart || isAtEnd
 
                     if (state.isRtl) {

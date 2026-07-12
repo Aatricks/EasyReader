@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
@@ -48,6 +50,8 @@ private const val CONTENT_TYPE_TEXT = "text"
 private const val CONTENT_TYPE_IMAGE = "image"
 private const val CONTENT_TYPE_IMAGE_GROUP = "image_group"
 
+internal val localReaderPages = compositionLocalOf<List<ReaderPage>> { emptyList() }
+
 private fun readerContentType(element: ContentElement): String = when (element) {
     is ContentElement.Placeholder -> CONTENT_TYPE_PLACEHOLDER
     is ContentElement.PageContent -> CONTENT_TYPE_PAGE
@@ -73,6 +77,7 @@ internal fun PagedReaderView(
     readerViewModel: ReaderViewModel,
     isZoomable: Boolean
 ) {
+    val pages = localReaderPages.current
     val zoomedPages = remember(content.url) { mutableStateMapOf<Int, Boolean>() }
     val isCurrentPageZoomed = zoomedPages[pagerState.currentPage] == true
 
@@ -88,7 +93,7 @@ internal fun PagedReaderView(
         userScrollEnabled = !uiState.showControls && !isCurrentPageZoomed,
         modifier = Modifier.fillMaxSize()
     ) { page ->
-        val element = content.paragraphs.getOrNull(page)
+        val readerPage = pages.getOrNull(page)
         val onPageZoomChanged: (Boolean) -> Unit = { zoomed ->
             if (zoomed) {
                 zoomedPages[page] = true
@@ -99,8 +104,16 @@ internal fun PagedReaderView(
         }
 
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            element?.let { el ->
-                when (el) {
+            readerPage?.let { generatedPage ->
+                when (generatedPage) {
+                    is ReaderPage.Text -> pagedTextContent(
+                        page = generatedPage,
+                        uiState = uiState,
+                        fontFamily = fontFamily,
+                        textColor = textColor
+                    )
+
+                    is ReaderPage.Element -> when (val el = generatedPage.element) {
                     is ContentElement.Placeholder -> {
                         Box(
                             modifier = Modifier.fillMaxSize(),
@@ -222,8 +235,42 @@ internal fun PagedReaderView(
                             onPageZoomChanged = onPageZoomChanged
                         )
                     }
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun pagedTextContent(
+    page: ReaderPage.Text,
+    uiState: ReaderViewModel.ReaderUiState,
+    fontFamily: FontFamily,
+    textColor: Color
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(
+                horizontal = uiState.margins.dp,
+                vertical = uiState.verticalMargins.dp
+            )
+    ) {
+        page.fragments.forEachIndexed { index, fragment ->
+            if (index > 0) {
+                Spacer(modifier = Modifier.height((uiState.fontSize * uiState.paragraphSpacing).dp))
+            }
+            Text(
+                text = fragment.text,
+                color = textColor,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontSize = uiState.fontSize.sp,
+                    lineHeight = (uiState.fontSize * uiState.lineHeight).sp,
+                    fontFamily = fontFamily
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }

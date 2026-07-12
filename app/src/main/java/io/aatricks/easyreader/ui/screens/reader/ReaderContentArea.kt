@@ -21,14 +21,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
@@ -38,7 +41,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -102,6 +110,7 @@ private const val RESTORE_REJUMP_THRESHOLD = 0.20f
 // (~30deg from horizontal). Diagonal flicks between here and 45deg are swallowed so they neither
 // open the drawer nor scroll; steeper drags fall through to the native follow-the-finger gesture.
 private const val DRAWER_OPEN_ANGLE_RATIO = 1.75f
+private const val READER_TEXT_MEASURER_CACHE_SIZE = 64
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -114,6 +123,14 @@ internal fun ContentArea(
     onShowSettings: () -> Unit
 ): Unit {
     val fontFamily = uiState.fontFamily.toFontFamily()
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer(cacheSize = READER_TEXT_MEASURER_CACHE_SIZE)
+    var viewportSize by remember(content.url) { mutableStateOf(IntSize.Zero) }
+    val pagedTextStyle = MaterialTheme.typography.bodyLarge.copy(
+        fontSize = uiState.fontSize.sp,
+        lineHeight = (uiState.fontSize * uiState.lineHeight).sp,
+        fontFamily = fontFamily
+    )
 
     val isManhwa = remember(content) {
         val isManhwaByUrl = content.url.contains("manhwa", ignoreCase = true) ||
@@ -127,24 +144,82 @@ internal fun ContentArea(
         }
     }
 
+    val readerPages = remember(
+        content.paragraphs,
+        viewportSize,
+        uiState.isPagedMode,
+        pagedTextStyle,
+        uiState.margins,
+        uiState.verticalMargins,
+        uiState.paragraphSpacing,
+        density,
+        textMeasurer
+    ) {
+        val horizontalPaddingPx = with(density) { (uiState.margins.dp * 2).roundToPx() }
+        val verticalPaddingPx = with(density) { (uiState.verticalMargins.dp * 2).toPx() }
+        val availableWidthPx = (viewportSize.width - horizontalPaddingPx).coerceAtLeast(0)
+        val availableHeightPx = (viewportSize.height - verticalPaddingPx).coerceAtLeast(0f)
+        val lineHeightPx = with(density) { pagedTextStyle.lineHeight.toPx() }
+        val paragraphSpacingPx = with(density) {
+            (uiState.fontSize * uiState.paragraphSpacing).dp.toPx()
+        }
+
+        paginateReaderContent(
+            elements = content.paragraphs,
+            pageHeightPx = if (uiState.isPagedMode) availableHeightPx else 0f,
+            lineHeightPx = lineHeightPx,
+            paragraphSpacingPx = paragraphSpacingPx,
+            lineEndsFor = { text ->
+                if (availableWidthPx <= 0) {
+                    listOf(text.length)
+                } else {
+                    val layout = textMeasurer.measure(
+                        text = AnnotatedString(text),
+                        style = pagedTextStyle,
+                        constraints = Constraints(maxWidth = availableWidthPx)
+                    )
+                    List(layout.lineCount) { line -> layout.getLineEnd(line) }
+                }
+            }
+        )
+    }
+
     // No init values — single restore path through LaunchedEffect below. Initial values would
     // race with the LaunchedEffect and create the "two paths, one of them silently wrong" bug.
     val listState = key(content.url) { rememberLazyListState() }
 
     val pagerState = key(content.url) {
         rememberPagerState(
-            initialPage = uiState.scrollIndex.coerceIn(0, (content.paragraphs.size - 1).coerceAtLeast(0)),
+            initialPage = readerPageIndexForPosition(
+                pages = readerPages,
+                sourceIndex = uiState.scrollIndex,
+                sourceOffsetFraction = uiState.restoreOffsetFraction.coerceAtLeast(0f)
+            ),
             initialPageOffsetFraction = 0f
         ) {
-            content.paragraphs.size
+            readerPages.size
         }
+    }
+    var positionedReaderPages by remember(content.url) { mutableStateOf(readerPages) }
+
+    LaunchedEffect(readerPages) {
+        val previousPosition = positionedReaderPages.getOrNull(pagerState.currentPage)?.position
+        if (previousPosition != null && readerPages.isNotEmpty()) {
+            pagerState.scrollToPage(
+                readerPageIndexForPosition(
+                    pages = readerPages,
+                    sourceIndex = previousPosition.sourceIndex,
+                    sourceOffsetFraction = previousPosition.sourceOffsetFraction
+                )
+            )
+        }
+        positionedReaderPages = readerPages
     }
 
     val requestedIndices = remember(content.url) { mutableSetOf<Int>() }
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
 
-    val density = LocalDensity.current
     val hapticFeedback = LocalHapticFeedback.current
 
     val edgeBlurLayer = rememberGraphicsLayer()
@@ -180,9 +255,13 @@ internal fun ContentArea(
     // boundary crossed while scrolling. The captured `content` may be an older copy after a
     // dimension rebuild, which is fine: prefetch only reads the element urls, identical
     // across copies of the same chapter.
-    LaunchedEffect(content.url, uiState.isPagedMode) {
+    LaunchedEffect(content.url, uiState.isPagedMode, positionedReaderPages) {
         snapshotFlow {
-            if (uiState.isPagedMode) pagerState.currentPage else listState.firstVisibleItemIndex
+            if (uiState.isPagedMode) {
+                positionedReaderPages.getOrNull(pagerState.currentPage)?.position?.sourceIndex ?: 0
+            } else {
+                listState.firstVisibleItemIndex
+            }
         }.collect { currentIndex ->
             prefetchImages(currentIndex, content, requestedIndices) { url ->
                 readerViewModel.prefetchVisibleImage(url, content.url)
@@ -191,7 +270,13 @@ internal fun ContentArea(
     }
 
     LaunchedEffect(content.url, uiState.seekTrigger) {
-        runScrollRestore(content, listState, pagerState, readerViewModel, stableKeys)
+        runScrollRestore(
+            content = content,
+            listState = listState,
+            pagedLayout = PagedRestoreLayout(positionedReaderPages, pagerState),
+            readerViewModel = readerViewModel,
+            stableKeys = stableKeys
+        )
     }
 
     // Detect genuine user drags on the LazyList. Programmatic scrollToItem calls do NOT
@@ -209,18 +294,21 @@ internal fun ContentArea(
     }
 
     if (uiState.isPagedMode) {
-        LaunchedEffect(pagerState.currentPage) {
+        LaunchedEffect(pagerState.currentPage, readerPages) {
+            if (positionedReaderPages !== readerPages) return@LaunchedEffect
             val totalItems = content.paragraphs.size
-            val currentItem = pagerState.currentPage
-            val currentKey = stableKeys.getOrNull(currentItem) ?: ""
+            val currentPage = pagerState.currentPage
+            val position = readerPages.getOrNull(currentPage)?.position ?: ReaderPagePosition(0, 0f)
+            val currentKey = stableKeys.getOrNull(position.sourceIndex) ?: ""
 
             readerViewModel.updateScrollPosition(
-                scrollOffset = currentItem.toFloat(),
-                maxScrollOffset = (totalItems - 1).coerceAtLeast(0).toFloat(),
+                scrollOffset = position.sourceIndex + position.sourceOffsetFraction,
+                maxScrollOffset = totalItems.toFloat(),
                 viewportHeight = 0f,
-                index = currentItem,
-                offsetFraction = 0f,
+                index = position.sourceIndex,
+                offsetFraction = position.sourceOffsetFraction,
                 elementKey = currentKey,
+                canScrollForward = currentPage < readerPages.lastIndex,
                 firstVisibleItemSize = PAGED_POSITION_ITEM_SIZE_PX
             )
         }
@@ -307,6 +395,7 @@ internal fun ContentArea(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .onSizeChanged { viewportSize = it }
             .nestedScroll(nestedScrollConnection)
             // Angle gate for the native drawer's open-swipe. Runs on the Main pass ahead of the
             // drawer's own draggable (an ancestor), so consuming a change here cancels the drawer's
@@ -412,16 +501,18 @@ internal fun ContentArea(
                 }
         ) {
             if (uiState.isPagedMode) {
-                PagedReaderView(
-                    content = content,
-                    pagerState = pagerState,
-                    uiState = uiState,
-                    fontFamily = fontFamily,
-                    bgColor = bgColor,
-                    textColor = textColor,
-                    readerViewModel = readerViewModel,
-                    isZoomable = isManhwa
-                )
+                CompositionLocalProvider(localReaderPages provides readerPages) {
+                    PagedReaderView(
+                        content = content,
+                        pagerState = pagerState,
+                        uiState = uiState,
+                        fontFamily = fontFamily,
+                        bgColor = bgColor,
+                        textColor = textColor,
+                        readerViewModel = readerViewModel,
+                        isZoomable = isManhwa
+                    )
+                }
             } else {
                 ScrollingReaderView(
                     content = content,
@@ -525,11 +616,16 @@ internal fun ContentArea(
 
 // ─── Restore helpers ────────────────────────────────────────────────────────
 
+private data class PagedRestoreLayout(
+    val pages: List<ReaderPage>,
+    val pagerState: androidx.compose.foundation.pager.PagerState
+)
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private suspend fun runScrollRestore(
     content: ChapterContent,
     listState: LazyListState,
-    pagerState: androidx.compose.foundation.pager.PagerState,
+    pagedLayout: PagedRestoreLayout,
     readerViewModel: ReaderViewModel,
     stableKeys: List<String>,
 ) {
@@ -567,7 +663,12 @@ private suspend fun runScrollRestore(
     // the intra-item fraction via the watch-until-stable loop below.
     val handledAsOneShot = when {
         isPagedMode -> {
-            runCatching { pagerState.scrollToPage(targetIndex) }
+            val pageIndex = readerPageIndexForPosition(
+                pages = pagedLayout.pages,
+                sourceIndex = targetIndex,
+                sourceOffsetFraction = targetFraction ?: 0f
+            )
+            runCatching { pagedLayout.pagerState.scrollToPage(pageIndex) }
             true
         }
         anchor.targetScrollPosition == 100f -> {
