@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import androidx.core.content.FileProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
+import io.aatricks.easyreader.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -53,6 +54,46 @@ private data class GithubAsset(
     val size: Long
 )
 
+@Serializable
+private data class GithubComparison(
+    val status: String
+)
+
+internal enum class CommitComparisonStatus {
+    AHEAD,
+    BEHIND,
+    DIVERGED,
+    IDENTICAL
+}
+
+internal object UpdateEligibility {
+    private const val VERSION_DELIMITER = "."
+
+    fun shouldOfferUpdate(
+        releaseVersion: String,
+        currentVersion: String,
+        commitComparisonStatus: CommitComparisonStatus?
+    ): Boolean {
+        if (!isVersionNewer(releaseVersion, currentVersion)) return false
+        return commitComparisonStatus != CommitComparisonStatus.AHEAD &&
+            commitComparisonStatus != CommitComparisonStatus.IDENTICAL
+    }
+
+    fun isVersionNewer(tag: String, current: String): Boolean {
+        val cleanTag = tag.replace(Regex("(?i)^v"), "").substringBefore("-").trim()
+        val cleanCurrent = current.replace(Regex("(?i)^v"), "").substringBefore("-").trim()
+        val tagParts = cleanTag.split(VERSION_DELIMITER)
+        val currentParts = cleanCurrent.split(VERSION_DELIMITER)
+
+        for (index in 0 until maxOf(tagParts.size, currentParts.size)) {
+            val tagValue = tagParts.getOrNull(index)?.toIntOrNull() ?: 0
+            val currentValue = currentParts.getOrNull(index)?.toIntOrNull() ?: 0
+            if (tagValue != currentValue) return tagValue > currentValue
+        }
+        return false
+    }
+}
+
 @Singleton
 class AppUpdateManager @Inject constructor(
     @ApplicationContext private val context: Context
@@ -61,8 +102,9 @@ class AppUpdateManager @Inject constructor(
         private const val TIMEOUT_SECONDS = 30L
         private const val BUFFER_SIZE = 8192
         private const val GITHUB_API_URL = "https://api.github.com/repos/Aatricks/EasyReader/releases/latest"
+        private const val GITHUB_COMPARE_API_URL = "https://api.github.com/repos/Aatricks/EasyReader/compare"
         private const val GITHUB_API_ACCEPT_HEADER = "application/vnd.github.v3+json"
-        private const val VERSION_DELIMITER = "."
+        private val COMMIT_SHA_REGEX = Regex("[0-9a-fA-F]{40}")
         
         // Flavor names
         private const val FLAVOR_AI = "ai"
@@ -96,7 +138,11 @@ class AppUpdateManager @Inject constructor(
                 val release = json.decodeFromString<GithubRelease>(bodyString)
                 
                 val currentVersion = getAppVersionName()
-                if (!isNewerVersion(release.tagName, currentVersion)) {
+                if (!UpdateEligibility.isVersionNewer(release.tagName, currentVersion)) {
+                    return@withContext UpdateCheckResult.NoNewVersion
+                }
+                val comparisonStatus = compareInstalledCommitToRelease(release.tagName)
+                if (!UpdateEligibility.shouldOfferUpdate(release.tagName, currentVersion, comparisonStatus)) {
                     return@withContext UpdateCheckResult.NoNewVersion
                 }
 
@@ -118,6 +164,34 @@ class AppUpdateManager @Inject constructor(
             UpdateCheckResult.Error(e.message ?: "Serialization error")
         } catch (e: IllegalArgumentException) {
             UpdateCheckResult.Error(e.message ?: "Invalid arguments")
+        }
+    }
+
+    private fun compareInstalledCommitToRelease(tagName: String): CommitComparisonStatus? {
+        val commitSha = BuildConfig.GIT_COMMIT_SHA
+        if (!COMMIT_SHA_REGEX.matches(commitSha)) return null
+        val request = Request.Builder()
+            .url("$GITHUB_COMPARE_API_URL/$tagName...$commitSha")
+            .header("Accept", GITHUB_API_ACCEPT_HEADER)
+            .build()
+
+        return try {
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val comparison = json.decodeFromString<GithubComparison>(response.body.string())
+                    runCatching {
+                        CommitComparisonStatus.valueOf(comparison.status.uppercase())
+                    }.getOrNull()
+                } else {
+                    null
+                }
+            }
+        } catch (_: java.io.IOException) {
+            null
+        } catch (_: kotlinx.serialization.SerializationException) {
+            null
+        } catch (_: IllegalArgumentException) {
+            null
         }
     }
 
@@ -236,23 +310,4 @@ class AppUpdateManager @Inject constructor(
         return if (isAi) FLAVOR_AI else FLAVOR_STANDARD
     }
 
-    private fun isNewerVersion(tag: String, current: String): Boolean {
-        val cleanTag = tag.replace(Regex("(?i)^v"), "").split("-").first().trim()
-        val cleanCurrent = current.replace(Regex("(?i)^v"), "").split("-").first().trim()
-        
-        val tagParts = cleanTag.split(VERSION_DELIMITER)
-        val currentParts = cleanCurrent.split(VERSION_DELIMITER)
-        
-        val maxParts = maxOf(tagParts.size, currentParts.size)
-        var isNewer = false
-        for (i in 0 until maxParts) {
-            val tagVal = tagParts.getOrNull(i)?.toIntOrNull() ?: 0
-            val currentVal = currentParts.getOrNull(i)?.toIntOrNull() ?: 0
-            if (tagVal != currentVal) {
-                isNewer = tagVal > currentVal
-                break
-            }
-        }
-        return isNewer
-    }
 }

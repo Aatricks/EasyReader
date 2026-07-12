@@ -1,5 +1,12 @@
 import java.util.Properties
 
+val gitCommitSha = providers.exec {
+    commandLine("git", "rev-parse", "HEAD")
+    isIgnoreExitValue = true
+}.standardOutput.asText.get().trim().takeIf {
+    it.matches(Regex("[0-9a-fA-F]{40}"))
+} ?: "unknown"
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -40,6 +47,7 @@ android {
         targetSdk = 34
         versionCode = 3
         versionName = "0.5.9"
+        buildConfigField("String", "GIT_COMMIT_SHA", "\"$gitCommitSha\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -99,6 +107,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
+        buildConfig = true
         compose = true
     }
     sourceSets {

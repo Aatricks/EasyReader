@@ -74,7 +74,7 @@ fun appUpdateHandler(
     if (showUpdateDialog) {
         val update = updateState.updateAvailable
         if (update != null) {
-            updateDialog(update, updateViewModel) {
+            updateDialog(update, updateState.currentVersion, updateViewModel) {
                 showUpdateDialog = false
             }
         }
@@ -109,6 +109,7 @@ fun appUpdateHandler(
 @Composable
 private fun updateDialog(
     update: UpdateCheckResult.NewVersion,
+    currentVersion: String,
     updateViewModel: UpdateViewModel,
     onDismiss: () -> Unit
 ) {
@@ -117,25 +118,26 @@ private fun updateDialog(
             onDismiss()
             updateViewModel.clearUpdateState()
         },
-        title = { Text("Update available: v${update.versionName}") },
+        title = { Text("Update EasyReader") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
                 Text(
-                    "A new version of EasyReader is available. " +
-                        "Would you like to download and install it?"
+                    text = "Version $currentVersion  →  ${update.versionName}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
                 )
                 if (update.changelog.isNotBlank()) {
                     Text(
-                        text = "Changelog",
+                        text = "What's new",
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.SemiBold
                     )
                     changelogContent(update.changelog)
                 }
                 Text(
-                    text = "Size: ${FormatBytesUtils.formatBytes(update.fileSize)}",
+                    text = "Download · ${FormatBytesUtils.formatBytes(update.fileSize)}",
                     style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         },
@@ -144,7 +146,7 @@ private fun updateDialog(
                 onDismiss()
                 updateViewModel.startDownload(update.downloadUrl, update.versionName, update.fileSize)
             }) {
-                Text("Download & Install")
+                Text("Update")
             }
         },
         dismissButton = {
@@ -152,7 +154,7 @@ private fun updateDialog(
                 onDismiss()
                 updateViewModel.clearUpdateState()
             }) {
-                Text("Later")
+                Text("Not now")
             }
         }
     )

@@ -435,6 +435,36 @@ fun SettingsScreen(
             SettingsSection(title = "About") {
                 SettingsRow(title = "App", subtitle = "EasyReader (${updateState.currentVersion})")
                 SettingsRow(title = "License", subtitle = "GPL-3.0")
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = updateState.automaticUpdateChecksEnabled,
+                            role = Role.Switch,
+                            onValueChange = updateViewModel::setAutomaticUpdateChecksEnabled
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Automatically check for updates",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Check once a day when EasyReader opens",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.size(EasyReaderSpacing.sm))
+                    Switch(
+                        checked = updateState.automaticUpdateChecksEnabled,
+                        onCheckedChange = null
+                    )
+                }
                 
                 val isChecking = updateState.isChecking
                 val downloadStatus = updateState.downloadStatus

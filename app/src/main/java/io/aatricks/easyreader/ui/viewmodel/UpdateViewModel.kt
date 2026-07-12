@@ -21,7 +21,10 @@ class UpdateViewModel @Inject constructor(
     private val preferencesManager: PreferencesManager,
     @ApplicationContext private val context: Context
 ) : BaseViewModel<UpdateViewModel.UpdateUiState>(
-    UpdateUiState(currentVersion = appUpdateManager.getAppVersionName())
+    UpdateUiState(
+        currentVersion = appUpdateManager.getAppVersionName(),
+        automaticUpdateChecksEnabled = preferencesManager.automaticUpdateChecksEnabled
+    )
 ) {
 
     private companion object {
@@ -30,6 +33,7 @@ class UpdateViewModel @Inject constructor(
 
     data class UpdateUiState(
         val currentVersion: String = "",
+        val automaticUpdateChecksEnabled: Boolean = true,
         val isChecking: Boolean = false,
         val updateAvailable: UpdateCheckResult.NewVersion? = null,
         val downloadStatus: DownloadStatus = DownloadStatus.Idle,
@@ -58,6 +62,7 @@ class UpdateViewModel @Inject constructor(
 
     fun checkForUpdatesIfNeeded() {
         if (appUpdateManager.isDebugBuild()) return
+        if (!preferencesManager.automaticUpdateChecksEnabled) return
         val lastCheck = preferencesManager.lastAppUpdateCheckTime
         val now = System.currentTimeMillis()
         if (now - lastCheck >= CHECK_INTERVAL_MS) {
@@ -76,6 +81,11 @@ class UpdateViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    fun setAutomaticUpdateChecksEnabled(enabled: Boolean) {
+        preferencesManager.automaticUpdateChecksEnabled = enabled
+        updateState { it.copy(automaticUpdateChecksEnabled = enabled) }
     }
 
     fun startDownload(

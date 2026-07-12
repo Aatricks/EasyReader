@@ -43,6 +43,7 @@ class UpdateViewModelTest {
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
+        whenever(preferencesManager.automaticUpdateChecksEnabled).doReturn(true)
         viewModel = UpdateViewModel(appUpdateManager, preferencesManager, context)
     }
 
@@ -107,6 +108,25 @@ class UpdateViewModelTest {
         viewModel.checkForUpdatesIfNeeded()
 
         verify(appUpdateManager, never()).checkForUpdates()
+    }
+
+    @Test
+    fun `checkForUpdatesIfNeeded skips checking when automatic checks are disabled`() = runTest {
+        whenever(preferencesManager.automaticUpdateChecksEnabled).doReturn(false)
+        viewModel = UpdateViewModel(appUpdateManager, preferencesManager, context)
+        whenever(preferencesManager.lastAppUpdateCheckTime).doReturn(0L)
+
+        viewModel.checkForUpdatesIfNeeded()
+
+        verify(appUpdateManager, never()).checkForUpdates()
+    }
+
+    @Test
+    fun `setAutomaticUpdateChecksEnabled persists and updates state`() {
+        viewModel.setAutomaticUpdateChecksEnabled(false)
+
+        verify(preferencesManager).automaticUpdateChecksEnabled = false
+        assertEquals(false, viewModel.uiState.value.automaticUpdateChecksEnabled)
     }
 
     @Test
