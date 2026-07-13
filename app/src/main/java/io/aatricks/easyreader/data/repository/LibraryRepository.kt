@@ -8,8 +8,10 @@ import io.aatricks.easyreader.data.local.LibraryDao
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.model.ReadingMode
+import io.aatricks.easyreader.data.model.SeriesReadingStatus
 import io.aatricks.easyreader.data.model.hasFinishedProgress
 import io.aatricks.easyreader.data.model.resolvedChapterNumber
+import io.aatricks.easyreader.data.model.seriesReadingStatus
 import io.aatricks.easyreader.util.FieldUpdate
 import io.aatricks.easyreader.util.resolve
 
@@ -413,9 +415,13 @@ class LibraryRepository @Inject constructor(
             // surface their NEW pills.
             val threshold = System.currentTimeMillis() - UPDATE_CHECK_THRESHOLD_DAYS * 24 * 60 * 60 * 1000L
             val activeGroups = groupedItems.filter { (_, items) ->
-                items.isNotEmpty() && (ignoreActivityThreshold || items.any {
-                    it.isCurrentlyReading || it.lastRead > threshold || it.dateAdded > threshold
-                })
+                items.isNotEmpty() && (
+                    ignoreActivityThreshold ||
+                        seriesReadingStatus(items) == SeriesReadingStatus.FINISHED ||
+                        items.any {
+                            it.isCurrentlyReading || it.lastRead > threshold || it.dateAdded > threshold
+                        }
+                    )
             }
 
             val channel = Channel<Pair<Pair<String, String>, List<LibraryItem>>>(Channel.UNLIMITED)

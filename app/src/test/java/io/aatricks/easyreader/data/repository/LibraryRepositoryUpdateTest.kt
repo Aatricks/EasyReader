@@ -283,6 +283,42 @@ class LibraryRepositoryUpdateTest {
     }
 
     @Test
+    fun `refresh checks old finished novel after all downloads are deleted`() = runBlocking {
+        val oldTimestamp = System.currentTimeMillis() - 30 * 24 * 60 * 60 * 1000L
+        val finishedItem = LibraryItem(
+            id = "finished",
+            title = "Finished Novel Chapter 10",
+            url = "finished/ch-10",
+            currentChapter = "Ch 10",
+            baseTitle = "Finished Novel",
+            baseNovelUrl = "finished",
+            sourceName = "Source1",
+            totalChapters = 10,
+            progress = 100,
+            lastRead = oldTimestamp,
+            dateAdded = oldTimestamp,
+            isDownloaded = false
+        )
+
+        whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(finishedItem)))
+        whenever(exploreRepository.getNovelDetails("finished", "Source1"))
+            .thenReturn(
+                ExploreItem(
+                    "Finished Novel",
+                    "finished",
+                    source = "Source1",
+                    chapters = chapterList(11, "finished")
+                )
+            )
+
+        repository.refreshLibraryUpdates(exploreRepository)
+
+        verify(exploreRepository).getNovelDetails("finished", "Source1")
+        verify(libraryDao).updateTotalChapters("finished", 11)
+        verify(libraryDao).markHasUpdates("finished")
+    }
+
+    @Test
     fun testRefreshLibraryUpdates_includes_old_but_currently_reading_novels() = runBlocking {
         // Setup 1 old novel (lastRead > 7 days ago) but currently reading
         val oldCutoff = System.currentTimeMillis() - 10 * 24 * 60 * 60 * 1000L
