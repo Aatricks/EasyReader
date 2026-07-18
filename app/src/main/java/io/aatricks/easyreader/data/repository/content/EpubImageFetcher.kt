@@ -8,7 +8,7 @@ import coil3.fetch.Fetcher
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import io.aatricks.easyreader.data.repository.ContentRepository
-import okio.Buffer
+import okio.Path.Companion.toPath
 
 /**
  * Coil fetcher for EPUB images stored within the EPUB zip file.
@@ -21,14 +21,12 @@ class EpubImageFetcher(
 ) : Fetcher {
 
     override suspend fun fetch(): FetchResult? {
-        val bytes = contentRepository.getEpubImage(url) ?: return null
-        
-        val buffer = Buffer().apply { write(bytes) }
+        val file = contentRepository.getEpubImageFile(url) ?: return null
         
         return SourceFetchResult(
             source = ImageSource(
-                source = buffer,
-                fileSystem = options.fileSystem
+                file.absolutePath.toPath(),
+                options.fileSystem
             ),
             mimeType = null,
             dataSource = DataSource.DISK

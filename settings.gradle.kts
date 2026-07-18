@@ -24,4 +24,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "EasyReader"
 include(":app")
+include(":benchmark")
  

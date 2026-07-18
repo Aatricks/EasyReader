@@ -5,9 +5,15 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 class ReaderImageViewTest {
+
+    @Test
+    fun `http image waits for off-main cache snapshot before creating request`() {
+        assertFalse(shouldLoadReaderImage("https://example.com/image.jpg", null))
+        assertTrue(shouldLoadReaderImage("https://example.com/image.jpg", "missing"))
+        assertTrue(shouldLoadReaderImage("file:///tmp/image.jpg", null))
+    }
 
     @Test
     fun `non zoom images use lightweight container`() {
@@ -57,41 +63,6 @@ class ReaderImageViewTest {
                 pageUrl = ""
             )
         )
-    }
-
-    @Test
-    fun `local media state is empty for non-http images`() {
-        assertEquals(
-            "",
-            readerImageLocalMediaState("file:///tmp/image.jpg") {
-                error("Local file images should not probe the HTTP media cache")
-            }
-        )
-    }
-
-    @Test
-    fun `local media state reports missing http cache file`() {
-        assertEquals(
-            "missing",
-            readerImageLocalMediaState("https://example.com/image.jpg") {
-                File("/tmp/easyreader-missing-test-image.jpg")
-            }
-        )
-    }
-
-    @Test
-    fun `local media state includes file identity for existing cache file`() {
-        val file = File.createTempFile("reader-image-view", ".jpg")
-        try {
-            file.writeBytes(byteArrayOf(1, 2, 3, 4))
-
-            assertEquals(
-                "${file.absolutePath}:4:${file.lastModified()}",
-                readerImageLocalMediaState("https://example.com/image.jpg") { file }
-            )
-        } finally {
-            file.delete()
-        }
     }
 
     @Test

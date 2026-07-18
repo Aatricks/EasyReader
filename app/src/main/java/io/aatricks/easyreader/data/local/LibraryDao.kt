@@ -81,8 +81,24 @@ interface LibraryDao {
     suspend fun resetProgressByBaseTitle(baseTitle: String)
 
     @Transaction
+    suspend fun applyLibraryUpdates(updates: List<LibraryBatchUpdate>) {
+        updates.forEach { update ->
+            updateTotalChapters(update.itemId, update.newTotalChapters)
+            if (update.markHasUpdates) {
+                markHasUpdates(update.itemId)
+            }
+        }
+    }
+
+    @Transaction
     suspend fun setCurrentReading(id: String, timestamp: Long = System.currentTimeMillis()) {
         clearCurrentlyReading()
         markAsCurrentlyReading(id, timestamp)
     }
 }
+
+data class LibraryBatchUpdate(
+    val itemId: String,
+    val newTotalChapters: Int,
+    val markHasUpdates: Boolean
+)

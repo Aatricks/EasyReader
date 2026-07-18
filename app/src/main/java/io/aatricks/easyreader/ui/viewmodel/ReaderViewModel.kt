@@ -20,12 +20,14 @@ import io.aatricks.easyreader.ui.viewmodel.ReaderProgressController.Companion.PA
 import io.aatricks.easyreader.util.FieldUpdate
 import io.aatricks.easyreader.util.computeDownloadCleanup
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
@@ -49,6 +51,7 @@ class ReaderViewModel @Inject constructor(
         private const val MIN_READER_BRIGHTNESS = 0.1f
         private const val MAX_READER_BRIGHTNESS = 1.0f
         private val DOUBLE_NEWLINE_REGEX = Regex("""\n\s*\n""")
+        internal var contentDimensionDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Default
     }
 
     // Current library item ID being read
@@ -130,8 +133,10 @@ class ReaderViewModel @Inject constructor(
     private val imageDimensionManager = ImageDimensionManager(
         scope = viewModelScope,
         imageDimensionCache = imageDimensionCache,
-        applyContentDimensions = ::updateCurrentContentImageDimensions,
+        applyContentDimensions = ::enqueueCurrentContentImageDimensions,
     )
+    private val pendingContentDimensionUpdates = LinkedHashMap<String, Pair<Int, Int>>()
+    private var contentDimensionTransformJob: Job? = null
 
     fun imageDimensionState(imageUrl: String): androidx.compose.runtime.State<Pair<Int, Int>?> =
         imageDimensionManager.dimensionState(imageUrl)
@@ -139,52 +144,31 @@ class ReaderViewModel @Inject constructor(
     fun persistImageDimensions(imageUrl: String, width: Int, height: Int) =
         imageDimensionManager.persistImageDimensions(imageUrl, width, height)
 
-    private fun updateCurrentContentImageDimensions(updates: Map<String, Pair<Int, Int>>) {
-        updateState { state ->
-            val content = state.content ?: return@updateState state
-            var changed = false
-            val updatedParagraphs = content.paragraphs.map { element ->
-                val resolved = element.withResolvedImageDimensions(updates)
-                if (resolved !== element) changed = true
-                resolved
-            }
-            if (!changed) {
-                state
-            } else {
-                state.copy(content = content.copy(paragraphs = updatedParagraphs))
-            }
-        }
-    }
-
-    private fun ContentElement.withResolvedImageDimensions(updates: Map<String, Pair<Int, Int>>): ContentElement {
-        return when (this) {
-            is ContentElement.Image -> {
-                val (width, height) = updates[url] ?: return this
-                if (this.width <= 0 || this.height <= 0) {
-                    copy(width = width, height = height)
-                } else {
-                    this
+    private fun enqueueCurrentContentImageDimensions(updates: Map<String, Pair<Int, Int>>) {
+        pendingContentDimensionUpdates.putAll(updates)
+        contentDimensionTransformJob?.cancel()
+        contentDimensionTransformJob = viewModelScope.launch {
+            while (pendingContentDimensionUpdates.isNotEmpty()) {
+                val source = uiState.value.content ?: return@launch
+                val batch = pendingContentDimensionUpdates.toMap()
+                val transformed = withContext(contentDimensionDispatcher) {
+                    applyResolvedImageDimensions(source, batch)
                 }
-            }
-
-            is ContentElement.ImageGroup -> {
-                val updatedImages = images.map { img ->
-                    val (width, height) = updates[img.url] ?: return@map img
-                    if (img.width <= 0 || img.height <= 0) {
-                        img.copy(width = width, height = height)
+                var applied = false
+                updateState { state ->
+                    if (state.content !== source) {
+                        state
                     } else {
-                        img
+                        applied = true
+                        if (transformed === source) state else state.copy(content = transformed)
                     }
                 }
-                if (updatedImages == images) this else copy(images = updatedImages)
+                if (applied) {
+                    batch.forEach { (url, dimensions) ->
+                        pendingContentDimensionUpdates.remove(url, dimensions)
+                    }
+                }
             }
-
-            is ContentElement.PageContent -> {
-                val updatedElements = elements.map { it.withResolvedImageDimensions(updates) }
-                if (updatedElements == elements) this else copy(elements = updatedElements)
-            }
-
-            else -> this
         }
     }
 
@@ -1447,4 +1431,49 @@ class ReaderViewModel @Inject constructor(
             }
         }
     }
+}
+
+internal fun applyResolvedImageDimensions(
+    content: ChapterContent,
+    updates: Map<String, Pair<Int, Int>>
+): ChapterContent {
+    var changed = false
+    val paragraphs = content.paragraphs.map { element ->
+        val resolved = element.withResolvedImageDimensions(updates)
+        if (resolved !== element) changed = true
+        resolved
+    }
+    return if (changed) content.copy(paragraphs = paragraphs) else content
+}
+
+private fun ContentElement.withResolvedImageDimensions(
+    updates: Map<String, Pair<Int, Int>>
+): ContentElement = when (this) {
+    is ContentElement.Image -> {
+        val dimensions = updates[url]
+        if (dimensions != null && (width <= 0 || height <= 0)) {
+            copy(width = dimensions.first, height = dimensions.second)
+        } else {
+            this
+        }
+    }
+
+    is ContentElement.ImageGroup -> {
+        val updatedImages = images.map { image ->
+            val dimensions = updates[image.url]
+            if (dimensions != null && (image.width <= 0 || image.height <= 0)) {
+                image.copy(width = dimensions.first, height = dimensions.second)
+            } else {
+                image
+            }
+        }
+        if (updatedImages == images) this else copy(images = updatedImages)
+    }
+
+    is ContentElement.PageContent -> {
+        val updatedElements = elements.map { it.withResolvedImageDimensions(updates) }
+        if (updatedElements == elements) this else copy(elements = updatedElements)
+    }
+
+    else -> this
 }

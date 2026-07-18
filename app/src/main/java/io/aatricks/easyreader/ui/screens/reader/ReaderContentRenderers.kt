@@ -36,12 +36,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.aatricks.easyreader.data.model.ChapterContent
 import io.aatricks.easyreader.data.model.ContentElement
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import io.aatricks.easyreader.ui.components.ReaderImageView
-import io.aatricks.easyreader.ui.components.ReaderTiledImage
-import io.aatricks.easyreader.ui.components.readerImageSliceCount
+import io.aatricks.easyreader.ui.components.readerImageTileView
 import io.aatricks.easyreader.ui.components.ZoomableBox
+import io.aatricks.easyreader.ui.screens.reader.ReaderRenderItem
+import io.aatricks.easyreader.ui.screens.reader.RenderPayload
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 
 private const val CONTENT_TYPE_PLACEHOLDER = "placeholder"
@@ -52,7 +51,7 @@ private const val CONTENT_TYPE_IMAGE_GROUP = "image_group"
 
 internal val localReaderPages = compositionLocalOf<List<ReaderPage>> { emptyList() }
 
-private fun readerContentType(element: ContentElement): String = when (element) {
+internal fun readerContentType(element: ContentElement): String = when (element) {
     is ContentElement.Placeholder -> CONTENT_TYPE_PLACEHOLDER
     is ContentElement.PageContent -> CONTENT_TYPE_PAGE
     is ContentElement.Text -> CONTENT_TYPE_TEXT
@@ -337,218 +336,5 @@ private fun PagedImageGroupView(
         onTap = null
     ) {
         contentColumn()
-    }
-}
-
-@Composable
-internal fun ScrollingReaderView(
-    content: ChapterContent,
-    listState: LazyListState,
-    uiState: ReaderViewModel.ReaderUiState,
-    isManhwa: Boolean,
-    fontFamily: FontFamily,
-    bgColor: Color,
-    textColor: Color,
-    readerViewModel: ReaderViewModel
-) {
-    LaunchedEffect(uiState.targetScrollPosition, listState.canScrollForward) {
-        if (uiState.targetScrollPosition == 100f && content.paragraphs.isNotEmpty() && listState.canScrollForward) {
-            listState.scrollToItem(content.paragraphs.size - 1, 10000000)
-        }
-    }
-
-    LazyColumn(
-        state = listState,
-        modifier = Modifier.fillMaxSize(),
-        // Vertical margin at the top and bottom of the light-novel scroll view. Manhwa reads
-        // edge-to-edge, so the padding is suppressed there.
-        contentPadding = if (isManhwa) {
-            PaddingValues(0.dp)
-        } else {
-            PaddingValues(vertical = uiState.verticalMargins.dp)
-        },
-        verticalArrangement = if (isManhwa) {
-            Arrangement.spacedBy(0.dp)
-        } else {
-            Arrangement.spacedBy((uiState.fontSize * uiState.paragraphSpacing).dp)
-        }
-    ) {
-        itemsIndexed(
-            content.paragraphs,
-            key = { index, element -> stableContentElementKey(content.url, index, element) },
-            contentType = { _, element -> readerContentType(element) }
-        ) { _, element ->
-            when (element) {
-                is ContentElement.Placeholder -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(element.heightDp.dp)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = { readerViewModel.toggleControls() }
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = element.text,
-                            color = textColor.copy(alpha = 0.5f),
-                            style = MaterialTheme.typography.bodyLarge.copy(
-                                fontSize = uiState.fontSize.sp,
-                                fontFamily = fontFamily
-                            )
-                        )
-                    }
-                }
-
-                is ContentElement.PageContent -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = { readerViewModel.toggleControls() }
-                            )
-                            .padding(horizontal = uiState.margins.dp),
-                        verticalArrangement = Arrangement.spacedBy((uiState.fontSize * uiState.paragraphSpacing).dp)
-                    ) {
-                        element.elements.forEach { subElement ->
-                            when (subElement) {
-                                is ContentElement.Text -> {
-                                    Text(
-                                        text = subElement.content,
-                                        color = textColor,
-                                        style = MaterialTheme.typography.bodyLarge.copy(
-                                            fontSize = uiState.fontSize.sp,
-                                            lineHeight = (uiState.fontSize * uiState.lineHeight).sp,
-                                            fontFamily = fontFamily
-                                        ),
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
-
-                                is ContentElement.Image -> {
-                                    ReaderImageView(
-                                        imageUrl = subElement.url,
-                                        altText = subElement.altText,
-                                        readerViewModel = readerViewModel,
-                                        pageUrl = content.url,
-                                        contentScale = ContentScale.Fit,
-                                        backgroundColor = bgColor,
-                                        width = subElement.width,
-                                        height = subElement.height,
-                                        side = subElement.side,
-                                        enableZoom = false,
-                                        dynamicHeight = false,
-                                        onDimensionsResolved = { url, w, h ->
-                                            readerViewModel.persistImageDimensions(url, w, h)
-                                        },
-                                        onTap = { readerViewModel.toggleControls() }
-                                    )
-                                }
-
-                                else -> Unit
-                            }
-                        }
-                    }
-                }
-
-                is ContentElement.Text -> {
-                    Text(
-                        text = element.content,
-                        color = textColor,
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            fontSize = uiState.fontSize.sp,
-                            lineHeight = (uiState.fontSize * uiState.lineHeight).sp,
-                            fontFamily = fontFamily
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = uiState.margins.dp)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = { readerViewModel.toggleControls() }
-                            )
-                    )
-                }
-
-                is ContentElement.Image -> {
-                    // Per-URL State: another image resolving its dimensions must not invalidate
-                    // this item's scope (a map-wide read here caused every visible image to
-                    // recompose on each decode during scroll).
-                    val resolved by remember(element.url) {
-                        readerViewModel.imageDimensionState(element.url)
-                    }
-                    val imgW = resolved?.first ?: element.width
-                    val imgH = resolved?.second ?: element.height
-                    val screenWidthPx = with(LocalDensity.current) {
-                        LocalConfiguration.current.screenWidthDp.dp.roundToPx()
-                    }
-                    val sliceCount = if (isManhwa && element.side == ContentElement.Image.Side.FULL) {
-                        readerImageSliceCount(screenWidthPx, imgW, imgH)
-                    } else {
-                        1
-                    }
-                    if (sliceCount > 1) {
-                        ReaderTiledImage(
-                            imageUrl = element.url,
-                            pageUrl = content.url,
-                            sliceAspect = imgW.toFloat() / (imgH.toFloat() / sliceCount),
-                            sliceCount = sliceCount,
-                            backgroundColor = bgColor,
-                            onTap = { readerViewModel.toggleControls() }
-                        )
-                    } else {
-                        ReaderImageView(
-                            imageUrl = element.url,
-                            altText = element.altText,
-                            readerViewModel = readerViewModel,
-                            pageUrl = content.url,
-                            contentScale = ContentScale.Fit,
-                            backgroundColor = bgColor,
-                            width = element.width,
-                            height = element.height,
-                            side = element.side,
-                            enableZoom = false,
-                            dynamicHeight = false,
-                            onDimensionsResolved = { url, w, h ->
-                                readerViewModel.persistImageDimensions(url, w, h)
-                            },
-                            onTap = { readerViewModel.toggleControls() }
-                        )
-                    }
-                }
-
-                is ContentElement.ImageGroup -> {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        element.images.forEach { img ->
-                            ReaderImageView(
-                                imageUrl = img.url,
-                                altText = img.altText,
-                                readerViewModel = readerViewModel,
-                                pageUrl = content.url,
-                                contentScale = ContentScale.Fit,
-                                backgroundColor = bgColor,
-                                width = img.width,
-                                height = img.height,
-                                side = img.side,
-                                enableZoom = false,
-                                dynamicHeight = false,
-                                onDimensionsResolved = { url, w, h ->
-                                    readerViewModel.persistImageDimensions(url, w, h)
-                                },
-                                onTap = { readerViewModel.toggleControls() }
-                            )
-                        }
-                    }
-                }
-            }
-        }
     }
 }

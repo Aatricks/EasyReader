@@ -1,5 +1,7 @@
 package io.aatricks.easyreader.ui.screens
 
+import io.aatricks.easyreader.ui.screens.reader.shouldRunPercentRestoreFallback
+
 import io.aatricks.easyreader.data.model.ContentElement
 import org.junit.Assert.assertEquals
 import org.junit.Test

@@ -2,6 +2,7 @@ package io.aatricks.easyreader.data.repository
 
 import android.util.Log
 import io.aatricks.easyreader.data.repository.summary.SummaryEngine
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -13,9 +14,12 @@ import javax.inject.Singleton
  * Uses a SummaryEngine for model management and inference.
  */
 @Singleton
-class SummaryService @Inject constructor(
-    private val summaryEngine: SummaryEngine
+class SummaryService(
+    private val summaryEngine: SummaryEngine,
+    private val defaultDispatcher: CoroutineDispatcher
 ) {
+    @Inject
+    constructor(summaryEngine: SummaryEngine) : this(summaryEngine, Dispatchers.Default)
     
     companion object {
         private const val TAG = "SummaryService"
@@ -41,7 +45,7 @@ class SummaryService @Inject constructor(
         chapterTitle: String?,
         content: List<String>,
         onProgress: ((String) -> Unit)? = null
-    ): Result<String> = withContext(Dispatchers.Default) {
+    ): Result<String> = withContext(defaultDispatcher) {
         runCatching {
             initialize().getOrThrow()
             

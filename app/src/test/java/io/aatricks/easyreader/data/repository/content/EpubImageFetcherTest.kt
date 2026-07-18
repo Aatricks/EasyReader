@@ -11,6 +11,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import java.nio.file.Files
 
 class EpubImageFetcherTest {
 
@@ -40,8 +41,9 @@ class EpubImageFetcherTest {
     @Test
     fun `fetcher returns SourceFetchResult on success`() = runTest {
         val url = "path/to.epub#img:images/1.jpg"
-        val bytes = byteArrayOf(1, 2, 3)
-        whenever(contentRepository.getEpubImage(url)).thenReturn(bytes)
+        val imageFile = Files.createTempFile("epub-image", ".jpg").toFile()
+        imageFile.writeBytes(byteArrayOf(1, 2, 3))
+        whenever(contentRepository.getEpubImageFile(url)).thenReturn(imageFile)
         
         val options: Options = mock()
         whenever(options.fileSystem).thenReturn(okio.FileSystem.SYSTEM)
@@ -51,12 +53,13 @@ class EpubImageFetcherTest {
         
         assertTrue(result is SourceFetchResult)
         assertNotNull((result as SourceFetchResult).source)
+        imageFile.delete()
     }
 
     @Test
     fun `fetcher returns null on failure`() = runTest {
         val url = "path/to.epub#img:images/1.jpg"
-        whenever(contentRepository.getEpubImage(url)).thenReturn(null)
+        whenever(contentRepository.getEpubImageFile(url)).thenReturn(null)
         
         val options: Options = mock()
         

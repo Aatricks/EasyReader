@@ -22,6 +22,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.whenever
@@ -109,6 +110,44 @@ class ContentRepositoryUrlTest {
         verify(pdfLoader, times(1)).clearCache("file:///tmp/chapter.pdf")
         verify(pdfLoader, times(1)).clearCache("content://com.example.provider/pdf-item")
         verify(webLoader, times(5)).clearCache(any())
+    }
+
+    @Test
+    fun bulk_deletion_concurrency_is_capped_at_4() = runTest {
+        val activeCount = java.util.concurrent.atomic.AtomicInteger(0)
+        val maxConcurrency = java.util.concurrent.atomic.AtomicInteger(0)
+
+        whenever(webLoader.clearCache(any())).doAnswer {
+            val current = activeCount.incrementAndGet()
+            maxConcurrency.updateAndGet { maxOf(it, current) }
+            kotlinx.coroutines.runBlocking { kotlinx.coroutines.delay(10) }
+            activeCount.decrementAndGet()
+            Unit
+        }
+
+        whenever(webLoader.clearDownload(any())).thenAnswer {
+            Unit
+        }
+
+        val urls = (1..10).map { "https://example.com/item-$it" }
+
+        val clearedCacheCount = repository.clearCachesForUrls(urls)
+        assertEquals(10, clearedCacheCount)
+        val max1 = maxConcurrency.getAndSet(0)
+        assertTrue("Max concurrency for clearCachesForUrls was $max1, expected in 2..4", max1 in 2..4)
+
+        val clearedBothCount = repository.clearCachesAndDownloadsForUrls(urls)
+        assertEquals(10, clearedBothCount)
+        val max2 = maxConcurrency.get()
+        assertTrue("Max concurrency for clearCachesAndDownloadsForUrls was $max2, expected in 2..4", max2 in 2..4)
+    }
+
+    @Test(expected = kotlinx.coroutines.CancellationException::class)
+    fun bulk_deletion_clearCachesForUrls_rethrows_cancellation() = runTest {
+        whenever(webLoader.clearCache(any())).thenAnswer {
+            throw kotlinx.coroutines.CancellationException("Cancelled bulk delete")
+        }
+        repository.clearCachesForUrls(listOf("https://example.com/item-1"))
     }
 
     @Test

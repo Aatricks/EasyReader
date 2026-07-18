@@ -24,7 +24,7 @@ import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
 import io.aatricks.easyreader.ui.screens.shouldDispatchReaderScrollStart
 import io.aatricks.easyreader.ui.screens.buildDrawerNovelSections
 import io.aatricks.easyreader.ui.screens.countDistinctNovelTitles
-import io.aatricks.easyreader.ui.screens.shouldRunPercentRestoreFallback
+import io.aatricks.easyreader.ui.screens.reader.shouldRunPercentRestoreFallback
 import io.aatricks.easyreader.ui.theme.AccentTheme
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel.ReaderUiState

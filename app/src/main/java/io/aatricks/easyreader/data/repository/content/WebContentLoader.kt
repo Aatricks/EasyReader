@@ -155,11 +155,12 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         val safeUrl = UrlSanitizer.sanitize(url)
         Log.d(TAG, "start load url=$safeUrl")
         try {
-            offlineChapterStore.loadContent(url)?.let { offline ->
+            val offlineInspection = offlineChapterStore.inspectChapter(url)
+            offlineChapterStore.loadContent(offlineInspection)?.let { offline ->
                 Log.d(TAG, "offline manifest hit url=$safeUrl elapsedMs=${System.currentTimeMillis() - startedAtMs}")
                 return@withContext offline
             }
-            if (offlineChapterStore.hasCompleteManifestRecord(url)) {
+            if (offlineInspection.hasCompleteManifestRecord) {
                 return@withContext ContentResult.Error("Downloaded chapter files are missing or corrupt")
             }
             tryLoadFromParsedCache(url, safeUrl, startedAtMs)?.let { return@withContext it }

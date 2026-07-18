@@ -4,6 +4,7 @@ import io.aatricks.easyreader.util.TextUtils
 import io.aatricks.easyreader.util.normalizeChapterList
 import io.aatricks.easyreader.util.rethrowCancellation
 import io.aatricks.easyreader.data.local.PreferencesManager
+import io.aatricks.easyreader.data.local.LibraryBatchUpdate
 import io.aatricks.easyreader.data.local.LibraryDao
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.ContentType
@@ -431,13 +432,13 @@ class LibraryRepository @Inject constructor(
             val allUpdates = coroutineScope {
                 val workers = (1..5).map {
                     async {
-                        val localUpdates = mutableListOf<LibraryUpdate>()
+                        val localUpdates = mutableListOf<LibraryBatchUpdate>()
                         for ((key, items) in channel) {
                             val (baseTitle, _) = key
                             if (items.isNotEmpty()) {
                                 val latestInLibrary = items.last()
                                 if (latestInLibrary.baseNovelUrl.isNotBlank() && latestInLibrary.sourceName.isNotBlank()) {
-                                    val newUpdates = runRepoCatching("Failed to refresh updates for $baseTitle", emptyList<LibraryUpdate>()) {
+                                    val newUpdates = runRepoCatching("Failed to refresh updates for $baseTitle", emptyList<LibraryBatchUpdate>()) {
                                         val details = withTimeoutOrNull(REFRESH_PER_SOURCE_TIMEOUT_MS) {
                                             exploreRepository.getNovelDetails(
                                                 latestInLibrary.baseNovelUrl,
@@ -458,7 +459,7 @@ class LibraryRepository @Inject constructor(
                                                     val markUpdate = wasCaughtUp &&
                                                         item.id == itemToMark.id &&
                                                         !item.hasUpdates
-                                                    LibraryUpdate(
+                                                    LibraryBatchUpdate(
                                                         itemId = item.id,
                                                         newTotalChapters = sourceChapterCount,
                                                         markHasUpdates = markUpdate
@@ -482,12 +483,7 @@ class LibraryRepository @Inject constructor(
             }
 
             if (allUpdates.isNotEmpty()) {
-                allUpdates.forEach { update ->
-                    libraryDao.updateTotalChapters(update.itemId, update.newTotalChapters)
-                    if (update.markHasUpdates) {
-                        libraryDao.markHasUpdates(update.itemId)
-                    }
-                }
+                libraryDao.applyLibraryUpdates(allUpdates)
             }
         }
     }
@@ -521,9 +517,4 @@ class LibraryRepository @Inject constructor(
         } ?: false
     } ?: false
 
-    private data class LibraryUpdate(
-        val itemId: String,
-        val newTotalChapters: Int,
-        val markHasUpdates: Boolean
-    )
 }

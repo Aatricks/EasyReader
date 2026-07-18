@@ -30,10 +30,16 @@ If you need to test release signing locally, keep the keystore outside the repo 
 
 - Unit tests: `:app:testStandardDebugUnitTest` (also `:app:testAiDebugUnitTest` for the AI flavor).
 - Instrumented tests are wired in CI behind `android-instrumented-test`; locally run `./gradlew :app:connectedStandardDebugAndroidTest` with an emulator attached.
-- Benchmark suite lives under `app/src/benchmark/java`. Opt-in via:
+- Macrobenchmarks and the Baseline Profile generator live in the release-derived `benchmark` module.
+  Run them on a connected physical device with:
   ```bash
-  ./gradlew :app:benchmark -PrunBenchmarks=true
+  ./gradlew :benchmark:connectedStandardBenchmarkReleaseAndroidTest
   ```
+  For functional journey debugging on an emulator, append
+  `-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR`;
+  never compare emulator timing or graphics metrics with physical-device results. Use
+  `:app:generateStandardReleaseBaselineProfile` to regenerate the app-owned profile. Benchmark
+  compilation fails if the module contains zero discovered `@Test` methods.
 
 ## Security
 

@@ -34,7 +34,6 @@ import io.aatricks.easyreader.ui.util.effectiveImageDimensions
 import io.aatricks.easyreader.ui.util.imageAspectRatio
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import io.aatricks.easyreader.data.repository.content.ImageDownloader
-import java.io.File
 
 internal fun shouldUseLightweightImageContainer(enableZoom: Boolean): Boolean = !enableZoom
 
@@ -47,26 +46,15 @@ internal fun shouldSubsampleReaderImage(enableZoom: Boolean, dynamicHeight: Bool
 internal fun readerImageRefererSource(imageUrl: String, pageUrl: String): String =
     pageUrl.takeIf { it.isNotBlank() } ?: imageUrl
 
-internal fun readerImageLocalMediaState(
-    imageUrl: String,
-    cachedMediaFile: (String) -> File
-): String {
-    if (!imageUrl.startsWith("http")) return ""
-
-    val file = cachedMediaFile(imageUrl)
-    return if (file.exists()) {
-        "${file.absolutePath}:${file.length()}:${file.lastModified()}"
-    } else {
-        "missing"
-    }
-}
-
 internal fun readerImageRequestCacheKey(
     imageUrl: String,
     localMediaState: String,
     retryTrigger: Long
 ): String? =
     if (imageUrl.startsWith("http")) "$imageUrl|$localMediaState|$retryTrigger" else null
+
+internal fun shouldLoadReaderImage(imageUrl: String, localMediaState: String?): Boolean =
+    !imageUrl.startsWith("http") || localMediaState != null
 
 internal fun shouldAutoRetryReaderImage(
     isError: Boolean,
@@ -135,24 +123,22 @@ fun ReaderImageView(
     val aspectRatioModifier = Modifier.imageAspectRatio(side, effectiveWidth, effectiveHeight)
     val hasResolvedAspectRatio = effectiveDimensions != null
 
-    // Single, idempotent cache probe shared with the request cache key below (one
-    // getLikelyMediaState call per composition entry — the repository memoizes it, so item
-    // re-entries during a scroll don't re-stat disk on the main thread). Coil's
-    // HttpMediaCacheFetcher owns the authoritative disk check inside its own dispatcher.
+    // Load the cache-state snapshot off Main before creating the HTTP request. The repository
+    // memoizes this probe, while Coil's HttpMediaCacheFetcher owns the authoritative disk check.
     var retryTrigger by remember(imageUrl, pageUrl) { mutableStateOf(0L) }
-    val localMediaState = remember(imageUrl, retryTrigger) {
+    var localMediaState by remember(imageUrl) {
+        mutableStateOf<String?>(if (imageUrl.startsWith("http")) null else "")
+    }
+    LaunchedEffect(imageUrl, retryTrigger) {
         if (imageUrl.startsWith("http")) {
-            readerViewModel.contentRepository.getLikelyMediaState(imageUrl)
-        } else {
-            ""
+            localMediaState = readerViewModel.contentRepository.loadLikelyMediaState(imageUrl)
         }
     }
-    val isInitiallyCached = remember(imageUrl) {
-        when {
-            imageUrl.startsWith("file") -> true
-            imageUrl.startsWith("http") -> localMediaState != "missing"
-            else -> false
-        }
+    val resolvedLocalMediaState = localMediaState.orEmpty()
+    val isInitiallyCached = when {
+        imageUrl.startsWith("file") -> true
+        imageUrl.startsWith("http") -> localMediaState != null && localMediaState != "missing"
+        else -> false
     }
 
     // Hoist loading state so containerModifier can react to it, shrinking the container
@@ -227,12 +213,12 @@ fun ReaderImageView(
     // for the lifetime of the composition, so it does not need to be a key — capturing the
     // value once avoids the re-fetch loop that previously fired when the success handler
     // flipped a cached-state flag.
-    val imageRequest = remember(imageUrl, pageUrl, retryTrigger, localMediaState) {
+    val imageRequest = remember(imageUrl, pageUrl, retryTrigger, resolvedLocalMediaState) {
         ImageRequest.Builder(context)
             .data(imageUrl)
             .apply {
                 if (imageUrl.startsWith("http")) {
-                    readerImageRequestCacheKey(imageUrl, localMediaState, retryTrigger)?.let { cacheKey ->
+                    readerImageRequestCacheKey(imageUrl, resolvedLocalMediaState, retryTrigger)?.let { cacheKey ->
                         memoryCacheKey(cacheKey)
                     }
                     extras.set(ChapterPageUrlExtra, pageUrl)
@@ -264,8 +250,8 @@ fun ReaderImageView(
     var autoRetryCount by remember(imageUrl, pageUrl) { mutableIntStateOf(0) }
     var repairRetryCount by remember(imageUrl, pageUrl) { mutableIntStateOf(0) }
 
-    LaunchedEffect(isError, imageUrl, pageUrl, localMediaState, autoRetryCount, repairRetryCount) {
-        if (shouldRepairReaderImage(isError, imageUrl, localMediaState, repairRetryCount)) {
+    LaunchedEffect(isError, imageUrl, pageUrl, resolvedLocalMediaState, autoRetryCount, repairRetryCount) {
+        if (shouldRepairReaderImage(isError, imageUrl, resolvedLocalMediaState, repairRetryCount)) {
             repairRetryCount += 1
             readerViewModel.repairVisibleImageNow(imageUrl, pageUrl)
             isError = false
@@ -287,17 +273,18 @@ fun ReaderImageView(
         contentAlignment = Alignment.Center
     ) {
         val imageContent: @Composable () -> Unit = {
-            AsyncImage(
-                model = imageRequest,
-                contentDescription = altText,
-                modifier = if (hasResolvedAspectRatio || enableZoom) {
-                    Modifier.fillMaxSize()
-                } else {
-                    Modifier.fillMaxWidth().wrapContentHeight()
-                },
-                alignment = imageAlignment,
-                contentScale = pagedContentScale,
-                onSuccess = { state: AsyncImagePainter.State.Success ->
+            if (shouldLoadReaderImage(imageUrl, localMediaState)) {
+                AsyncImage(
+                    model = imageRequest,
+                    contentDescription = altText,
+                    modifier = if (hasResolvedAspectRatio || enableZoom) {
+                        Modifier.fillMaxSize()
+                    } else {
+                        Modifier.fillMaxWidth().wrapContentHeight()
+                    },
+                    alignment = imageAlignment,
+                    contentScale = pagedContentScale,
+                    onSuccess = { state: AsyncImagePainter.State.Success ->
                     // Kick off the GPU texture upload now, while the bitmap is decoded but (for
                     // compose-ahead items) not yet drawn. Reader bitmaps are software-backed, so
                     // otherwise HWUI uploads them synchronously on the RenderThread the first frame
@@ -314,12 +301,13 @@ fun ReaderImageView(
                     }
                     isLoadingHoisted = false
                     isError = false
-                },
-                onError = {
-                    isError = true
-                    isLoadingHoisted = false
-                }
-            )
+                    },
+                    onError = {
+                        isError = true
+                        isLoadingHoisted = false
+                    }
+                )
+            }
         }
 
         if (shouldUseLightweightImageContainer(enableZoom)) {

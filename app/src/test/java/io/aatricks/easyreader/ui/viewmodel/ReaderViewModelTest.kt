@@ -50,6 +50,7 @@ class ReaderViewModelTest {
     fun setup() {
         MockitoAnnotations.openMocks(this)
         Dispatchers.setMain(testDispatcher)
+        ReaderViewModel.contentDimensionDispatcher = testDispatcher
 
         whenever(preferencesManager.fontSize).thenReturn(18f)
         whenever(preferencesManager.lineHeight).thenReturn(1.5f)
@@ -113,6 +114,7 @@ class ReaderViewModelTest {
 
     @After
     fun tearDown() {
+        ReaderViewModel.contentDimensionDispatcher = Dispatchers.Default
         Dispatchers.resetMain()
     }
 

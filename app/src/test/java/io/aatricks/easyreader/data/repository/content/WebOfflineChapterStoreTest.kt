@@ -3,6 +3,7 @@ package io.aatricks.easyreader.data.repository.content
 import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.repository.HtmlParser
 import io.aatricks.easyreader.util.CacheKeyUtils
+import io.aatricks.easyreader.util.ImageIntegrity
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -24,6 +25,7 @@ import java.io.File
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicInteger
 
 class WebOfflineChapterStoreTest {
 
@@ -133,6 +135,41 @@ class WebOfflineChapterStoreTest {
         assertTrue(content != null)
         assertEquals("Novel text", (content!!.elements.first() as ContentElement.Text).content)
         assertTrue(store.hasCompleteChapter(chapterUrl))
+    }
+
+    @Test
+    fun `operation inspection validates each image once and content load reuses it`() = runBlocking {
+        val tempDir = Files.createTempDirectory("offline-inspection-test").toFile()
+        val chapterUrl = "https://example.com/chapter"
+        val imageUrl = "https://example.com/page.jpg"
+        val htmlParser = mock<HtmlParser>()
+        val (store, _) = createStore(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                buildResponse(chain.request(), "image", "image/jpeg")
+            },
+            tempDir = tempDir
+        )
+        val doc = Jsoup.parse("<html><body><img src=\"$imageUrl\"></body></html>", chapterUrl)
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(
+            listOf(ContentElement.Image(imageUrl))
+        )
+        store.downloadChapter(chapterUrl, doc, null)
+
+        val validationCount = AtomicInteger(0)
+        store.imageValidator = { file ->
+            validationCount.incrementAndGet()
+            ImageIntegrity.isValidImageFile(file)
+        }
+
+        val inspection = store.inspectChapter(chapterUrl)
+        val afterInspect = validationCount.get()
+        val content = store.loadContent(inspection)
+
+        assertEquals(1, afterInspect)
+        assertEquals(afterInspect, validationCount.get())
+        assertTrue(inspection.result.isComplete)
+        assertTrue(content != null)
     }
 
     @Test

@@ -2,7 +2,6 @@ package io.aatricks.easyreader.data.repository.content
 
 import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.ContentResult
-import io.aatricks.easyreader.data.model.ImageRequestPriority
 import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.repository.HtmlParser
@@ -531,8 +530,13 @@ class WebContentLoaderTest {
         assertEquals(imageUrls.size, result.cachedImages)
         assertTrue(downloadState.isComplete)
         assertEquals(imageUrls.size, downloadState.cachedImages)
-        assertTrue(imageUrls.all { loader.isImageDownloaded(chapterUrl, it) })
-        assertTrue(progress.none { it.isComplete })
+        imageUrls.forEach { imageUrl ->
+            assertTrue(loader.isImageDownloaded(chapterUrl, imageUrl))
+        }
+        assertTrue(progress.isNotEmpty())
+        assertTrue(progress.dropLast(1).all { it.isInProgress && !it.isComplete })
+        assertEquals(1, progress.count { !it.isInProgress && it.isComplete })
+        assertEquals(result, progress.last())
     }
 
     @Test

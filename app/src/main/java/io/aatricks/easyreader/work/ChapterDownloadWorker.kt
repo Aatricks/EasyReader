@@ -59,11 +59,17 @@ class ChapterDownloadWorker @AssistedInject constructor(
 
         contentRepository.beginUserDownload(url)
         return try {
+            var publishedTerminal = false
             val result = ChapterDownloadLimiter.withPermit {
-                contentRepository.downloadChapter(url) { progress -> publishProgress(progress) }
+                contentRepository.downloadChapter(url) { progress ->
+                    if (!progress.isInProgress) publishedTerminal = true
+                    publishProgress(progress)
+                }
             }
 
-            publishProgress(result)
+            if (!publishedTerminal) {
+                publishProgress(result)
+            }
             // Worker is the durable second writer for the DB flag. Flag must track on-disk reality
             // even if the user cleared the download mid-run.
             runCatching { reconcileFlag(url, contentRepository.inspectDownload(url)) }
