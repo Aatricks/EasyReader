@@ -16,6 +16,8 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Singleton
@@ -45,6 +47,7 @@ class ContentRepository @Inject constructor(
         private const val MAX_PDF_CACHE_BYTES = 256L * 1024L * 1024L
         private const val CACHE_TRIM_INTERVAL_MS = 30_000L
         private const val INSPECT_MEMO_TTL_MS = 3_000L
+        private const val BULK_DELETE_CONCURRENCY = 4
         private val CHAPTER_URL_PATTERNS = listOf(
             Regex("(chapter[-_/])(\\d+)", RegexOption.IGNORE_CASE),
             Regex("(ch[-_/]?)(\\d+)", RegexOption.IGNORE_CASE)
@@ -106,7 +109,7 @@ class ContentRepository @Inject constructor(
                     localLoader.loadLocalContent(url, pdfResumeIndex)
                 ContentKind.UNKNOWN -> ContentResult.Error("Unsupported file type")
             }
-            trimCachesInternal(force = true)
+            trimCachesInternal()
             result
         } catch (e: TimeoutCancellationException) {
             ContentResult.Error("Timed out loading chapter")
@@ -144,7 +147,9 @@ class ContentRepository @Inject constructor(
 
     fun findUsableCachedMediaFile(url: String): File? = webLoader.findUsableCachedMediaFile(url)
 
-    fun getLikelyMediaState(url: String): String = webLoader.getLikelyMediaState(url)
+    suspend fun loadLikelyMediaState(url: String): String = withContext(Dispatchers.IO) {
+        webLoader.getLikelyMediaState(url)
+    }
 
     suspend fun invalidateCachedMediaFile(imageUrl: String, pageUrl: String? = null): Unit = withContext(Dispatchers.IO) {
         webLoader.invalidateCachedMediaFile(imageUrl)
@@ -239,7 +244,7 @@ class ContentRepository @Inject constructor(
         }.rethrowCancellation().getOrElse {
             PrefetchResult(url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false, isRetryable = true)
         }
-        trimCachesInternal(force = true)
+        trimCachesInternal()
         result
     }
 
@@ -297,7 +302,7 @@ class ContentRepository @Inject constructor(
                 isPersistentDownload = true
             )
         }
-        trimCachesInternal(force = true)
+        trimCachesInternal()
         result
     }
 
@@ -398,6 +403,8 @@ class ContentRepository @Inject constructor(
 
     suspend fun getEpubImage(url: String): ByteArray? = epubLoader.getEpubImage(url)
 
+    suspend fun getEpubImageFile(url: String): File? = epubLoader.getEpubImageFile(url)
+
     suspend fun clearCache(url: String): Unit = withContext(Dispatchers.IO) {
         invalidateInspect(url)
         when (resolveContentKind(url)) {
@@ -432,16 +439,23 @@ class ContentRepository @Inject constructor(
 
     suspend fun clearCachesForUrls(urls: Collection<String>): Int = withContext(Dispatchers.IO) {
         coroutineScope {
+            val semaphore = Semaphore(BULK_DELETE_CONCURRENCY)
             urls.asSequence()
                 .map { it.trim() }
                 .filter { it.isNotBlank() }
                 .distinct()
                 .map { url ->
                     async {
-                        runCatching {
-                            clearCache(url)
-                            true
-                        }.getOrDefault(false)
+                        semaphore.withPermit {
+                            try {
+                                clearCache(url)
+                                true
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (ignored: Exception) {
+                                false
+                            }
+                        }
                     }
                 }
                 .toList()
@@ -452,17 +466,24 @@ class ContentRepository @Inject constructor(
 
     suspend fun clearCachesAndDownloadsForUrls(urls: Collection<String>): Int = withContext(Dispatchers.IO) {
         coroutineScope {
+            val semaphore = Semaphore(BULK_DELETE_CONCURRENCY)
             urls.asSequence()
                 .map { it.trim() }
                 .filter { it.isNotBlank() }
                 .distinct()
                 .map { url ->
                     async {
-                        runCatching {
-                            clearDownload(url)
-                            clearCache(url)
-                            true
-                        }.getOrDefault(false)
+                        semaphore.withPermit {
+                            try {
+                                clearDownload(url)
+                                clearCache(url)
+                                true
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (ignored: Exception) {
+                                false
+                            }
+                        }
                     }
                 }
                 .toList()

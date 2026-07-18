@@ -25,7 +25,7 @@ interface SummaryEngine {
     /**
      * Generate a summary for the given text.
      * @param prompt The prompt for summarization.
-     * @param onProgress Callback for streaming progress.
+     * @param onProgress Callback receiving cumulative complete current summary snapshot.
      */
     suspend fun generateSummary(
         prompt: String,

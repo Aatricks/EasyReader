@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -64,7 +65,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.ContentResult
-import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.model.LibraryItem
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.draw.clip
@@ -72,6 +72,11 @@ import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImage
 import io.aatricks.easyreader.ui.components.ChapterSummaryDropdown
 import io.aatricks.easyreader.ui.components.rememberLibraryCoverImageRequest
+import io.aatricks.easyreader.ui.screens.library.LibraryFlattenState
+import io.aatricks.easyreader.ui.screens.library.LibraryRenderItem
+import io.aatricks.easyreader.ui.screens.library.flattenLibraryItems
+import io.aatricks.easyreader.ui.screens.library.novelChapterRow
+import io.aatricks.easyreader.ui.screens.library.selectableClickBox
 import io.aatricks.easyreader.ui.theme.EasyReaderMotion
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
@@ -92,63 +97,97 @@ internal fun LibraryItemList(
 ): Unit {
     val expandedNovelState = remember { mutableStateMapOf<String, Boolean>() }
     val showFullChaptersState = remember { mutableStateMapOf<String, Boolean>() }
+    val expandedSummaryState = remember { mutableStateMapOf<String, String?>() }
+    val renderItems = flattenLibraryItems(
+        LibraryFlattenState(
+            groupedBySource = uiState.groupedBySource,
+            collapsedSources = uiState.collapsedSources,
+            expandedNovels = expandedNovelState,
+            showFullChapters = showFullChaptersState,
+            expandedSummaryChapterUrls = expandedSummaryState,
+            isSelectionMode = uiState.isSelectionMode
+        )
+    )
+    val context = LibraryRenderContext(
+        uiState = uiState,
+        readerUiState = readerUiState,
+        summaryUiState = summaryUiState,
+        libraryViewModel = libraryViewModel,
+        readerViewModel = readerViewModel,
+        summaryViewModel = summaryViewModel,
+        expandedNovels = expandedNovelState,
+        showFullChapters = showFullChaptersState,
+        expandedSummaries = expandedSummaryState,
+        onCloseLibrary = onCloseLibrary
+    )
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = EasyReaderSpacing.xs, bottom = EasyReaderSpacing.xl),
         verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)
     ) {
-        uiState.groupedBySource.forEach { (sourceName, novels) ->
-            val isSourceExpanded = !uiState.collapsedSources.contains(sourceName)
-
-            item(key = "source_$sourceName") {
-                SourceHeader(
-                    name = sourceName,
-                    isExpanded = isSourceExpanded,
-                    onClick = { libraryViewModel.toggleSourceExpansion(sourceName) }
-                )
-            }
-
-            if (isSourceExpanded) {
-                novels.forEach { (groupTitle, chapterItems) ->
-                    val groupKey = "${sourceName}_$groupTitle"
-
-                    item(key = groupKey) {
-                        val firstItem = chapterItems.firstOrNull()
-                        if (firstItem?.contentType == ContentType.EPUB) {
-                            EpubItemCard(
-                                item = firstItem,
-                                uiState = uiState,
-                                contentRepository = readerViewModel.contentRepository,
-                                readerViewModel = readerViewModel,
-                                libraryViewModel = libraryViewModel,
-                                onCloseLibrary = onCloseLibrary
-                            )
-                        } else {
-                            NovelGroupCard(
-                                title = groupTitle,
-                                items = chapterItems,
-                                uiState = uiState,
-                                readerUiState = readerUiState,
-                                summaryUiState = summaryUiState,
-                                isExpanded = expandedNovelState.getOrPut(groupKey) { false },
-                                showFullChapters = showFullChaptersState[groupKey] ?: false,
-                                onToggleExpand = {
-                                    expandedNovelState[groupKey] = !(expandedNovelState[groupKey] ?: false)
-                                },
-                                onToggleShowFull = {
-                                    showFullChaptersState[groupKey] = !(showFullChaptersState[groupKey] ?: false)
-                                },
-                                libraryViewModel = libraryViewModel,
-                                readerViewModel = readerViewModel,
-                                summaryViewModel = summaryViewModel,
-                                onCloseLibrary = onCloseLibrary
-                            )
-                        }
-                    }
-                }
-            }
+        items(
+            items = renderItems,
+            key = LibraryRenderItem::key,
+            contentType = { it::class }
+        ) { renderItem ->
+            libraryRenderItem(renderItem, context)
         }
+    }
+}
+
+internal data class LibraryRenderContext(
+    val uiState: LibraryViewModel.LibraryUiState,
+    val readerUiState: ReaderViewModel.ReaderUiState,
+    val summaryUiState: SummaryViewModel.SummaryUiState,
+    val libraryViewModel: LibraryViewModel,
+    val readerViewModel: ReaderViewModel,
+    val summaryViewModel: SummaryViewModel,
+    val expandedNovels: MutableMap<String, Boolean>,
+    val showFullChapters: MutableMap<String, Boolean>,
+    val expandedSummaries: MutableMap<String, String?>,
+    val onCloseLibrary: () -> Unit
+)
+
+@Composable
+private fun libraryRenderItem(item: LibraryRenderItem, context: LibraryRenderContext) = with(context) {
+    when (item) {
+        is LibraryRenderItem.SourceHeader -> SourceHeader(
+            name = item.sourceName,
+            isExpanded = item.isExpanded,
+            onClick = { libraryViewModel.toggleSourceExpansion(item.sourceName) }
+        )
+        is LibraryRenderItem.EpubRow -> EpubItemCard(
+            item = item.item,
+            uiState = uiState,
+            contentRepository = readerViewModel.contentRepository,
+            readerViewModel = readerViewModel,
+            libraryViewModel = libraryViewModel,
+            onCloseLibrary = onCloseLibrary
+        )
+        is LibraryRenderItem.NovelHeader -> novelGroupCard(item, context)
+        is LibraryRenderItem.NovelResumeButton -> novelResumeButton(item.item) {
+            openLibraryChapter(item.item, context)
+        }
+        is LibraryRenderItem.ChapterRow -> novelChapterRow(item, context)
+        is LibraryRenderItem.ShowMoreControl -> showMoreControl(item, context)
+    }
+}
+
+@Composable
+private fun showMoreControl(item: LibraryRenderItem.ShowMoreControl, context: LibraryRenderContext) {
+    TextButton(
+        onClick = { context.showFullChapters[item.groupKey] = !item.showFullChapters },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = if (item.showFullChapters) {
+                "Show fewer chapters"
+            } else {
+                "Browse all chapters (${item.chapterCount})"
+            },
+            color = MaterialTheme.colorScheme.primary
+        )
     }
 }
 
@@ -180,34 +219,54 @@ private fun SourceHeader(
     }
 }
 
+@Composable
+private fun novelResumeButton(item: LibraryItem, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = EasyReaderSpacing.sm),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Text(
+            if (item.progress == 0 && item.currentChapterUrl.isBlank()) {
+                "Start reading"
+            } else {
+                "Resume ${item.currentChapter.ifBlank { "reading" }}"
+            }
+        )
+    }
+}
+
+internal fun openLibraryChapter(
+    item: LibraryItem,
+    context: LibraryRenderContext
+): Unit = with(context) {
+    if (uiState.isSelectionMode) {
+        libraryViewModel.toggleSelection(item.id)
+        return
+    }
+    val loadUrl = item.currentChapterUrl.ifBlank { item.url }
+    readerViewModel.loadContent(loadUrl, item.id)
+    libraryViewModel.markAsCurrentlyReading(item.id)
+    onCloseLibrary()
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun NovelGroupCard(
-    title: String,
-    items: List<LibraryItem>,
-    uiState: LibraryViewModel.LibraryUiState,
-    readerUiState: ReaderViewModel.ReaderUiState,
-    summaryUiState: SummaryViewModel.SummaryUiState,
-    isExpanded: Boolean,
-    showFullChapters: Boolean,
-    onToggleExpand: () -> Unit,
-    onToggleShowFull: () -> Unit,
-    libraryViewModel: LibraryViewModel,
-    readerViewModel: ReaderViewModel,
-    summaryViewModel: SummaryViewModel,
-    onCloseLibrary: () -> Unit
-): Unit {
+private fun novelGroupCard(
+    header: LibraryRenderItem.NovelHeader,
+    context: LibraryRenderContext
+): Unit = with(context) {
+    val title = header.title
+    val items = header.items
+    val isExpanded = header.isExpanded
     val isGroupSelected = items.all { it.id in uiState.selectedIds }
     val hasGroupSelection = items.any { it.id in uiState.selectedIds }
-    var expandedSummaryChapterUrl by remember(title, items.firstOrNull()?.sourceName) {
-        mutableStateOf<String?>(null)
-    }
-
-    LaunchedEffect(isExpanded) {
-        if (!isExpanded) {
-            expandedSummaryChapterUrl = null
-        }
-    }
 
     Card(
         modifier = Modifier
@@ -230,7 +289,10 @@ private fun NovelGroupCard(
                 isGroupSelected = isGroupSelected,
                 hasGroupSelection = hasGroupSelection,
                 readerUiState = readerUiState,
-                onToggleExpand = onToggleExpand,
+                onToggleExpand = {
+                    expandedNovels[header.groupKey] = !header.isExpanded
+                    if (header.isExpanded) expandedSummaries[header.groupKey] = null
+                },
                 onToggleSelection = { libraryViewModel.toggleGroupSelection(title) },
                 onOpenItem = { item ->
                     val loadUrl = if (item.currentChapterUrl.isNotBlank()) item.currentChapterUrl else item.url
@@ -248,66 +310,7 @@ private fun NovelGroupCard(
                 onResetProgress = { libraryViewModel.resetNovelProgress(title) },
                 onRemoveGroup = { libraryViewModel.removeGroup(title) }
             )
-
-            if (isExpanded) {
-                NovelChapterList(
-                    items = items,
-                    uiState = uiState,
-                    summaryUiState = summaryUiState,
-                    showFullChapters = showFullChapters,
-                    onToggleShowFull = onToggleShowFull,
-                    expandedSummaryChapterUrl = expandedSummaryChapterUrl,
-                    onToggleSummary = { chapterUrl ->
-                        expandedSummaryChapterUrl =
-                            if (expandedSummaryChapterUrl == chapterUrl) null else chapterUrl
-                    },
-                    onChapterClick = { chapter ->
-                        if (uiState.isSelectionMode) {
-                            libraryViewModel.toggleSelection(chapter.id)
-                        } else {
-                            val loadUrl = if (chapter.currentChapterUrl.isNotBlank()) chapter.currentChapterUrl else chapter.url
-                            readerViewModel.loadContent(loadUrl, chapter.id)
-                            libraryViewModel.markAsCurrentlyReading(chapter.id)
-                            onCloseLibrary()
-                        }
-                    },
-                    onChapterLongClick = { libraryViewModel.toggleSelection(it.id) },
-                    summaryViewModel = summaryViewModel,
-                    libraryViewModel = libraryViewModel,
-                    readerViewModel = readerViewModel
-                )
-            }
         }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun SelectableClickBox(
-    modifier: Modifier = Modifier,
-    onClick: (() -> Unit)? = null,
-    onLongClick: (() -> Unit)? = null,
-    content: @Composable BoxScope.() -> Unit
-) {
-    val hapticFeedback = LocalHapticFeedback.current
-    Box(
-        modifier = modifier.then(
-            if (onClick != null || onLongClick != null) {
-                Modifier.combinedClickable(
-                    onClick = { onClick?.invoke() },
-                    onLongClick = {
-                        if (onLongClick != null) {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onLongClick.invoke()
-                        }
-                    }
-                )
-            } else {
-                Modifier
-            }
-        )
-    ) {
-        content()
     }
 }
 
@@ -346,7 +349,7 @@ private fun NovelGroupHeader(
             )
         }
 
-        SelectableClickBox(
+        selectableClickBox(
             modifier = Modifier.weight(1f),
             onClick = {
                 if (isSelectionMode) onToggleSelection() else onOpenItem(resumeItem)
@@ -444,200 +447,6 @@ private fun NovelGroupHeader(
                         }
                     )
                 }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun NovelChapterList(
-    items: List<LibraryItem>,
-    uiState: LibraryViewModel.LibraryUiState,
-    summaryUiState: SummaryViewModel.SummaryUiState,
-    showFullChapters: Boolean,
-    onToggleShowFull: () -> Unit,
-    expandedSummaryChapterUrl: String?,
-    onToggleSummary: (String) -> Unit,
-    onChapterClick: (LibraryItem) -> Unit,
-    onChapterLongClick: (LibraryItem) -> Unit,
-    summaryViewModel: SummaryViewModel,
-    libraryViewModel: LibraryViewModel,
-    readerViewModel: ReaderViewModel
-): Unit {
-    val scope = rememberCoroutineScope()
-    Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
-
-    val lastRead = items.find { it.isCurrentlyReading } ?: items.maxByOrNull { it.lastRead }
-    if (!uiState.isSelectionMode && lastRead != null) {
-        Button(
-            onClick = { onChapterClick(lastRead) },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-            ),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text(
-                if (lastRead.progress == 0 && lastRead.currentChapterUrl.isBlank()) {
-                    "Start reading"
-                } else {
-                    "Resume ${lastRead.currentChapter.ifBlank { "reading" }}"
-                }
-            )
-        }
-        Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
-    }
-
-    val visibleChapters = if (showFullChapters) items else items.take(3)
-
-    Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)) {
-        visibleChapters.forEach { chapterItem ->
-            val isSelected = uiState.selectedIds.contains(chapterItem.id)
-            val isCurrent = chapterItem.id == lastRead?.id
-            val chapterUrl = if (chapterItem.currentChapterUrl.isNotBlank()) chapterItem.currentChapterUrl else chapterItem.url
-            val isSummaryExpanded = expandedSummaryChapterUrl == chapterUrl
-            val targetRowColor = when {
-                isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.26f)
-                isCurrent -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.16f)
-                else -> Color.Transparent
-            }
-            val rowColor by animateColorAsState(
-                targetValue = targetRowColor,
-                animationSpec = tween(EasyReaderMotion.short),
-                label = "chapterRowColor"
-            )
-
-            Column(modifier = Modifier.fillMaxWidth()) {
-                SelectableClickBox(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { onChapterClick(chapterItem) },
-                    onLongClick = { onChapterLongClick(chapterItem) }
-                ) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = rowColor,
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = EasyReaderSpacing.xs, vertical = EasyReaderSpacing.xs),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
-                        ) {
-                            if (uiState.isSelectionMode) {
-                                Checkbox(
-                                    checked = isSelected,
-                                    onCheckedChange = { onChapterClick(chapterItem) }
-                                )
-                            }
-
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (chapterItem.isDownloaded) {
-                                        Icon(
-                                            imageVector = Icons.Default.DownloadDone,
-                                            contentDescription = "Downloaded",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
-                                    }
-                                    Text(
-                                        text = chapterItem.currentChapter.ifBlank { "Chapter 1" },
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary
-                                        else if (isCurrent) MaterialTheme.colorScheme.secondary
-                                        else MaterialTheme.colorScheme.onSurface,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                }
-                                if (isCurrent) {
-                                    Text(
-                                        text = "Resume here",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.secondary
-                                    )
-                                }
-                            }
-
-                            if (!uiState.isSelectionMode) {
-                                if (chapterItem.isDownloaded) {
-                                    IconButton(
-                                        onClick = { libraryViewModel.removeDownload(chapterItem.id) },
-                                        modifier = Modifier.minimumInteractiveComponentSize()
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.DownloadDone,
-                                            contentDescription = "Remove download",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                }
-                                TextButton(onClick = { onToggleSummary(chapterUrl) }) {
-                                    Text(if (isSummaryExpanded) "Hide summary" else "Chapter summary")
-                                }
-                            }
-                        }
-                    }
-                }
-
-                val cachedSummary = chapterItem.chapterSummaries[chapterUrl]
-                val streamingSummary = if (summaryUiState.activeChapterUrl == chapterUrl) summaryUiState.currentSummary else cachedSummary
-
-                AnimatedVisibility(
-                    visible = isSummaryExpanded,
-                    enter = expandVertically(animationSpec = tween(EasyReaderMotion.medium)) +
-                        fadeIn(animationSpec = tween(EasyReaderMotion.short)),
-                    exit = shrinkVertically(animationSpec = tween(EasyReaderMotion.short)) +
-                        fadeOut(animationSpec = tween(EasyReaderMotion.short))
-                ) {
-                    ChapterSummaryDropdown(
-                        summary = streamingSummary,
-                        isGenerating = summaryUiState.isGenerating && summaryUiState.activeChapterUrl == chapterUrl,
-                        aiSupportedInBuild = summaryUiState.supportsAi,
-                        aiOptedIn = summaryUiState.isEnabled,
-                        onEnableAi = { summaryViewModel.setAiSummaryEnabled(true) },
-                        isInitializing = summaryUiState.isInitializing,
-                        isReady = summaryViewModel.isServiceReady(),
-                        onGenerateSummary = {
-                            scope.launch {
-                                val result = readerViewModel.contentRepository.loadContent(chapterUrl)
-                                if (result is ContentResult.Success) {
-                                    summaryViewModel.generateSummary(
-                                        chapterUrl = chapterUrl,
-                                        chapterTitle = chapterItem.currentChapter.ifBlank { chapterItem.title },
-                                        content = result.elements
-                                            .filterIsInstance<ContentElement.Text>()
-                                            .map { it.content }
-                                    ) { summary ->
-                                        val updatedSummaries = chapterItem.chapterSummaries.toMutableMap()
-                                        updatedSummaries[chapterUrl] = summary
-                                        libraryViewModel.updateItem(
-                                            chapterItem.copy(chapterSummaries = updatedSummaries)
-                                        )
-                                    }
-                                }
-                            }
-                        },
-                        onCancel = { summaryViewModel.cancelGeneration() },
-                        modifier = Modifier.padding(top = EasyReaderSpacing.xxs)
-                    )
-                }
-            }
-        }
-
-        if (items.size > 3) {
-            TextButton(
-                onClick = onToggleShowFull,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = if (showFullChapters) "Show fewer chapters" else "Browse all chapters (${items.size})",
-                    color = MaterialTheme.colorScheme.primary
-                )
             }
         }
     }

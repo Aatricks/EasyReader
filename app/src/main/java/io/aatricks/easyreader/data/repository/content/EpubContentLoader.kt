@@ -50,6 +50,8 @@ class EpubContentLoader @Inject constructor(
     }
 
     private val epubBookCache = object : LruCache<String, EpubBook>(5) {}
+    private val extractedImageDir = File(epubCacheDir, "extracted_images")
+    private val extractedImageCache = EpubImageDiskCache(extractedImageDir)
 
     private data class ManifestItem(
         val id: String,
@@ -61,6 +63,11 @@ class EpubContentLoader @Inject constructor(
     private data class SpineItems(
         val raw: List<String>,
         val reading: List<String>
+    )
+
+    private data class EpubImageRequest(
+        val epubFile: File,
+        val imageHref: String
     )
 
     suspend fun loadEpubContent(filePath: String, chapterHref: String? = null): ContentResult = withContext(Dispatchers.IO) {
@@ -97,35 +104,31 @@ class EpubContentLoader @Inject constructor(
         }.getOrDefault(false)
     }
 
-    suspend fun getEpubImage(url: String): ByteArray? = withContext(Dispatchers.IO) {
+    suspend fun getEpubImage(url: String): ByteArray? = getEpubImageFile(url)?.readBytes()
+
+    suspend fun getEpubImageFile(url: String): File? = withContext(Dispatchers.IO) {
         runCatching {
-            val parts = url.split("#img:", limit = 2).takeIf { it.size == 2 } ?: return@withContext null
-            val epubPath = parts[0]
-            val imgHref = parts[1].replace("\\", "/").removePrefix("/")
-
-            val fileToRead = resolveEpubFile(epubPath)
-            if (!fileToRead.exists()) return@withContext null
-
-            try {
-                ZipFile(fileToRead).use { zip ->
-                    val entry = zip.getEntry(imgHref)
-                        ?: zip.entries().asSequence().firstOrNull {
-                            val name = it.name.replace("\\", "/").removePrefix("/")
-                            name == imgHref || name.endsWith("/$imgHref")
-                        }
-
-                    entry?.let {
-                        ZipUtils.readZipEntrySafely(zip, it.name, 50 * 1024 * 1024)
-                    }
-                }
-            } catch (e: Exception) {
-                throw e
-            }
+            val request = resolveEpubImageRequest(url)
+            request?.let { extractedImageCache.get(it.epubFile, it.imageHref) }
         }.getOrNull()
+    }
+
+    private fun resolveEpubImageRequest(url: String): EpubImageRequest? {
+        val parts = url.split("#img:", limit = 2).takeIf { it.size == 2 }
+        val epubFile = parts?.firstOrNull()?.let(::resolveEpubFile)
+        return if (parts != null && epubFile?.exists() == true) {
+            EpubImageRequest(
+                epubFile = epubFile,
+                imageHref = parts[1].replace("\\", "/").removePrefix("/")
+            )
+        } else {
+            null
+        }
     }
 
     fun clearCache(url: String) {
         epubBookCache.remove(url)
+        extractedImageCache.clear()
         prefetchedImageDirVariants(url).forEach { it.deleteRecursively() }
         cachedEpubFileVariants(url).forEach { it.delete() }
     }
@@ -140,6 +143,7 @@ class EpubContentLoader @Inject constructor(
         epubCacheDir.deleteRecursively()
         epubBookCache.evictAll()
         epubCacheDir.mkdirs()
+        extractedImageCache.onExternalChange(isCleared = true)
     }
 
     fun clearAllDownloads() {
@@ -150,6 +154,7 @@ class EpubContentLoader @Inject constructor(
 
     fun trimCache(maxBytes: Long) {
         FileSizeUtils.trimDirectoryToSize(epubCacheDir, maxBytes)
+        extractedImageCache.onExternalChange(isCleared = false)
     }
 
     fun getCacheSize(): Long {

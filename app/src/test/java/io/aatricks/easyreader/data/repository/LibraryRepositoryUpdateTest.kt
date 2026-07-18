@@ -1,5 +1,6 @@
 package io.aatricks.easyreader.data.repository
 
+import io.aatricks.easyreader.data.local.LibraryBatchUpdate
 import io.aatricks.easyreader.data.local.LibraryDao
 import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.model.ChapterInfo
@@ -40,10 +41,52 @@ class LibraryRepositoryUpdateTest {
         whenever(preferencesManager.loadLibraryItems()).thenReturn(emptyList())
         whenever(preferencesManager.loadCollapsedSources()).thenReturn(emptySet())
         whenever(libraryDao.getAllItems()).thenReturn(flowOf(emptyList()))
+        runBlocking {
+            whenever(libraryDao.applyLibraryUpdates(any())).thenAnswer { invocation ->
+                val updates = invocation.arguments[0] as List<LibraryBatchUpdate>
+                runBlocking {
+                    updates.forEach { update ->
+                        libraryDao.updateTotalChapters(update.itemId, update.newTotalChapters)
+                        if (update.markHasUpdates) {
+                            libraryDao.markHasUpdates(update.itemId)
+                        }
+                    }
+                }
+                Unit
+            }
+        }
         repository = LibraryRepository(libraryDao, preferencesManager)
 
         // Clear invocations from initialization
         clearInvocations(libraryDao)
+    }
+
+    @Test
+    fun `refreshLibraryUpdates uses single transactional batch entrypoint for chapter updates`() = runBlocking {
+        val now = System.currentTimeMillis()
+        val item1 = LibraryItem(
+            id = "id1", title = "Ch 1", url = "url1", baseTitle = "Novel A", baseNovelUrl = "novelA",
+            sourceName = "Source", totalChapters = 10, lastRead = now, dateAdded = now, isCurrentlyReading = true, progress = 100
+        )
+        val item2 = LibraryItem(
+            id = "id2", title = "Ch 2", url = "url2", baseTitle = "Novel B", baseNovelUrl = "novelB",
+            sourceName = "Source", totalChapters = 5, lastRead = now, dateAdded = now, isCurrentlyReading = true, progress = 100
+        )
+        whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(item1, item2)))
+        whenever(exploreRepository.getNovelDetails(eq("novelA"), eq("Source"))).thenReturn(
+            ExploreItem("Novel A", "novelA", source = "Source", chapters = chapterList(20, "novelA"))
+        )
+        whenever(exploreRepository.getNovelDetails(eq("novelB"), eq("Source"))).thenReturn(
+            ExploreItem("Novel B", "novelB", source = "Source", chapters = chapterList(10, "novelB"))
+        )
+
+        repository.refreshLibraryUpdates(exploreRepository)
+
+        verify(libraryDao, times(1)).applyLibraryUpdates(check { updates ->
+            assertEquals(2, updates.size)
+            assertTrue(updates.any { it.itemId == "id1" && it.newTotalChapters == 20 })
+            assertTrue(updates.any { it.itemId == "id2" && it.newTotalChapters == 10 })
+        })
     }
 
     @Test

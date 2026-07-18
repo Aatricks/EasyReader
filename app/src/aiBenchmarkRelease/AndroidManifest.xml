@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver
+            android:name="io.aatricks.easyreader.benchmark.BenchmarkFixtureReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.aatricks.easyreader.benchmark.SEED" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="io.aatricks.easyreader.benchmark.BenchmarkAiInitializationReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.aatricks.easyreader.benchmark.CHECK_AI_MODEL" />
+                <action android:name="io.aatricks.easyreader.benchmark.INITIALIZE_AI" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

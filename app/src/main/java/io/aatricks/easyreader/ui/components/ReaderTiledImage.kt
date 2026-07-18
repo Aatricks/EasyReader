@@ -23,7 +23,11 @@ import coil3.size.Precision
 import coil3.size.Scale
 import coil3.size.Size as CoilSize
 import io.aatricks.easyreader.data.repository.content.ReaderImageTile
+import io.aatricks.easyreader.ui.screens.reader.RenderPayload
 import kotlin.math.roundToInt
+
+internal fun readerImageTileCacheKey(imageUrl: String, tileIndex: Int, tileCount: Int): String =
+    "$imageUrl#$tileIndex/$tileCount"
 
 /** Display height (px) above which a strip is sliced; also the target max height of each slice. */
 private const val MAX_TILE_DISPLAY_PX = 2048
@@ -35,21 +39,9 @@ internal fun readerImageSliceCount(displayWidthPx: Int, srcWidth: Int, srcHeight
     return ((displayHeightPx + MAX_TILE_DISPLAY_PX - 1) / MAX_TILE_DISPLAY_PX).toInt().coerceAtLeast(1)
 }
 
-/**
- * Renders a tall web strip as [sliceCount] vertically-stacked, region-decoded slices. Each slice is
- * a hardware bitmap (see ReaderImageTileFetcher), so only the on-screen slices pay any draw cost
- * and there is no GPU texture upload on the draw frame.
- *
- * Tiles are placed at pixel-exact integer offsets that abut perfectly, and every slice except the
- * last is drawn 1px taller so consecutive slices overlap — this hides the thin seam lines that
- * independent sub-pixel rounding / bilinear edge-filtering would otherwise leave between slices.
- */
 @Composable
-fun ReaderTiledImage(
-    imageUrl: String,
-    pageUrl: String,
-    sliceAspect: Float,
-    sliceCount: Int,
+internal fun readerImageTileView(
+    tile: RenderPayload.Tile,
     backgroundColor: Color,
     onTap: (() -> Unit)? = null
 ) {
@@ -57,6 +49,16 @@ fun ReaderTiledImage(
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val screenWidthPx = with(density) { configuration.screenWidthDp.dp.roundToPx() }
+    val request = remember(tile, screenWidthPx) {
+        ImageRequest.Builder(context)
+            .data(ReaderImageTile(tile.imageUrl, tile.pageUrl, tile.tileIndex, tile.tileCount))
+            .memoryCacheKey(readerImageTileCacheKey(tile.imageUrl, tile.tileIndex, tile.tileCount))
+            .size(CoilSize(Dimension.Pixels(screenWidthPx), Dimension.Undefined))
+            .scale(Scale.FIT)
+            .precision(Precision.INEXACT)
+            .crossfade(false)
+            .build()
+    }
 
     Layout(
         modifier = Modifier
@@ -67,40 +69,26 @@ fun ReaderTiledImage(
                 onClick = { onTap?.invoke() }
             ),
         content = {
-            repeat(sliceCount) { index ->
-                val request = remember(imageUrl, pageUrl, index, sliceCount) {
-                    ImageRequest.Builder(context)
-                        .data(ReaderImageTile(imageUrl, pageUrl, index, sliceCount))
-                        .memoryCacheKey("$imageUrl#$index/$sliceCount")
-                        .size(CoilSize(Dimension.Pixels(screenWidthPx), Dimension.Undefined))
-                        .scale(Scale.FIT)
-                        .precision(Precision.INEXACT)
-                        .crossfade(false)
-                        .build()
+            AsyncImage(
+                model = request,
+                contentDescription = null,
+                modifier = Modifier.fillMaxWidth().background(backgroundColor),
+                contentScale = ContentScale.FillBounds,
+                onSuccess = { state ->
+                    (state.result.image as? coil3.BitmapImage)?.bitmap?.prepareToDraw()
                 }
-                AsyncImage(
-                    model = request,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxWidth().background(backgroundColor),
-                    contentScale = ContentScale.FillBounds,
-                    onSuccess = { state ->
-                        (state.result.image as? coil3.BitmapImage)?.bitmap?.prepareToDraw()
-                    }
-                )
-            }
+            )
         }
     ) { measurables, constraints ->
         val width = constraints.maxWidth
-        // fullAspect (w/h of the whole strip) = sliceAspect / sliceCount.
-        val totalHeight = (width * sliceCount / sliceAspect).roundToInt().coerceAtLeast(sliceCount)
-        val edges = IntArray(sliceCount + 1) { (totalHeight.toLong() * it / sliceCount).toInt() }
-        val placeables = measurables.mapIndexed { i, measurable ->
-            val overlap = if (i < sliceCount - 1) 1 else 0
-            val height = (edges[i + 1] - edges[i] + overlap).coerceAtLeast(1)
-            measurable.measure(Constraints.fixed(width, height))
-        }
-        layout(width, totalHeight) {
-            placeables.forEachIndexed { i, placeable -> placeable.place(0, edges[i]) }
+        val totalHeight = (width * tile.tileCount / tile.sliceAspect).roundToInt().coerceAtLeast(tile.tileCount)
+        val start = (totalHeight.toLong() * tile.tileIndex / tile.tileCount).toInt()
+        val end = (totalHeight.toLong() * (tile.tileIndex + 1) / tile.tileCount).toInt()
+        val itemHeight = (end - start).coerceAtLeast(1)
+        val overlap = if (tile.tileIndex < tile.tileCount - 1) 1 else 0
+        val placeable = measurables.single().measure(Constraints.fixed(width, itemHeight + overlap))
+        layout(width, itemHeight) {
+            placeable.place(0, 0)
         }
     }
 }

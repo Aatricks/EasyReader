@@ -1,32 +1,15 @@
-# Ktor rules
--keep class io.ktor.** { *; }
--keep interface io.ktor.** { *; }
-
-# Kotlinx Serialization rules
--keep class kotlinx.serialization.** { *; }
--keep interface kotlinx.serialization.** { *; }
+# Reflection metadata used by serialization and PDF/network libraries. The libraries' own
+# consumer rules retain the concrete classes that require it.
 -keepattributes *Annotation*, InnerClasses, EnclosingMethod, Signature, Exceptions
 
-# Hilt/Dagger rules
--keep class dagger.hilt.** { *; }
--keep interface dagger.hilt.** { *; }
-
-# Room rules
--keep class androidx.room.** { *; }
--keep interface androidx.room.** { *; }
-
-# OkHttp rules
--keep class okhttp3.** { *; }
--keep interface okhttp3.** { *; }
-
-# iText7 — must not be obfuscated; uses instanceof checks on internal class hierarchy
--keep class com.itextpdf.** { *; }
--keep interface com.itextpdf.** { *; }
+# iText references optional algorithms that are not part of this app's PDF feature set.
 -dontwarn com.itextpdf.**
 
-# llmedge rules
--keep class io.aatricks.llmedge.** { *; }
--keep interface io.aatricks.llmedge.** { *; }
+# iText rejects its own internal events when their runtime package names are obfuscated.
+-keepnames class com.itextpdf.** extends com.itextpdf.commons.actions.AbstractITextEvent
+
+# llmedge publishes consumer rules for its JNI entry points. Keep optional integrations absent
+# from the AI flavor quiet without preventing R8 from shrinking unused Java APIs.
 -dontwarn io.aatricks.llmedge.**
 
 # Suppress warnings for optional dependencies referenced by llmedge / Ktor

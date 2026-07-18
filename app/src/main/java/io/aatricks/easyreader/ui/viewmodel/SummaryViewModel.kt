@@ -107,10 +107,8 @@ class SummaryViewModel @Inject constructor(
                 currentSummary = null
             ) }
 
-            val sb = StringBuilder()
-            summaryService.generateSummary(chapterTitle, content, onProgress = { token ->
-                sb.append(token)
-                updateState { it.copy(currentSummary = sb.toString()) }
+            summaryService.generateSummary(chapterTitle, content, onProgress = { snapshot ->
+                updateState { it.copy(currentSummary = snapshot) }
             }).onSuccess { summary ->
                 handleGenerationSuccess(chapterUrl, summary, onComplete)
             }.onFailure { e ->

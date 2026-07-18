@@ -3,6 +3,7 @@
 /.idea
 .DS_Store
 /build
+/benchmark/build
 /captures
 .externalNativeBuild
 .cxx
@@ -13,6 +14,8 @@
 .log
 keystore_base64.txt
 *.txt
+!app/src/standardRelease/generated/baselineProfiles/*.txt
+!app/src/aiRelease/generated/baselineProfiles/*.txt
 *.log
 memory.instructions
 docs/ai

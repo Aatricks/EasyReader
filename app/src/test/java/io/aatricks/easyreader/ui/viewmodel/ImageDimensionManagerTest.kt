@@ -1,6 +1,8 @@
 package io.aatricks.easyreader.ui.viewmodel
 
 import io.aatricks.easyreader.data.local.ImageDimensionDao
+import io.aatricks.easyreader.data.model.ChapterContent
+import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.ImageDimensionEntity
 import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
 import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
@@ -49,7 +51,6 @@ class ImageDimensionManagerTest {
 
         manager.persistImageDimensions("http://img/1.jpg", 800, 1200)
         advanceUntilIdle()
-        // Re-entry of a recycled item re-reports the same dimensions.
         manager.persistImageDimensions("http://img/1.jpg", 800, 1200)
         manager.persistImageDimensions("http://img/1.jpg", 800, 1200)
         advanceUntilIdle()
@@ -93,8 +94,6 @@ class ImageDimensionManagerTest {
 
         manager.persistImageDimensions("http://old/1.jpg", 800, 1200)
         manager.persistImageDimensions("http://kept/2.jpg", 900, 1400)
-        // Prune before the 350ms apply debounce fires: the old chapter's update must not
-        // survive into the rebuilt batch, the kept one must.
         manager.pruneForChapter(setOf("http://kept/2.jpg"))
         advanceUntilIdle()
 
@@ -110,9 +109,6 @@ class ImageDimensionManagerTest {
         advanceUntilIdle()
         assertEquals(1, batches.size)
 
-        // A url shared with the previous chapter keeps its state, but the new chapter's
-        // element may still lack dimensions — prune must schedule a fresh apply because the
-        // duplicate-persist guard blocks any future decode from doing so.
         manager.pruneForChapter(setOf("http://kept/2.jpg"))
         advanceUntilIdle()
 
@@ -129,8 +125,6 @@ class ImageDimensionManagerTest {
         advanceUntilIdle()
         assertTrue(dao.upserted.isEmpty())
 
-        // Without the re-queue, the duplicate-persist guard would swallow every later
-        // re-report of these dims and they would never reach the DB this session.
         dao.failWrites = false
         manager.persistImageDimensions("http://img/2.jpg", 700, 1000)
         advanceUntilIdle()
@@ -150,6 +144,24 @@ class ImageDimensionManagerTest {
 
         assertNull(manager.dimensionState("http://img/1.jpg").value)
         assertEquals(0, batches.size)
+    }
+
+    @Test
+    fun `content transform updates images without rebuilding text elements`() {
+        val text = ContentElement.Text("Paragraph")
+        val image = ContentElement.Image("http://img/1.jpg")
+        val content = ChapterContent(paragraphs = listOf(text, image), url = "http://chapter/1")
+
+        val updated = applyResolvedImageDimensions(
+            content,
+            mapOf(image.url to (800 to 12_000))
+        )
+
+        assertSame(text, updated.paragraphs[0])
+        assertEquals(
+            ContentElement.Image("http://img/1.jpg", width = 800, height = 12_000),
+            updated.paragraphs[1]
+        )
     }
 
     private class FlakyImageDimensionDao : ImageDimensionDao {
