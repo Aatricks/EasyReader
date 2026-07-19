@@ -22,7 +22,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "EasyReader"
+rootProject.name = "Emaki"
 include(":app")
 include(":benchmark")
  

@@ -118,7 +118,7 @@ private fun updateDialog(
             onDismiss()
             updateViewModel.clearUpdateState()
         },
-        title = { Text("Update EasyReader") },
+        title = { Text("Update Emaki") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
                 Text(
@@ -266,7 +266,7 @@ private fun permissionWarningDialog(
         title = { Text("Permission Required") },
         text = {
             Text(
-                "To install updates, EasyReader needs permission to install apps from " +
+                "To install updates, Emaki needs permission to install apps from " +
                     "unknown sources. You will be taken to system settings to enable this."
             )
         },

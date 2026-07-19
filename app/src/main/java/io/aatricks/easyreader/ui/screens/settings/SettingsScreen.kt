@@ -147,7 +147,7 @@ fun SettingsScreen(
             if (err != null) {
                 snackbarHostState.showSnackbar("Error checking updates: $err")
             } else if (update == null) {
-                snackbarHostState.showSnackbar("EasyReader is up to date (${updateState.currentVersion})")
+                snackbarHostState.showSnackbar("Emaki is up to date (${updateState.currentVersion})")
             }
             userTriggeredCheck = false
         }
@@ -433,7 +433,7 @@ fun SettingsScreen(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
             SettingsSection(title = "About") {
-                SettingsRow(title = "App", subtitle = "EasyReader (${updateState.currentVersion})")
+                SettingsRow(title = "App", subtitle = "Emaki (${updateState.currentVersion})")
                 SettingsRow(title = "License", subtitle = "GPL-3.0")
 
                 Row(
@@ -454,7 +454,7 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Check once a day when EasyReader opens",
+                            text = "Check once a day when Emaki opens",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

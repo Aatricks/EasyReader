@@ -1,4 +1,6 @@
-# EasyReader
+# Emaki
+
+*Formerly EasyReader. Named after the emaki (絵巻), the Japanese narrative picture scroll — the thousand-year-old ancestor of the webtoon.*
 
 [![Android](https://img.shields.io/badge/Android-11%2B-green.svg)](https://www.android.com/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.21-blue.svg)](https://kotlinlang.org/)
@@ -7,9 +9,9 @@
 An Android reader for web novels, manga, manhwa, and local files (like PDFs and EPUBs). Built with Kotlin and Jetpack Compose.
 
 <p align="center">
-  <img src="docs/screenshots/ManwhaReader.jpg" alt="EasyReader Manwha reader" width="200" style="margin: 10px;" />
-  <img src="docs/screenshots/NovelReader.jpg" alt="EasyReader Novel reader" width="200" style="margin: 10px;" />
-  <img src="docs/screenshots/Explorer.jpg" alt="EasyReader Explorer" width="200" style="margin: 10px;" />
+  <img src="docs/screenshots/ManwhaReader.jpg" alt="Emaki Manwha reader" width="200" style="margin: 10px;" />
+  <img src="docs/screenshots/NovelReader.jpg" alt="Emaki Novel reader" width="200" style="margin: 10px;" />
+  <img src="docs/screenshots/Explorer.jpg" alt="Emaki Explorer" width="200" style="margin: 10px;" />
 </p>
 
 ## Features
@@ -51,7 +53,7 @@ The app has two build flavors:
   ```
 
 > [!NOTE]
-> The app package name is still `io.aatricks.novelscraper` so existing installs don't break, but the source code namespace is `io.aatricks.easyreader`.
+> The app package name is still `io.aatricks.novelscraper` and the source code namespace is still `io.aatricks.easyreader` so existing installs keep updating in place across the EasyReader → Emaki rename.
 
 ## Contributing
 

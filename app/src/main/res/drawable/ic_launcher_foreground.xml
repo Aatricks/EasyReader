@@ -1,4 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
-<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
-    android:src="@mipmap/ic_launcher"
-    android:gravity="center" />
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.88"
+        android:scaleY="0.88"
+        android:pivotX="54"
+        android:pivotY="54">
+    <!-- Hanging scroll (emaki/kakemono): paper between two rollers -->
+    <!-- Paper -->
+    <path
+        android:pathData="M36,30 h36 v50 h-36 z"
+        android:fillColor="#F4EAD5" />
+    <!-- Ink lines -->
+    <path
+        android:pathData="M42,40 h24 a1.5,1.5 0 0 1 0,3 h-24 a1.5,1.5 0 0 1 0,-3 z"
+        android:fillColor="#2A2438" />
+    <path
+        android:pathData="M42,48 h24 a1.5,1.5 0 0 1 0,3 h-24 a1.5,1.5 0 0 1 0,-3 z"
+        android:fillColor="#2A2438" />
+    <path
+        android:pathData="M42,56 h16 a1.5,1.5 0 0 1 0,3 h-16 a1.5,1.5 0 0 1 0,-3 z"
+        android:fillColor="#2A2438" />
+    <!-- Hanko seal -->
+    <path
+        android:pathData="M59,64 h6 a2,2 0 0 1 2,2 v4 a2,2 0 0 1 -2,2 h-6 a2,2 0 0 1 -2,-2 v-4 a2,2 0 0 1 2,-2 z"
+        android:fillColor="#D0453A" />
+    <!-- Rollers -->
+    <path
+        android:pathData="M34,26 h40 a4,4 0 0 1 4,4 a4,4 0 0 1 -4,4 h-40 a4,4 0 0 1 -4,-4 a4,4 0 0 1 4,-4 z"
+        android:fillColor="#C9A15C" />
+    <path
+        android:pathData="M34,76 h40 a4,4 0 0 1 4,4 a4,4 0 0 1 -4,4 h-40 a4,4 0 0 1 -4,-4 a4,4 0 0 1 4,-4 z"
+        android:fillColor="#C9A15C" />
+    </group>
+</vector>
