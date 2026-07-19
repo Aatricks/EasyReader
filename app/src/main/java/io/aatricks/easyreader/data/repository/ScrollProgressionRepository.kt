@@ -18,6 +18,11 @@ import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 import javax.inject.Singleton
 
+data class FinishedSeriesData(
+    val title: String,
+    val coverImageUrl: String
+)
+
 @Singleton
 class ScrollProgressionRepository(
     private val readingSessionDao: ReadingSessionDao,
@@ -88,6 +93,18 @@ class ScrollProgressionRepository(
     val unseenMilestoneCount: Flow<Int> = progression.map { prog ->
         val seen = preferencesManager.scrollSeenMilestones
         prog.milestones.count { it.unlockedAtMs != null && it.id !in seen }
+    }
+
+    val finishedSeriesData: Flow<List<FinishedSeriesData>> = libraryRepository.libraryItems.map { items ->
+        items.groupBy { it.libraryNovelKey() }
+            .filter { (_, seriesItems) -> seriesReadingStatus(seriesItems) == SeriesReadingStatus.FINISHED }
+            .map { (_, seriesItems) ->
+                val firstItem = seriesItems.first()
+                FinishedSeriesData(
+                    title = firstItem.baseTitle.ifBlank { firstItem.title },
+                    coverImageUrl = firstItem.coverImageUrl
+                )
+            }
     }
 
     fun markAllMilestonesSeen() {

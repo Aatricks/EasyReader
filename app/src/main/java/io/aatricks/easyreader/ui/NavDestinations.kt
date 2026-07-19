@@ -15,6 +15,9 @@ object LibraryRoute
 object SettingsRoute
 
 @Serializable
+object ScrollRoute
+
+@Serializable
 data class NovelDetailsRoute(
     val url: String,
     val source: String

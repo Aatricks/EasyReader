@@ -30,6 +30,9 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.hilt.navigation.compose.hiltViewModel
+import io.aatricks.easyreader.ui.ScrollRoute
+import io.aatricks.easyreader.ui.viewmodel.ScrollViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -206,6 +209,11 @@ fun ReaderScreen(
                                 launchSingleTop = true
                             }
                         },
+                        onScrollClick = {
+                            navController.navigate(ScrollRoute) {
+                                launchSingleTop = true
+                            }
+                        },
                         onOpenLibraryItem = { item ->
                             val loadUrl = if (item.currentChapterUrl.isNotBlank()) item.currentChapterUrl else item.url
                             readerViewModel.loadContent(loadUrl, item.id)
@@ -268,6 +276,23 @@ fun ReaderScreen(
 
                 if (uiState.isNavigating) {
                     NavigationOverlay()
+                }
+
+                val scrollViewModel: ScrollViewModel = hiltViewModel()
+                val xpNotice by scrollViewModel.xpNotice.collectAsState()
+                AnimatedVisibility(
+                    visible = xpNotice != null,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding() + 32.dp)
+                ) {
+                    Text(
+                        text = xpNotice ?: "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
                 }
             }
         }

@@ -23,6 +23,7 @@ detekt {
     baseline = file("detekt-baseline.xml")
     parallel = true
     buildUponDefaultConfig = true
+    config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
     autoCorrect = false
 }
 

@@ -5,6 +5,8 @@ import io.aatricks.easyreader.data.model.ReadingSessionEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -25,6 +27,9 @@ class ReadingSessionTracker(
     private var activeMillis: Long = 0L
     private var chaptersCompleted: Int = 0
     private val completedChapters = mutableSetOf<String>()
+
+    private val _completionEvents = MutableSharedFlow<Int>(extraBufferCapacity = 1)
+    val completionEvents: SharedFlow<Int> = _completionEvents
 
     val isTracking: Boolean
         get() = currentNovelKey != null
@@ -62,8 +67,10 @@ class ReadingSessionTracker(
         if (currentNovelKey == null) return
         if (chapterUrl.isNullOrBlank()) {
             chaptersCompleted++
+            _completionEvents.tryEmit(chaptersCompleted)
         } else if (completedChapters.add(chapterUrl)) {
             chaptersCompleted++
+            _completionEvents.tryEmit(chaptersCompleted)
         }
     }
 

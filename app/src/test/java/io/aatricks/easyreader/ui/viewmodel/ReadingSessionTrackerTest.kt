@@ -5,6 +5,9 @@ import io.aatricks.easyreader.data.local.SessionTotals
 import io.aatricks.easyreader.data.model.ReadingSessionEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -79,6 +82,23 @@ class ReadingSessionTrackerTest {
         val sessions = fakeDao.insertedSessions
         assertEquals(1, sessions.size)
         assertEquals(2, sessions.first().chaptersCompleted)
+    }
+
+    @Test
+    fun `completionEvents emits chapter count on completion`() = runTest {
+        val events = mutableListOf<Int>()
+        val job = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            tracker.completionEvents.collect { events.add(it) }
+        }
+
+        tracker.start(NOVEL_1)
+        tracker.onChapterCompleted(CHAPTER_1)
+        tracker.onChapterCompleted(CHAPTER_1) // duplicate, ignored
+        tracker.onChapterCompleted(CHAPTER_2)
+        tracker.onChapterCompleted(null) // no url, counted
+
+        assertEquals(listOf(1, 2, 3), events)
+        job.cancel()
     }
 
     @Test
