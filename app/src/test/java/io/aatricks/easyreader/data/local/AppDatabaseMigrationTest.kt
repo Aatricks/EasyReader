@@ -402,6 +402,89 @@ class AppDatabaseMigrationTest {
     }
 
     @Test
+    fun migrate10To11_createsReadingSessionsTableWithIndex() {
+        val dbName = migrationDbName("10-to-11")
+        createDatabaseAtVersion(
+            dbName = dbName,
+            version = 10,
+            createTableSql = """
+                CREATE TABLE library_items (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    progress INTEGER NOT NULL,
+                    isCurrentlyReading INTEGER NOT NULL,
+                    currentChapter TEXT NOT NULL,
+                    currentChapterUrl TEXT NOT NULL,
+                    totalChapters INTEGER NOT NULL,
+                    contentType TEXT NOT NULL,
+                    dateAdded INTEGER NOT NULL,
+                    lastRead INTEGER NOT NULL,
+                    isDownloading INTEGER NOT NULL,
+                    lastScrollPosition REAL NOT NULL,
+                    lastReadIndex INTEGER NOT NULL,
+                    lastReadElementKey TEXT NOT NULL DEFAULT '',
+                    lastReadOffsetFraction REAL NOT NULL DEFAULT -1,
+                    hasUpdates INTEGER NOT NULL,
+                    chapterSummaries TEXT NOT NULL,
+                    baseTitle TEXT NOT NULL,
+                    readingMode TEXT NOT NULL,
+                    baseNovelUrl TEXT NOT NULL,
+                    sourceName TEXT NOT NULL,
+                    isDownloaded INTEGER NOT NULL DEFAULT 0,
+                    downloadedAt INTEGER,
+                    coverImageUrl TEXT NOT NULL DEFAULT ''
+                )
+            """.trimIndent(),
+            indexSqls = CURRENT_INDEX_SQL + listOf(
+                """
+                    CREATE TABLE IF NOT EXISTS chapter_image_state (
+                        chapterUrl TEXT NOT NULL,
+                        imageUrl TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        attempts INTEGER NOT NULL,
+                        lastAttemptMs INTEGER NOT NULL,
+                        httpStatusCode INTEGER,
+                        PRIMARY KEY(chapterUrl, imageUrl)
+                    )
+                """.trimIndent(),
+                "CREATE INDEX IF NOT EXISTS index_chapter_image_state_chapterUrl ON chapter_image_state (chapterUrl)",
+                "CREATE INDEX IF NOT EXISTS index_chapter_image_state_status ON chapter_image_state (status)",
+                """
+                    CREATE TABLE IF NOT EXISTS image_dimension_cache (
+                        imageUrl TEXT NOT NULL PRIMARY KEY,
+                        width INTEGER NOT NULL,
+                        height INTEGER NOT NULL,
+                        cachedAtMs INTEGER NOT NULL,
+                        parserVersion INTEGER NOT NULL
+                    )
+                """.trimIndent()
+            ),
+            insertSqls = emptyList()
+        )
+
+        migrationTestHelper.runMigrationsAndValidate(
+            dbName,
+            11,
+            true,
+            AppDatabase.MIGRATION_10_11
+        ).use { database ->
+            assertTrue("reading_sessions table must exist", hasTable(database, "reading_sessions"))
+            assertIndexExists(database, "index_reading_sessions_novelKey")
+            database.execSQL(
+                "INSERT INTO reading_sessions (novelKey, startedAt, endedAt, activeMillis, chaptersCompleted, seeded) " +
+                    "VALUES ('TestNovel', 1000, 2000, 1000, 1, 0)"
+            )
+            database.query("SELECT novelKey, activeMillis FROM reading_sessions WHERE id = 1").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("TestNovel", cursor.getString(0))
+                assertEquals(1000L, cursor.getLong(1))
+            }
+        }
+    }
+
+    @Test
     fun migrate4To5() {
         val dbName = migrationDbName("4-to-5")
         createVersion4Database(dbName)
@@ -771,7 +854,7 @@ class AppDatabaseMigrationTest {
     """.trimIndent()
 
     companion object {
-        private const val CURRENT_VERSION = 10
+        private const val CURRENT_VERSION = 11
         private val ALL_MIGRATIONS = arrayOf(
             AppDatabase.MIGRATION_1_2,
             AppDatabase.MIGRATION_2_3,
@@ -781,8 +864,10 @@ class AppDatabaseMigrationTest {
             AppDatabase.MIGRATION_6_7,
             AppDatabase.MIGRATION_7_8,
             AppDatabase.MIGRATION_8_9,
-            AppDatabase.MIGRATION_9_10
+            AppDatabase.MIGRATION_9_10,
+            AppDatabase.MIGRATION_10_11
         )
+
         private val CURRENT_INDEX_SQL = listOf(
             "CREATE UNIQUE INDEX index_library_items_url ON library_items (url)",
             "CREATE INDEX index_library_items_baseTitle ON library_items (baseTitle)",

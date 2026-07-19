@@ -10,8 +10,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowOutward
 import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -23,6 +27,9 @@ import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import io.aatricks.easyreader.ui.components.rememberLibraryCoverImageRequest
+import androidx.hilt.navigation.compose.hiltViewModel
+import io.aatricks.easyreader.ui.viewmodel.ScrollViewModel
+import io.aatricks.easyreader.ui.ScrollRoute
 
 private val DRAWER_HERO_COVER_WIDTH = 56.dp
 private val DRAWER_COVER_WIDTH = 40.dp
@@ -36,12 +43,18 @@ fun LibraryDrawerContent(
     onCloseDrawer: () -> Unit,
     onLibraryClick: () -> Unit,
     onDiscoverClick: () -> Unit,
+    onScrollClick: () -> Unit,
     onOpenLibraryItem: (LibraryItem) -> Unit,
     onOpenLatestUpdate: (LibraryItem) -> Unit
 ): Unit {
+    val scrollViewModel: ScrollViewModel = hiltViewModel()
     val continueNovel = drawerSections.continueNovel
     val recentUpdates = drawerSections.recentUpdates
     val recentItems = drawerSections.recentNovels
+
+    val scrollProgression by scrollViewModel.progression.collectAsState()
+    val unseenMilestones by scrollViewModel.unseenMilestoneCount.collectAsState()
+    val scrollEnabled by scrollViewModel.gamificationEnabled.collectAsState()
 
     LazyColumn(
         modifier = Modifier
@@ -91,6 +104,44 @@ fun LibraryDrawerContent(
                 )
                 Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
                 Text("Import file")
+            }
+        }
+
+        if (scrollEnabled) {
+            item {
+                NavigationDrawerItem(
+                    label = { Text(scrollProgression.rankName) },
+                    icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) },
+                    badge = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                progress = {
+                                    val current = scrollProgression.xpIntoLevel.toFloat()
+                                    val next = scrollProgression.xpToNextLevel.toFloat()
+                                    if (next == 0f) 1f else current / (current + next)
+                                },
+                                modifier = Modifier.size(16.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                strokeWidth = 2.dp,
+                                trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                            )
+                            if (unseenMilestones > 0) {
+                                Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary)
+                                )
+                            }
+                        }
+                    },
+                    selected = false,
+                    onClick = {
+                        onCloseDrawer()
+                        onScrollClick()
+                    }
+                )
             }
         }
 

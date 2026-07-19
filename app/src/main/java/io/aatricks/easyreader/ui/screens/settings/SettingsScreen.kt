@@ -385,6 +385,47 @@ fun SettingsScreen(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             }
 
+            SettingsSection(title = "Progression") {
+                val scrollViewModel: io.aatricks.easyreader.ui.viewmodel.ScrollViewModel =
+                    androidx.hilt.navigation.compose.hiltViewModel()
+                val scrollEnabled by scrollViewModel.gamificationEnabled.collectAsState()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = scrollEnabled,
+                            role = Role.Switch,
+                            onValueChange = { scrollViewModel.setGamificationEnabled(it) }
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "The Scroll",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (scrollEnabled) {
+                                "Reading time, levels, and milestones are tracked."
+                            } else {
+                                "Tracking is off. Existing progress is kept."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.size(EasyReaderSpacing.sm))
+                    Switch(
+                        checked = scrollEnabled,
+                        onCheckedChange = null
+                    )
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
             SettingsSection(title = "Backup & restore") {
                 val inProgress = backupStatus is BackupViewModel.OpStatus.InProgress
                 SettingsRow(

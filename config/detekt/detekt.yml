@@ -1,0 +1,9 @@
+# Project overrides on top of detekt's default config (buildUponDefaultConfig = true).
+naming:
+  FunctionNaming:
+    # Compose convention: composable functions are PascalCase (per detekt's own Compose guidance).
+    ignoreAnnotated: ['Composable']
+style:
+  MagicNumber:
+    # A number assigned to a named property (e.g. palette colors) is already named
+    ignorePropertyDeclaration: true

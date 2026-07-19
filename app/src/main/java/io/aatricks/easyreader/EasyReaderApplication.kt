@@ -15,6 +15,8 @@ import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
+import io.aatricks.easyreader.data.repository.ReadingHistorySeeder
+import io.aatricks.easyreader.data.repository.content.ReaderImageTileFetcher
 import io.aatricks.easyreader.data.repository.content.EpubImageFetcher
 import io.aatricks.easyreader.data.repository.content.HttpMediaCacheFetcher
 import io.aatricks.easyreader.util.CrashRecorder
@@ -37,6 +39,7 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
     @Inject lateinit var preferencesManager: PreferencesManager
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var imageDimensionCache: ImageDimensionCacheRepository
+    @Inject lateinit var readingHistorySeeder: ReadingHistorySeeder
 
     // WorkManager pulls this lazily before its first enqueue, which happens after Hilt
     // injection has populated `workerFactory`. Using on-demand initialization (no manual
@@ -57,6 +60,14 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
         }
         pruneImageDimensionCache()
         pruneChapterDownloadQueue()
+        seedReadingHistory()
+    }
+
+    private fun seedReadingHistory() {
+        warmupScope.launch {
+            runCatching { readingHistorySeeder.seedIfNeeded() }
+                .onFailure { Log.w(TAG, "reading history seed failed message=${it.message}") }
+        }
     }
 
     private fun pruneChapterDownloadQueue() {
@@ -124,7 +135,7 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
         return ImageLoader.Builder(context)
             .memoryCache { buildMemoryCache(context) }
             .components {
-                add(io.aatricks.easyreader.data.repository.content.ReaderImageTileFetcher.Factory(contentRepository))
+                add(ReaderImageTileFetcher.Factory(contentRepository))
                 add(EpubImageFetcher.Factory(contentRepository))
                 add(HttpMediaCacheFetcher.Factory(contentRepository))
                 // Fallback only: HttpMediaCacheFetcher owns the disk-cached HTTP path and

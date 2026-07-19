@@ -27,10 +27,12 @@ import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.ui.ExploreRoute
 import io.aatricks.easyreader.ui.LibraryRoute
 import io.aatricks.easyreader.ui.ReaderRoute
+import io.aatricks.easyreader.ui.ScrollRoute
 import io.aatricks.easyreader.ui.SettingsRoute
 import io.aatricks.easyreader.ui.screens.LibraryScreen
 import io.aatricks.easyreader.ui.screens.ReaderScreen
 import io.aatricks.easyreader.ui.screens.explore.ExploreScreen
+import io.aatricks.easyreader.ui.screens.scroll.ScrollScreen
 import io.aatricks.easyreader.ui.screens.settings.SettingsScreen
 import io.aatricks.easyreader.ui.theme.NovelScraperTheme
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
@@ -178,6 +180,13 @@ class MainActivity : ComponentActivity() {
                             readerViewModel = readerViewModel,
                             libraryViewModel = libraryViewModel,
                             onNavigateBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable<ScrollRoute> {
+                        ScrollScreen(
+                            onNavigateBack = {
+                                navController.popBackStack()
+                            }
                         )
                     }
                 }

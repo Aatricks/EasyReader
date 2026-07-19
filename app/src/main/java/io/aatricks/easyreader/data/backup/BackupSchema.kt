@@ -2,7 +2,7 @@ package io.aatricks.easyreader.data.backup
 
 import kotlinx.serialization.Serializable
 
-const val BACKUP_SCHEMA_VERSION = 2
+const val BACKUP_SCHEMA_VERSION = 3
 const val MANIFEST_ENTRY = "manifest.json"
 const val EPUB_ENTRY_PREFIX = "epubs/"
 
@@ -11,7 +11,10 @@ data class SettingsBackup(
     val schemaVersion: Int = BACKUP_SCHEMA_VERSION,
     val exportedAt: Long,
     val appVersionName: String,
-    val reader: ReaderSettingsPayload
+    val reader: ReaderSettingsPayload,
+    val scrollFinishedSeries: List<String> = emptyList(),
+    val scrollUnlockedMilestones: Map<String, Long> = emptyMap(),
+    val scrollHistorySeeded: Boolean = false
 )
 
 @Serializable
@@ -32,7 +35,8 @@ data class LibraryBackup(
     val schemaVersion: Int = BACKUP_SCHEMA_VERSION,
     val exportedAt: Long,
     val appVersionName: String,
-    val items: List<LibraryItemBackup>
+    val items: List<LibraryItemBackup>,
+    val readingSessions: List<ReadingSessionBackup> = emptyList()
 )
 
 @Serializable
@@ -68,4 +72,14 @@ data class LibraryItemBackup(
     val downloadedAt: Long? = null,
     val bundledEpubPath: String? = null,
     val coverImageUrl: String = ""
+)
+
+@Serializable
+data class ReadingSessionBackup(
+    val novelKey: String,
+    val startedAt: Long,
+    val endedAt: Long,
+    val activeMillis: Long,
+    val chaptersCompleted: Int,
+    val seeded: Boolean = false
 )

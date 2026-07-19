@@ -10,6 +10,9 @@ interface LibraryDao {
     @Query("SELECT * FROM library_items ORDER BY lastRead DESC")
     fun getAllItems(): Flow<List<LibraryItem>>
 
+    @Query("SELECT * FROM library_items")
+    suspend fun getAllItemsDirect(): List<LibraryItem>
+
     @Query("SELECT * FROM library_items WHERE isCurrentlyReading = 1 LIMIT 1")
     suspend fun getCurrentlyReading(): LibraryItem?
 

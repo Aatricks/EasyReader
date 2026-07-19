@@ -11,6 +11,7 @@ import io.aatricks.easyreader.data.local.AppDatabase
 import io.aatricks.easyreader.data.local.ChapterImageStateDao
 import io.aatricks.easyreader.data.local.ImageDimensionDao
 import io.aatricks.easyreader.data.local.LibraryDao
+import io.aatricks.easyreader.data.local.ReadingSessionDao
 import javax.inject.Singleton
 
 @Module
@@ -33,7 +34,8 @@ object DatabaseModule {
             AppDatabase.MIGRATION_6_7,
             AppDatabase.MIGRATION_7_8,
             AppDatabase.MIGRATION_8_9,
-            AppDatabase.MIGRATION_9_10
+            AppDatabase.MIGRATION_9_10,
+            AppDatabase.MIGRATION_10_11
         )
         .build()
     }
@@ -55,4 +57,11 @@ object DatabaseModule {
     fun provideImageDimensionDao(database: AppDatabase): ImageDimensionDao {
         return database.imageDimensionDao()
     }
+
+    @Provides
+    @Singleton
+    fun provideReadingSessionDao(database: AppDatabase): ReadingSessionDao {
+        return database.readingSessionDao()
+    }
 }
+

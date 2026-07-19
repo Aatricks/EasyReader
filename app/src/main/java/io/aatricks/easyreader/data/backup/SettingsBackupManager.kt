@@ -42,7 +42,10 @@ class SettingsBackupManager @Inject constructor(
                     readerTheme = preferencesManager.readerTheme,
                     accentTheme = preferencesManager.accentTheme,
                     brightness = preferencesManager.brightness
-                )
+                ),
+                scrollFinishedSeries = preferencesManager.scrollFinishedSeries.toList(),
+                scrollUnlockedMilestones = preferencesManager.scrollUnlockedMilestones,
+                scrollHistorySeeded = preferencesManager.scrollHistorySeeded
             )
             val text = json.encodeToString(payload)
             val out = context.contentResolver.openOutputStream(uri, "wt")
@@ -76,6 +79,30 @@ class SettingsBackupManager @Inject constructor(
                 readerTheme = r.readerTheme,
                 accentTheme = r.accentTheme
             )
+
+            val currentFinished = preferencesManager.scrollFinishedSeries
+            val newFinished = currentFinished + payload.scrollFinishedSeries
+            if (newFinished.size > currentFinished.size) {
+                preferencesManager.scrollFinishedSeries = newFinished
+            }
+
+            val currentUnlocked = preferencesManager.scrollUnlockedMilestones
+            val mergedUnlocked = currentUnlocked.toMutableMap()
+            var milestonesChanged = false
+            for ((id, timeMs) in payload.scrollUnlockedMilestones) {
+                val existing = mergedUnlocked[id]
+                if (existing == null || timeMs < existing) {
+                    mergedUnlocked[id] = timeMs
+                    milestonesChanged = true
+                }
+            }
+            if (milestonesChanged) {
+                preferencesManager.scrollUnlockedMilestones = mergedUnlocked
+            }
+
+            if (payload.scrollHistorySeeded) {
+                preferencesManager.scrollHistorySeeded = true
+            }
         }.onFailure { Log.e(TAG, "Settings import failed", it) }
     }
 
