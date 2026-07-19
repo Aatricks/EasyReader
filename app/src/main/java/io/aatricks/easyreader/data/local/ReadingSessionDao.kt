@@ -38,4 +38,10 @@ interface ReadingSessionDao {
 
     @Query("SELECT EXISTS(SELECT 1 FROM reading_sessions LIMIT 1)")
     suspend fun hasAnySessions(): Boolean
+
+    @Query(
+        "UPDATE reading_sessions SET endedAt = :endedAt, activeMillis = :activeMillis, " +
+        "chaptersCompleted = :chaptersCompleted WHERE id = :id"
+    )
+    suspend fun updateSessionProgress(id: Long, endedAt: Long, activeMillis: Long, chaptersCompleted: Int)
 }

@@ -171,6 +171,13 @@ class ReadingHistorySeederTest {
             insertedSessions.map { it.startedAt / MILLIS_PER_DAY }.distinct().size
 
         override suspend fun hasAnySessions(): Boolean = insertedSessions.isNotEmpty()
+
+        override suspend fun updateSessionProgress(
+            id: Long,
+            endedAt: Long,
+            activeMillis: Long,
+            chaptersCompleted: Int
+        ) = Unit
     }
 
     companion object {
