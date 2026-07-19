@@ -107,8 +107,8 @@ class ReaderViewModelTest {
             libraryRepository,
             exploreRepository,
             preferencesManager,
-            chapterListCache,
-            fakeImageDimensionCacheRepository()
+            io.aatricks.easyreader.data.repository.ReaderCaches(chapterListCache, fakeImageDimensionCacheRepository()),
+            ReadingSessionTracker(org.mockito.kotlin.mock())
         )
     }
 
@@ -1237,8 +1237,8 @@ class ReaderViewModelTest {
             libraryRepository,
             exploreRepository,
             preferencesManager,
-            chapterListCache,
-            fakeImageDimensionCacheRepository()
+            io.aatricks.easyreader.data.repository.ReaderCaches(chapterListCache, fakeImageDimensionCacheRepository()),
+            ReadingSessionTracker(org.mockito.kotlin.mock())
         )
 
         viewModel.loadContent(url)
@@ -1288,8 +1288,8 @@ class ReaderViewModelTest {
             libraryRepository,
             exploreRepository,
             preferencesManager,
-            chapterListCache,
-            fakeImageDimensionCacheRepository()
+            io.aatricks.easyreader.data.repository.ReaderCaches(chapterListCache, fakeImageDimensionCacheRepository()),
+            ReadingSessionTracker(org.mockito.kotlin.mock())
         )
 
         viewModel.loadContent(currentUrl)

@@ -216,7 +216,12 @@ class PreferencesManager @Inject constructor(
         get() = prefs.getInt(KEY_WEB_OFFLINE_PIPELINE_VERSION, 0)
         set(value) = prefs.edit().putInt(KEY_WEB_OFFLINE_PIPELINE_VERSION, value).apply()
 
+    var scrollHistorySeeded: Boolean
+        get() = prefs.getBoolean(KEY_SCROLL_HISTORY_SEEDED, false)
+        set(value) = prefs.edit().putBoolean(KEY_SCROLL_HISTORY_SEEDED, value).apply()
+
     // Clear all preferences
+
     fun clearAll() {
         prefs.edit().clear().apply()
     }
@@ -274,6 +279,7 @@ class PreferencesManager @Inject constructor(
 
         private const val KEY_AI_SUMMARY_ENABLED = "ai_summary_enabled"
         private const val KEY_WEB_OFFLINE_PIPELINE_VERSION = "web_offline_pipeline_version"
+        private const val KEY_SCROLL_HISTORY_SEEDED = "scroll_history_seeded"
 
         // Appearance Settings Keys
         private const val KEY_THEME_MODE = "appearance_theme_mode"

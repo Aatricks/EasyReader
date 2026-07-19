@@ -2,6 +2,7 @@ package io.aatricks.easyreader.ui.viewmodel
 
 import android.util.Log
 import io.aatricks.easyreader.data.model.*
+import io.aatricks.easyreader.data.model.LIBRARY_FINISHED_PROGRESS_THRESHOLD
 import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.util.FieldUpdate
 import kotlinx.coroutines.*
@@ -18,8 +19,10 @@ import kotlinx.coroutines.flow.*
  */
 class ReaderProgressController(
     private val libraryRepository: LibraryRepository,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val sessionTracker: ReadingSessionTracker? = null
 ) {
+
     private val _progressState = MutableStateFlow(ReaderProgressState())
     val progressState: StateFlow<ReaderProgressState> = _progressState.asStateFlow()
 
@@ -347,6 +350,7 @@ class ReaderProgressController(
         suppressAutoNavUntilUserInteraction = false
         restoreInProgress = false
         restoredProgressSnapshot = null
+        sessionTracker?.onInteraction()
 
         val nextUiTargetScrollPosition = if (uiTargetScrollPosition != null) null else uiTargetScrollPosition
         val nextUiPendingRestoreOffsetFraction = if (uiPendingRestoreOffsetFraction != null) null else uiPendingRestoreOffsetFraction
@@ -454,6 +458,8 @@ class ReaderProgressController(
             lastRawScrollOffset = scrollOffset
             return
         }
+
+        sessionTracker?.onInteraction()
 
         val isStable = firstVisibleItemSize >= MIN_STABLE_ITEM_SIZE_PX
         val isTerminal = !canScrollForward
@@ -563,6 +569,10 @@ class ReaderProgressController(
                 TAG,
                 "saveProgress url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(resolvedChapterUrl)} index=$lastIndex elementKey=${if (lastElementKey.isNotEmpty()) "<set>" else "<empty>"} fraction=$lastFraction firstVisibleItemSize=${latest.firstVisibleItemSize}"
             )
+
+            if (progress >= LIBRARY_FINISHED_PROGRESS_THRESHOLD) {
+                sessionTracker?.onChapterCompleted(resolvedChapterUrl)
+            }
 
             libraryRepository.updateProgressExplicit(
                 itemId = itemId,

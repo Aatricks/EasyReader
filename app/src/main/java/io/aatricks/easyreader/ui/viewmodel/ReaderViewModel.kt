@@ -19,6 +19,10 @@ import io.aatricks.easyreader.util.UrlSecurity
 import io.aatricks.easyreader.ui.viewmodel.ReaderProgressController.Companion.PAGED_POSITION_ITEM_SIZE_PX
 import io.aatricks.easyreader.util.FieldUpdate
 import io.aatricks.easyreader.util.computeDownloadCleanup
+import io.aatricks.easyreader.data.local.ReaderSettingsSnapshot
+import io.aatricks.easyreader.data.repository.ReaderCaches
+import io.aatricks.easyreader.util.ErrorMessages
+import io.aatricks.easyreader.util.UrlSanitizer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,10 +44,10 @@ class ReaderViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
     private val exploreRepository: ExploreRepository,
     private val preferencesManager: PreferencesManager,
-    private val chapterListCache: ChapterListCache,
-    private val imageDimensionCache: ImageDimensionCacheRepository
+    private val readerCaches: ReaderCaches,
+    private val sessionTracker: ReadingSessionTracker
 ) : BaseViewModel<ReaderViewModel.ReaderUiState>(ReaderUiState()) {
-    private val progressController = ReaderProgressController(libraryRepository, viewModelScope)
+    private val progressController = ReaderProgressController(libraryRepository, viewModelScope, sessionTracker)
     val progressState: StateFlow<ReaderProgressState> = progressController.progressState
 
     companion object {
@@ -132,7 +136,7 @@ class ReaderViewModel @Inject constructor(
     // restore math.
     private val imageDimensionManager = ImageDimensionManager(
         scope = viewModelScope,
-        imageDimensionCache = imageDimensionCache,
+        imageDimensionCache = readerCaches.imageDimensionCache,
         applyContentDimensions = ::enqueueCurrentContentImageDimensions,
     )
     private val pendingContentDimensionUpdates = LinkedHashMap<String, Pair<Int, Int>>()
@@ -181,7 +185,7 @@ class ReaderViewModel @Inject constructor(
     // Job for tracking content loading
     private var loadJob: Job? = null
 
-    private fun applyReaderSettings(snapshot: io.aatricks.easyreader.data.local.ReaderSettingsSnapshot) {
+    private fun applyReaderSettings(snapshot: ReaderSettingsSnapshot) {
         updateState {
             it.copy(
                 fontSize = snapshot.fontSize,
@@ -434,7 +438,6 @@ class ReaderViewModel @Inject constructor(
         updateState { it.copy(readerTheme = newTheme, toastMessage = "Theme: $label") }
     }
 
-
     fun clearToast() {
         updateState { it.copy(toastMessage = null) }
     }
@@ -668,6 +671,7 @@ class ReaderViewModel @Inject constructor(
             )
         }
         syncProgressState(initialPosition)
+        sessionTracker.start(baseTitle.ifBlank { novelName })
 
         // Prune only AFTER the new content is committed to uiState: during the (suspending)
         // load above the old chapter is still composed, and pruning it early would strip its
@@ -945,6 +949,7 @@ class ReaderViewModel @Inject constructor(
                 )
             }
             syncProgressState(initialPosition)
+            sessionTracker.start(baseTitle.ifBlank { novelName })
 
             // After the content swap, for the same reasons as in handleLoadSuccess.
             imageDimensionManager.pruneForChapter(content.getAllImageUrls().toSet())
@@ -1041,7 +1046,8 @@ class ReaderViewModel @Inject constructor(
             if (existing != null && sameChapter && existing.progress > 0) {
                 Log.d(
                     TAG,
-                    "persistLifecycleProgress skip snap-to-top url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(currentChapterUrl)} dbProgress=${existing.progress}"
+                    "persistLifecycleProgress skip snap-to-top " +
+                        "url=${UrlSanitizer.sanitize(currentChapterUrl)} dbProgress=${existing.progress}"
                 )
                 return
             }
@@ -1050,14 +1056,21 @@ class ReaderViewModel @Inject constructor(
         if (!shouldSnapToTop && !progressController.isSnapshotPersistable(content, latest)) {
             Log.d(
                 TAG,
-                "persistLifecycleProgress skip unstable url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(currentChapterUrl)} firstVisibleItemSize=${latest.firstVisibleItemSize} fraction=${latest.scrollOffsetFraction}"
+                "persistLifecycleProgress skip unstable " +
+                    "url=${UrlSanitizer.sanitize(currentChapterUrl)} " +
+                    "firstVisibleItemSize=${latest.firstVisibleItemSize} " +
+                    "fraction=${latest.scrollOffsetFraction}"
             )
             return
         }
 
         Log.d(
             TAG,
-            "persistLifecycleProgress url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(currentChapterUrl)} index=${latest.scrollIndex} fraction=${latest.scrollOffsetFraction} firstVisibleItemSize=${latest.firstVisibleItemSize}"
+            "persistLifecycleProgress " +
+                "url=${UrlSanitizer.sanitize(currentChapterUrl)} " +
+                "index=${latest.scrollIndex} " +
+                "fraction=${latest.scrollOffsetFraction} " +
+                "firstVisibleItemSize=${latest.firstVisibleItemSize}"
         )
 
         updateReadingProgress(
@@ -1068,6 +1081,7 @@ class ReaderViewModel @Inject constructor(
             offsetFraction = if (shouldSnapToTop) 0f else latest.scrollOffsetFraction,
             currentChapterUrl = currentChapterUrl
         )
+        sessionTracker.stop()
     }
 
     private fun currentPersistedSnapshot(): ReaderProgressState {
@@ -1169,7 +1183,7 @@ class ReaderViewModel @Inject constructor(
             runCatching { contentRepository.clearAllCache() }
                 .onFailure { e ->
                     Log.w(TAG, "clearAllCache failed", e)
-                    val friendly = io.aatricks.easyreader.util.ErrorMessages.fromRaw(e.message)
+                    val friendly = ErrorMessages.fromRaw(e.message)
                     updateState { it.copy(error = "${friendly.title}: ${friendly.body}") }
                 }
         }
@@ -1256,9 +1270,12 @@ class ReaderViewModel @Inject constructor(
             )
         }
 
+        sessionTracker.stop()
+
         super.onCleared()
         closeContent(content)
     }
+
 
     fun toggleControls() = updateState { it.copy(showControls = !it.showControls) }
 
@@ -1337,11 +1354,11 @@ class ReaderViewModel @Inject constructor(
 
     fun loadFullChapterList(baseUrl: String, sourceName: String) {
         viewModelScope.launch {
-            val cached = chapterListCache.load(baseUrl, sourceName)
+            val cached = readerCaches.chapterListCache.load(baseUrl, sourceName)
             if (cached != null && cached.chapters.isNotEmpty()) {
                 val normalizedCached = normalizeChapterList(cached.chapters)
                 applyFullChapterList(normalizedCached)
-                if (chapterListCache.isFresh(cached)) return@launch
+                if (readerCaches.chapterListCache.isFresh(cached)) return@launch
             }
 
             runCatching {
@@ -1349,7 +1366,7 @@ class ReaderViewModel @Inject constructor(
                 val details = exploreRepository.getNovelDetails(baseUrl, sourceName)
                 val normalizedChapters = normalizeChapterList(details?.chapters.orEmpty())
                 if (details != null && normalizedChapters.isNotEmpty()) {
-                    chapterListCache.save(baseUrl, sourceName, normalizedChapters)
+                    readerCaches.chapterListCache.save(baseUrl, sourceName, normalizedChapters)
                     applyFullChapterList(normalizedChapters)
                 } else if (cached == null) {
                     updateState { it.copy(isChaptersLoading = false) }

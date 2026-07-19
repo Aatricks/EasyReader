@@ -8,10 +8,16 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import io.aatricks.easyreader.data.model.ChapterImageStateEntity
 import io.aatricks.easyreader.data.model.ImageDimensionEntity
 import io.aatricks.easyreader.data.model.LibraryItem
+import io.aatricks.easyreader.data.model.ReadingSessionEntity
 
 @Database(
-    entities = [LibraryItem::class, ChapterImageStateEntity::class, ImageDimensionEntity::class],
-    version = 10,
+    entities = [
+        LibraryItem::class,
+        ChapterImageStateEntity::class,
+        ImageDimensionEntity::class,
+        ReadingSessionEntity::class
+    ],
+    version = 11,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -19,10 +25,13 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
     abstract fun chapterImageStateDao(): ChapterImageStateDao
     abstract fun imageDimensionDao(): ImageDimensionDao
+    abstract fun readingSessionDao(): ReadingSessionDao
 
     companion object {
         private const val DB_VERSION_9 = 9
         private const val DB_VERSION_10 = 10
+        private const val DB_VERSION_11 = 11
+
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -308,5 +317,25 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE library_items ADD COLUMN coverImageUrl TEXT NOT NULL DEFAULT ''")
             }
         }
+
+        val MIGRATION_10_11 = object : Migration(DB_VERSION_10, DB_VERSION_11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `reading_sessions` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `novelKey` TEXT NOT NULL,
+                        `startedAt` INTEGER NOT NULL,
+                        `endedAt` INTEGER NOT NULL,
+                        `activeMillis` INTEGER NOT NULL,
+                        `chaptersCompleted` INTEGER NOT NULL,
+                        `seeded` INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    CREATE INDEX IF NOT EXISTS `index_reading_sessions_novelKey` ON `reading_sessions` (`novelKey`)
+                """.trimIndent())
+            }
+        }
     }
 }
+
