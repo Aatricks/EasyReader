@@ -1,5 +1,13 @@
 package io.aatricks.easyreader.ui.screens.scroll
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -75,26 +83,6 @@ private const val VIGNETTE_Y_HIGH_FRACTION = 0.055f
 private const val VIGNETTE_Y_LOW_FRACTION = 0.17f
 private const val STAMP_Y_FRACTION = 0.6f
 
-// Vignettes (finished series)
-private const val VIGNETTE_FRAME_WIDTH_DP = 76f
-private const val VIGNETTE_FRAME_HEIGHT_DP = 104f
-private const val VIGNETTE_FRAME_PADDING_DP = 3f
-private const val VIGNETTE_LABEL_WIDTH_DP = 108f
-private const val VIGNETTE_ROTATION_DEG = 2.5f
-private const val VIGNETTE_CORNER_DP = 4f
-private const val VIGNETTE_ELEVATION_DP = 8f
-private const val VIGNETTE_LABEL_ALPHA = 0.85f
-private const val VIGNETTE_LABEL_PADDING_H_DP = 7f
-private const val VIGNETTE_LABEL_PADDING_V_DP = 2f
-
-// Hanko seals (milestones): solid vermilion, kanji knocked out in paper
-private const val STAMP_SIZE_DP = 36f
-private const val STAMP_ROTATION_DEG = 4f
-private const val STAMP_CORNER_DP = 7f
-private const val STAMP_KANJI_SP = 17
-private const val STAMP_LABEL_SPACING_SP = 1.2f
-private const val STAMP_LABEL_SP = 9
-
 // Rank end-cap medallion
 private const val MEDALLION_SIZE_DP = 112f
 private const val MEDALLION_STROKE_DP = 7f
@@ -115,23 +103,10 @@ private const val STATS_VALUE_SP = 19
 private const val TIME_STAT_WEIGHT = 1.45f
 private const val STATS_LABEL_SPACING_SP = 1.1f
 
+private const val MOTION_PERIOD_MS = 8000
+private const val MEDALLION_FILL_MS = 1100
 private const val MILLIS_PER_MINUTE = 60_000L
 private const val MINUTES_PER_HOUR = 60
-
-private val MILESTONE_KANJI = mapOf(
-    "first_chapter" to "始",
-    "first_series" to "巻",
-    "chapters_100" to "百",
-    "chapters_1000" to "千",
-    "hours_10" to "墨",
-    "hours_100" to "刻",
-    "series_10" to "十",
-    "days_30" to "日",
-    "night_reader" to "夜",
-    "marathon" to "長",
-    "epic_series" to "大",
-)
-private const val DEFAULT_SEAL_KANJI = "証"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -197,6 +172,16 @@ private fun ScrollCanvasArea(
         }
     }
 
+    val motion by rememberInfiniteTransition(label = "scrollMotion").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = MOTION_PERIOD_MS, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "motionPhase"
+    )
+
     BoxWithConstraints(modifier = modifier) {
             val stripHeight = maxHeight
             val paintingWidth = ((progression.level + 1) * SEGMENT_WIDTH_DP).dp
@@ -206,7 +191,8 @@ private fun ScrollCanvasArea(
                 drawScrollPainting(
                     palette = palette,
                     scrollPx = scrollState.value.toFloat(),
-                    totalPx = totalWidth.toPx()
+                    totalPx = totalWidth.toPx(),
+                    motion = motion
                 )
             }
 
@@ -252,6 +238,14 @@ private fun ScrollOverlays(
             val x = (paintingWidth * fraction - (VIGNETTE_LABEL_WIDTH_DP / 2).dp)
                 .coerceIn(EDGE_MARGIN_DP.dp, paintingWidth - VIGNETTE_LABEL_WIDTH_DP.dp)
             val yFraction = if (index % 2 == 0) VIGNETTE_Y_HIGH_FRACTION else VIGNETTE_Y_LOW_FRACTION
+            // Hanging cord from the mounting silk down to the frame
+            Box(
+                modifier = Modifier
+                    .offset(x = x + (VIGNETTE_LABEL_WIDTH_DP / 2).dp, y = MOUNTING_BAND_DP.dp)
+                    .width(CORD_WIDTH_DP.dp)
+                    .height(stripHeight * yFraction - MOUNTING_BAND_DP.dp)
+                    .background(palette.gold.copy(alpha = CORD_ALPHA))
+            )
             SeriesVignette(
                 series = series,
                 index = index,
@@ -283,97 +277,6 @@ private fun ScrollOverlays(
                 .width(ENDCAP_WIDTH_DP.dp)
                 .fillMaxHeight()
                 .padding(end = ROLLER_WIDTH_DP.dp, bottom = (MOUNTING_BAND_DP * 2).dp)
-        )
-    }
-}
-
-@Composable
-private fun SeriesVignette(
-    series: FinishedSeriesData,
-    index: Int,
-    palette: ScrollPalette,
-    modifier: Modifier = Modifier
-) {
-    val rotation = if (index % 2 == 0) -VIGNETTE_ROTATION_DEG else VIGNETTE_ROTATION_DEG
-    Column(
-        modifier = modifier
-            .width(VIGNETTE_LABEL_WIDTH_DP.dp)
-            .rotate(rotation),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Surface(
-            shape = RoundedCornerShape(VIGNETTE_CORNER_DP.dp),
-            shadowElevation = VIGNETTE_ELEVATION_DP.dp,
-            color = palette.frame,
-            border = BorderStroke(HAIRLINE_DP.dp, palette.gold),
-            modifier = Modifier.size(VIGNETTE_FRAME_WIDTH_DP.dp, VIGNETTE_FRAME_HEIGHT_DP.dp)
-        ) {
-            Box(modifier = Modifier.fillMaxSize().padding(VIGNETTE_FRAME_PADDING_DP.dp)) {
-                if (series.coverImageUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = series.coverImageUrl,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(VIGNETTE_CORNER_DP.dp)),
-                        contentScale = ContentScale.Crop
-                    )
-                }
-            }
-        }
-        Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
-        Surface(
-            color = palette.frame.copy(alpha = VIGNETTE_LABEL_ALPHA),
-            shape = RoundedCornerShape(VIGNETTE_CORNER_DP.dp)
-        ) {
-            Text(
-                text = series.title,
-                style = MaterialTheme.typography.labelSmall,
-                color = palette.labelInk,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(
-                    horizontal = VIGNETTE_LABEL_PADDING_H_DP.dp,
-                    vertical = VIGNETTE_LABEL_PADDING_V_DP.dp
-                )
-            )
-        }
-    }
-}
-
-@Composable
-private fun HankoSeal(
-    milestone: MilestoneState,
-    index: Int,
-    palette: ScrollPalette,
-    modifier: Modifier = Modifier
-) {
-    val rotation = if (index % 2 == 0) -STAMP_ROTATION_DEG else STAMP_ROTATION_DEG
-    Column(
-        modifier = modifier.rotate(rotation),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            modifier = Modifier
-                .size(STAMP_SIZE_DP.dp)
-                .background(palette.vermilion, RoundedCornerShape(STAMP_CORNER_DP.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = MILESTONE_KANJI[milestone.id] ?: DEFAULT_SEAL_KANJI,
-                fontSize = STAMP_KANJI_SP.sp,
-                fontWeight = FontWeight.Bold,
-                color = palette.sealKanji
-            )
-        }
-        Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
-        Text(
-            text = milestone.name.uppercase(),
-            fontSize = STAMP_LABEL_SP.sp,
-            letterSpacing = STAMP_LABEL_SPACING_SP.sp,
-            fontWeight = FontWeight.Medium,
-            color = palette.labelInk
         )
     }
 }
@@ -422,6 +325,14 @@ private const val ENDCAP_SCRIM_ALPHA = 0.55f
 
 @Composable
 private fun LevelMedallion(progression: ScrollProgression, palette: ScrollPalette) {
+    val current = progression.xpIntoLevel.toFloat()
+    val next = progression.xpToNextLevel.toFloat()
+    val fraction = if (current + next <= 0f) 1f else current / (current + next)
+    val animatedFraction by animateFloatAsState(
+        targetValue = fraction,
+        animationSpec = tween(durationMillis = MEDALLION_FILL_MS, easing = FastOutSlowInEasing),
+        label = "medallionFill"
+    )
     Box(contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.size(MEDALLION_SIZE_DP.dp)) {
             val strokePx = MEDALLION_STROKE_DP.dp.toPx()
@@ -443,13 +354,10 @@ private fun LevelMedallion(progression: ScrollProgression, palette: ScrollPalett
                 size = arcSize,
                 style = Stroke(width = strokePx, cap = StrokeCap.Round)
             )
-            val current = progression.xpIntoLevel.toFloat()
-            val next = progression.xpToNextLevel.toFloat()
-            val fraction = if (current + next <= 0f) 1f else current / (current + next)
             drawArc(
                 color = palette.gold,
                 startAngle = MEDALLION_START_ANGLE,
-                sweepAngle = FULL_SWEEP * fraction,
+                sweepAngle = FULL_SWEEP * animatedFraction,
                 useCenter = false,
                 topLeft = arcOffset,
                 size = arcSize,

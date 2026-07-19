@@ -2,6 +2,7 @@ package io.aatricks.easyreader.data.repository
 
 import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.local.ReadingSessionDao
+import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.ScrollProgression
 import io.aatricks.easyreader.data.model.SeriesReadingStatus
 import io.aatricks.easyreader.data.model.libraryNovelKey
@@ -20,7 +21,7 @@ import javax.inject.Singleton
 
 data class FinishedSeriesData(
     val title: String,
-    val coverImageUrl: String
+    val coverItem: LibraryItem?
 )
 
 @Singleton
@@ -102,7 +103,8 @@ class ScrollProgressionRepository(
                 val firstItem = seriesItems.first()
                 FinishedSeriesData(
                     title = firstItem.baseTitle.ifBlank { firstItem.title },
-                    coverImageUrl = firstItem.coverImageUrl
+                    // Any chapter row may carry the cover; rows are not ordered by completeness
+                    coverItem = seriesItems.firstOrNull { it.coverImageUrl.isNotBlank() }
                 )
             }
     }
