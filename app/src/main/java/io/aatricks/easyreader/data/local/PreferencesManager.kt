@@ -220,6 +220,27 @@ class PreferencesManager @Inject constructor(
         get() = prefs.getBoolean(KEY_SCROLL_HISTORY_SEEDED, false)
         set(value) = prefs.edit().putBoolean(KEY_SCROLL_HISTORY_SEEDED, value).apply()
 
+    var scrollFinishedSeries: Set<String>
+        get() {
+            val str = prefs.getString(KEY_SCROLL_FINISHED_SERIES, null) ?: return emptySet()
+            return try { json.decodeFromString(str) } catch (e: Exception) { emptySet() }
+        }
+        set(value) = prefs.edit().putString(KEY_SCROLL_FINISHED_SERIES, json.encodeToString(value)).apply()
+
+    var scrollUnlockedMilestones: Map<String, Long>
+        get() {
+            val str = prefs.getString(KEY_SCROLL_UNLOCKED_MILESTONES, null) ?: return emptyMap()
+            return try { json.decodeFromString(str) } catch (e: Exception) { emptyMap() }
+        }
+        set(value) = prefs.edit().putString(KEY_SCROLL_UNLOCKED_MILESTONES, json.encodeToString(value)).apply()
+
+    var scrollSeenMilestones: Set<String>
+        get() {
+            val str = prefs.getString(KEY_SCROLL_SEEN_MILESTONES, null) ?: return emptySet()
+            return try { json.decodeFromString(str) } catch (e: Exception) { emptySet() }
+        }
+        set(value) = prefs.edit().putString(KEY_SCROLL_SEEN_MILESTONES, json.encodeToString(value)).apply()
+
     // Clear all preferences
 
     fun clearAll() {
@@ -280,6 +301,9 @@ class PreferencesManager @Inject constructor(
         private const val KEY_AI_SUMMARY_ENABLED = "ai_summary_enabled"
         private const val KEY_WEB_OFFLINE_PIPELINE_VERSION = "web_offline_pipeline_version"
         private const val KEY_SCROLL_HISTORY_SEEDED = "scroll_history_seeded"
+        private const val KEY_SCROLL_FINISHED_SERIES = "scroll_finished_series"
+        private const val KEY_SCROLL_UNLOCKED_MILESTONES = "scroll_unlocked_milestones"
+        private const val KEY_SCROLL_SEEN_MILESTONES = "scroll_seen_milestones"
 
         // Appearance Settings Keys
         private const val KEY_THEME_MODE = "appearance_theme_mode"

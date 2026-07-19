@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
+import io.aatricks.easyreader.data.local.ReadingSessionDao
+import io.aatricks.easyreader.data.model.ReadingSessionEntity
 import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.ReadingMode
@@ -31,7 +33,8 @@ data class ImportSummary(
 @Suppress("InjectDispatcher")
 class LibraryBackupManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val libraryRepository: LibraryRepository
+    private val libraryRepository: LibraryRepository,
+    private val readingSessionDao: ReadingSessionDao
 ) {
 
     private val json = Json {
@@ -59,7 +62,17 @@ class LibraryBackupManager @Inject constructor(
                         schemaVersion = BACKUP_SCHEMA_VERSION,
                         exportedAt = System.currentTimeMillis(),
                         appVersionName = readAppVersionName(),
-                        items = manifestItems
+                        items = manifestItems,
+                        readingSessions = readingSessionDao.getAllSessions().map {
+                            ReadingSessionBackup(
+                                novelKey = it.novelKey,
+                                startedAt = it.startedAt,
+                                endedAt = it.endedAt,
+                                activeMillis = it.activeMillis,
+                                chaptersCompleted = it.chaptersCompleted,
+                                seeded = it.seeded
+                            )
+                        }
                     )
                 )
                 zip.putNextEntry(ZipEntry(MANIFEST_ENTRY))
@@ -151,6 +164,30 @@ class LibraryBackupManager @Inject constructor(
         if (toInsert.isNotEmpty()) {
             libraryRepository.restoreItems(toInsert)
         }
+
+        if (manifest.readingSessions.isNotEmpty()) {
+            val existingSessions = readingSessionDao.getAllSessions().map {
+                Triple(it.novelKey, it.startedAt, it.activeMillis)
+            }.toSet()
+
+            val sessionsToInsert = manifest.readingSessions.filter { backupSession ->
+                Triple(backupSession.novelKey, backupSession.startedAt, backupSession.activeMillis) !in existingSessions
+            }.map { backupSession ->
+                ReadingSessionEntity(
+                    novelKey = backupSession.novelKey,
+                    startedAt = backupSession.startedAt,
+                    endedAt = backupSession.endedAt,
+                    activeMillis = backupSession.activeMillis,
+                    chaptersCompleted = backupSession.chaptersCompleted,
+                    seeded = backupSession.seeded
+                )
+            }
+
+            if (sessionsToInsert.isNotEmpty()) {
+                readingSessionDao.insertAll(sessionsToInsert)
+            }
+        }
+
         return ImportSummary(imported = toInsert.size, duplicates = duplicates, invalid = invalid)
     }
 
