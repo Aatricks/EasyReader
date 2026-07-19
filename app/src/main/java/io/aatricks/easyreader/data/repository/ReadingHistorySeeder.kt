@@ -16,6 +16,7 @@ class ReadingHistorySeeder @Inject constructor(
     private val preferencesManager: PreferencesManager
 ) {
     suspend fun seedIfNeeded() {
+        if (!preferencesManager.scrollGamificationEnabled) return
         if (preferencesManager.scrollHistorySeeded) {
             return
         }

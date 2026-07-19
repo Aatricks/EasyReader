@@ -1,5 +1,6 @@
 package io.aatricks.easyreader.ui.viewmodel
 
+import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.local.ReadingSessionDao
 import io.aatricks.easyreader.data.local.SessionTotals
 import io.aatricks.easyreader.data.model.ReadingSessionEntity
@@ -17,6 +18,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.mock
 
 class ReadingSessionTrackerTest {
 
@@ -24,11 +27,15 @@ class ReadingSessionTrackerTest {
     private var currentTime: Long = 0L
 
     /** Tracker whose checkpoint ticker and persistence run on the test scheduler. */
-    private fun TestScope.buildTracker(): ReadingSessionTracker {
+    private fun TestScope.buildTracker(enabled: Boolean = true): ReadingSessionTracker {
         fakeDao = FakeReadingSessionDao()
         currentTime = 0L
+        val prefs = mock<PreferencesManager> {
+            on { scrollGamificationEnabled } doReturn enabled
+        }
         return ReadingSessionTracker(
             readingSessionDao = fakeDao,
+            preferencesManager = prefs,
             trackerScope = CoroutineScope(StandardTestDispatcher(testScheduler)),
             clock = { currentTime }
         )
@@ -140,6 +147,21 @@ class ReadingSessionTrackerTest {
         assertEquals(listOf(1, 2, 3), events)
         assertEquals(3, fakeDao.sessions.single().chaptersCompleted)
         job.cancel()
+    }
+
+    @Test
+    fun `tracking is inert when gamification is disabled`() = runTest {
+        val tracker = buildTracker(enabled = false)
+        tracker.start(NOVEL_1)
+        assertFalse(tracker.isTracking)
+
+        currentTime = ONE_MINUTE
+        tracker.onInteraction()
+        assertFalse(tracker.isTracking)
+        tracker.stop()
+        runCurrent()
+
+        assertTrue(fakeDao.sessions.isEmpty())
     }
 
     @Test

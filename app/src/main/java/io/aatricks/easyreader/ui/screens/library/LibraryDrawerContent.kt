@@ -54,6 +54,7 @@ fun LibraryDrawerContent(
 
     val scrollProgression by scrollViewModel.progression.collectAsState()
     val unseenMilestones by scrollViewModel.unseenMilestoneCount.collectAsState()
+    val scrollEnabled by scrollViewModel.gamificationEnabled.collectAsState()
 
     LazyColumn(
         modifier = Modifier
@@ -106,40 +107,42 @@ fun LibraryDrawerContent(
             }
         }
 
-        item {
-            NavigationDrawerItem(
-                label = { Text(scrollProgression.rankName) },
-                icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) },
-                badge = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(
-                            progress = {
-                                val current = scrollProgression.xpIntoLevel.toFloat()
-                                val next = scrollProgression.xpToNextLevel.toFloat()
-                                if (next == 0f) 1f else current / (current + next)
-                            },
-                            modifier = Modifier.size(16.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            strokeWidth = 2.dp,
-                            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-                        )
-                        if (unseenMilestones > 0) {
-                            Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary)
+        if (scrollEnabled) {
+            item {
+                NavigationDrawerItem(
+                    label = { Text(scrollProgression.rankName) },
+                    icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) },
+                    badge = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                progress = {
+                                    val current = scrollProgression.xpIntoLevel.toFloat()
+                                    val next = scrollProgression.xpToNextLevel.toFloat()
+                                    if (next == 0f) 1f else current / (current + next)
+                                },
+                                modifier = Modifier.size(16.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                strokeWidth = 2.dp,
+                                trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
                             )
+                            if (unseenMilestones > 0) {
+                                Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary)
+                                )
+                            }
                         }
+                    },
+                    selected = false,
+                    onClick = {
+                        onCloseDrawer()
+                        onScrollClick()
                     }
-                },
-                selected = false,
-                onClick = {
-                    onCloseDrawer()
-                    onScrollClick()
-                }
-            )
+                )
+            }
         }
 
         if (continueNovel != null) {

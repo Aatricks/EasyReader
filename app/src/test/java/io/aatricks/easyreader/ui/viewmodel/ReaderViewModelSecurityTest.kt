@@ -77,7 +77,7 @@ class ReaderViewModelSecurityTest {
             exploreRepository,
             preferencesManager,
             io.aatricks.easyreader.data.repository.ReaderCaches(chapterListCache, fakeImageDimensionCacheRepository()),
-            ReadingSessionTracker(org.mockito.kotlin.mock())
+            ReadingSessionTracker(org.mockito.kotlin.mock(), org.mockito.kotlin.mock())
         )
     }
 

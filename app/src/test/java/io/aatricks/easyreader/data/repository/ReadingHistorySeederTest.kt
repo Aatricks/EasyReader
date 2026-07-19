@@ -38,6 +38,7 @@ class ReadingHistorySeederTest {
         fakeSessionDao = FakeReadingSessionDao()
         seededFlag = false
 
+        whenever(preferencesManager.scrollGamificationEnabled).thenReturn(true)
         whenever(preferencesManager.scrollHistorySeeded).thenAnswer { seededFlag }
         doAnswer { invocation ->
             seededFlag = invocation.arguments[0] as Boolean

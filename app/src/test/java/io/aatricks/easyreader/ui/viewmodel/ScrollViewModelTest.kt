@@ -1,5 +1,6 @@
 package io.aatricks.easyreader.ui.viewmodel
 
+import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.model.ScrollProgression
 import io.aatricks.easyreader.data.repository.ScrollProgressionRepository
 import kotlinx.coroutines.Dispatchers
@@ -44,8 +45,10 @@ class ScrollViewModelTest {
         whenever(repository.progression).thenReturn(progressionFlow)
         whenever(repository.unseenMilestoneCount).thenReturn(flowOf(0))
         whenever(sessionTracker.completionEvents).thenReturn(completionEventsFlow)
+        val prefs = mock<PreferencesManager>()
+        whenever(prefs.scrollGamificationEnabledFlow).thenReturn(MutableStateFlow(true))
 
-        viewModel = ScrollViewModel(repository, sessionTracker)
+        viewModel = ScrollViewModel(repository, sessionTracker, prefs)
     }
 
     @After

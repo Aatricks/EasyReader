@@ -1,5 +1,6 @@
 package io.aatricks.easyreader.ui.viewmodel
 
+import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.local.ReadingSessionDao
 import io.aatricks.easyreader.data.model.ReadingSessionEntity
 import javax.inject.Inject
@@ -28,12 +29,14 @@ import kotlinx.coroutines.launch
 @Singleton
 class ReadingSessionTracker(
     private val readingSessionDao: ReadingSessionDao,
+    private val preferencesManager: PreferencesManager,
     private val trackerScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val clock: () -> Long = { System.currentTimeMillis() }
 ) {
     @Inject
-    constructor(readingSessionDao: ReadingSessionDao) : this(
+    constructor(readingSessionDao: ReadingSessionDao, preferencesManager: PreferencesManager) : this(
         readingSessionDao,
+        preferencesManager,
         CoroutineScope(SupervisorJob() + Dispatchers.IO),
         { System.currentTimeMillis() }
     )
@@ -58,7 +61,7 @@ class ReadingSessionTracker(
         get() = synchronized(lock) { currentNovelKey != null }
 
     fun start(novelKey: String) {
-        if (novelKey.isBlank()) return
+        if (novelKey.isBlank() || !preferencesManager.scrollGamificationEnabled) return
         val shouldRestart = synchronized(lock) {
             currentNovelKey != null && currentNovelKey != novelKey
         }

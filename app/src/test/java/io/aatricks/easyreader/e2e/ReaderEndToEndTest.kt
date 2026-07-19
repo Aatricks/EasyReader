@@ -196,7 +196,7 @@ class ReaderEndToEndTest {
             exploreRepository,
             preferencesManager,
             io.aatricks.easyreader.data.repository.ReaderCaches(chapterListCache, fakeImageDimensionCacheRepository()),
-            io.aatricks.easyreader.ui.viewmodel.ReadingSessionTracker(org.mockito.kotlin.mock())
+            io.aatricks.easyreader.ui.viewmodel.ReadingSessionTracker(org.mockito.kotlin.mock(), org.mockito.kotlin.mock())
         )
     }
 

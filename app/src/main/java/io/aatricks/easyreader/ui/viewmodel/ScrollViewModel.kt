@@ -3,6 +3,7 @@ package io.aatricks.easyreader.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.model.ScrollProgression
 import io.aatricks.easyreader.data.repository.FinishedSeriesData
 import io.aatricks.easyreader.data.repository.ScrollProgressionRepository
@@ -18,8 +19,16 @@ import javax.inject.Inject
 @HiltViewModel
 class ScrollViewModel @Inject constructor(
     private val repository: ScrollProgressionRepository,
-    private val sessionTracker: ReadingSessionTracker
+    private val sessionTracker: ReadingSessionTracker,
+    private val preferencesManager: PreferencesManager
 ) : ViewModel() {
+
+    val gamificationEnabled: StateFlow<Boolean> = preferencesManager.scrollGamificationEnabledFlow
+
+    fun setGamificationEnabled(enabled: Boolean) {
+        preferencesManager.scrollGamificationEnabled = enabled
+        if (!enabled) sessionTracker.stop()
+    }
 
     val progression: StateFlow<ScrollProgression> = repository.progression
 

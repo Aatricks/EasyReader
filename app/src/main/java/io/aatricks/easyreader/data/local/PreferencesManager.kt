@@ -216,6 +216,18 @@ class PreferencesManager @Inject constructor(
         get() = prefs.getInt(KEY_WEB_OFFLINE_PIPELINE_VERSION, 0)
         set(value) = prefs.edit().putInt(KEY_WEB_OFFLINE_PIPELINE_VERSION, value).apply()
 
+    private val _scrollGamificationEnabled by lazy {
+        MutableStateFlow(prefs.getBoolean(KEY_SCROLL_GAMIFICATION_ENABLED, true))
+    }
+    val scrollGamificationEnabledFlow: StateFlow<Boolean> by lazy { _scrollGamificationEnabled.asStateFlow() }
+
+    var scrollGamificationEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SCROLL_GAMIFICATION_ENABLED, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_SCROLL_GAMIFICATION_ENABLED, value).apply()
+            _scrollGamificationEnabled.value = value
+        }
+
     var scrollHistorySeeded: Boolean
         get() = prefs.getBoolean(KEY_SCROLL_HISTORY_SEEDED, false)
         set(value) = prefs.edit().putBoolean(KEY_SCROLL_HISTORY_SEEDED, value).apply()
@@ -301,6 +313,7 @@ class PreferencesManager @Inject constructor(
         private const val KEY_AI_SUMMARY_ENABLED = "ai_summary_enabled"
         private const val KEY_WEB_OFFLINE_PIPELINE_VERSION = "web_offline_pipeline_version"
         private const val KEY_SCROLL_HISTORY_SEEDED = "scroll_history_seeded"
+        private const val KEY_SCROLL_GAMIFICATION_ENABLED = "scroll_gamification_enabled"
         private const val KEY_SCROLL_FINISHED_SERIES = "scroll_finished_series"
         private const val KEY_SCROLL_UNLOCKED_MILESTONES = "scroll_unlocked_milestones"
         private const val KEY_SCROLL_SEEN_MILESTONES = "scroll_seen_milestones"
