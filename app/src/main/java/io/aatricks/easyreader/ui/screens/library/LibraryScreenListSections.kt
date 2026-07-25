@@ -62,6 +62,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.ContentResult
@@ -377,7 +378,9 @@ private fun NovelGroupHeader(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
                 if (!isExpanded) {
                     Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
@@ -400,15 +403,15 @@ private fun NovelGroupHeader(
                         )
                     }
                 }
+                if (!isSelectionMode && updateItem != null) {
+                    Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
+                    AssistChip(
+                        onClick = { onOpenNewChapter(updateItem) },
+                        label = { Text("Open latest") }
+                    )
+                }
             }
             }
-        }
-
-        if (!isSelectionMode && updateItem != null) {
-            AssistChip(
-                onClick = { onOpenNewChapter(updateItem) },
-                label = { Text("Open latest") }
-            )
         }
 
         IconButton(onClick = onToggleExpand) {
