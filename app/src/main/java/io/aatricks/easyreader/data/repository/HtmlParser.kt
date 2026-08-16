@@ -21,7 +21,20 @@ class HtmlParser @Inject constructor() {
         private val CHAPTER_CLEANUP_PATTERN = Regex("(?i)^(?:chapter|chap|ch|ch\\.)[\\s:\\-\\.]*\\d+\\b.*")
         private val CHAPTER_WORD_PATTERN = Regex("(?i)chapter")
         private val DIGIT_ONLY_REGEX = Regex("^\\d+")
-        
+
+        // Compared against a whole path segment with its extension stripped, never as a
+        // substring — see isLikelyDecorativeUrl.
+        private val DECORATIVE_PATH_SEGMENTS = setOf(
+            "ad", "ads", "advert", "adverts",
+            "avatar", "avatars",
+            "banner", "banners",
+            "cover", "covers",
+            "logo", "logos",
+            "loadingimg", "loading-img",
+            "og-image", "og-image-bat",
+            "thumb", "thumbs", "thumbnail", "thumbnails"
+        )
+
         private val MANGA_IMAGE_SELECTOR = listOf(
             ".container-chapter-reader img",
             ".vung-doc img",
@@ -141,17 +154,17 @@ class HtmlParser @Inject constructor() {
             .toList()
     }
 
-    private fun isLikelyDecorativeUrl(url: String): Boolean {
-        val lower = url.lowercase()
-        return lower.contains("/thumb/") ||
-            lower.contains("/logo") ||
-            lower.contains("/banner") ||
-            lower.contains("/cover") ||
-            lower.contains("loadingimg") ||
-            lower.contains("og-image") ||
-            lower.contains("ads") ||
-            lower.contains("avatar")
-    }
+    /**
+     * Decorative-asset check, matched against whole path segments rather than raw substrings.
+     * The substring form dropped real pages: "ads" also matches "/wp-content/uploads/", the
+     * standard media path for every WordPress/Madara-hosted manga site, so those chapters
+     * downloaded a handful of images, reported complete, and opened short offline.
+     */
+    private fun isLikelyDecorativeUrl(url: String): Boolean =
+        url.substringBefore('?').substringBefore('#')
+            .lowercase()
+            .split('/')
+            .any { segment -> segment.substringBeforeLast('.') in DECORATIVE_PATH_SEGMENTS }
 
     private fun isChapterPage(url: String): Boolean {
         val lower = url.lowercase()
@@ -215,9 +228,7 @@ class HtmlParser @Inject constructor() {
     }
 
     private fun isThumbnailOrLogo(src: String, adDomains: List<String>): Boolean {
-        return src.contains("/thumb/") || src.contains("og-image-bat.png") || 
-               src.contains("logo") || src.contains("banner") || 
-               adDomains.any { src.contains(it) }
+        return isLikelyDecorativeUrl(src) || adDomains.any { src.contains(it) }
     }
 
     private fun resolveImageUrl(src: String, pageUrl: String): String {
@@ -239,12 +250,13 @@ class HtmlParser @Inject constructor() {
         }
 
         val lastImg = images.last()
-        val firstHost = images.first().url.toHttpUrlOrNull()?.host.orEmpty()
-        val lastHost = lastImg.url.toHttpUrlOrNull()?.host.orEmpty()
-        
-        val isSuspect = lastImg.url.contains("recommend") || lastImg.url.contains("banner") || 
-                        lastImg.url.contains("next") || lastImg.url.contains("/thumb/") || 
-                        (lastHost.isNotBlank() && firstHost != lastHost)
+
+        // A host that differs from the first image's used to count as suspect on its own.
+        // Sharded page CDNs serve one chapter from several hosts, so that rule silently
+        // dropped a real last page. Only the name-based markers are trustworthy.
+        val isSuspect = lastImg.url.contains("recommend") ||
+            lastImg.url.contains("next") ||
+            isLikelyDecorativeUrl(lastImg.url)
 
         if (isSuspect) {
             images.removeAt(images.size - 1)

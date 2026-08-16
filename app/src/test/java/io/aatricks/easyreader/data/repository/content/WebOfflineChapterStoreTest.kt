@@ -380,6 +380,118 @@ class WebOfflineChapterStoreTest {
         assertEquals(1, inspectResult.cachedImages)
     }
 
+    @Test
+    fun `chapter with every image on disk opens offline despite a stale incomplete flag`() = runBlocking {
+        val tempDir = Files.createTempDirectory("offline-store-test").toFile()
+        val chapterUrl = "https://example.com/interrupted"
+        val imageUrl = "https://example.com/img1.jpg"
+        val htmlParser = mock<HtmlParser>()
+        val (store, _) = createStore(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain -> buildResponse(chain.request(), "", "text/plain", code = 404) },
+            tempDir = tempDir
+        )
+
+        // Exactly what a download stopped between the last image landing and the final
+        // manifest write leaves behind: every file present, complete still false.
+        val chapterDir = File(File(tempDir, "web_offline"), CacheKeyUtils.keyFor(chapterUrl))
+        val imageFile = File(chapterDir, "images/img1.jpg").apply {
+            parentFile!!.mkdirs()
+            writeBytes(tinyPng(2, 2))
+        }
+        File(chapterDir, "manifest.json").writeText(
+            """
+            {
+              "schemaVersion": 1,
+              "chapterUrl": "$chapterUrl",
+              "title": "Interrupted Chapter",
+              "elements": [],
+              "images": [
+                {
+                  "url": "$imageUrl",
+                  "fileName": "img1.jpg",
+                  "width": 2,
+                  "height": 2,
+                  "bytes": ${imageFile.length()}
+                }
+              ],
+              "complete": false,
+              "downloadedAtMs": null
+            }
+            """.trimIndent()
+        )
+
+        val inspectResult = store.inspect(chapterUrl)
+        assertTrue(inspectResult.isComplete)
+        assertFalse(inspectResult.hasPermanentFailures)
+        // The badge promises offline readiness, so the reader must deliver it.
+        assertTrue(inspectResult.isPersistentDownload)
+        assertTrue(store.hasCompleteChapter(chapterUrl))
+        assertTrue(store.loadContent(chapterUrl) != null)
+        assertTrue(store.loadContent(store.inspectChapter(chapterUrl)) != null)
+    }
+
+    @Test
+    fun `re-download with a shrunk parse keeps the existing image manifest`() = runBlocking {
+        val tempDir = Files.createTempDirectory("offline-store-test").toFile()
+        val chapterUrl = "https://example.com/manga/chapter-7"
+        val imageUrls = (1..3).map { "https://example.com/page$it.jpg" }
+        val htmlParser = mock<HtmlParser>()
+        val (store, _) = createStore(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain -> buildResponse(chain.request(), "page", "image/jpeg") },
+            tempDir = tempDir
+        )
+
+        val doc = Jsoup.parse("<html><body></body></html>", chapterUrl)
+        whenever(htmlParser.parse(any(), eq(chapterUrl)))
+            .thenReturn(imageUrls.map { ContentElement.Image(it) })
+        val firstResult = store.downloadChapter(chapterUrl, doc, null)
+        assertTrue(firstResult.isComplete)
+        assertEquals(3, firstResult.totalImages)
+
+        // Degraded reparse: only one page survives (stale HTML, changed markup).
+        whenever(htmlParser.parse(any(), eq(chapterUrl)))
+            .thenReturn(listOf(ContentElement.Image(imageUrls.first())))
+        val secondResult = store.downloadChapter(chapterUrl, doc, null)
+
+        assertEquals(3, secondResult.totalImages)
+        assertEquals(3, store.inspect(chapterUrl).totalImages)
+        assertTrue(store.hasCompleteChapter(chapterUrl))
+    }
+
+    @Test
+    fun `reparse that sees only text does not replace a complete image manifest`() = runBlocking {
+        val tempDir = Files.createTempDirectory("offline-store-test").toFile()
+        val chapterUrl = "https://example.com/manga/chapter-8"
+        val imageUrls = (1..3).map { "https://example.com/p$it.jpg" }
+        val htmlParser = mock<HtmlParser>()
+        val (store, _) = createStore(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain -> buildResponse(chain.request(), "page", "image/jpeg") },
+            tempDir = tempDir
+        )
+
+        val mangaDoc = Jsoup.parse("<html><body></body></html>", chapterUrl)
+        whenever(htmlParser.parse(any(), eq(chapterUrl)))
+            .thenReturn(imageUrls.map { ContentElement.Image(it) })
+        assertTrue(store.downloadChapter(chapterUrl, mangaDoc, null).isComplete)
+
+        // The reader page now parses as plain text with no img tags and no manga hints —
+        // exactly what handleZeroImageChapter would have written down as a complete,
+        // image-less text chapter on top of the good manifest.
+        val textDoc = Jsoup.parse("<html><body><p>Read the next chapter here.</p></body></html>", chapterUrl)
+        whenever(htmlParser.parse(any(), eq(chapterUrl)))
+            .thenReturn(listOf(ContentElement.Text("Read the next chapter here.")))
+        val secondResult = store.downloadChapter(chapterUrl, textDoc, null)
+
+        assertEquals(3, secondResult.totalImages)
+        assertEquals(3, store.inspect(chapterUrl).totalImages)
+        assertTrue(store.hasCompleteChapter(chapterUrl))
+        val content = store.loadContent(chapterUrl)
+        assertEquals(3, content!!.elements.filterIsInstance<ContentElement.Image>().size)
+    }
+
     private companion object {
         private val VALID_JPEG_HEADER = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte())
         private val JPEG_EOI = byteArrayOf(0xFF.toByte(), 0xD9.toByte())

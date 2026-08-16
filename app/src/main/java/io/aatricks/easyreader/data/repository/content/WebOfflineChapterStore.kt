@@ -109,6 +109,7 @@ class WebOfflineChapterStore @Inject constructor(
         onProgress: (suspend (PrefetchResult) -> Unit)?
     ): PrefetchResult = withContext(Dispatchers.IO) {
         val payload = parsePayload(url, document)
+        keepExistingOnShrunkParse(url, payload.imageUrls.size)?.let { return@withContext it }
         handleZeroImageChapter(url, document, payload)?.let { return@withContext it }
 
         val chapterDir = chapterDir(url)
@@ -169,9 +170,30 @@ class WebOfflineChapterStore @Inject constructor(
         finalResult
     }
 
+    /**
+     * The single definition of "the reader can serve this chapter entirely from disk".
+     * The badge (via [inspectChapter]) and the reader (via [loadContent]) both route through
+     * it. They used to disagree: inspect counted image files on disk while loadContent also
+     * demanded the manifest's `complete` flag. Every download writes that flag as `false`
+     * first and flips it only after the last image lands, so any run stopped in between left
+     * a chapter whose files were all present but whose flag said otherwise — a permanent
+     * "Downloaded" badge the reader refused to open, which the worker's already-complete fast
+     * path then re-confirmed instead of repairing.
+     *
+     * Files on disk are the truth. The flag only decides image-less text chapters, which have
+     * no files to count.
+     */
+    private fun isFullyPresent(manifest: Manifest, validationResults: Map<String, Boolean>): Boolean =
+        if (manifest.images.isEmpty()) {
+            manifest.complete
+        } else {
+            manifest.images.all { validationResults[it.url] == true }
+        }
+
     fun loadContent(url: String): ContentResult.Success? {
-        val manifest = readManifest(url) ?: return null
-        if (!manifest.complete || !validateManifestFiles(url, manifest)) return null
+        val manifest = readManifest(url)
+            ?.takeIf { isFullyPresent(it, validationResultsFor(url, it)) }
+            ?: return null
         val recordsByUrl = manifest.images.associateBy { it.url }
         return ContentResult.Success(
             elements = manifest.elements.rewriteImages(url, recordsByUrl),
@@ -182,17 +204,14 @@ class WebOfflineChapterStore @Inject constructor(
 
     internal fun loadContent(inspection: OfflineChapterInspection): ContentResult.Success? {
         val manifest = inspection.manifest
-        val isValid = manifest?.complete == true && inspection.validationResults.values.all { it }
-        return if (manifest != null && isValid) {
-            val recordsByUrl = manifest.images.associateBy { it.url }
-            ContentResult.Success(
-                elements = manifest.elements.rewriteImages(inspection.chapterUrl, recordsByUrl),
-                title = manifest.title,
-                url = inspection.chapterUrl
-            )
-        } else {
-            null
-        }
+            ?.takeIf { isFullyPresent(it, inspection.validationResults) }
+            ?: return null
+        val recordsByUrl = manifest.images.associateBy { it.url }
+        return ContentResult.Success(
+            elements = manifest.elements.rewriteImages(inspection.chapterUrl, recordsByUrl),
+            title = manifest.title,
+            url = inspection.chapterUrl
+        )
     }
 
     suspend fun inspect(url: String): PrefetchResult = inspectChapter(url).result
@@ -224,7 +243,11 @@ class WebOfflineChapterStore @Inject constructor(
         val accountedPermanent = manifest.images.count { record ->
             record.url in fresh && validationResults[record.url] != true
         }
-        val isComplete = (manifest.complete && manifest.images.isEmpty()) ||
+        // Complete means "nothing left to attempt", which is a weaker claim than
+        // isFullyPresent: images the CDN permanently refuses are accounted for here so the
+        // download worker stops retrying. hasPermanentFailures is what keeps those chapters
+        // off the Downloaded badge.
+        val isComplete = isFullyPresent(manifest, validationResults) ||
             (manifest.images.isNotEmpty() && onDisk + accountedPermanent == manifest.images.size)
 
         OfflineChapterInspection(
@@ -249,7 +272,7 @@ class WebOfflineChapterStore @Inject constructor(
 
     fun hasCompleteChapter(url: String): Boolean {
         val manifest = readManifest(url) ?: return false
-        return manifest.complete && validateManifestFiles(url, manifest)
+        return isFullyPresent(manifest, validationResultsFor(url, manifest))
     }
 
     fun hasCompleteManifestRecord(url: String): Boolean =
@@ -434,8 +457,31 @@ class WebOfflineChapterStore @Inject constructor(
         )
     }
 
-    private fun validateManifestFiles(url: String, manifest: Manifest): Boolean =
-        manifest.images.all { imageValidator(fileFor(url, it.fileName)) }
+    private fun validationResultsFor(url: String, manifest: Manifest): Map<String, Boolean> =
+        manifest.images.associate { it.url to imageValidator(fileFor(url, it.fileName)) }
+
+    /**
+     * A re-download must never shrink a chapter that is already fully on disk. A degraded
+     * parse — a Cloudflare interstitial cached as the chapter HTML, or a JS page list the
+     * extractor stopped recognising after a site markup change — would otherwise overwrite a
+     * 40-page manifest with a 3-page one and still report complete, leaving a Downloaded
+     * badge on a chapter that opens short.
+     */
+    private suspend fun keepExistingOnShrunkParse(url: String, parsedImageCount: Int): PrefetchResult? {
+        val inspection = inspectChapter(url)
+        val manifest = inspection.manifest
+        val existingCount = manifest?.images?.size ?: 0
+        val keepExisting = manifest != null &&
+            existingCount > parsedImageCount &&
+            isFullyPresent(manifest, inspection.validationResults)
+        if (!keepExisting) return null
+        Log.w(
+            TAG,
+            "keeping $existingCount-image manifest over $parsedImageCount-image reparse " +
+                "url=${UrlSanitizer.sanitize(url)}"
+        )
+        return inspection.result.copy(isInProgress = false)
+    }
 
     private fun readManifest(url: String): Manifest? {
         val file = manifestFile(url)

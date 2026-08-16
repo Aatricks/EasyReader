@@ -84,6 +84,61 @@ class HtmlParserTest {
     }
 
     @Test
+    fun `keeps JS-listed pages served from a wp-content uploads path`() {
+        val pageUrl = "https://example.com/manga/some-title/chapter-5"
+        val html = """
+            <html><body>
+              <div class="container-chapter-reader"></div>
+              <script>
+                var chapterImages = [
+                  "https://cdn.example.com/wp-content/uploads/2024/01/001.webp",
+                  "https://cdn.example.com/wp-content/uploads/2024/01/002.webp",
+                  "https://cdn.example.com/wp-content/uploads/2024/01/003.webp"
+                ];
+              </script>
+            </body></html>
+        """.trimIndent()
+
+        val document = Jsoup.parse(html, pageUrl)
+        val images = parser.parse(document, pageUrl).filterIsInstance<ContentElement.Image>()
+
+        assertEquals(3, images.size)
+    }
+
+    @Test
+    fun `still drops decorative assets named as a whole path segment`() {
+        val pageUrl = "https://example.com/manga/some-title/chapter-5"
+        val html = """
+            <html><body>
+              <div class="container-chapter-reader">
+                <img src="https://cdn.example.com/assets/logo.png">
+                <img src="https://cdn.example.com/uploads/2024/001.webp">
+              </div>
+            </body></html>
+        """.trimIndent()
+
+        val document = Jsoup.parse(html, pageUrl)
+        val images = parser.parse(document, pageUrl).filterIsInstance<ContentElement.Image>()
+
+        assertEquals(1, images.size)
+        assertEquals("https://cdn.example.com/uploads/2024/001.webp", images[0].url)
+    }
+
+    @Test
+    fun `keeps the last MangaBat page when it is served from a second CDN host`() {
+        val pageUrl = "https://www.mangabats.com/manga/some-title/chapter-238"
+        val pages = (0..5).joinToString("\n") { index ->
+            val host = if (index == 5) "img-r2" else "img-r1"
+            """<img src="https://$host.2xstorage.com/some-title/238/$index.webp">"""
+        }
+        val document = Jsoup.parse("<html><body><div class=\"container-chapter-reader\">$pages</div></body></html>", pageUrl)
+        val images = parser.parse(document, pageUrl).filterIsInstance<ContentElement.Image>()
+
+        assertEquals(6, images.size)
+        assertEquals("https://img-r2.2xstorage.com/some-title/238/5.webp", images.last().url)
+    }
+
+    @Test
     fun `parses Novelight div-per-paragraph chapter prose and drops ad blocks`() {
         val pageUrl = "https://novelight.net/book/chapter/191867"
         val html = """
