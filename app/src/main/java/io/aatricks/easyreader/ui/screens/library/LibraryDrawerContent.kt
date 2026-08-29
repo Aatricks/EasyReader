@@ -160,10 +160,12 @@ fun LibraryDrawerContent(
         if (recentUpdates.isNotEmpty()) {
             item { DrawerSectionLabel("Latest updates") }
             items(recentUpdates, key = { "update_${it.novelKey}" }) { novel ->
+                val chapter = novel.updateItem.currentChapter.ifBlank {
+                    novel.updateItem.title.takeIf { it != novel.updateItem.baseTitle } ?: "New chapter"
+                }.ifBlank { "New chapter" }
                 QuickLibraryItem(
                     item = novel.updateItem,
-                    supportingText = "Start at the newest chapter",
-                    trailingLabel = "Open latest",
+                    supportingText = chapter,
                     onClick = {
                         onOpenLatestUpdate(novel.updateItem)
                         onCloseDrawer()
@@ -299,7 +301,6 @@ private fun QuickLibraryItemCover(item: LibraryItem): Unit {
 private fun QuickLibraryItem(
     item: LibraryItem,
     supportingText: String,
-    trailingLabel: String? = null,
     onClick: () -> Unit
 ): Unit {
     Surface(
@@ -335,14 +336,6 @@ private fun QuickLibraryItem(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
-            if (trailingLabel != null) {
-                Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-                AssistChip(
-                    onClick = onClick,
-                    label = { Text(trailingLabel) }
-                )
-                Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
             }
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,

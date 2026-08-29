@@ -206,19 +206,10 @@
     <ID>MagicNumber:AccentTheme.kt$AccentTheme.ROSE$0xFFF0D6D7</ID>
     <ID>MagicNumber:AccentTheme.kt$AccentTheme.ROSE$0xFFF1DED6</ID>
     <ID>MagicNumber:AccentTheme.kt$AccentTheme.ROSE$0xFFF6D8D8</ID>
-    <ID>MagicNumber:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$3</ID>
-    <ID>MagicNumber:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$4</ID>
-    <ID>MagicNumber:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$5</ID>
-    <ID>MagicNumber:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$6</ID>
-    <ID>MagicNumber:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$7</ID>
-    <ID>MagicNumber:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$8</ID>
-    <ID>MagicNumber:AppDatabase.kt$AppDatabase.Companion.&lt;no name provided&gt;$9</ID>
-    <ID>MagicNumber:BaseJsoupSource.kt$BaseJsoupSource$15000L</ID>
     <ID>MagicNumber:CacheKeyUtils.kt$CacheKeyUtils$0xff</ID>
     <ID>MagicNumber:CacheKeyUtils.kt$CacheKeyUtils$4</ID>
     <ID>MagicNumber:ChapterDownloadQueue.kt$WorkManagerChapterDownloadQueue$30</ID>
     <ID>MagicNumber:ChapterListSheet.kt$100</ID>
-    <ID>MagicNumber:EpubContentLoader.kt$EpubContentLoader.&lt;no name provided&gt;$5</ID>
     <ID>MagicNumber:ErrorMessages.kt$ErrorMessages$160</ID>
     <ID>MagicNumber:ExploreDetailSheet.kt$320</ID>
     <ID>MagicNumber:ExploreDetailSheet.kt$6</ID>
@@ -230,8 +221,6 @@
     <ID>MagicNumber:ExploreGridSection.kt$950</ID>
     <ID>MagicNumber:ExploreViewModel.kt$ExploreViewModel$500L</ID>
     <ID>MagicNumber:FileUtils.kt$FileUtils$1024</ID>
-    <ID>MagicNumber:HostThrottle.kt$HostThrottle.&lt;no name provided&gt;$0.75f</ID>
-    <ID>MagicNumber:HostThrottle.kt$HostThrottle.&lt;no name provided&gt;$16</ID>
     <ID>MagicNumber:HtmlParser.kt$HtmlParser$10</ID>
     <ID>MagicNumber:HtmlParser.kt$HtmlParser$5</ID>
     <ID>MagicNumber:HtmlParser.kt$HtmlParser$80</ID>
@@ -294,7 +283,6 @@
     <ID>MagicNumber:LibraryRepository.kt$LibraryRepository$1000L</ID>
     <ID>MagicNumber:LibraryRepository.kt$LibraryRepository$24</ID>
     <ID>MagicNumber:LibraryRepository.kt$LibraryRepository$5</ID>
-    <ID>MagicNumber:LibraryRepository.kt$LibraryRepository$5000</ID>
     <ID>MagicNumber:LibraryRepository.kt$LibraryRepository$60</ID>
     <ID>MagicNumber:LibraryScreen.kt$48</ID>
     <ID>MagicNumber:LibraryUpdateWorker.kt$LibraryUpdateWorker.Companion$6</ID>
@@ -312,7 +300,6 @@
     <ID>MagicNumber:PdfContentLoader.kt$PdfContentLoader$3000</ID>
     <ID>MagicNumber:PdfContentLoader.kt$PdfContentLoader$400</ID>
     <ID>MagicNumber:PdfContentLoader.kt$PdfContentLoader$80</ID>
-    <ID>MagicNumber:PdfContentLoader.kt$PdfContentLoader.PdfLazyList$3</ID>
     <ID>MagicNumber:PreferencesManager.kt$PreferencesManager$1.5f</ID>
     <ID>MagicNumber:PreferencesManager.kt$PreferencesManager$16</ID>
     <ID>MagicNumber:PreferencesManager.kt$PreferencesManager$18f</ID>
@@ -373,20 +360,14 @@
     <ID>MagicNumber:TextUtils.kt$TextUtils$40</ID>
     <ID>MagicNumber:TextUtils.kt$TextUtils$5</ID>
     <ID>MagicNumber:TextUtils.kt$TextUtils$60</ID>
-    <ID>MagicNumber:Theme.kt$0xFF0E1210</ID>
     <ID>MagicNumber:Theme.kt$0xFF171C19</ID>
-    <ID>MagicNumber:Theme.kt$0xFF212823</ID>
-    <ID>MagicNumber:Theme.kt$0xFF2F3832</ID>
     <ID>MagicNumber:Theme.kt$0xFF30110B</ID>
-    <ID>MagicNumber:Theme.kt$0xFF414B44</ID>
     <ID>MagicNumber:Theme.kt$0xFF525A54</ID>
     <ID>MagicNumber:Theme.kt$0xFF747C75</ID>
     <ID>MagicNumber:Theme.kt$0xFFB34E3E</ID>
     <ID>MagicNumber:Theme.kt$0xFFC8CEC7</ID>
     <ID>MagicNumber:Theme.kt$0xFFCDD3CA</ID>
-    <ID>MagicNumber:Theme.kt$0xFFE69587</ID>
     <ID>MagicNumber:Theme.kt$0xFFE6E7DE</ID>
-    <ID>MagicNumber:Theme.kt$0xFFF4F5EF</ID>
     <ID>MagicNumber:Theme.kt$0xFFF6F4EE</ID>
     <ID>MagicNumber:Theme.kt$0xFFFCFAF5</ID>
     <ID>MagicNumber:UrlSanitizer.kt$UrlSanitizer$16</ID>
@@ -413,7 +394,6 @@
     <ID>MagicNumber:WebChapterElementShaper.kt$WebChapterElementShaper$1.6</ID>
     <ID>MagicNumber:WebChapterElementShaper.kt$WebChapterElementShaper$1600</ID>
     <ID>MagicNumber:WebContentLoader.kt$WebContentLoader$429</ID>
-    <ID>MagicNumber:WebContentLoader.kt$WebContentLoader.&lt;no name provided&gt;$0.75f</ID>
     <ID>MagicNumber:ZipUtils.kt$ZipUtils$10</ID>
     <ID>MagicNumber:ZipUtils.kt$ZipUtils$1024</ID>
     <ID>MagicNumber:ZipUtils.kt$ZipUtils$8192</ID>
@@ -579,7 +559,6 @@
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$private suspend fun tryLoadFromParsedCache( url: String, safeUrl: String, startedAtMs: Long ): ContentResult.Success?</ID>
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$suspend fun prefetch( url: String, mode: PrefetchMode, onProgress: (suspend (PrefetchResult) -&gt; Unit)? ): PrefetchResult</ID>
     <ID>ReturnCount:WebOfflineChapterStore.kt$WebOfflineChapterStore$fun hasImage(url: String, imageUrl: String): Boolean</ID>
-    <ID>ReturnCount:WebOfflineChapterStore.kt$WebOfflineChapterStore$fun loadContent(url: String): ContentResult.Success?</ID>
     <ID>ReturnCount:WebViewUtils.kt$WebViewUtils$fun shouldAllowCloudflareNavigation(url: String?, expectedHost: String? = null): Boolean</ID>
     <ID>SwallowedException:ContentRenderer.kt$ex: Exception</ID>
     <ID>SwallowedException:ContentRepository.kt$ContentRepository$e: TimeoutCancellationException</ID>
