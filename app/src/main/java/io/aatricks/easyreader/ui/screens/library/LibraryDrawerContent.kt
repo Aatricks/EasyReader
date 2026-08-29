@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.aatricks.easyreader.data.model.LibraryItem
+import io.aatricks.easyreader.data.model.libraryDisplayTitle
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
@@ -243,7 +244,7 @@ private fun ContinueReadingCard(
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = item.baseTitle.ifBlank { item.title },
+                    text = item.libraryDisplayTitle(),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
@@ -323,7 +324,7 @@ private fun QuickLibraryItem(
                 verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)
             ) {
                 Text(
-                    text = item.baseTitle.ifBlank { item.title },
+                    text = item.libraryDisplayTitle(),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,

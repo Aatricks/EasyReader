@@ -218,4 +218,22 @@ class ChapterListSheetSelectionTest {
 
         assertEquals("Verifying download...", status)
     }
+
+    @Test
+    fun `unread selection matches current chapter across normalized URL variants`() {
+        val chapters = listOf(
+            ChapterInfo(title = "Chapter 1", url = "https://example.com/ch-1/"),
+            ChapterInfo(title = "Chapter 2", url = "https://example.com/ch-2/"),
+            ChapterInfo(title = "Chapter 3", url = "https://example.com/ch-3/")
+        )
+
+        val selected = computeUnreadChapterSelection(
+            allChapters = chapters,
+            currentChapterUrl = "http://example.com/ch-1",
+            readUrls = setOf("http://example.com/ch-2"),
+            downloadedUrls = emptySet()
+        )
+
+        assertEquals(listOf("https://example.com/ch-3/"), selected)
+    }
 }

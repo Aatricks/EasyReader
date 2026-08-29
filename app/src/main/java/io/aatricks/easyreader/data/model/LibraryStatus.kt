@@ -45,7 +45,8 @@ fun LibraryItem.titleChapterNumber(): Double? {
 /**
  * Display title used for series grouping and labels.
  */
-fun LibraryItem.libraryDisplayTitle(): String = baseTitle.ifBlank { title }
+fun LibraryItem.libraryDisplayTitle(): String =
+    baseTitle.ifBlank { TextUtils.extractBaseTitle(title, contentType) }
 
 /**
  * Stable per-series key used for grouping chapter rows into a series.

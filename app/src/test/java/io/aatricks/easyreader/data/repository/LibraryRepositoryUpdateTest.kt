@@ -574,4 +574,43 @@ class LibraryRepositoryUpdateTest {
         assertEquals(12, dbItems["2"]!!.totalChapters)
         assertEquals(12, dbItems["3"]!!.totalChapters)
     }
+
+    @Test
+    fun `refresh heals legacy entries with missing metadata and checks updates`() = runBlocking {
+        val legacyItem = LibraryItem(
+            id = "legacy-1",
+            title = "Martial Peak - Chapter 10",
+            url = "https://novelfire.net/book/martial-peak/chapter-10",
+            baseTitle = "",
+            baseNovelUrl = "",
+            sourceName = "",
+            currentChapter = "Chapter 10",
+            totalChapters = 10,
+            progress = 100,
+            isCurrentlyReading = true
+        )
+        whenever(libraryDao.getAllItems()).thenReturn(flowOf(listOf(legacyItem)))
+        whenever(libraryDao.getItemById("legacy-1")).thenReturn(legacyItem)
+        whenever(
+            exploreRepository.getNovelDetails("https://novelfire.net/book/martial-peak", "NovelFire")
+        ).thenReturn(
+            ExploreItem(
+                title = "Martial Peak",
+                url = "https://novelfire.net/book/martial-peak",
+                source = "NovelFire",
+                chapters = chapterList(15, "https://novelfire.net/book/martial-peak")
+            )
+        )
+
+        repository.refreshLibraryUpdates(exploreRepository)
+
+        verify(libraryDao).updateNovelMetadata(
+            id = "legacy-1",
+            baseTitle = "Martial Peak",
+            baseNovelUrl = "https://novelfire.net/book/martial-peak",
+            sourceName = "NovelFire"
+        )
+        verify(libraryDao).updateTotalChapters("legacy-1", 15)
+        verify(libraryDao).markHasUpdates("legacy-1")
+    }
 }

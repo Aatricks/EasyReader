@@ -49,6 +49,12 @@ interface LibraryDao {
     @Query("UPDATE library_items SET baseNovelUrl = :baseNovelUrl, sourceName = :sourceName WHERE baseTitle = (SELECT baseTitle FROM library_items WHERE id = :itemId)")
     suspend fun updateNovelInfo(itemId: String, baseNovelUrl: String, sourceName: String): Int
 
+    @Query(
+        "UPDATE library_items SET baseTitle = :baseTitle, " +
+        "baseNovelUrl = :baseNovelUrl, sourceName = :sourceName WHERE id = :id"
+    )
+    suspend fun updateNovelMetadata(id: String, baseTitle: String, baseNovelUrl: String, sourceName: String): Int
+
     @Query("UPDATE library_items SET readingMode = :readingMode WHERE baseTitle = :baseTitle")
     suspend fun updateReadingModeByBaseTitle(baseTitle: String, readingMode: ReadingMode)
 

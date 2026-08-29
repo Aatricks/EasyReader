@@ -5,6 +5,7 @@ import io.aatricks.easyreader.data.local.ReadingSessionDao
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.ScrollProgression
 import io.aatricks.easyreader.data.model.SeriesReadingStatus
+import io.aatricks.easyreader.data.model.libraryDisplayTitle
 import io.aatricks.easyreader.data.model.libraryNovelKey
 import io.aatricks.easyreader.data.model.seriesReadingStatus
 import kotlinx.coroutines.CoroutineScope
@@ -102,7 +103,7 @@ class ScrollProgressionRepository(
             .map { (_, seriesItems) ->
                 val firstItem = seriesItems.first()
                 FinishedSeriesData(
-                    title = firstItem.baseTitle.ifBlank { firstItem.title },
+                    title = firstItem.libraryDisplayTitle(),
                     // Any chapter row may carry the cover; rows are not ordered by completeness
                     coverItem = seriesItems.firstOrNull { it.coverImageUrl.isNotBlank() }
                 )

@@ -168,4 +168,31 @@ class ChapterListNormalizerTest {
         )
         assertNull(healed)
     }
+
+    @Test
+    fun `normalizeChapterUrl strips www and trailing slashes and unifies scheme`() {
+        val normalized = normalizeChapterUrl("http://www.example.com/novel/chapter-1/")
+        assertEquals("http://example.com/novel/chapter-1", normalized)
+    }
+
+    @Test
+    fun `areChapterUrlsMatching matches equivalent URLs across schemes and www`() {
+        val url1 = "https://www.example.com/novel/chapter-1/"
+        val url2 = "http://example.com/novel/chapter-1"
+        assertTrue(areChapterUrlsMatching(url1, url2))
+    }
+
+    @Test
+    fun `matchChapterIndex falls back to chapter number when URLs differ`() {
+        val chapters = listOf(
+            ChapterInfo(title = "Chapter 1 - Intro", url = "https://source.com/c1", number = 1.0),
+            ChapterInfo(title = "Chapter 2 - Next", url = "https://source.com/c2", number = 2.0)
+        )
+        val matchedIndex = matchChapterIndex(
+            chapters = chapters,
+            targetUrl = "https://other-source.com/read/c2",
+            targetTitle = "Chapter 2 - Next"
+        )
+        assertEquals(1, matchedIndex)
+    }
 }

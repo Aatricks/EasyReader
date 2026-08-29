@@ -10,6 +10,7 @@ import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.ReadingMode
 import io.aatricks.easyreader.data.repository.LibraryRepository
+import io.aatricks.easyreader.util.TextUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -311,7 +312,12 @@ private fun LibraryItemBackup.toEntity(rewrittenUrl: String, fileVerified: Boole
     lastReadOffsetFraction = lastReadOffsetFraction ?: io.aatricks.easyreader.data.model.FRACTION_UNKNOWN,
     hasUpdates = hasUpdates,
     chapterSummaries = chapterSummaries,
-    baseTitle = baseTitle.ifBlank { title },
+    baseTitle = baseTitle.ifBlank {
+        TextUtils.extractBaseTitle(
+            title,
+            runCatching { ContentType.valueOf(contentType) }.getOrDefault(ContentType.WEB)
+        )
+    },
     readingMode = runCatching { ReadingMode.valueOf(readingMode) }.getOrDefault(ReadingMode.VERTICAL),
     baseNovelUrl = baseNovelUrl,
     sourceName = sourceName,

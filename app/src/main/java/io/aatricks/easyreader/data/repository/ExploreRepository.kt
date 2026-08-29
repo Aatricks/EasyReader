@@ -5,6 +5,8 @@ import io.aatricks.easyreader.data.repository.source.BrowseMode
 import io.aatricks.easyreader.data.repository.source.NovelSource
 import io.aatricks.easyreader.data.repository.source.SmartSource
 import io.aatricks.easyreader.data.repository.source.isSourceEnabled
+import io.aatricks.easyreader.util.inferBaseNovelUrlFromUrl
+import io.aatricks.easyreader.util.inferSourceNameFromUrl
 import io.aatricks.easyreader.util.normalizeExploreItemDetails
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -198,6 +200,10 @@ class ExploreRepository @Inject constructor(
 
         return resultSets.first().filter { it.url in commonUrls }
     }
+
+    fun inferSourceName(url: String): String = inferSourceNameFromUrl(url)
+
+    fun inferBaseNovelUrl(url: String): String = inferBaseNovelUrlFromUrl(url)
 
     fun getSourceNames(): List<String> = enabledSources.map { it.name }
 }

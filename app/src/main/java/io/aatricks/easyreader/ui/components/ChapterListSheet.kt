@@ -61,10 +61,14 @@ import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.ChapterInfo
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.model.isStrictOfflineReady
+import io.aatricks.easyreader.data.model.libraryDisplayTitle
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
+import io.aatricks.easyreader.util.areChapterUrlsMatching
+import io.aatricks.easyreader.util.matchChapterIndex
 import io.aatricks.easyreader.util.normalizeChapterList
+import io.aatricks.easyreader.util.normalizeChapterUrl
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -89,8 +93,14 @@ fun ChapterListSheet(
         containerColor = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface
     ) {
-        val libraryItemsInGroup = libraryUiState.groupedItems[uiState.baseTitle] ?: emptyList()
+        val libraryItemsInGroup = libraryUiState.groupedItems[uiState.baseTitle]
+            ?: libraryUiState.items.filter {
+                it.libraryDisplayTitle().equals(uiState.baseTitle, ignoreCase = true) ||
+                    it.baseTitle.equals(uiState.baseTitle, ignoreCase = true) ||
+                    it.title.equals(uiState.baseTitle, ignoreCase = true)
+            }
         val libraryItemsByUrl = libraryItemsInGroup.associateBy { it.url }
+        val libraryItemsByNormalizedUrl = libraryItemsInGroup.associateBy { normalizeChapterUrl(it.url) }
         val libraryUrls = libraryItemsInGroup.map { it.url }.toSet()
         val downloadedUrls = libraryItemsInGroup
             .asSequence()
@@ -110,20 +120,21 @@ fun ChapterListSheet(
 
         val filteredChapters = if (isSelectionMode) {
             if (isDeleteMode) {
-                allChapters.filter { it.url in libraryUrls }
+                allChapters.filter { ch -> libraryUrls.any { areChapterUrlsMatching(it, ch.url) } }
             } else {
-                allChapters.filter { it.url !in downloadedUrls }
+                allChapters.filter { ch -> downloadedUrls.none { areChapterUrlsMatching(it, ch.url) } }
             }
         } else {
             allChapters
         }
+
+        val currentIndex = matchChapterIndex(filteredChapters, uiState.content?.url, uiState.chapterTitle)
 
         LaunchedEffect(allChapters) {
             libraryViewModel.refreshChapterCacheStates(allChapters.map { it.url })
         }
 
         LaunchedEffect(filteredChapters, uiState.content?.url) {
-            val currentIndex = filteredChapters.indexOfFirst { it.url == uiState.content?.url }
             if (currentIndex >= 0) {
                 chaptersListState.scrollToItem(currentIndex)
             }
@@ -277,10 +288,16 @@ fun ChapterListSheet(
                     itemsIndexed(filteredChapters, key = { _, chapter -> chapter.url }) { index, chapter ->
                         val cacheState = cacheStates[chapter.url]
                         val libraryItem = libraryItemsByUrl[chapter.url]
-                        val isDownloaded = libraryItem?.isDownloaded == true
-                        val isInLibrary = chapter.url in libraryUrls
+                            ?: libraryItemsByNormalizedUrl[normalizeChapterUrl(chapter.url)]
+                            ?: libraryItemsInGroup.find { areChapterUrlsMatching(it.url, chapter.url) }
+                        val isDownloaded = libraryItem?.isDownloaded == true ||
+                            downloadedUrls.any { areChapterUrlsMatching(it, chapter.url) }
+                        val isInLibrary = libraryItem != null ||
+                            chapter.url in libraryUrls ||
+                            libraryUrls.any { areChapterUrlsMatching(it, chapter.url) }
                         val isSelected = chapter.url in selectedChapterUrls
-                        val isCurrent = chapter.url == uiState.content?.url
+                        val isCurrent = areChapterUrlsMatching(chapter.url, uiState.content?.url) ||
+                            (currentIndex >= 0 && index == currentIndex)
                         val statusKind = chapterCacheStatusKind(
                             isCurrent = isCurrent,
                             cacheState = cacheState,
@@ -548,7 +565,7 @@ internal fun computeUnreadChapterSelection(
     downloadedUrls: Set<String>
 ): List<String> {
     val currentIndex = currentChapterUrl?.let { url ->
-        allChapters.indexOfFirst { it.url == url }
+        matchChapterIndex(allChapters, url)
     } ?: -1
 
     if (currentIndex < 0) return emptyList()
@@ -557,6 +574,9 @@ internal fun computeUnreadChapterSelection(
         .asSequence()
         .filterIndexed { index, _ -> index > currentIndex }
         .map { it.url }
-        .filter { it !in readUrls && it !in downloadedUrls }
+        .filter { url ->
+            readUrls.none { areChapterUrlsMatching(it, url) } &&
+                downloadedUrls.none { areChapterUrlsMatching(it, url) }
+        }
         .toList()
 }

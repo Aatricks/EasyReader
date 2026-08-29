@@ -1,6 +1,8 @@
 package io.aatricks.easyreader.data.repository
 
 import io.aatricks.easyreader.util.TextUtils
+import io.aatricks.easyreader.util.inferBaseNovelUrlFromUrl
+import io.aatricks.easyreader.util.inferSourceNameFromUrl
 import io.aatricks.easyreader.util.normalizeChapterList
 import io.aatricks.easyreader.util.rethrowCancellation
 import io.aatricks.easyreader.data.local.PreferencesManager
@@ -13,6 +15,7 @@ import io.aatricks.easyreader.data.model.SeriesReadingStatus
 import io.aatricks.easyreader.data.model.hasFinishedProgress
 import io.aatricks.easyreader.data.model.resolvedChapterNumber
 import io.aatricks.easyreader.data.model.seriesReadingStatus
+import io.aatricks.easyreader.data.model.libraryDisplayTitle
 import io.aatricks.easyreader.util.FieldUpdate
 import io.aatricks.easyreader.util.resolve
 
@@ -172,6 +175,20 @@ class LibraryRepository @Inject constructor(
         true
     } ?: false
 
+    suspend fun healNovelMetadata(
+        itemId: String,
+        baseTitle: String? = null,
+        baseNovelUrl: String? = null,
+        sourceName: String? = null
+    ): Boolean = runRepoCatching("Failed to heal novel metadata", false) {
+        val item = libraryDao.getItemById(itemId) ?: return@runRepoCatching false
+        val newBaseTitle = baseTitle?.ifBlank { null } ?: item.baseTitle
+        val newBaseNovelUrl = baseNovelUrl?.ifBlank { null } ?: item.baseNovelUrl
+        val newSourceName = sourceName?.ifBlank { null } ?: item.sourceName
+        libraryDao.updateNovelMetadata(itemId, newBaseTitle, newBaseNovelUrl, newSourceName)
+        true
+    } ?: false
+
     suspend fun updateReadingMode(itemId: String, readingMode: ReadingMode): Boolean =
         runRepoCatching("Failed to update reading mode", false) {
             libraryDao.getItemById(itemId)?.let { item ->
@@ -315,7 +332,9 @@ class LibraryRepository @Inject constructor(
     fun getChaptersByBaseTitle(baseTitle: String): List<LibraryItem> {
         val allItems = libraryItems.value
         val filtered = allItems.filter {
-            (it.baseTitle.ifBlank { it.title }) == baseTitle
+            it.libraryDisplayTitle() == baseTitle ||
+                it.baseTitle.equals(baseTitle, ignoreCase = true) ||
+                it.title.equals(baseTitle, ignoreCase = true)
         }
         return sortChapters(filtered)
     }
@@ -323,7 +342,7 @@ class LibraryRepository @Inject constructor(
     fun getGroupedByTitle(items: List<LibraryItem>? = null): Map<String, List<LibraryItem>> {
         val targetItems = items ?: libraryItems.value
         return targetItems.groupBy { item ->
-            item.baseTitle.ifBlank { item.title }
+            item.libraryDisplayTitle()
         }.mapValues { (_, group) ->
             sortChapters(group)
         }
@@ -333,7 +352,7 @@ class LibraryRepository @Inject constructor(
         val targetItems = items ?: libraryItems.value
         return targetItems.groupBy { it.sourceName.ifBlank { "Local" } }
             .mapValues { (_, sourceItems) ->
-                sourceItems.groupBy { it.baseTitle.ifBlank { it.title } }
+                sourceItems.groupBy { it.libraryDisplayTitle() }
                     .mapValues { (_, novelItems) ->
                         sortChapters(novelItems)
                     }.toSortedMap()
@@ -402,7 +421,7 @@ class LibraryRepository @Inject constructor(
         runRepoCatching("Refresh updates failed") {
             val allItems = libraryDao.getAllItems().firstOrNull() ?: emptyList()
             val groupedItems = allItems.groupBy { item ->
-                Pair(item.baseTitle.ifBlank { item.title }, item.sourceName)
+                Pair(item.libraryDisplayTitle(), item.sourceName)
             }.mapValues { (_, group) ->
                 sortChapters(group)
             }
@@ -437,12 +456,28 @@ class LibraryRepository @Inject constructor(
                             val (baseTitle, _) = key
                             if (items.isNotEmpty()) {
                                 val latestInLibrary = items.last()
-                                if (latestInLibrary.baseNovelUrl.isNotBlank() && latestInLibrary.sourceName.isNotBlank()) {
+                                val rawSource = latestInLibrary.sourceName
+                                val sourceName = rawSource.ifBlank {
+                                    inferSourceNameFromUrl(latestInLibrary.url)
+                                }
+                                val rawBaseNovelUrl = latestInLibrary.baseNovelUrl
+                                val baseNovelUrl = rawBaseNovelUrl.ifBlank {
+                                    inferBaseNovelUrlFromUrl(latestInLibrary.url)
+                                }
+                                if (baseNovelUrl.isNotBlank() && sourceName.isNotBlank()) {
+                                    if (rawSource.isBlank() || rawBaseNovelUrl.isBlank() || latestInLibrary.baseTitle.isBlank()) {
+                                        healNovelMetadata(
+                                            itemId = latestInLibrary.id,
+                                            baseTitle = latestInLibrary.baseTitle.ifBlank { baseTitle },
+                                            baseNovelUrl = baseNovelUrl,
+                                            sourceName = sourceName
+                                        )
+                                    }
                                     val newUpdates = runRepoCatching("Failed to refresh updates for $baseTitle", emptyList<LibraryBatchUpdate>()) {
                                         val details = withTimeoutOrNull(REFRESH_PER_SOURCE_TIMEOUT_MS) {
                                             exploreRepository.getNovelDetails(
-                                                latestInLibrary.baseNovelUrl,
-                                                latestInLibrary.sourceName
+                                                baseNovelUrl,
+                                                sourceName
                                             )
                                         }
                                         if (details != null && details.chapters.isNotEmpty()) {

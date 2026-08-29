@@ -11,7 +11,11 @@ import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
 import io.aatricks.easyreader.ui.theme.AccentTheme
+import io.aatricks.easyreader.util.areChapterUrlsMatching
 import io.aatricks.easyreader.util.healCurrentChapterLabel
+import io.aatricks.easyreader.util.inferBaseNovelUrlFromUrl
+import io.aatricks.easyreader.util.inferSourceNameFromUrl
+import io.aatricks.easyreader.util.matchChapterIndex
 import io.aatricks.easyreader.util.normalizeChapterList
 import io.aatricks.easyreader.util.resolveChapterLabelFromList
 import io.aatricks.easyreader.util.TextUtils
@@ -644,6 +648,11 @@ class ReaderViewModel @Inject constructor(
         val resolvedChapterTitle =
             resolveChapterLabelFromList(content.url, chapterTitle, currentFullList) ?: chapterTitle
 
+        val effectiveBaseNovelUrl = libraryItem?.baseNovelUrl?.ifBlank { null }
+            ?: inferBaseNovelUrlFromUrl(content.url)
+        val effectiveSourceName = libraryItem?.sourceName?.ifBlank { null }
+            ?: inferSourceNameFromUrl(content.url)
+
         updateState {
             it.copy(
                 content = content,
@@ -664,8 +673,8 @@ class ReaderViewModel @Inject constructor(
                 novelName = novelName,
                 chapterTitle = resolvedChapterTitle,
                 baseTitle = baseTitle,
-                baseNovelUrl = libraryItem?.baseNovelUrl ?: "",
-                sourceName = libraryItem?.sourceName ?: "",
+                baseNovelUrl = effectiveBaseNovelUrl,
+                sourceName = effectiveSourceName,
                 isPagedMode = isPaged,
                 fullChapterList = currentFullList
             )
@@ -688,8 +697,16 @@ class ReaderViewModel @Inject constructor(
         preferencesManager.batchUpdateLastRead(content.url, effectiveId)
 
         libraryItem?.let { item ->
-            if (item.baseNovelUrl.isNotBlank() && item.sourceName.isNotBlank()) {
-                loadFullChapterList(item.baseNovelUrl, item.sourceName)
+            if (effectiveBaseNovelUrl.isNotBlank() && effectiveSourceName.isNotBlank()) {
+                loadFullChapterList(effectiveBaseNovelUrl, effectiveSourceName)
+            }
+            if (item.baseTitle.isBlank() || item.baseNovelUrl.isBlank() || item.sourceName.isBlank()) {
+                libraryRepository.healNovelMetadata(
+                    itemId = item.id,
+                    baseTitle = item.baseTitle.ifBlank { baseTitle },
+                    baseNovelUrl = item.baseNovelUrl.ifBlank { effectiveBaseNovelUrl },
+                    sourceName = item.sourceName.ifBlank { effectiveSourceName }
+                )
             }
             libraryRepository.markAsCurrentlyReading(item.id)
             performAutoDeletion(content.url, novelName, chapterTitle)
@@ -1404,14 +1421,9 @@ class ReaderViewModel @Inject constructor(
             item.currentChapter, _uiState.value.content?.url, normalizedChapters
         )
         val countChanged = item.totalChapters != newCount
+
         if (countChanged || healedChapter != null) {
-            val markerChapterNumber = item.resolvedChapterNumber()
-            val wasCaughtUp = countChanged &&
-                newCount > item.totalChapters &&
-                item.totalChapters > 0 &&
-                markerChapterNumber != null &&
-                markerChapterNumber >= item.totalChapters.toDouble() &&
-                item.hasFinishedProgress()
+            val wasCaughtUp = isCatchUpUpdate(countChanged, newCount, item)
             // Targeted metadata write (not a whole-row REPLACE) so a concurrent progress write
             // between the getItemById above and here is never clobbered. healedChapter is
             // already null unless the label changed; markHasUpdates only ever sets the flag.
@@ -1422,6 +1434,24 @@ class ReaderViewModel @Inject constructor(
                 markHasUpdates = wasCaughtUp
             )
         }
+        if (item.baseTitle.isBlank() || item.baseNovelUrl.isBlank() || item.sourceName.isBlank()) {
+            libraryRepository.healNovelMetadata(
+                itemId = id,
+                baseTitle = item.baseTitle.ifBlank { _uiState.value.baseTitle },
+                baseNovelUrl = item.baseNovelUrl.ifBlank { _uiState.value.baseNovelUrl },
+                sourceName = item.sourceName.ifBlank { _uiState.value.sourceName }
+            )
+        }
+    }
+
+    private fun isCatchUpUpdate(countChanged: Boolean, newCount: Int, item: LibraryItem): Boolean {
+        val markerChapterNumber = item.resolvedChapterNumber()
+        return countChanged &&
+            newCount > item.totalChapters &&
+            item.totalChapters > 0 &&
+            markerChapterNumber != null &&
+            markerChapterNumber >= item.totalChapters.toDouble() &&
+            item.hasFinishedProgress()
     }
 
     private fun updateNavigationUrls() {
@@ -1431,7 +1461,7 @@ class ReaderViewModel @Inject constructor(
         val list = state.fullChapterList
         if (list.isEmpty()) return
 
-        val currentIndex = list.indexOfFirst { it.url == currentUrl }
+        val currentIndex = matchChapterIndex(list, currentUrl, state.chapterTitle)
         if (currentIndex != -1) {
             val prevUrl = if (currentIndex > 0) list[currentIndex - 1].url else null
             val nextUrl = if (currentIndex < list.size - 1) list[currentIndex + 1].url else null

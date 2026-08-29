@@ -20,6 +20,47 @@ internal fun normalizeChapterList(chapters: List<ChapterInfo>): List<ChapterInfo
         .toList()
 }
 
+internal fun normalizeChapterUrl(url: String): String {
+    val trimmed = url.trim()
+    if (trimmed.isBlank() || trimmed.startsWith("file://") || trimmed.startsWith("content://")) {
+        return trimmed
+    }
+    return runCatching {
+        val uri = java.net.URI(trimmed)
+        val scheme = uri.scheme?.lowercase() ?: "https"
+        val host = uri.host?.lowercase()?.removePrefix("www.") ?: ""
+        val path = uri.path?.trimEnd('/') ?: ""
+        if (host.isNotBlank()) "$scheme://$host$path" else trimmed.trimEnd('/')
+    }.getOrDefault(trimmed.trimEnd('/'))
+}
+
+internal fun areChapterUrlsMatching(url1: String?, url2: String?): Boolean {
+    if (url1.isNullOrBlank() || url2.isNullOrBlank()) return false
+    val norm1 = normalizeChapterUrl(url1)
+    val norm2 = normalizeChapterUrl(url2)
+    val noScheme1 = norm1.substringAfter("://")
+    val noScheme2 = norm2.substringAfter("://")
+    return url1 == url2 || norm1 == norm2 || (noScheme1.isNotBlank() && noScheme1 == noScheme2)
+}
+
+internal fun matchChapterIndex(chapters: List<ChapterInfo>, targetUrl: String?, targetTitle: String? = null): Int {
+    if (chapters.isEmpty() || (targetUrl.isNullOrBlank() && targetTitle.isNullOrBlank())) return -1
+    val exactIndex = targetUrl?.takeIf { it.isNotBlank() }?.let { url ->
+        chapters.indexOfFirst { areChapterUrlsMatching(it.url, url) }
+    } ?: -1
+
+    val targetNumber = (targetTitle ?: targetUrl)?.let { TextUtils.extractChapterNumber(it) }
+    return when {
+        exactIndex >= 0 -> exactIndex
+        targetNumber != null -> chapters.indexOfFirst {
+            it.number == targetNumber ||
+                TextUtils.extractChapterNumber(it.title) == targetNumber ||
+                TextUtils.extractChapterNumber(it.url) == targetNumber
+        }
+        else -> -1
+    }
+}
+
 /**
  * The authoritative chapter label is the one parsed from the source's chapter list
  * (e.g. "Chapter 102 - ..."), not one guessed from the reading URL: Novelight's
@@ -35,7 +76,7 @@ internal fun resolveChapterLabelFromList(
     chapters: List<ChapterInfo>
 ): String? {
     val target = url.trim()
-    val match = if (target.isBlank()) null else chapters.firstOrNull { it.url == target }
+    val match = if (target.isBlank()) null else chapters.firstOrNull { areChapterUrlsMatching(it.url, target) }
     val listNumber = match?.let { it.number ?: TextUtils.extractChapterNumber(it.title) }
     val differs = listNumber != null && TextUtils.extractChapterNumber(currentLabel) != listNumber
     return match?.title?.trim()?.takeIf { it.isNotBlank() && differs }
@@ -57,7 +98,7 @@ internal fun healCurrentChapterLabel(
     chapters: List<ChapterInfo>
 ): String? {
     val listNumber = currentUrl
-        ?.let { url -> chapters.firstOrNull { it.url == url.trim() } }
+        ?.let { url -> chapters.firstOrNull { areChapterUrlsMatching(it.url, url) } }
         ?.number
     val currentNumber = TextUtils.extractChapterNumber(currentChapter)
     if (listNumber == null || currentNumber == listNumber) return null

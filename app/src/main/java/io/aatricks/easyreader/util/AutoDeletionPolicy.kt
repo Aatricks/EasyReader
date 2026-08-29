@@ -4,6 +4,7 @@ import io.aatricks.easyreader.data.model.ChapterInfo
 import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.hasFinishedProgress
+import io.aatricks.easyreader.data.model.libraryDisplayTitle
 import io.aatricks.easyreader.data.model.resolvedChapterNumber
 
 /**
@@ -48,9 +49,9 @@ fun computeDownloadCleanup(
     currentChapterNumber: Double
 ): DownloadCleanupPlan {
     val downloadsToFree = allItems.filter { item ->
-        item.baseTitle == baseTitle &&
+        item.libraryDisplayTitle() == baseTitle &&
             item.contentType == ContentType.WEB &&
-            item.url != currentUrl &&
+            !areChapterUrlsMatching(item.url, currentUrl) &&
             item.isDownloaded &&
             item.hasFinishedProgress() &&
             isFarEnoughBehind(currentChapterNumber, item.resolvedChapterNumber())
@@ -61,8 +62,8 @@ fun computeDownloadCleanup(
         .asSequence()
         .filter { chapter ->
             chapter.url.isNotBlank() &&
-                chapter.url != currentUrl &&
-                chapter.url !in inLibraryUrls
+                !areChapterUrlsMatching(chapter.url, currentUrl) &&
+                inLibraryUrls.none { areChapterUrlsMatching(it, chapter.url) }
         }
         .filter { chapter ->
             val number = chapter.number
