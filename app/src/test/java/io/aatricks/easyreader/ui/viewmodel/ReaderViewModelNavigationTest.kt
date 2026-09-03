@@ -407,4 +407,50 @@ class ReaderViewModelNavigationTest {
         assertNotNull(state.toastMessage)
         assertEquals(false, state.isNavigating)
     }
+
+    @Test
+    fun `last chapter in the loaded list drops the guessed next url and reports caught up`() = runTest {
+        val baseUrl = "http://example.com/series"
+        val sourceName = "Source"
+        val currentUrl = "http://example.com/ch2"
+        val currentItem = LibraryItem(
+            id = "current-id",
+            title = "Chapter 2",
+            url = currentUrl,
+            currentChapter = "Chapter 2",
+            baseTitle = "My Manga",
+            baseNovelUrl = baseUrl,
+            sourceName = sourceName,
+            totalChapters = 2
+        )
+        val details = ExploreItem(
+            title = "My Manga",
+            url = baseUrl,
+            source = sourceName,
+            chapters = listOf(
+                ChapterInfo("Chapter 1", "http://example.com/ch1"),
+                ChapterInfo("Chapter 2", currentUrl)
+            )
+        )
+
+        whenever(contentRepository.loadContent(currentUrl)).thenReturn(
+            ContentResult.Success(listOf(ContentElement.Text("Current")), "Chapter 2", currentUrl)
+        )
+        whenever(contentRepository.incrementChapterUrl(currentUrl)).thenReturn("http://example.com/ch3")
+        whenever(contentRepository.decrementChapterUrl(currentUrl)).thenReturn("http://example.com/ch1")
+        whenever(libraryRepository.getItemById(currentItem.id)).thenReturn(currentItem)
+        whenever(libraryRepository.healChapterMetadata(any(), anyOrNull(), anyOrNull(), any())).thenReturn(true)
+        whenever(exploreRepository.getNovelDetails(baseUrl, sourceName)).thenReturn(details)
+
+        viewModel.loadContent(currentUrl, currentItem.id)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(true, state.isFullChapterListLoaded)
+        assertEquals(false, state.canNavigateNext)
+        assertEquals(true, state.isCaughtUp)
+        assertEquals(null, state.content?.nextChapterUrl)
+        // The list still supplies a previous chapter.
+        assertEquals(true, state.canNavigatePrevious)
+    }
 }

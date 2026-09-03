@@ -310,6 +310,9 @@ class ReaderViewModel @Inject constructor(
         val hasReachedQuarterScreen: Boolean = false,
         val canNavigateNext: Boolean = false,
         val canNavigatePrevious: Boolean = false,
+        // The loaded chapter list says this is the newest chapter. Only ever true once
+        // isFullChapterListLoaded is, so a guessed next URL never sets it.
+        val isCaughtUp: Boolean = false,
         val showControls: Boolean = false,
         val novelName: String = "",
         val chapterTitle: String = "",
@@ -666,6 +669,7 @@ class ReaderViewModel @Inject constructor(
                 lastIsExplicitNavigation = false,
                 canNavigateNext = content.hasNextChapter(),
                 canNavigatePrevious = content.hasPreviousChapter(),
+                isCaughtUp = false,
                 scrollPosition = initialPosition.scrollPosition,
                 scrollProgress = initialPosition.scrollProgress,
                 scrollIndex = initialPosition.scrollIndex,
@@ -967,6 +971,7 @@ class ReaderViewModel @Inject constructor(
                     error = null,
                     canNavigateNext = content.hasNextChapter(),
                     canNavigatePrevious = content.hasPreviousChapter(),
+                    isCaughtUp = false,
                     scrollPosition = initialPosition.scrollPosition,
                     scrollProgress = initialPosition.scrollProgress,
                     scrollIndex = initialPosition.scrollIndex,
@@ -1515,14 +1520,18 @@ class ReaderViewModel @Inject constructor(
         val prevUrl = if (currentIndex > 0) list[currentIndex - 1].url else null
         val nextUrl = if (currentIndex < list.size - 1) list[currentIndex + 1].url else null
 
+        // The list is authoritative for "is there a next chapter": keeping the URL-incremented
+        // guess alive left Next enabled on the newest chapter, answering with a 404. Previous
+        // still falls back to the guess — the list can start mid-series.
         updateState { s ->
             s.copy(
                 content = s.content?.copy(
-                    nextChapterUrl = nextUrl ?: s.content.nextChapterUrl,
+                    nextChapterUrl = nextUrl,
                     previousChapterUrl = prevUrl ?: s.content.previousChapterUrl
                 ),
-                canNavigateNext = nextUrl != null || (s.content?.hasNextChapter() == true),
-                canNavigatePrevious = prevUrl != null || (s.content?.hasPreviousChapter() == true)
+                canNavigateNext = nextUrl != null,
+                canNavigatePrevious = prevUrl != null || (s.content?.hasPreviousChapter() == true),
+                isCaughtUp = nextUrl == null
             )
         }
     }
