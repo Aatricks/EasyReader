@@ -117,9 +117,9 @@ fun ExploreScreen(
             contentColor = MaterialTheme.colorScheme.onSurface
         ) {
             ExploreItemDetailSheet(
-                item = activeItem,
-                isLoading = uiState.isFetchingDetails,
+                uiState = uiState,
                 isInLibrary = isInLibrary(activeItem),
+                onRetryDetails = { exploreViewModel.selectItem(activeItem) },
                 onAddToLibrary = {
                     exploreViewModel.dismissItem()
                     scope.launch {

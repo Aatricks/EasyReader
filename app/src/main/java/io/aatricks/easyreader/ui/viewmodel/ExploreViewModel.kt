@@ -29,6 +29,7 @@ class ExploreViewModel @Inject constructor(
         val selectedItem: ExploreItem? = null,
         val selectedItemDetails: ExploreItem? = null,
         val isFetchingDetails: Boolean = false,
+        val detailsFailed: Boolean = false,
         val sources: List<String> = emptyList(),
         val canLoadMore: Boolean = true,
         val browseMode: BrowseMode = BrowseMode.POPULAR,
@@ -129,6 +130,7 @@ class ExploreViewModel @Inject constructor(
                         selectedItem = null,
                         selectedItemDetails = null,
                         isFetchingDetails = false,
+                        detailsFailed = false,
                         canLoadMore = true,
                         hasError = false
                     )
@@ -349,19 +351,30 @@ class ExploreViewModel @Inject constructor(
     }
 
     fun selectItem(item: ExploreItem): Unit {
-        updateState { it.copy(selectedItem = item, selectedItemDetails = null, isFetchingDetails = true) }
+        updateState {
+            it.copy(
+                selectedItem = item,
+                selectedItemDetails = null,
+                isFetchingDetails = true,
+                detailsFailed = false
+            )
+        }
         viewModelScope.launch {
             runCatching {
                 val details = exploreRepository.getNovelDetails(item.url, item.source)
                 updateState { it.copy(selectedItemDetails = details ?: item, isFetchingDetails = false) }
             }.onFailure {
-                updateState { it.copy(isFetchingDetails = false, selectedItemDetails = item) }
+                // Keep the grid data on screen, but say the fetch failed instead of claiming the
+                // title has no summary.
+                updateState {
+                    it.copy(isFetchingDetails = false, selectedItemDetails = item, detailsFailed = true)
+                }
             }
         }
     }
 
     fun dismissItem(): Unit {
-        updateState { it.copy(selectedItem = null, selectedItemDetails = null) }
+        updateState { it.copy(selectedItem = null, selectedItemDetails = null, detailsFailed = false) }
     }
 
     fun clearFilters(): Unit {
@@ -375,6 +388,7 @@ class ExploreViewModel @Inject constructor(
                 selectedItem = null,
                 selectedItemDetails = null,
                 isFetchingDetails = false,
+                detailsFailed = false,
                 page = 1,
                 canLoadMore = true,
                 searchFailures = emptyList()
