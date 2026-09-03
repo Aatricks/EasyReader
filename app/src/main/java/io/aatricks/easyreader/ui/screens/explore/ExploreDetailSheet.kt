@@ -68,7 +68,7 @@ fun ExploreItemDetailSheet(
         ) {
             AsyncImage(
                 model = imageRequest,
-                contentDescription = item.title,
+                contentDescription = null,
                 modifier = Modifier
                     .width(112.dp)
                     .height(160.dp)
