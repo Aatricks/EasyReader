@@ -123,6 +123,7 @@ private fun ReaderThemeOption(
 @Composable
 private fun FontFamilyChip(
     font: String,
+    labelRes: Int,
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
@@ -132,7 +133,7 @@ private fun FontFamilyChip(
         onClick = onClick,
         label = {
             Text(
-                text = font,
+                text = stringResource(labelRes),
                 fontFamily = fontFamily
             )
         },
@@ -318,9 +319,15 @@ fun ReaderSettingsSheet(
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
                 ) {
-                    listOf("Default", "Serif", "Monospace").forEach { font ->
+                    // The left half is the stored value; only the label is translated.
+                    listOf(
+                        "Default" to R.string.reader_font_default,
+                        "Serif" to R.string.reader_font_serif,
+                        "Monospace" to R.string.reader_font_monospace
+                    ).forEach { (font, labelRes) ->
                         FontFamilyChip(
                             font = font,
+                            labelRes = labelRes,
                             isSelected = uiState.fontFamily == font,
                             onClick = { onUpdateFontFamily(font) }
                         )
