@@ -57,7 +57,13 @@ class LibraryRepository @Inject constructor(
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val progressMutex = Mutex()
 
+    private val _libraryLoaded = MutableStateFlow(false)
+
+    /** False until Room's first emission, so the UI can tell "empty" from "not read yet". */
+    val libraryLoaded: StateFlow<Boolean> = _libraryLoaded.asStateFlow()
+
     val libraryItems: StateFlow<List<LibraryItem>> = libraryDao.getAllItems()
+        .onEach { _libraryLoaded.value = true }
         .catch { e ->
             Log.e(TAG, "Error collecting library items", e)
             emit(emptyList())
@@ -556,6 +562,19 @@ class LibraryRepository @Inject constructor(
     suspend fun getDownloadedItems(): List<LibraryItem> = runRepoCatching("Failed to fetch downloaded items", emptyList<LibraryItem>()) {
         libraryDao.getDownloadedItems()
     } ?: emptyList()
+
+    /**
+     * [refreshLibraryUpdates], reporting how many rows it newly badged so pull-to-refresh can say
+     * what it found. Counted from the DB, not [libraryItems], whose emission is asynchronous.
+     */
+    suspend fun refreshLibraryUpdatesAndCount(
+        exploreRepository: ExploreRepository,
+        ignoreActivityThreshold: Boolean = false
+    ): Int {
+        val before = libraryDao.getAllItemsDirect().count { it.hasUpdates }
+        refreshLibraryUpdates(exploreRepository, ignoreActivityThreshold)
+        return libraryDao.getAllItemsDirect().count { it.hasUpdates } - before
+    }
 
     suspend fun getAllItemsSnapshot(): List<LibraryItem> = runRepoCatching("Failed to fetch all items", emptyList<LibraryItem>()) {
         libraryDao.getAllItems().first()

@@ -169,6 +169,21 @@ private fun openEpubItem(
     onCloseLibrary()
 }
 
+/**
+ * Explicit navigation, so the reader starts at the top of the tapped chapter instead of restoring
+ * the stored percentage of a different one.
+ */
+private fun openEpubToc(
+    epubPath: String,
+    href: String,
+    itemId: String,
+    readerViewModel: ReaderViewModel,
+    libraryViewModel: LibraryViewModel
+) {
+    readerViewModel.loadContent("$epubPath#$href", itemId, isExplicitNavigation = true)
+    libraryViewModel.markAsCurrentlyReading(itemId)
+}
+
 @Composable
 private fun EpubTocItemView(
     tocItem: EpubTocItem,
@@ -193,14 +208,7 @@ private fun EpubTocItemView(
                 .fillMaxWidth()
                 .clickable(
                     onClick = {
-                        // Explicit navigation, so the reader starts at the top of the chapter
-                        // instead of restoring the stored percentage of a different one.
-                        readerViewModel.loadContent(
-                            "$epubPath#${tocItem.href}",
-                            itemId,
-                            isExplicitNavigation = true
-                        )
-                        libraryViewModel.markAsCurrentlyReading(itemId)
+                        openEpubToc(epubPath, tocItem.href, itemId, readerViewModel, libraryViewModel)
                         onCloseLibrary()
                     }
                 )

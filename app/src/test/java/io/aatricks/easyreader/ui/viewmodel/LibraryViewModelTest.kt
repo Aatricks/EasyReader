@@ -46,6 +46,7 @@ class LibraryViewModelTest {
         LibraryViewModel.coversBackfillAttempted.set(false)
 
         whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(emptyList()))
+        whenever(libraryRepository.libraryLoaded).thenReturn(MutableStateFlow(true))
         whenever(libraryRepository.loadCollapsedSources()).thenReturn(emptySet())
         whenever(libraryRepository.getGroupedByTitle(anyOrNull())).thenReturn(emptyMap())
         whenever(libraryRepository.getGroupedBySourceAndTitle(anyOrNull())).thenReturn(emptyMap())
@@ -908,7 +909,7 @@ class LibraryViewModelTest {
         activeViewModel.refreshUpdates()
         advanceUntilIdle()
 
-        verify(libraryRepository).refreshLibraryUpdates(exploreRepository, true)
+        verify(libraryRepository).refreshLibraryUpdatesAndCount(exploreRepository, true)
         verify(libraryRepository, atLeastOnce()).getAllItemsSnapshot()
         assertFalse(activeViewModel.isRefreshing.value)
         verify(contentRepository, never()).prefetch(any(), any())
@@ -1188,6 +1189,30 @@ class LibraryViewModelTest {
         viewModel.cancelOpenNewChapter()
 
         assertEquals(OpenNextChapterState.Idle, viewModel.openNextChapterState.value)
+    }
+
+    @Test
+    fun `pull to refresh reports what the update check found`() = runTest {
+        whenever(
+            libraryRepository.refreshLibraryUpdatesAndCount(any(), any())
+        ).thenReturn(2)
+
+        viewModel.refreshUpdates()
+        advanceUntilIdle()
+
+        assertEquals("2 titles updated", viewModel.uiState.value.snackbarMessage)
+    }
+
+    @Test
+    fun `pull to refresh says so when nothing is new`() = runTest {
+        whenever(
+            libraryRepository.refreshLibraryUpdatesAndCount(any(), any())
+        ).thenReturn(0)
+
+        viewModel.refreshUpdates()
+        advanceUntilIdle()
+
+        assertEquals("No new chapters", viewModel.uiState.value.snackbarMessage)
     }
 }
 
