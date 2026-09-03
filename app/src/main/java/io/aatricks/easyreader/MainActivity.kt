@@ -13,8 +13,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -141,59 +145,66 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                appUpdateHandler(updateViewModel, updateState)
+                val rootSnackbarHostState = remember { SnackbarHostState() }
+                appUpdateHandler(updateViewModel, updateState, rootSnackbarHostState)
 
-                NavHost(navController = navController, startDestination = ReaderRoute) {
-                    composable<ReaderRoute> {
-                        ReaderScreen(
-                            readerViewModel = readerViewModel,
-                            libraryViewModelProvider = { libraryViewModel },
-                            navController = navController,
-                            onOpenFilePicker = { checkPermissionsAndOpenFilePicker() },
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                    composable<LibraryRoute> {
-                        LibraryScreen(
-                            libraryViewModel = libraryViewModel,
-                            readerViewModel = readerViewModel,
-                            navController = navController,
-                            onOpenFilePicker = { checkPermissionsAndOpenFilePicker() },
-                            onNavigateBack = { navController.popBackStack() }
-                        )
-                    }
-                    composable<ExploreRoute> {
-                        val exploreViewModel: ExploreViewModel = hiltViewModel()
-                        ExploreScreen(
-                            exploreViewModel = exploreViewModel,
-                            libraryViewModel = libraryViewModel,
-                            onNavigateBack = { navController.popBackStack() },
-                            onOpenLibrary = {
-                                navController.navigate(LibraryRoute) {
-                                    launchSingleTop = true
+                Box(modifier = Modifier.fillMaxSize()) {
+                    NavHost(navController = navController, startDestination = ReaderRoute) {
+                        composable<ReaderRoute> {
+                            ReaderScreen(
+                                readerViewModel = readerViewModel,
+                                libraryViewModelProvider = { libraryViewModel },
+                                navController = navController,
+                                onOpenFilePicker = { checkPermissionsAndOpenFilePicker() },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        composable<LibraryRoute> {
+                            LibraryScreen(
+                                libraryViewModel = libraryViewModel,
+                                readerViewModel = readerViewModel,
+                                navController = navController,
+                                onOpenFilePicker = { checkPermissionsAndOpenFilePicker() },
+                                onNavigateBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable<ExploreRoute> {
+                            val exploreViewModel: ExploreViewModel = hiltViewModel()
+                            ExploreScreen(
+                                exploreViewModel = exploreViewModel,
+                                libraryViewModel = libraryViewModel,
+                                onNavigateBack = { navController.popBackStack() },
+                                onOpenLibrary = {
+                                    navController.navigate(LibraryRoute) {
+                                        launchSingleTop = true
+                                    }
+                                },
+                                onReadItem = { item ->
+                                    val chapterUrl = item.readingUrl ?: item.chapters.firstOrNull()?.url ?: item.url
+                                    readerViewModel.loadContent(chapterUrl)
+                                    navController.popBackStack(ReaderRoute, inclusive = false)
                                 }
-                            },
-                            onReadItem = { item ->
-                                val chapterUrl = item.readingUrl ?: item.chapters.firstOrNull()?.url ?: item.url
-                                readerViewModel.loadContent(chapterUrl)
-                                navController.popBackStack(ReaderRoute, inclusive = false)
-                            }
-                        )
+                            )
+                        }
+                        composable<SettingsRoute> {
+                            SettingsScreen(
+                                readerViewModel = readerViewModel,
+                                libraryViewModel = libraryViewModel,
+                                onNavigateBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable<ScrollRoute> {
+                            ScrollScreen(
+                                onNavigateBack = {
+                                    navController.popBackStack()
+                                }
+                            )
+                        }
                     }
-                    composable<SettingsRoute> {
-                        SettingsScreen(
-                            readerViewModel = readerViewModel,
-                            libraryViewModel = libraryViewModel,
-                            onNavigateBack = { navController.popBackStack() }
-                        )
-                    }
-                    composable<ScrollRoute> {
-                        ScrollScreen(
-                            onNavigateBack = {
-                                navController.popBackStack()
-                            }
-                        )
-                    }
+                    SnackbarHost(
+                        hostState = rootSnackbarHostState,
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    )
                 }
             }
         }

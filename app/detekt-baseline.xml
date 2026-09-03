@@ -10,7 +10,7 @@
     <ID>ComplexCondition:SummaryService.kt$SummaryService$text.contains("\"") || text.contains("'") || lowerText.contains("said") || lowerText.contains("asked")</ID>
     <ID>ComplexCondition:UrlSanitizer.kt$UrlSanitizer$scheme.all { it.isLetterOrDigit() || it == '-' || it == '+' || it == '.' }</ID>
     <ID>ComplexCondition:UrlSecurity.kt$UrlSecurity$address.isLoopbackAddress || address.isAnyLocalAddress || address.isLinkLocalAddress || address.isSiteLocalAddress || address.isMulticastAddress</ID>
-    <ID>CyclomaticComplexMethod:ChapterListSheet.kt$@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class) @Composable fun ChapterListSheet( uiState: ReaderViewModel.ReaderUiState, libraryViewModel: LibraryViewModel, onDismiss: () -&gt; Unit, onNavigateToChapter: (String, String) -&gt; Unit, onDownloadRemoved: () -&gt; Unit, sheetState: SheetState )</ID>
+    <ID>CyclomaticComplexMethod:ChapterListSheet.kt$@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class) @Composable fun ChapterListSheet( uiState: ReaderViewModel.ReaderUiState, libraryViewModel: LibraryViewModel, onDismiss: () -&gt; Unit, onNavigateToChapter: (String, String) -&gt; Unit, sheetState: SheetState )</ID>
     <ID>CyclomaticComplexMethod:ChapterListSheet.kt$internal fun chapterCacheStatusKind( isCurrent: Boolean, cacheState: PrefetchResult?, isInLibrary: Boolean, isDownloaded: Boolean = false ): ChapterStatus?</ID>
     <ID>CyclomaticComplexMethod:EpubContentLoader.kt$EpubContentLoader$private suspend fun enrichEpubImageDimensionsFromCache( els: List&lt;ContentElement&gt; ): List&lt;ContentElement&gt;</ID>
     <ID>CyclomaticComplexMethod:ErrorMessages.kt$ErrorMessages$fun fromRaw(raw: String?): Friendly</ID>
@@ -20,7 +20,6 @@
     <ID>CyclomaticComplexMethod:ImageBoundsParser.kt$ImageBoundsParser$private fun parseJpeg(bytes: ByteArray): Pair&lt;Int, Int&gt;?</ID>
     <ID>CyclomaticComplexMethod:ImageDownloader.kt$ImageDownloader$private fun parseImageResponse( response: Response, destinationFile: File? = null ): ImageFetchResult</ID>
     <ID>CyclomaticComplexMethod:ImageIntegrity.kt$ImageIntegrity$private fun classifyFormat(header: ByteArray): ImageFormat?</ID>
-    <ID>CyclomaticComplexMethod:LibraryItemCard.kt$@OptIn(ExperimentalFoundationApi::class) @Composable fun LibraryItemCard( item: LibraryItem, isSelected: Boolean, isCurrent: Boolean, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, onNewTagClick: (() -&gt; Unit)? = null, onDelete: (() -&gt; Unit)? = null, onResetProgress: (() -&gt; Unit)? = null, onMarkFinished: (() -&gt; Unit)? = null )</ID>
     <ID>CyclomaticComplexMethod:LibraryRepository.kt$LibraryRepository$suspend fun refreshLibraryUpdates( exploreRepository: ExploreRepository, ignoreActivityThreshold: Boolean = false ): Unit</ID>
     <ID>CyclomaticComplexMethod:LibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun LibraryScreen( libraryViewModel: LibraryViewModel, readerViewModel: ReaderViewModel, navController: NavController, onOpenFilePicker: () -&gt; Unit, onNavigateBack: () -&gt; Unit ): Unit</ID>
     <ID>CyclomaticComplexMethod:LibraryScreenListSections.kt$@OptIn(ExperimentalFoundationApi::class) @Composable private fun NovelGroupHeader( title: String, items: List&lt;LibraryItem&gt;, isExpanded: Boolean, isSelectionMode: Boolean, isGroupSelected: Boolean, hasGroupSelection: Boolean, readerUiState: ReaderViewModel.ReaderUiState, onToggleExpand: () -&gt; Unit, onToggleSelection: () -&gt; Unit, onOpenItem: (LibraryItem) -&gt; Unit, onOpenNewChapter: (LibraryItem) -&gt; Unit, onResetProgress: () -&gt; Unit, onRemoveGroup: () -&gt; Unit ): Unit</ID>
@@ -58,7 +57,7 @@
     <ID>InvalidPackageDeclaration:ReaderScreen.kt$package io.aatricks.easyreader.ui.screens</ID>
     <ID>LargeClass:ReaderViewModel.kt$ReaderViewModel : BaseViewModel</ID>
     <ID>LargeClass:WebContentLoader.kt$WebContentLoader</ID>
-    <ID>LongMethod:ChapterListSheet.kt$@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class) @Composable fun ChapterListSheet( uiState: ReaderViewModel.ReaderUiState, libraryViewModel: LibraryViewModel, onDismiss: () -&gt; Unit, onNavigateToChapter: (String, String) -&gt; Unit, onDownloadRemoved: () -&gt; Unit, sheetState: SheetState )</ID>
+    <ID>LongMethod:ChapterListSheet.kt$@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class) @Composable fun ChapterListSheet( uiState: ReaderViewModel.ReaderUiState, libraryViewModel: LibraryViewModel, onDismiss: () -&gt; Unit, onNavigateToChapter: (String, String) -&gt; Unit, sheetState: SheetState )</ID>
     <ID>LongMethod:ChapterSummaryDropdown.kt$@Composable fun ChapterSummaryDropdown( summary: String?, isGenerating: Boolean, onGenerateSummary: () -&gt; Unit, onCancel: (() -&gt; Unit)? = null, aiSupportedInBuild: Boolean = true, aiOptedIn: Boolean = true, onEnableAi: (() -&gt; Unit)? = null, isInitializing: Boolean = false, isReady: Boolean = aiSupportedInBuild &amp;&amp; aiOptedIn, modifier: Modifier = Modifier )</ID>
     <ID>LongMethod:ContentRenderer.kt$@Composable fun ContentRenderer( elements: List&lt;ContentElement&gt;, modifier: Modifier = Modifier, backgroundColor: Color = Color.Black, textColor: Color = Color.White, pageUrl: String = "" )</ID>
     <ID>LongMethod:ExploreDetailSheet.kt$@OptIn(ExperimentalLayoutApi::class) @Composable fun ExploreItemDetailSheet( item: ExploreItem, isLoading: Boolean = false, isInLibrary: Boolean = false, onAddToLibrary: () -&gt; Unit, onRead: () -&gt; Unit ): Unit</ID>
@@ -66,15 +65,13 @@
     <ID>LongMethod:ExploreGridSection.kt$@Composable internal fun ExploreGrid( gridState: LazyGridState, modifier: Modifier = Modifier, uiState: ExploreViewModel.ExploreUiState, hasActiveFilters: Boolean, onItemSelect: (ExploreItem) -&gt; Unit, onLoadMore: () -&gt; Unit, onClearFilters: () -&gt; Unit, onRetryFailedSource: (String) -&gt; Unit ): Unit</ID>
     <ID>LongMethod:ExploreGridSection.kt$@Composable private fun FeaturedExploreCard( item: ExploreItem, onClick: () -&gt; Unit ): Unit</ID>
     <ID>LongMethod:ExploreGridSection.kt$@Composable private fun SkeletonFeaturedExploreCard(): Unit</ID>
-    <ID>LongMethod:ExploreScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ExploreScreen( exploreViewModel: ExploreViewModel, libraryViewModel: LibraryViewModel, onNavigateBack: () -&gt; Unit, onReadItem: (ExploreItem) -&gt; Unit ): Unit</ID>
+    <ID>LongMethod:ExploreScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ExploreScreen( exploreViewModel: ExploreViewModel, libraryViewModel: LibraryViewModel, onNavigateBack: () -&gt; Unit, onOpenLibrary: () -&gt; Unit, onReadItem: (ExploreItem) -&gt; Unit ): Unit</ID>
     <ID>LongMethod:ExploreScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun ActiveFilterBar( uiState: ExploreViewModel.ExploreUiState, hasActiveFilters: Boolean, onOpenFilters: () -&gt; Unit, onSourceSelect: (String?) -&gt; Unit, onTagToggle: (String) -&gt; Unit, onClearFilters: () -&gt; Unit ): Unit</ID>
     <ID>LongMethod:ExploreScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable private fun FiltersBottomSheetContent( uiState: ExploreViewModel.ExploreUiState, onSourceSelect: (String?) -&gt; Unit, onTagToggle: (String) -&gt; Unit, onClearTags: () -&gt; Unit, onClose: () -&gt; Unit ): Unit</ID>
     <ID>LongMethod:LibraryDrawerContent.kt$@Composable fun LibraryDrawerContent( drawerSections: DrawerNovelSections, isLibraryEmpty: Boolean, onOpenFilePicker: () -&gt; Unit, onCloseDrawer: () -&gt; Unit, onLibraryClick: () -&gt; Unit, onDiscoverClick: () -&gt; Unit, onScrollClick: () -&gt; Unit, onOpenLibraryItem: (LibraryItem) -&gt; Unit, onOpenLatestUpdate: (LibraryItem) -&gt; Unit ): Unit</ID>
-    <ID>LongMethod:LibraryItemCard.kt$@OptIn(ExperimentalFoundationApi::class) @Composable fun LibraryItemCard( item: LibraryItem, isSelected: Boolean, isCurrent: Boolean, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, onNewTagClick: (() -&gt; Unit)? = null, onDelete: (() -&gt; Unit)? = null, onResetProgress: (() -&gt; Unit)? = null, onMarkFinished: (() -&gt; Unit)? = null )</ID>
     <ID>LongMethod:LibraryRepository.kt$LibraryRepository$suspend fun refreshLibraryUpdates( exploreRepository: ExploreRepository, ignoreActivityThreshold: Boolean = false ): Unit</ID>
     <ID>LongMethod:LibraryScreen.kt$@Composable private fun AddNovelSection( urlInput: String, onUrlChange: (String) -&gt; Unit, onAddClick: () -&gt; Unit, onOpenPdfClick: () -&gt; Unit ): Unit</ID>
     <ID>LongMethod:LibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun LibraryScreen( libraryViewModel: LibraryViewModel, readerViewModel: ReaderViewModel, navController: NavController, onOpenFilePicker: () -&gt; Unit, onNavigateBack: () -&gt; Unit ): Unit</ID>
-    <ID>LongMethod:LibraryScreenEpubSections.kt$@Composable private fun EpubTocItemView( tocItem: EpubTocItem, epubPath: String, itemId: String, readerViewModel: ReaderViewModel, libraryViewModel: LibraryViewModel, onCloseLibrary: () -&gt; Unit, depth: Int = 0 )</ID>
     <ID>LongMethod:LibraryScreenEpubSections.kt$@OptIn(ExperimentalFoundationApi::class) @Composable internal fun EpubItemCard( item: LibraryItem, uiState: LibraryViewModel.LibraryUiState, contentRepository: ContentRepository, readerViewModel: ReaderViewModel, libraryViewModel: LibraryViewModel, onCloseLibrary: () -&gt; Unit ): Unit</ID>
     <ID>LongMethod:LibraryScreenListSections.kt$@OptIn(ExperimentalFoundationApi::class) @Composable private fun NovelGroupHeader( title: String, items: List&lt;LibraryItem&gt;, isExpanded: Boolean, isSelectionMode: Boolean, isGroupSelected: Boolean, hasGroupSelection: Boolean, readerUiState: ReaderViewModel.ReaderUiState, onToggleExpand: () -&gt; Unit, onToggleSelection: () -&gt; Unit, onOpenItem: (LibraryItem) -&gt; Unit, onOpenNewChapter: (LibraryItem) -&gt; Unit, onResetProgress: () -&gt; Unit, onRemoveGroup: () -&gt; Unit ): Unit</ID>
     <ID>LongMethod:LlmEdgeSummaryEngine.kt$LlmEdgeSummaryEngine$override suspend fun initialize(): Result&lt;Unit&gt;</ID>
@@ -95,7 +92,6 @@
     <ID>LongMethod:SettingsScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsScreen( readerViewModel: ReaderViewModel, libraryViewModel: LibraryViewModel, onNavigateBack: () -&gt; Unit, backupViewModel: BackupViewModel = hiltViewModel(), settingsViewModel: SettingsViewModel = hiltViewModel() )</ID>
     <ID>LongMethod:WebContentLoader.kt$WebContentLoader$private suspend fun downloadAndCacheImageInternal( imageUrl: String, pageUrl: String, priority: ImageRequestPriority ): ImageDownloadResult</ID>
     <ID>LongMethod:ZoomableBox.kt$@Composable fun ZoomableBox( modifier: Modifier = Modifier, minScale: Float = 1f, maxScale: Float = 3f, enableZoom: Boolean = false, dynamicHeight: Boolean = false, zoomStateKey: Any? = null, onZoomChanged: ((Boolean) -&gt; Unit)? = null, lockTapWhileZoomed: Boolean = false, onTap: (() -&gt; Unit)? = null, content: @Composable BoxScope.() -&gt; Unit )</ID>
-    <ID>LongParameterList:ChapterListSheet.kt$( uiState: ReaderViewModel.ReaderUiState, libraryViewModel: LibraryViewModel, onDismiss: () -&gt; Unit, onNavigateToChapter: (String, String) -&gt; Unit, onDownloadRemoved: () -&gt; Unit, sheetState: SheetState )</ID>
     <ID>LongParameterList:ChapterSummaryDropdown.kt$( summary: String?, isGenerating: Boolean, onGenerateSummary: () -&gt; Unit, onCancel: (() -&gt; Unit)? = null, aiSupportedInBuild: Boolean = true, aiOptedIn: Boolean = true, onEnableAi: (() -&gt; Unit)? = null, isInitializing: Boolean = false, isReady: Boolean = aiSupportedInBuild &amp;&amp; aiOptedIn, modifier: Modifier = Modifier )</ID>
     <ID>LongParameterList:ContentRenderer.kt$( url: String, altText: String?, side: ContentElement.Image.Side = ContentElement.Image.Side.FULL, width: Int = 0, height: Int = 0, pageUrl: String = "" )</ID>
     <ID>LongParameterList:ContentRepository.kt$ContentRepository$( private val webLoader: WebContentLoader, private val pdfLoader: PdfContentLoader, private val epubLoader: EpubContentLoader, private val localLoader: LocalContentLoader, private val contentUriTypeResolver: ContentUriTypeResolver, @ApplicationContext private val context: Context, private val okHttpClient: OkHttpClient )</ID>
@@ -103,7 +99,6 @@
     <ID>LongParameterList:ExploreScreen.kt$( uiState: ExploreViewModel.ExploreUiState, hasActiveFilters: Boolean, onOpenFilters: () -&gt; Unit, onSourceSelect: (String?) -&gt; Unit, onTagToggle: (String) -&gt; Unit, onClearFilters: () -&gt; Unit )</ID>
     <ID>LongParameterList:ExploreScreen.kt$( uiState: ExploreViewModel.ExploreUiState, modifier: Modifier = Modifier, hasActiveFilters: Boolean, onSearchQueryChange: (String) -&gt; Unit, onPerformSearch: () -&gt; Unit, onOpenFilters: () -&gt; Unit, onClearFilters: () -&gt; Unit, onSetBrowseMode: (BrowseMode) -&gt; Unit, onSourceSelect: (String?) -&gt; Unit, onTagToggle: (String) -&gt; Unit, onItemSelect: (ExploreItem) -&gt; Unit, onLoadMore: () -&gt; Unit, onRetryFailedSource: (String) -&gt; Unit )</ID>
     <ID>LongParameterList:LibraryDrawerContent.kt$( drawerSections: DrawerNovelSections, isLibraryEmpty: Boolean, onOpenFilePicker: () -&gt; Unit, onCloseDrawer: () -&gt; Unit, onLibraryClick: () -&gt; Unit, onDiscoverClick: () -&gt; Unit, onScrollClick: () -&gt; Unit, onOpenLibraryItem: (LibraryItem) -&gt; Unit, onOpenLatestUpdate: (LibraryItem) -&gt; Unit )</ID>
-    <ID>LongParameterList:LibraryItemCard.kt$( item: LibraryItem, isSelected: Boolean, isCurrent: Boolean, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, onNewTagClick: (() -&gt; Unit)? = null, onDelete: (() -&gt; Unit)? = null, onResetProgress: (() -&gt; Unit)? = null, onMarkFinished: (() -&gt; Unit)? = null )</ID>
     <ID>LongParameterList:LibraryRepository.kt$LibraryRepository$( itemId: String, currentChapter: String = "", progress: FieldUpdate&lt;Int&gt; = FieldUpdate.Unchanged, currentChapterUrl: FieldUpdate&lt;String&gt; = FieldUpdate.Unchanged, lastScrollProgress: FieldUpdate&lt;Float&gt; = FieldUpdate.Unchanged, lastReadIndex: FieldUpdate&lt;Int&gt; = FieldUpdate.Unchanged, lastReadElementKey: FieldUpdate&lt;String&gt; = FieldUpdate.Unchanged, lastReadOffsetFraction: FieldUpdate&lt;Float&gt; = FieldUpdate.Unchanged )</ID>
     <ID>LongParameterList:LibraryRepository.kt$LibraryRepository$( itemId: String, currentChapter: String, progress: Int, currentChapterUrl: String? = null, lastScrollProgress: Float? = null, lastReadIndex: Int? = null, lastReadElementKey: String? = null, lastReadOffsetFraction: Float? = null )</ID>
     <ID>LongParameterList:LibraryRepository.kt$LibraryRepository$( title: String, url: String, contentType: ContentType, currentChapter: String = "Chapter 1", baseTitle: String = title, baseNovelUrl: String = "", sourceName: String = "", totalChapters: Int = 0, coverImageUrl: String = "" )</ID>
@@ -209,7 +204,6 @@
     <ID>MagicNumber:CacheKeyUtils.kt$CacheKeyUtils$0xff</ID>
     <ID>MagicNumber:CacheKeyUtils.kt$CacheKeyUtils$4</ID>
     <ID>MagicNumber:ChapterDownloadQueue.kt$WorkManagerChapterDownloadQueue$30</ID>
-    <ID>MagicNumber:ChapterListSheet.kt$100</ID>
     <ID>MagicNumber:ErrorMessages.kt$ErrorMessages$160</ID>
     <ID>MagicNumber:ExploreDetailSheet.kt$320</ID>
     <ID>MagicNumber:ExploreDetailSheet.kt$6</ID>
@@ -276,8 +270,6 @@
     <ID>MagicNumber:ImageDownloader.kt$ImageDownloader$429</ID>
     <ID>MagicNumber:ImageDownloader.kt$ImageDownloader$8192</ID>
     <ID>MagicNumber:LibraryItem.kt$LibraryItem$100</ID>
-    <ID>MagicNumber:LibraryItemCard.kt$0.992f</ID>
-    <ID>MagicNumber:LibraryItemCard.kt$100</ID>
     <ID>MagicNumber:LibraryNovelHelpers.kt$4</ID>
     <ID>MagicNumber:LibraryNovelHelpers.kt$6</ID>
     <ID>MagicNumber:LibraryRepository.kt$LibraryRepository$1000L</ID>
@@ -311,7 +303,6 @@
     <ID>MagicNumber:ReaderImageView.kt$200</ID>
     <ID>MagicNumber:ReaderImageView.kt$750L</ID>
     <ID>MagicNumber:ReaderProgressController.kt$64</ID>
-    <ID>MagicNumber:ReaderProgressController.kt$ReaderProgressController$100</ID>
     <ID>MagicNumber:ReaderProgressController.kt$ReaderProgressController$1000f</ID>
     <ID>MagicNumber:ReaderProgressController.kt$ReaderProgressController$100f</ID>
     <ID>MagicNumber:ReaderScreen.kt$0.85f</ID>
@@ -432,8 +423,6 @@
     <ID>MaxLineLength:LibraryDao.kt$LibraryDao$@Query("UPDATE library_items SET baseNovelUrl = :baseNovelUrl, sourceName = :sourceName WHERE baseTitle = (SELECT baseTitle FROM library_items WHERE id = :itemId)")</ID>
     <ID>MaxLineLength:LibraryDao.kt$LibraryDao$@Query("UPDATE library_items SET progress = 0, lastScrollPosition = 0, lastReadIndex = 0, lastReadElementKey = '', lastReadOffsetFraction = -1 WHERE baseTitle = :baseTitle")</ID>
     <ID>MaxLineLength:LibraryDao.kt$LibraryDao$@Query("UPDATE library_items SET progress = 0, lastScrollPosition = 0, lastReadIndex = 0, lastReadElementKey = '', lastReadOffsetFraction = -1, lastRead = :timestamp WHERE id = :id")</ID>
-    <ID>MaxLineLength:LibraryItemCard.kt$color = if (item.progress == 100) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant</ID>
-    <ID>MaxLineLength:LibraryItemCard.kt$val isLastChapter = chapterNumber != null &amp;&amp; item.totalChapters &gt; 0 &amp;&amp; chapterNumber.toInt() &gt;= item.totalChapters</ID>
     <ID>MaxLineLength:LibraryRepository.kt$LibraryRepository$if</ID>
     <ID>MaxLineLength:LibraryRepository.kt$LibraryRepository$suspend</ID>
     <ID>MaxLineLength:LibraryRepository.kt$LibraryRepository$val</ID>
@@ -459,7 +448,6 @@
     <ID>MaxLineLength:ReaderProgressController.kt$ReaderProgressController$"saveProgress url=${io.aatricks.easyreader.util.UrlSanitizer.sanitize(resolvedChapterUrl)} index=$lastIndex elementKey=${if (lastElementKey.isNotEmpty()) "&lt;set&gt;" else "&lt;empty&gt;"} fraction=$lastFraction firstVisibleItemSize=${latest.firstVisibleItemSize}"</ID>
     <ID>MaxLineLength:ReaderProgressController.kt$ReaderProgressController$maxScrollOffset &gt; viewportHeight -&gt; ((scrollOffset / (maxScrollOffset - viewportHeight)) * 100f).coerceIn(0f, 100f)</ID>
     <ID>MaxLineLength:ReaderProgressController.kt$ReaderProgressController$val nextUiPendingRestoreOffsetFraction = if (uiPendingRestoreOffsetFraction != null) null else uiPendingRestoreOffsetFraction</ID>
-    <ID>MaxLineLength:ReaderScreen.kt$libraryViewModel</ID>
     <ID>MaxLineLength:ReaderScreen.kt$val loadUrl = if (item.currentChapterUrl.isNotBlank()) item.currentChapterUrl else item.url</ID>
     <ID>MaxLineLength:ReaderViewModel.kt$ReaderViewModel$effectiveId = existing?.id ?: addChapterToLibrary(result.url, result.title, isNext = !fromBottom) ?: effectiveId</ID>
     <ID>MaxLineLength:ReaderViewModel.kt$ReaderViewModel$libraryItem?.readingMode == ReadingMode.PAGED</ID>
@@ -532,7 +520,6 @@
     <ID>ReturnCount:ReaderProgressController.kt$ReaderProgressController$fun isSnapshotPersistable(content: ChapterContent?, snapshot: ReaderProgressState): Boolean</ID>
     <ID>ReturnCount:ReaderProgressController.kt$ReaderProgressController$fun updateScrollPosition( scrollOffset: Float, maxScrollOffset: Float, viewportHeight: Float, index: Int, offsetFraction: Float, elementKey: String, content: ChapterContent?, canScrollForward: Boolean = true, firstVisibleItemSize: Int = 0 )</ID>
     <ID>ReturnCount:ReaderProgressController.kt$ReaderProgressController$suspend fun saveCurrentProgress(content: ChapterContent?)</ID>
-    <ID>ReturnCount:ReaderViewModel.kt$ReaderViewModel$private fun updateNavigationUrls()</ID>
     <ID>ReturnCount:ReaderViewModel.kt$ReaderViewModel$private suspend fun resolvePdfResumeIndex( url: String, libraryItemId: String?, isExplicitNavigation: Boolean ): Int?</ID>
     <ID>ReturnCount:ReaderViewModel.kt$ReaderViewModel$suspend fun persistLifecycleProgress()</ID>
     <ID>ReturnCount:SmartSource.kt$SmartSource$private fun absolutize(value: String, pageUrl: String): String</ID>
@@ -651,8 +638,6 @@
     <ID>WildcardImport:LibraryDao.kt$import androidx.room.*</ID>
     <ID>WildcardImport:LibraryDrawerContent.kt$import androidx.compose.foundation.layout.*</ID>
     <ID>WildcardImport:LibraryDrawerContent.kt$import androidx.compose.material3.*</ID>
-    <ID>WildcardImport:LibraryItemCard.kt$import androidx.compose.foundation.layout.*</ID>
-    <ID>WildcardImport:LibraryItemCard.kt$import androidx.compose.material3.*</ID>
     <ID>WildcardImport:LibraryRepository.kt$import kotlinx.coroutines.flow.*</ID>
     <ID>WildcardImport:LibraryScreen.kt$import androidx.compose.foundation.*</ID>
     <ID>WildcardImport:LibraryScreen.kt$import androidx.compose.foundation.layout.*</ID>

@@ -1,11 +1,12 @@
 package io.aatricks.easyreader.ui.components
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,9 +40,9 @@ private const val DEFERRED_STARTUP_DELAY_MS = 2000L
 @Composable
 fun appUpdateHandler(
     updateViewModel: UpdateViewModel,
-    updateState: UpdateViewModel.UpdateUiState
+    updateState: UpdateViewModel.UpdateUiState,
+    snackbarHostState: SnackbarHostState
 ) {
-    val context = LocalContext.current
     var showUpdateDialog by remember { mutableStateOf(false) }
     var showInstallDialog by remember { mutableStateOf(false) }
     var showPermissionWarningDialog by remember { mutableStateOf(false) }
@@ -65,7 +66,7 @@ fun appUpdateHandler(
             showInstallDialog = true
         } else if (status is DownloadStatus.Error) {
             showDownloadProgressDialog = false
-            Toast.makeText(context, "Download failed: ${status.message}", Toast.LENGTH_LONG).show()
+            snackbarHostState.showSnackbar("Download failed: ${status.message}", duration = SnackbarDuration.Long)
         } else if (status is DownloadStatus.Progress) {
             showDownloadProgressDialog = true
         }

@@ -64,6 +64,7 @@ import io.aatricks.easyreader.ui.components.*
 import io.aatricks.easyreader.ui.LibraryRoute
 import io.aatricks.easyreader.util.WebViewUtils
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
+import io.aatricks.easyreader.ui.viewmodel.OpenNextChapterState
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -94,6 +95,10 @@ fun ReaderScreen(
     val settingsSheetState = rememberModalBottomSheetState()
 
     val uiState by readerViewModel.uiState.collectAsState()
+    // The library view model is created lazily by the drawer and chapter sheet; the reader only
+    // observes their follow-up state (next-chapter progress, download prompts) once one exists,
+    // so a plain reading session never spins it up.
+    var libraryViewModelInUse by remember { mutableStateOf<LibraryViewModel?>(null) }
 
     BackHandler(enabled = drawerState.isOpen) {
         scope.launch { drawerState.close() }
@@ -196,6 +201,7 @@ fun ReaderScreen(
                         drawerState.targetValue == DrawerValue.Open
                 if (drawerIsOpeningOrOpen) {
                     val libraryViewModel = libraryViewModelProvider()
+                    LaunchedEffect(libraryViewModel) { libraryViewModelInUse = libraryViewModel }
                     val drawerUi by libraryViewModel.drawerUiState.collectAsState()
                     LibraryDrawerContent(
                         drawerSections = drawerUi.sections,
@@ -281,6 +287,9 @@ fun ReaderScreen(
                 if (uiState.isNavigating) {
                     NavigationOverlay()
                 }
+                libraryViewModelInUse?.let { libraryViewModel ->
+                    LibraryFollowUps(libraryViewModel, snackbarHostState)
+                }
 
                 val scrollViewModel: ScrollViewModel = hiltViewModel()
                 val xpNotice by scrollViewModel.xpNotice.collectAsState()
@@ -330,20 +339,17 @@ fun ReaderScreen(
     }
 
     if (showChapterList) {
+        val libraryViewModel = libraryViewModelProvider()
+        LaunchedEffect(libraryViewModel) { libraryViewModelInUse = libraryViewModel }
         ChapterListSheet(
             uiState = uiState,
-            libraryViewModel = libraryViewModelProvider(),
+            libraryViewModel = libraryViewModel,
             onDismiss = { showChapterList = false },
             onNavigateToChapter = { url, title ->
                 scope.launch {
                     bottomSheetState.hide()
                     showChapterList = false
                     readerViewModel.navigateToChapter(url, title)
-                }
-            },
-            onDownloadRemoved = {
-                scope.launch {
-                    snackbarHostState.showSnackbar("Chapter download removed")
                 }
             },
             sheetState = bottomSheetState
@@ -546,6 +552,40 @@ private fun ReaderContent(
             onShowChapterList = onShowChapterList,
             onShowSettings = onShowSettings
         )
+    }
+}
+
+/**
+ * Reader-side surface for library actions started from the drawer or chapter sheet: the
+ * "Read next" fetch (spinner + error) and the "Download removed / Re-download" prompt.
+ * Whichever screen is on top consumes these, so nothing goes stale until the Library opens.
+ */
+@Composable
+private fun LibraryFollowUps(libraryViewModel: LibraryViewModel, snackbarHostState: SnackbarHostState) {
+    val openNextChapterState by libraryViewModel.openNextChapterState.collectAsState()
+    val downloadRetryPrompt by libraryViewModel.downloadRetryPrompt.collectAsState()
+    if (openNextChapterState is OpenNextChapterState.Loading) {
+        NavigationOverlay()
+    }
+    LaunchedEffect(openNextChapterState) {
+        (openNextChapterState as? OpenNextChapterState.Error)?.let { state ->
+            snackbarHostState.showSnackbar(state.message, duration = SnackbarDuration.Short)
+            libraryViewModel.consumeOpenNextChapterError()
+        }
+    }
+    LaunchedEffect(downloadRetryPrompt) {
+        downloadRetryPrompt?.let { prompt ->
+            val result = snackbarHostState.showSnackbar(
+                message = prompt.message,
+                actionLabel = prompt.actionLabel,
+                duration = SnackbarDuration.Short,
+                withDismissAction = true
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                libraryViewModel.retryDownloads(prompt.urls)
+            }
+            libraryViewModel.consumeDownloadRetryPrompt()
+        }
     }
 }
 
