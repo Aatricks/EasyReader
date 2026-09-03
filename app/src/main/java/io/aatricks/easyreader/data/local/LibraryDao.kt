@@ -40,8 +40,8 @@ interface LibraryDao {
     @Query("UPDATE library_items SET isCurrentlyReading = 1, lastRead = :timestamp WHERE id = :id")
     suspend fun markAsCurrentlyReading(id: String, timestamp: Long)
 
-    @Query("UPDATE library_items SET hasUpdates = 0 WHERE baseTitle = :baseTitle")
-    suspend fun clearUpdatesForBaseTitle(baseTitle: String)
+    @Query("SELECT * FROM library_items WHERE baseTitle = :baseTitle AND hasUpdates = 1")
+    suspend fun getUpdatedItemsForBaseTitle(baseTitle: String): List<LibraryItem>
 
     @Query("UPDATE library_items SET hasUpdates = 0 WHERE id = :id")
     suspend fun clearUpdatesForId(id: String)

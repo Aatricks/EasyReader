@@ -310,16 +310,24 @@ class LibraryRepository @Inject constructor(
     }
 
     suspend fun markAsCurrentlyReading(itemId: String): Boolean = runRepoCatching("Failed to mark as reading", false) {
-        libraryDao.getItemById(itemId)?.let { item ->
-            if (item.baseTitle.isNotBlank()) {
-                libraryDao.clearUpdatesForBaseTitle(item.baseTitle)
-            } else {
-                libraryDao.clearUpdatesForId(itemId)
-            }
-        }
+        libraryDao.getItemById(itemId)?.let { clearUpdatesOvertakenBy(it) }
         libraryDao.setCurrentReading(itemId)
         true
     } ?: false
+
+    /**
+     * The "new chapter" badge sits on the row the user had reached, so re-opening that row is a
+     * resume and has to leave the badge up — otherwise it disappears before the user ever sees the
+     * new chapter, and a later refresh cannot bring it back. Only rows the opened chapter is newer
+     * than have actually been read past.
+     */
+    private suspend fun clearUpdatesOvertakenBy(opened: LibraryItem) {
+        if (opened.baseTitle.isBlank()) return
+        val openedNumber = opened.resolvedChapterNumber() ?: return
+        libraryDao.getUpdatedItemsForBaseTitle(opened.baseTitle)
+            .filter { (it.resolvedChapterNumber() ?: Double.MAX_VALUE) < openedNumber }
+            .forEach { libraryDao.clearUpdatesForId(it.id) }
+    }
 
     suspend fun getCurrentlyReading(): LibraryItem? = runRepoCatching("Failed to get currently reading") {
         libraryDao.getCurrentlyReading() ?: libraryDao.getAllItems().firstOrNull()?.firstOrNull()
