@@ -121,23 +121,23 @@ fun ExploreScreen(
                 isLoading = uiState.isFetchingDetails,
                 isInLibrary = isInLibrary(activeItem),
                 onAddToLibrary = {
-                    libraryViewModel.addExploreItem(activeItem)
                     exploreViewModel.dismissItem()
                     scope.launch {
-                        val result = snackbarHostState.showSnackbar(
-                            message = "Saved to library",
-                            actionLabel = "Open library",
-                            duration = SnackbarDuration.Short
-                        )
-                        if (result == SnackbarResult.ActionPerformed) onOpenLibrary()
+                        saveExploreItem(activeItem, libraryViewModel, snackbarHostState, onOpenLibrary)
                     }
                 },
                 onRead = {
-                    if (!isInLibrary(activeItem)) {
-                        libraryViewModel.addExploreItem(activeItem)
-                    }
-                    onReadItem(activeItem)
+                    val alreadySaved = isInLibrary(activeItem)
                     exploreViewModel.dismissItem()
+                    scope.launch {
+                        readExploreItem(
+                            activeItem,
+                            alreadySaved,
+                            libraryViewModel,
+                            snackbarHostState,
+                            onReadItem
+                        )
+                    }
                 }
             )
         }
@@ -475,3 +475,40 @@ private fun FiltersBottomSheetContent(
         Spacer(modifier = Modifier.height(EasyReaderSpacing.lg))
     }
 }
+
+/** Saves the item, then reports the real outcome on Explore's own snackbar. */
+private suspend fun saveExploreItem(
+    item: ExploreItem,
+    libraryViewModel: LibraryViewModel,
+    snackbarHostState: SnackbarHostState,
+    onOpenLibrary: () -> Unit
+) {
+    val added = libraryViewModel.addExploreItem(item)
+    val result = snackbarHostState.showSnackbar(
+        message = addOutcomeMessage(added),
+        actionLabel = if (added.isFailure) null else "Open library",
+        duration = SnackbarDuration.Short
+    )
+    if (result == SnackbarResult.ActionPerformed) onOpenLibrary()
+}
+
+/** Opens the item only once it is actually in the library; a failed add says why instead. */
+private suspend fun readExploreItem(
+    item: ExploreItem,
+    alreadySaved: Boolean,
+    libraryViewModel: LibraryViewModel,
+    snackbarHostState: SnackbarHostState,
+    onReadItem: (ExploreItem) -> Unit
+) {
+    val added = if (alreadySaved) Result.success(false) else libraryViewModel.addExploreItem(item)
+    if (added.isFailure) {
+        snackbarHostState.showSnackbar(addOutcomeMessage(added))
+    } else {
+        onReadItem(item)
+    }
+}
+
+private fun addOutcomeMessage(outcome: Result<Boolean>): String = outcome.fold(
+    onSuccess = { added -> if (added) "Saved to library" else "Already in your library" },
+    onFailure = { e -> "Could not add: ${e.message ?: "something went wrong"}" }
+)

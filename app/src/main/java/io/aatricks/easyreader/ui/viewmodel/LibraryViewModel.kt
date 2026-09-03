@@ -284,17 +284,26 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    fun addExploreItem(item: ExploreItem): Unit {
-        viewModelScope.launch {
-            runCatching {
-                updateState { it.copy(isLoading = true) }
-                addExploreItemInternal(item)
-                updateState { it.copy(isLoading = false) }
-            }.onFailure { e ->
-                updateState { it.copy(isLoading = false, error = "Failed to add: ${e.message}") }
-            }
-        }
-    }
+    private class AlreadyInLibraryException : Exception("Item already in library")
+
+    /**
+     * Adds [item] and hands the outcome back so the calling screen can say what happened on its
+     * own snackbar: success carries true when the item was written and false when the resolved
+     * reading URL was already in the library. Runs on [viewModelScope], so a caller that goes
+     * away mid-add does not abort a half-finished write.
+     */
+    suspend fun addExploreItem(item: ExploreItem): Result<Boolean> =
+        viewModelScope.async {
+            updateState { it.copy(isLoading = true) }
+            val outcome = runCatching { addExploreItemInternal(item) }.fold(
+                onSuccess = { Result.success(true) },
+                onFailure = { e ->
+                    if (e is AlreadyInLibraryException) Result.success(false) else Result.failure(e)
+                }
+            )
+            updateState { it.copy(isLoading = false) }
+            outcome
+        }.await()
 
     /**
      * Add a resolved [ExploreItem] (from Explore or from a pasted URL) as a proper series:
@@ -310,7 +319,7 @@ class LibraryViewModel @Inject constructor(
             ?: item.url
 
         if (repository.getItemByUrl(readingUrl) != null) {
-            throw Exception("Item already in library")
+            throw AlreadyInLibraryException()
         }
 
         val contentType = determineContentType(readingUrl)
