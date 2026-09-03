@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -45,6 +46,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -56,6 +63,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import io.aatricks.easyreader.ui.screens.countDistinctNovelTitles
 import androidx.hilt.navigation.compose.hiltViewModel
 import io.aatricks.easyreader.ui.theme.AccentTheme
@@ -253,10 +262,12 @@ fun SettingsScreen(
                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                         }
                     )
+                    val chipScrollState = rememberScrollState()
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
+                            .accentRowEndFade(chipScrollState.canScrollForward)
+                            .horizontalScroll(chipScrollState),
                         horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
                     ) {
                         AccentTheme.entries.forEach { accentTheme ->
@@ -295,7 +306,7 @@ fun SettingsScreen(
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
+                    Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
                     Text("Clear cached chapters and images")
                 }
                 SettingsRow(
@@ -312,7 +323,7 @@ fun SettingsScreen(
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
+                    Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
                     Text("Clear all downloads")
                 }
                 val titlesCount = countDistinctNovelTitles(libraryState.items)
@@ -576,7 +587,7 @@ fun SettingsScreen(
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )
-                    Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
+                    Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
                     Text("Open project on GitHub")
                 }
             }
@@ -770,7 +781,8 @@ private fun SettingsSection(
             text = title,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.semantics { heading() }
         )
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -856,3 +868,23 @@ private fun AccentThemeChip(
 
 private const val PERCENT_MULTIPLIER = 100
 private const val ANDROID_12_SDK_INT = 31
+
+/** Fades the trailing edge of the accent chip row so a clipped last chip reads as scrollable. */
+private fun Modifier.accentRowEndFade(visible: Boolean): Modifier =
+    if (!visible) this else this
+        .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+        .drawWithContent {
+            drawContent()
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    START_FADE_STOP to Color.Black,
+                    1f to Color.Transparent,
+                    startX = size.width - ACCENT_FADE_WIDTH_PX,
+                    endX = size.width
+                ),
+                blendMode = BlendMode.DstIn
+            )
+        }
+
+private const val ACCENT_FADE_WIDTH_PX = 48f
+private const val START_FADE_STOP = 0f
