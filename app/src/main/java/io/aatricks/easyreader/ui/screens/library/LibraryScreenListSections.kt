@@ -86,6 +86,10 @@ import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import io.aatricks.easyreader.ui.viewmodel.SummaryViewModel
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.collectAsState
+import androidx.compose.foundation.lazy.LazyListState
+import io.aatricks.easyreader.data.model.SortMode
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -140,7 +144,12 @@ internal fun LibraryItemList(
         onCloseLibrary = onCloseLibrary
     )
 
+    val listState = rememberLazyListState()
+    val sortMode by libraryViewModel.sortMode.collectAsState()
+    ScrollToTopOnOrderingChange(listState, sortMode, uiState.groupBySource)
+
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = EasyReaderSpacing.xs, bottom = EasyReaderSpacing.xl),
         verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)
@@ -512,3 +521,19 @@ private fun NovelGroupHeader(
 }
 
 private const val GROUP_COVER_ASPECT_RATIO = 2f / 3f
+
+/**
+ * Jumps the list to the top when the sort order or grouping changes. The first composition is
+ * skipped so a restored scroll position survives re-entering the screen.
+ */
+@Composable
+internal fun ScrollToTopOnOrderingChange(listState: LazyListState, sortMode: SortMode, groupBySource: Boolean) {
+    var appliedOrdering by remember { mutableStateOf(sortMode to groupBySource) }
+    LaunchedEffect(sortMode, groupBySource) {
+        val ordering = sortMode to groupBySource
+        if (ordering != appliedOrdering) {
+            appliedOrdering = ordering
+            listState.scrollToItem(0)
+        }
+    }
+}
