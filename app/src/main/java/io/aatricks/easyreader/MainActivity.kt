@@ -27,6 +27,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import dagger.hilt.android.AndroidEntryPoint
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.ui.ExploreRoute
@@ -87,7 +88,7 @@ class MainActivity : ComponentActivity() {
         if (isGranted) {
             openFilePicker()
         } else {
-            shellMessages.trySend("Storage permission required to pick a file")
+            shellMessages.trySend(getString(R.string.shell_storage_permission))
         }
     }
 
@@ -262,7 +263,7 @@ class MainActivity : ComponentActivity() {
                         "content" -> handleFilePicked(uri)
                         else -> {
                             android.util.Log.w(TAG, "Rejected VIEW intent with scheme=${uri.scheme}")
-                            shellMessages.trySend("Emaki cannot open that kind of link")
+                            shellMessages.trySend(getString(R.string.shell_unsupported_link))
                         }
                     }
                 }
@@ -274,7 +275,7 @@ class MainActivity : ComponentActivity() {
                         if (url != null) {
                             handleWebUrl(url)
                         } else {
-                            shellMessages.trySend("No link found in the shared text")
+                            shellMessages.trySend(getString(R.string.shell_no_link_found))
                         }
                     }
                 }
@@ -285,7 +286,7 @@ class MainActivity : ComponentActivity() {
     private fun handleWebUrl(url: String): Unit {
         if (!UrlSecurity.isSafeUrlSynchronous(url)) {
             android.util.Log.w(TAG, "Rejected unsafe URL intent")
-            shellMessages.trySend("Link blocked for safety")
+            shellMessages.trySend(getString(R.string.shell_link_blocked))
             return
         }
         readerViewModel.requestOpenUrl(url)
@@ -300,11 +301,11 @@ class MainActivity : ComponentActivity() {
         
         val fileType = FileUtils.detectFileType(this, uri)
         val contentType = mapFileTypeToContentType(fileType) ?: run {
-            shellMessages.trySend("Emaki cannot open that file type")
+            shellMessages.trySend(getString(R.string.shell_unsupported_file_type))
             return
         }
 
-        val fileName = FileUtils.getFileName(this, uri) ?: "Unknown"
+        val fileName = FileUtils.getFileName(this, uri) ?: getString(R.string.unknown_title)
         val title = fileName.substringBeforeLast('.')
         libraryViewModel.addItem(title = title, url = uri.toString(), contentType = contentType)
 

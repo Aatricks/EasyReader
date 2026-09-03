@@ -410,4 +410,26 @@
     <string name="summary_enable">Activer les résumés IA</string>
     <string name="summary_prompt">Besoin d\'un rappel avant d\'ouvrir ce chapitre ?</string>
     <string name="summary_generate">Générer un résumé</string>
+
+    <!-- Reader Screen -->
+    <string name="reader_cloudflare_title">Accès réseau requis</string>
+    <string name="reader_cloudflare_body">Résolvez le test ou connectez-vous ci-dessous</string>
+    <string name="reader_webview_error">Erreur : %1$s</string>
+    <string name="reader_reload">Recharger</string>
+    <string name="reader_open_in_browser">Ouvrir dans le navigateur</string>
+    <string name="common_done">Terminé</string>
+    <string name="reader_opening_next_chapter">Ouverture du chapitre suivant…</string>
+    <string name="reader_show_controls">Afficher les commandes du lecteur</string>
+    <string name="reader_next_page">Page suivante</string>
+    <string name="reader_previous_page">Page précédente</string>
+    <string name="reader_hint_pull_down_previous">Tirez vers le bas pour le chapitre précédent</string>
+    <string name="reader_hint_pull_up_next">Tirez vers le haut pour le chapitre suivant</string>
+    <string name="reader_hint_caught_up">Vous êtes à jour. Aucun nouveau chapitre pour le moment.</string>
+
+    <!-- Shell -->
+    <string name="shell_storage_permission">Autorisation de stockage requise pour choisir un fichier</string>
+    <string name="shell_unsupported_link">Emaki ne peut pas ouvrir ce type de lien</string>
+    <string name="shell_no_link_found">Aucun lien trouvé dans le texte partagé</string>
+    <string name="shell_link_blocked">Lien bloqué par sécurité</string>
+    <string name="shell_unsupported_file_type">Emaki ne peut pas ouvrir ce type de fichier</string>
 </resources>

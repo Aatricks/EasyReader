@@ -31,6 +31,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.hilt.navigation.compose.hiltViewModel
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.ui.ScrollRoute
 import io.aatricks.easyreader.ui.viewmodel.ScrollViewModel
 import androidx.compose.ui.Alignment
@@ -44,6 +45,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
@@ -392,11 +394,11 @@ private fun CloudflareDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "Network access required",
+                            stringResource(R.string.reader_cloudflare_title),
                             style = MaterialTheme.typography.titleLarge
                         )
                         Text(
-                            "Solve the challenge or login below",
+                            stringResource(R.string.reader_cloudflare_body),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -410,9 +412,9 @@ private fun CloudflareDialog(
                     }
                 }
 
-                if (webViewError != null) {
+                webViewError?.let { error ->
                     Text(
-                        text = "Error: $webViewError",
+                        text = stringResource(R.string.reader_webview_error, error),
                         modifier = Modifier.padding(horizontal = EasyReaderSpacing.md),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.labelSmall
@@ -483,7 +485,7 @@ private fun CloudflareDialog(
                             },
                             modifier = Modifier.align(Alignment.BottomEnd).padding(EasyReaderSpacing.md)
                         ) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Reload")
+                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.reader_reload))
                         }
                     }
                 }
@@ -506,20 +508,20 @@ private fun CloudflareDialog(
                     ) {
                         Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(EasyReaderSpacing.xxs))
-                        Text("Open in Browser")
+                        Text(stringResource(R.string.reader_open_in_browser))
                     }
 
                     Spacer(modifier = Modifier.weight(1f))
 
                     TextButton(onClick = onDismiss) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.common_cancel))
                     }
 
                     Button(
                         onClick = onRetry,
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("Done")
+                        Text(stringResource(R.string.common_done))
                     }
                 }
             }
@@ -623,12 +625,12 @@ private fun NavigationOverlay(onCancel: (() -> Unit)? = null): Unit {
             CircularProgressIndicator(color = Color(0xFF4CAF50))
             if (onCancel != null) {
                 Text(
-                    text = "Opening next chapter\u2026",
+                    text = stringResource(R.string.reader_opening_next_chapter),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White
                 )
                 TextButton(onClick = onCancel) {
-                    Text("Cancel", color = Color.White)
+                    Text(stringResource(R.string.common_cancel), color = Color.White)
                 }
             }
         }

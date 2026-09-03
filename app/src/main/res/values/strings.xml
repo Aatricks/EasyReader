@@ -410,4 +410,26 @@
     <string name="summary_enable">Enable AI summaries</string>
     <string name="summary_prompt">Need a quick refresher before you open this chapter?</string>
     <string name="summary_generate">Generate summary</string>
+
+    <!-- Reader Screen -->
+    <string name="reader_cloudflare_title">Network access required</string>
+    <string name="reader_cloudflare_body">Solve the challenge or login below</string>
+    <string name="reader_webview_error">Error: %1$s</string>
+    <string name="reader_reload">Reload</string>
+    <string name="reader_open_in_browser">Open in Browser</string>
+    <string name="common_done">Done</string>
+    <string name="reader_opening_next_chapter">Opening next chapter…</string>
+    <string name="reader_show_controls">Show reader controls</string>
+    <string name="reader_next_page">Next page</string>
+    <string name="reader_previous_page">Previous page</string>
+    <string name="reader_hint_pull_down_previous">Pull down for previous chapter</string>
+    <string name="reader_hint_pull_up_next">Pull up for next chapter</string>
+    <string name="reader_hint_caught_up">You\'re caught up. No newer chapter yet.</string>
+
+    <!-- Shell -->
+    <string name="shell_storage_permission">Storage permission required to pick a file</string>
+    <string name="shell_unsupported_link">Emaki cannot open that kind of link</string>
+    <string name="shell_no_link_found">No link found in the shared text</string>
+    <string name="shell_link_blocked">Link blocked for safety</string>
+    <string name="shell_unsupported_file_type">Emaki cannot open that file type</string>
 </resources>

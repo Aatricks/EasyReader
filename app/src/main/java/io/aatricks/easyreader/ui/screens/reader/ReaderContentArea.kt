@@ -39,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
@@ -53,6 +54,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -548,6 +550,9 @@ internal fun ContentArea(
             }
         }
 
+        val showControlsLabel = stringResource(R.string.reader_show_controls)
+        val nextPageLabel = stringResource(R.string.reader_next_page)
+        val previousPageLabel = stringResource(R.string.reader_previous_page)
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -555,17 +560,17 @@ internal fun ContentArea(
                 // These expose the same three actions as a semantics node so the controls
                 // and, in paged mode, the page turns stay reachable with TalkBack on.
                 .semantics {
-                    onClick(label = "Show reader controls") {
+                    onClick(label = showControlsLabel) {
                         readerViewModel.toggleControls()
                         true
                     }
                     if (uiState.isPagedMode) {
                         customActions = listOf(
-                            CustomAccessibilityAction("Next page") {
+                            CustomAccessibilityAction(nextPageLabel) {
                                 goToNextPage()
                                 true
                             },
-                            CustomAccessibilityAction("Previous page") {
+                            CustomAccessibilityAction(previousPageLabel) {
                                 goToPreviousPage()
                                 true
                             }
@@ -1032,7 +1037,7 @@ private fun EdgeNavigationHint(
     if (atTop) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             EdgeHintChip(
-                text = "Pull down for previous chapter",
+                text = stringResource(R.string.reader_hint_pull_down_previous),
                 icon = Icons.Default.ArrowDownward,
                 textColor = textColor,
                 backgroundColor = backgroundColor
@@ -1042,7 +1047,7 @@ private fun EdgeNavigationHint(
     if (atBottom) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
             EdgeHintChip(
-                text = "Pull up for next chapter",
+                text = stringResource(R.string.reader_hint_pull_up_next),
                 icon = Icons.Default.ArrowUpward,
                 textColor = textColor,
                 backgroundColor = backgroundColor
@@ -1052,7 +1057,7 @@ private fun EdgeNavigationHint(
     if (caughtUp) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
             EdgeHintChip(
-                text = "You're caught up. No newer chapter yet.",
+                text = stringResource(R.string.reader_hint_caught_up),
                 icon = Icons.Default.Check,
                 textColor = textColor,
                 backgroundColor = backgroundColor
