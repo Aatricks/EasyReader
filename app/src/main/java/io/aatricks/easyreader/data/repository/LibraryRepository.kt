@@ -63,11 +63,13 @@ class LibraryRepository @Inject constructor(
     val libraryLoaded: StateFlow<Boolean> = _libraryLoaded.asStateFlow()
 
     val libraryItems: StateFlow<List<LibraryItem>> = libraryDao.getAllItems()
-        .onEach { _libraryLoaded.value = true }
         .catch { e ->
             Log.e(TAG, "Error collecting library items", e)
             emit(emptyList())
         }
+        // After catch, so the fallback emission also counts as loaded and a failing query shows
+        // the empty state instead of a permanent shimmer.
+        .onEach { _libraryLoaded.value = true }
         .stateIn(repositoryScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     companion object {
