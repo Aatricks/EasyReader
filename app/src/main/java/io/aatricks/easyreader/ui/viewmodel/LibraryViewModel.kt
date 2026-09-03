@@ -17,6 +17,7 @@ import io.aatricks.easyreader.util.TextUtils
 import io.aatricks.easyreader.util.normalizeChapterList
 import io.aatricks.easyreader.work.ChapterDownloadQueue
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
@@ -510,7 +511,12 @@ class LibraryViewModel @Inject constructor(
         openNewChapterJob = viewModelScope.launch {
             runCatching {
                 _openNextChapterState.value = OpenNextChapterState.Loading
-                val details = exploreRepository.getNovelDetails(item.baseNovelUrl, item.sourceName)
+                // withTimeoutOrNull, not withTimeout: a TimeoutCancellationException would be
+                // rethrown by rethrowCancellation() and never reach the error state below, leaving
+                // the blocking overlay up for good.
+                val details = withTimeoutOrNull(OPEN_NEXT_CHAPTER_TIMEOUT_MS) {
+                    exploreRepository.getNovelDetails(item.baseNovelUrl, item.sourceName)
+                }
                 val normalizedChapters = normalizeChapterList(details?.chapters.orEmpty())
                 if (details == null || normalizedChapters.isEmpty()) {
                     throw Exception("No chapters found for this novel")
@@ -529,6 +535,13 @@ class LibraryViewModel @Inject constructor(
                     OpenNextChapterState.Error("Failed to load new chapter: ${e.message}")
             }
         }
+    }
+
+    /** Backs the overlay's Cancel action; the cancelled job cannot clear the state itself. */
+    fun cancelOpenNewChapter(): Unit {
+        openNewChapterJob?.cancel()
+        openNewChapterJob = null
+        _openNextChapterState.value = OpenNextChapterState.Idle
     }
 
     fun consumeOpenNextChapterError(): Unit {
@@ -820,6 +833,8 @@ private suspend fun adoptChapterIntoSeries(
         totalChapters = totalChapters
     )
 }
+
+private const val OPEN_NEXT_CHAPTER_TIMEOUT_MS = 20_000L
 
 private const val BACKFILL_CONCURRENCY = 3
 

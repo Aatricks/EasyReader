@@ -565,7 +565,7 @@ private fun LibraryFollowUps(libraryViewModel: LibraryViewModel, snackbarHostSta
     val openNextChapterState by libraryViewModel.openNextChapterState.collectAsState()
     val downloadRetryPrompt by libraryViewModel.downloadRetryPrompt.collectAsState()
     if (openNextChapterState is OpenNextChapterState.Loading) {
-        NavigationOverlay()
+        NavigationOverlay(onCancel = { libraryViewModel.cancelOpenNewChapter() })
     }
     LaunchedEffect(openNextChapterState) {
         (openNextChapterState as? OpenNextChapterState.Error)?.let { state ->
@@ -590,7 +590,9 @@ private fun LibraryFollowUps(libraryViewModel: LibraryViewModel, snackbarHostSta
 }
 
 @Composable
-private fun NavigationOverlay(): Unit {
+private fun NavigationOverlay(onCancel: (() -> Unit)? = null): Unit {
+    // The overlay swallows every touch, so back has to be handled here or there is no way out.
+    BackHandler(enabled = onCancel != null) { onCancel?.invoke() }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -598,6 +600,21 @@ private fun NavigationOverlay(): Unit {
             .pointerInput(Unit) {},
         contentAlignment = Alignment.Center
     ) {
-        CircularProgressIndicator(color = Color(0xFF4CAF50))
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)
+        ) {
+            CircularProgressIndicator(color = Color(0xFF4CAF50))
+            if (onCancel != null) {
+                Text(
+                    text = "Opening next chapter\u2026",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White
+                )
+                TextButton(onClick = onCancel) {
+                    Text("Cancel", color = Color.White)
+                }
+            }
+        }
     }
 }

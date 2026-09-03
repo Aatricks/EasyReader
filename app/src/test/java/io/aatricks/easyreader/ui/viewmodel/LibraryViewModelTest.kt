@@ -1150,6 +1150,45 @@ class LibraryViewModelTest {
         verify(exploreRepository, times(1)).getNovelDetails("https://example.com/novel-2", "Source2")
         verify(libraryRepository, times(1)).updateCoverImageUrl("Novel 2", "Source2", "https://example.com/novel-2/cover.jpg")
     }
+
+    @Test
+    fun `a stalled source lands in the error state instead of blocking for ever`() = runTest {
+        val item = LibraryItem(
+            id = "ch-1", title = "Novel - Chapter 1", url = "https://example.com/novel/1",
+            currentChapter = "Chapter 1", baseTitle = "Novel",
+            baseNovelUrl = "https://example.com/novel", sourceName = "Source1"
+        )
+        whenever(exploreRepository.getNovelDetails(any(), any())).doSuspendableAnswer {
+            kotlinx.coroutines.delay(Long.MAX_VALUE / 2)
+            null
+        }
+
+        viewModel.openNewChapter(item) { _, _ -> }
+        advanceUntilIdle()
+
+        assertTrue(viewModel.openNextChapterState.value is OpenNextChapterState.Error)
+    }
+
+    @Test
+    fun `cancelling the next-chapter fetch returns to idle`() = runTest {
+        val item = LibraryItem(
+            id = "ch-1", title = "Novel - Chapter 1", url = "https://example.com/novel/1",
+            currentChapter = "Chapter 1", baseTitle = "Novel",
+            baseNovelUrl = "https://example.com/novel", sourceName = "Source1"
+        )
+        whenever(exploreRepository.getNovelDetails(any(), any())).doSuspendableAnswer {
+            kotlinx.coroutines.delay(Long.MAX_VALUE / 2)
+            null
+        }
+
+        viewModel.openNewChapter(item) { _, _ -> }
+        runCurrent()
+        assertEquals(OpenNextChapterState.Loading, viewModel.openNextChapterState.value)
+
+        viewModel.cancelOpenNewChapter()
+
+        assertEquals(OpenNextChapterState.Idle, viewModel.openNextChapterState.value)
+    }
 }
 
 private data class RecordedEnqueue(val url: String, val replaceExisting: Boolean)
