@@ -41,7 +41,8 @@ class SettingsBackupManager @Inject constructor(
                     paragraphSpacing = preferencesManager.paragraphSpacing,
                     readerTheme = preferencesManager.readerTheme,
                     accentTheme = preferencesManager.accentTheme,
-                    brightness = preferencesManager.brightness
+                    brightness = preferencesManager.brightness,
+                    readingDirectionRtl = preferencesManager.readingDirectionRtl
                 ),
                 scrollFinishedSeries = preferencesManager.scrollFinishedSeries.toList(),
                 scrollUnlockedMilestones = preferencesManager.scrollUnlockedMilestones,
@@ -79,6 +80,7 @@ class SettingsBackupManager @Inject constructor(
                 readerTheme = r.readerTheme,
                 accentTheme = r.accentTheme
             )
+            r.readingDirectionRtl?.let { preferencesManager.readingDirectionRtl = it }
 
             val currentFinished = preferencesManager.scrollFinishedSeries
             val newFinished = currentFinished + payload.scrollFinishedSeries

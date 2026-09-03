@@ -14,6 +14,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.ByteArrayInputStream
@@ -42,7 +43,7 @@ class BackupV3Test {
             schemaVersion = 3,
             exportedAt = 123L,
             appVersionName = "1.0",
-            reader = ReaderSettingsPayload(18f, 1.5f, "Default", 16, 0, 1f, "DARK", "MOSS", 1f),
+            reader = ReaderSettingsPayload(18f, 1.5f, "Default", 16, 0, 1f, "DARK", "MOSS", 1f, readingDirectionRtl = true),
             scrollFinishedSeries = listOf("Series B", "Series A"),
             scrollUnlockedMilestones = mapOf("first_chapter" to 1500L, "chapters_1000" to 3000L),
             scrollHistorySeeded = true
@@ -69,6 +70,7 @@ class BackupV3Test {
         val expectedMilestones = mapOf("first_chapter" to 1000L, "chapters_100" to 2000L, "chapters_1000" to 3000L)
         assertEquals(expectedMilestones, prefs.scrollUnlockedMilestones)
         assertTrue(prefs.scrollHistorySeeded)
+        verify(prefs).readingDirectionRtl = true
     }
 
     @Test
@@ -111,5 +113,6 @@ class BackupV3Test {
         
         // Defaults apply, so nothing new added to lists/maps
         assertEquals(setOf("Series A"), prefs.scrollFinishedSeries)
+        verify(prefs, never()).readingDirectionRtl = any()
     }
 }

@@ -27,7 +27,8 @@ data class ReaderSettingsPayload(
     val paragraphSpacing: Float,
     val readerTheme: String,
     val accentTheme: String,
-    val brightness: Float = 1.0f
+    val brightness: Float = 1.0f,
+    val readingDirectionRtl: Boolean? = null
 )
 
 @Serializable
