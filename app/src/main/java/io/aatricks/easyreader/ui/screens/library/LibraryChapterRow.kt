@@ -40,7 +40,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.ContentResult
 import io.aatricks.easyreader.data.model.LibraryItem
@@ -103,6 +105,7 @@ internal fun selectableClickBox(
 @Composable
 internal fun novelChapterRow(renderItem: LibraryRenderItem.ChapterRow, context: LibraryRenderContext) {
     val scope = rememberCoroutineScope()
+    val summaryFailureMessage = stringResource(R.string.library_summary_load_failed)
     Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
     val presentation = ChapterRowPresentation(
         renderItem = renderItem,
@@ -118,7 +121,7 @@ internal fun novelChapterRow(renderItem: LibraryRenderItem.ChapterRow, context: 
     Column(modifier = Modifier.fillMaxWidth()) {
         chapterRowSurface(presentation, rowColor, context)
         chapterSummary(presentation, context) {
-            scope.launch { generateChapterSummary(presentation, context) }
+            scope.launch { generateChapterSummary(presentation, context, summaryFailureMessage) }
         }
     }
 }
@@ -190,14 +193,14 @@ private fun chapterRowTitle(
             if (presentation.item.isDownloaded) {
                 Icon(
                     imageVector = Icons.Default.DownloadDone,
-                    contentDescription = "Downloaded",
+                    contentDescription = stringResource(R.string.chapter_status_downloaded),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(DOWNLOADED_ICON_SIZE_DP.dp)
                 )
                 Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
             }
             Text(
-                text = presentation.item.currentChapter.ifBlank { "Chapter 1" },
+                text = presentation.item.currentChapter.ifBlank { stringResource(R.string.library_chapter_one) },
                 color = when {
                     presentation.isSelected -> MaterialTheme.colorScheme.primary
                     presentation.isCurrent -> MaterialTheme.colorScheme.secondary
@@ -208,7 +211,7 @@ private fun chapterRowTitle(
         }
         if (presentation.isCurrent) {
             Text(
-                "Resume here",
+                stringResource(R.string.library_resume_here),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.secondary
             )
@@ -238,7 +241,7 @@ private fun chapterRowActions(presentation: ChapterRowPresentation, context: Lib
         ) {
             Icon(
                 imageVector = Icons.Outlined.Delete,
-                contentDescription = "Remove download",
+                contentDescription = stringResource(R.string.chapter_action_remove_download),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(REMOVE_DOWNLOAD_ICON_SIZE_DP.dp)
             )
@@ -248,7 +251,15 @@ private fun chapterRowActions(presentation: ChapterRowPresentation, context: Lib
         context.expandedSummaries[presentation.renderItem.groupKey] =
             if (presentation.renderItem.isSummaryExpanded) null else presentation.chapterUrl
     }) {
-        Text(if (presentation.renderItem.isSummaryExpanded) "Hide summary" else "Chapter summary")
+        Text(
+            stringResource(
+                if (presentation.renderItem.isSummaryExpanded) {
+                    R.string.library_hide_summary
+                } else {
+                    R.string.library_chapter_summary
+                }
+            )
+        )
     }
 }
 
@@ -288,13 +299,14 @@ private fun chapterSummary(
 
 private suspend fun generateChapterSummary(
     presentation: ChapterRowPresentation,
-    context: LibraryRenderContext
+    context: LibraryRenderContext,
+    failureMessage: String
 ) {
     val result = context.readerViewModel.contentRepository.loadContent(presentation.chapterUrl)
     if (result !is ContentResult.Success) {
         context.summaryViewModel.reportGenerationFailure(
             presentation.chapterUrl,
-            "Could not load the chapter to summarise"
+            failureMessage
         )
         return
     }

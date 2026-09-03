@@ -196,7 +196,9 @@ fun LibraryScreen(
                 }) { Text(stringResource(R.string.download_button)) }
             },
             dismissButton = {
-                TextButton(onClick = { showDownloadAllConfirmation = false }) { Text(stringResource(R.string.common_cancel)) }
+                TextButton(onClick = { showDownloadAllConfirmation = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
             }
         )
     }
@@ -471,7 +473,10 @@ private fun AddNovelSection(
                 trailingIcon = {
                     if (urlInput.isNotEmpty()) {
                         IconButton(onClick = { onUrlChange("") }) {
-                            Icon(imageVector = Icons.Filled.Close, contentDescription = stringResource(R.string.library_clear_url))
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.library_clear_url)
+                            )
                         }
                     }
                 },
@@ -697,6 +702,9 @@ private fun EmptyLibraryState(
 ) {
     val isFilteredEmpty = query.isNotBlank() || statusFilterLabel != null
     val (headline, body) = emptyLibraryCopy(query, statusFilterLabel)
+    val clearLabel = stringResource(
+        if (statusFilterLabel != null) R.string.library_show_all_titles else R.string.library_clear_search
+    )
     Box(
         // Scrollable so pull-to-refresh still has a gesture to hook when the list is empty.
         modifier = Modifier
@@ -730,15 +738,7 @@ private fun EmptyLibraryState(
                 if (isFilteredEmpty) {
                     Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
                     FilledTonalButton(onClick = onClearSearch) {
-                        Text(
-                            stringResource(
-                                if (statusFilterLabel != null) {
-                                    R.string.library_show_all_titles
-                                } else {
-                                    R.string.library_clear_search
-                                }
-                            )
-                        )
+                        Text(clearLabel)
                     }
                 } else {
                     Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))

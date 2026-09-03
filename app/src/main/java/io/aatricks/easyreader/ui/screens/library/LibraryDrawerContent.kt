@@ -18,6 +18,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -25,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.libraryDisplayTitle
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
@@ -79,7 +82,7 @@ fun LibraryDrawerContent(
                     },
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("Library")
+                    Text(stringResource(R.string.library_title))
                 }
                 OutlinedButton(
                     onClick = {
@@ -88,7 +91,7 @@ fun LibraryDrawerContent(
                     },
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("Explore")
+                    Text(stringResource(R.string.explore_title))
                 }
             }
         }
@@ -107,7 +110,7 @@ fun LibraryDrawerContent(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-                Text("Import file")
+                Text(stringResource(R.string.library_import_file))
             }
         }
 
@@ -119,11 +122,15 @@ fun LibraryDrawerContent(
                     badge = {
                         // The ring and the dot are pure graphics inside a merged item, so the
                         // badge is silent to a screen reader without an explicit description.
-                        val badgeDescription = buildString {
-                            append("Level ${scrollProgression.level}")
-                            if (unseenMilestones > 0) {
-                                append(", $unseenMilestones new milestones")
-                            }
+                        val badgeDescription = if (unseenMilestones > 0) {
+                            pluralStringResource(
+                                R.plurals.drawer_scroll_level_milestones,
+                                unseenMilestones,
+                                scrollProgression.level,
+                                unseenMilestones
+                            )
+                        } else {
+                            stringResource(R.string.drawer_scroll_level, scrollProgression.level)
                         }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -173,12 +180,13 @@ fun LibraryDrawerContent(
         }
 
         if (recentUpdates.isNotEmpty()) {
-            item { DrawerSectionLabel("New chapters") }
+            item { DrawerSectionLabel(stringResource(R.string.drawer_section_new_chapters)) }
             items(recentUpdates, key = { "update_${it.novelKey}" }) { novel ->
+                val newChapterLabel = stringResource(R.string.drawer_new_chapter)
                 val chapter = novel.updateItem.currentChapter.takeIf { it.isNotBlank() }
-                    ?.let { "Continue after $it" }
+                    ?.let { stringResource(R.string.drawer_continue_after, it) }
                     ?: novel.updateItem.title.takeIf { it != novel.updateItem.baseTitle }.orEmpty()
-                        .ifBlank { "New chapter" }
+                        .ifBlank { newChapterLabel }
                 QuickLibraryItem(
                     item = novel.updateItem,
                     supportingText = chapter,
@@ -191,17 +199,23 @@ fun LibraryDrawerContent(
         }
 
         if (recentItems.isNotEmpty()) {
-            item { DrawerSectionLabel("Recent") }
+            item { DrawerSectionLabel(stringResource(R.string.drawer_section_recent)) }
             items(recentItems, key = { "recent_${it.novelKey}" }) { novel ->
                 QuickLibraryItem(
                     item = novel.resumeItem,
                     supportingText = if (novel.resumeItem.progress == 0 &&
                         novel.resumeItem.currentChapterUrl.isBlank()
                     ) {
-                        "Start reading"
+                        stringResource(R.string.library_start_reading)
                     } else {
-                        val chapter = novel.resumeItem.currentChapter.ifBlank { "Resume where you left off" }
-                        if (chapter.startsWith("Resume")) chapter else "Resume $chapter"
+                        val resumePrefix = stringResource(R.string.library_resume_prefix)
+                        val chapter = novel.resumeItem.currentChapter
+                            .ifBlank { stringResource(R.string.drawer_resume_placeholder) }
+                        if (chapter.startsWith(resumePrefix)) {
+                            chapter
+                        } else {
+                            stringResource(R.string.library_resume_chapter, chapter)
+                        }
                     },
                     onClick = {
                         onOpenLibraryItem(novel.resumeItem)
@@ -254,7 +268,7 @@ private fun ContinueReadingCard(
                 verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)
             ) {
                 Text(
-                    text = "Continue Reading",
+                    text = stringResource(R.string.drawer_continue_reading),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -266,7 +280,7 @@ private fun ContinueReadingCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = item.currentChapter.ifBlank { "Pick up where you left off" },
+                    text = item.currentChapter.ifBlank { stringResource(R.string.drawer_continue_placeholder) },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -385,14 +399,14 @@ private fun EmptyQuickAccessState(): Unit {
                     tint = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "Start your library",
+                    text = stringResource(R.string.drawer_empty_title),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold
                 )
             }
             Text(
-                text = "Use Explore to find something new or import a file directly.",
+                text = stringResource(R.string.drawer_empty_body),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

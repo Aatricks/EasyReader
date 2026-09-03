@@ -53,6 +53,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import io.aatricks.easyreader.R
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -210,9 +212,9 @@ private fun showMoreControl(item: LibraryRenderItem.ShowMoreControl, context: Li
     ) {
         Text(
             text = if (item.showFullChapters) {
-                "Show fewer chapters"
+                stringResource(R.string.library_show_fewer_chapters)
             } else {
-                "Browse all chapters (${item.chapterCount})"
+                stringResource(R.string.library_browse_all_chapters, item.chapterCount)
             },
             color = MaterialTheme.colorScheme.primary
         )
@@ -262,9 +264,12 @@ private fun novelResumeButton(item: LibraryItem, onClick: () -> Unit) {
     ) {
         Text(
             if (item.progress == 0 && item.currentChapterUrl.isBlank()) {
-                "Start reading"
+                stringResource(R.string.library_start_reading)
             } else {
-                "Resume ${item.currentChapter.ifBlank { "reading" }}"
+                stringResource(
+                    R.string.library_resume_chapter,
+                    item.currentChapter.ifBlank { stringResource(R.string.library_resume_fallback) }
+                )
             }
         )
     }
@@ -365,16 +370,16 @@ private fun ResetProgressDialog(
                 tint = MaterialTheme.colorScheme.error
             )
         },
-        title = { Text("Reset reading progress?") },
-        text = { Text("Clears your position in every chapter of \"$title\". Downloads are kept.") },
+        title = { Text(stringResource(R.string.library_reset_progress_title)) },
+        text = { Text(stringResource(R.string.library_reset_progress_body, title)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("Reset", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.library_reset), color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.common_cancel))
             }
         }
     )
@@ -472,7 +477,7 @@ private fun NovelGroupHeader(
                     Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
                     AssistChip(
                         onClick = { onOpenNewChapter(updateItem) },
-                        label = { Text("Read next") }
+                        label = { Text(stringResource(R.string.library_read_next)) }
                     )
                 }
             }
@@ -482,7 +487,9 @@ private fun NovelGroupHeader(
         IconButton(onClick = onToggleExpand) {
             Icon(
                 imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = if (isExpanded) "Hide chapters" else "Browse chapters"
+                contentDescription = stringResource(
+                    if (isExpanded) R.string.library_hide_chapters else R.string.library_browse_chapters
+                )
             )
         }
 
@@ -491,7 +498,7 @@ private fun NovelGroupHeader(
                 IconButton(onClick = { menuExpanded = true }) {
                     Icon(
                         imageVector = Icons.Default.MoreVert,
-                        contentDescription = "More actions"
+                        contentDescription = stringResource(R.string.library_more_actions)
                     )
                 }
                 DropdownMenu(
@@ -500,7 +507,7 @@ private fun NovelGroupHeader(
                 ) {
                     if (hasProgress) {
                         DropdownMenuItem(
-                            text = { Text("Reset reading progress") },
+                            text = { Text(stringResource(R.string.library_reset_progress)) },
                             onClick = {
                                 menuExpanded = false
                                 onResetProgress()
@@ -508,7 +515,7 @@ private fun NovelGroupHeader(
                         )
                     }
                     DropdownMenuItem(
-                        text = { Text("Remove from library") },
+                        text = { Text(stringResource(R.string.library_remove_from_library)) },
                         onClick = {
                             menuExpanded = false
                             onRemoveGroup()

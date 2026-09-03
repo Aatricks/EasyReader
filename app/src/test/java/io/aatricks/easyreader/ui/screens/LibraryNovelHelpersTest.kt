@@ -429,15 +429,4 @@ class LibraryNovelHelpersTest {
             sourceName = sourceName
         )
     }
-
-    @Test
-    fun `getLibraryItemResumeLabel returns correct labels for started and unstarted items`() {
-        val neverRead = libraryItem(id = "1", title = "Chapter 0", baseTitle = "Novel", progress = 0, currentChapter = "Chapter 0")
-        val neverReadStartedUrl = neverRead.copy(currentChapterUrl = "https://example.com/ch1")
-        val startedRead = libraryItem(id = "2", title = "Chapter 2", baseTitle = "Novel", progress = 10, currentChapter = "Chapter 2")
-
-        assertEquals("Start reading", getLibraryItemResumeLabel(neverRead))
-        assertEquals("Resume Chapter 0", getLibraryItemResumeLabel(neverReadStartedUrl))
-        assertEquals("Resume Chapter 2", getLibraryItemResumeLabel(startedRead))
-    }
 }

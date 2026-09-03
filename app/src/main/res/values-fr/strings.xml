@@ -251,4 +251,48 @@
     <string name="library_more_options">Plus d\'options</string>
     <string name="library_sort_by">Trier par</string>
     <string name="library_download_all">Télécharger tous les chapitres</string>
+
+    <!-- Library Drawer -->
+    <string name="explore_title">Explorer</string>
+    <string name="drawer_scroll_level">Niveau %1$d</string>
+    <plurals name="drawer_scroll_level_milestones">
+        <item quantity="one">Niveau %1$d, %2$d nouveau jalon</item>
+        <item quantity="other">Niveau %1$d, %2$d nouveaux jalons</item>
+    </plurals>
+    <string name="drawer_section_new_chapters">Nouveaux chapitres</string>
+    <string name="drawer_continue_after">Continuer après %1$s</string>
+    <string name="drawer_new_chapter">Nouveau chapitre</string>
+    <string name="drawer_section_recent">Récents</string>
+    <string name="drawer_resume_placeholder">Reprendre où vous en étiez</string>
+    <string name="drawer_continue_reading">Continuer la lecture</string>
+    <string name="drawer_continue_placeholder">Reprenez où vous en étiez</string>
+    <string name="drawer_empty_title">Commencez votre bibliothèque</string>
+    <string name="drawer_empty_body">Utilisez Explorer pour trouver un titre ou importez un fichier.</string>
+
+    <!-- Library Rows and Groups -->
+    <string name="library_start_reading">Commencer la lecture</string>
+    <string name="library_resume_prefix">Reprendre</string>
+    <string name="library_resume_chapter">Reprendre %1$s</string>
+    <string name="library_resume_fallback">la lecture</string>
+    <string name="library_chapter_one">Chapitre 1</string>
+    <string name="library_resume_here">Reprendre ici</string>
+    <string name="library_hide_summary">Masquer le résumé</string>
+    <string name="library_chapter_summary">Résumé du chapitre</string>
+    <string name="library_summary_load_failed">Impossible de charger le chapitre à résumer</string>
+    <string name="library_show_fewer_chapters">Afficher moins de chapitres</string>
+    <string name="library_browse_all_chapters">Parcourir tous les chapitres (%1$d)</string>
+    <string name="library_reset_progress_title">Réinitialiser la progression ?</string>
+    <string name="library_reset_progress_body">Efface votre position dans chaque chapitre de \"%1$s\". Les téléchargements sont conservés.</string>
+    <string name="library_reset">Réinitialiser</string>
+    <string name="library_reset_progress">Réinitialiser la progression</string>
+    <string name="library_read_next">Lire la suite</string>
+    <string name="library_hide_chapters">Masquer les chapitres</string>
+    <string name="library_browse_chapters">Parcourir les chapitres</string>
+    <string name="library_more_actions">Plus d\'actions</string>
+    <string name="library_remove_from_library">Retirer de la bibliothèque</string>
+    <string name="common_collapse">Réduire</string>
+    <string name="common_expand">Développer</string>
+    <string name="library_unknown_author">Auteur inconnu</string>
+    <string name="library_opening_book">Ouverture du livre…</string>
+    <string name="library_file_unavailable">Ce fichier ne peut pas être ouvert. Il a peut-être été déplacé ou supprimé.</string>
 </resources>

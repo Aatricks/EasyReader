@@ -89,7 +89,10 @@ internal fun LibraryOverflowMenu(
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
-            Icon(imageVector = Icons.Default.MoreVert, contentDescription = stringResource(R.string.library_more_options))
+            Icon(
+                imageVector = Icons.Default.MoreVert,
+                contentDescription = stringResource(R.string.library_more_options)
+            )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             Text(

@@ -251,4 +251,48 @@
     <string name="library_more_options">More options</string>
     <string name="library_sort_by">Sort by</string>
     <string name="library_download_all">Download all chapters</string>
+
+    <!-- Library Drawer -->
+    <string name="explore_title">Explore</string>
+    <string name="drawer_scroll_level">Level %1$d</string>
+    <plurals name="drawer_scroll_level_milestones">
+        <item quantity="one">Level %1$d, %2$d new milestone</item>
+        <item quantity="other">Level %1$d, %2$d new milestones</item>
+    </plurals>
+    <string name="drawer_section_new_chapters">New chapters</string>
+    <string name="drawer_continue_after">Continue after %1$s</string>
+    <string name="drawer_new_chapter">New chapter</string>
+    <string name="drawer_section_recent">Recent</string>
+    <string name="drawer_resume_placeholder">Resume where you left off</string>
+    <string name="drawer_continue_reading">Continue Reading</string>
+    <string name="drawer_continue_placeholder">Pick up where you left off</string>
+    <string name="drawer_empty_title">Start your library</string>
+    <string name="drawer_empty_body">Use Explore to find something new or import a file directly.</string>
+
+    <!-- Library Rows and Groups -->
+    <string name="library_start_reading">Start reading</string>
+    <string name="library_resume_prefix">Resume</string>
+    <string name="library_resume_chapter">Resume %1$s</string>
+    <string name="library_resume_fallback">reading</string>
+    <string name="library_chapter_one">Chapter 1</string>
+    <string name="library_resume_here">Resume here</string>
+    <string name="library_hide_summary">Hide summary</string>
+    <string name="library_chapter_summary">Chapter summary</string>
+    <string name="library_summary_load_failed">Could not load the chapter to summarise</string>
+    <string name="library_show_fewer_chapters">Show fewer chapters</string>
+    <string name="library_browse_all_chapters">Browse all chapters (%1$d)</string>
+    <string name="library_reset_progress_title">Reset reading progress?</string>
+    <string name="library_reset_progress_body">Clears your position in every chapter of \"%1$s\". Downloads are kept.</string>
+    <string name="library_reset">Reset</string>
+    <string name="library_reset_progress">Reset reading progress</string>
+    <string name="library_read_next">Read next</string>
+    <string name="library_hide_chapters">Hide chapters</string>
+    <string name="library_browse_chapters">Browse chapters</string>
+    <string name="library_more_actions">More actions</string>
+    <string name="library_remove_from_library">Remove from library</string>
+    <string name="common_collapse">Collapse</string>
+    <string name="common_expand">Expand</string>
+    <string name="library_unknown_author">Unknown Author</string>
+    <string name="library_opening_book">Opening book…</string>
+    <string name="library_file_unavailable">This file can\'t be opened. It may have been moved or deleted.</string>
 </resources>

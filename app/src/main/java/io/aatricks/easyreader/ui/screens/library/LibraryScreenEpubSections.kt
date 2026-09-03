@@ -29,6 +29,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import io.aatricks.easyreader.R
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -121,7 +123,9 @@ internal fun EpubItemCard(
                 IconButton(onClick = { isExpanded = !isExpanded }) {
                     Icon(
                         imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = if (isExpanded) "Collapse" else "Expand",
+                        contentDescription = stringResource(
+                            if (isExpanded) R.string.common_collapse else R.string.common_expand
+                        ),
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
@@ -163,9 +167,9 @@ internal fun EpubItemCard(
 private fun EpubSupportingLine(epubBook: EpubBook?, isReadable: Boolean): Unit {
     Text(
         text = when {
-            epubBook != null -> epubBook.metadata.author ?: "Unknown Author"
-            isReadable -> "Opening book\u2026"
-            else -> "This file can't be opened. It may have been moved or deleted."
+            epubBook != null -> epubBook.metadata.author ?: stringResource(R.string.library_unknown_author)
+            isReadable -> stringResource(R.string.library_opening_book)
+            else -> stringResource(R.string.library_file_unavailable)
         },
         style = MaterialTheme.typography.bodySmall,
         color = if (isReadable) {
@@ -184,11 +188,11 @@ private fun EpubCardMenu(
 ): Unit {
     Box {
         IconButton(onClick = { onExpandedChange(true) }) {
-            Icon(Icons.Default.MoreVert, contentDescription = "More actions")
+            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.library_more_actions))
         }
         DropdownMenu(expanded, onDismissRequest = { onExpandedChange(false) }) {
             DropdownMenuItem(
-                text = { Text("Remove from library") },
+                text = { Text(stringResource(R.string.library_remove_from_library)) },
                 onClick = {
                     onExpandedChange(false)
                     onRemove()
@@ -271,7 +275,9 @@ private fun EpubTocItemView(
                 IconButton(onClick = { isExpanded = !isExpanded }) {
                     Icon(
                         imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = if (isExpanded) "Collapse" else "Expand",
+                        contentDescription = stringResource(
+                            if (isExpanded) R.string.common_collapse else R.string.common_expand
+                        ),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(16.dp)
                     )

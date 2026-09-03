@@ -1,5 +1,8 @@
 package io.aatricks.easyreader.ui.screens
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.SeriesReadingStatus
 import io.aatricks.easyreader.data.model.hasActionableUpdate
@@ -117,11 +120,15 @@ private fun buildDrawerNovelEntry(items: List<LibraryItem>): DrawerNovelEntry {
     )
 }
 
+@Composable
 internal fun getLibraryItemResumeLabel(item: LibraryItem): String {
     return if (item.progress == 0 && item.currentChapterUrl.isBlank()) {
-        "Start reading"
+        stringResource(R.string.library_start_reading)
     } else {
-        "Resume ${item.currentChapter.ifBlank { "Chapter 1" }}"
+        stringResource(
+            R.string.library_resume_chapter,
+            item.currentChapter.ifBlank { stringResource(R.string.library_chapter_one) }
+        )
     }
 }
 
