@@ -66,6 +66,7 @@ class ExploreViewModel @Inject constructor(
                 it.copy(
                     isLoading = true,
                     canLoadMore = true,
+                    searchFailures = emptyList(),
                     hasError = false
                 )
             }
@@ -375,7 +376,8 @@ class ExploreViewModel @Inject constructor(
                 selectedItemDetails = null,
                 isFetchingDetails = false,
                 page = 1,
-                canLoadMore = true
+                canLoadMore = true,
+                searchFailures = emptyList()
             )
         }
         _searchQueryFlow.value = ""
