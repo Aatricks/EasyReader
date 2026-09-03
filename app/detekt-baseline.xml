@@ -14,7 +14,6 @@
     <ID>CyclomaticComplexMethod:ChapterListSheet.kt$internal fun chapterCacheStatusKind( isCurrent: Boolean, cacheState: PrefetchResult?, isInLibrary: Boolean, isDownloaded: Boolean = false ): ChapterStatus?</ID>
     <ID>CyclomaticComplexMethod:EpubContentLoader.kt$EpubContentLoader$private suspend fun enrichEpubImageDimensionsFromCache( els: List&lt;ContentElement&gt; ): List&lt;ContentElement&gt;</ID>
     <ID>CyclomaticComplexMethod:ErrorMessages.kt$ErrorMessages$fun fromRaw(raw: String?): Friendly</ID>
-    <ID>CyclomaticComplexMethod:ExploreDetailSheet.kt$@OptIn(ExperimentalLayoutApi::class) @Composable fun ExploreItemDetailSheet( item: ExploreItem, isLoading: Boolean = false, isInLibrary: Boolean = false, onAddToLibrary: () -&gt; Unit, onRead: () -&gt; Unit ): Unit</ID>
     <ID>CyclomaticComplexMethod:ExploreGridSection.kt$@Composable internal fun ExploreGrid( gridState: LazyGridState, modifier: Modifier = Modifier, uiState: ExploreViewModel.ExploreUiState, hasActiveFilters: Boolean, onItemSelect: (ExploreItem) -&gt; Unit, onLoadMore: () -&gt; Unit, onClearFilters: () -&gt; Unit, onRetryFailedSource: (String) -&gt; Unit ): Unit</ID>
     <ID>CyclomaticComplexMethod:HtmlParser.kt$HtmlParser$private fun parseImages(document: Document, url: String): List&lt;ContentElement.Image&gt;</ID>
     <ID>CyclomaticComplexMethod:ImageBoundsParser.kt$ImageBoundsParser$private fun parseJpeg(bytes: ByteArray): Pair&lt;Int, Int&gt;?</ID>
@@ -26,7 +25,6 @@
     <ID>CyclomaticComplexMethod:LibraryStatus.kt$fun seriesReadingStatus(items: List&lt;LibraryItem&gt;): SeriesReadingStatus</ID>
     <ID>CyclomaticComplexMethod:PdfContentLoader.kt$PdfContentLoader$internal fun processExtractedElements(filePath: String, pageNum: Int, extracted: ExtractedResult): List&lt;ContentElement&gt;</ID>
     <ID>CyclomaticComplexMethod:ReaderContentArea.kt$@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class) @Composable internal fun ContentArea( uiState: ReaderViewModel.ReaderUiState, content: ChapterContent, readerViewModel: ReaderViewModel, onLibraryClick: () -&gt; Unit, onShowChapterList: () -&gt; Unit, onShowSettings: () -&gt; Unit ): Unit</ID>
-    <ID>CyclomaticComplexMethod:ReaderContentGestures.kt$@Composable internal fun PullToNavigateOverlay( pullAmount: Float, threshold: Float, isThresholdReached: Boolean, isPagedMode: Boolean, isRtl: Boolean ): Unit</ID>
     <ID>CyclomaticComplexMethod:ReaderContentRenderers.kt$@OptIn(ExperimentalFoundationApi::class) @Composable internal fun PagedReaderView( content: ChapterContent, pagerState: PagerState, uiState: ReaderViewModel.ReaderUiState, fontFamily: FontFamily, bgColor: Color, textColor: Color, readerViewModel: ReaderViewModel, isZoomable: Boolean )</ID>
     <ID>CyclomaticComplexMethod:ReaderImageView.kt$@Composable fun ReaderImageView( imageUrl: String, altText: String?, readerViewModel: ReaderViewModel, pageUrl: String, contentScale: ContentScale = ContentScale.Fit, backgroundColor: Color = Color.Black, width: Int = 0, height: Int = 0, resolvedWidth: Int = 0, resolvedHeight: Int = 0, side: ContentElement.Image.Side = ContentElement.Image.Side.FULL, enableZoom: Boolean = false, dynamicHeight: Boolean = false, zoomStateKey: Any? = null, onZoomChanged: ((Boolean) -&gt; Unit)? = null, onDimensionsResolved: ((String, Int, Int) -&gt; Unit)? = null, lockTapWhileZoomed: Boolean = false, onTap: (() -&gt; Unit)? = null )</ID>
     <ID>CyclomaticComplexMethod:ReaderProgressController.kt$ReaderProgressController$fun calculateInitialPosition( content: ChapterContent, libraryItem: LibraryItem?, fromBottom: Boolean, isExplicitNavigation: Boolean ): ReaderProgressState</ID>
@@ -58,9 +56,6 @@
     <ID>LargeClass:ReaderViewModel.kt$ReaderViewModel : BaseViewModel</ID>
     <ID>LargeClass:WebContentLoader.kt$WebContentLoader</ID>
     <ID>LongMethod:ChapterListSheet.kt$@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class) @Composable fun ChapterListSheet( uiState: ReaderViewModel.ReaderUiState, libraryViewModel: LibraryViewModel, onDismiss: () -&gt; Unit, onNavigateToChapter: (String, String) -&gt; Unit, sheetState: SheetState )</ID>
-    <ID>LongMethod:ChapterSummaryDropdown.kt$@Composable fun ChapterSummaryDropdown( summary: String?, isGenerating: Boolean, onGenerateSummary: () -&gt; Unit, onCancel: (() -&gt; Unit)? = null, aiSupportedInBuild: Boolean = true, aiOptedIn: Boolean = true, onEnableAi: (() -&gt; Unit)? = null, isInitializing: Boolean = false, isReady: Boolean = aiSupportedInBuild &amp;&amp; aiOptedIn, modifier: Modifier = Modifier )</ID>
-    <ID>LongMethod:ContentRenderer.kt$@Composable fun ContentRenderer( elements: List&lt;ContentElement&gt;, modifier: Modifier = Modifier, backgroundColor: Color = Color.Black, textColor: Color = Color.White, pageUrl: String = "" )</ID>
-    <ID>LongMethod:ExploreDetailSheet.kt$@OptIn(ExperimentalLayoutApi::class) @Composable fun ExploreItemDetailSheet( item: ExploreItem, isLoading: Boolean = false, isInLibrary: Boolean = false, onAddToLibrary: () -&gt; Unit, onRead: () -&gt; Unit ): Unit</ID>
     <ID>LongMethod:ExploreGridSection.kt$@Composable fun ExploreItemCard( item: ExploreItem, onClick: () -&gt; Unit ): Unit</ID>
     <ID>LongMethod:ExploreGridSection.kt$@Composable internal fun ExploreGrid( gridState: LazyGridState, modifier: Modifier = Modifier, uiState: ExploreViewModel.ExploreUiState, hasActiveFilters: Boolean, onItemSelect: (ExploreItem) -&gt; Unit, onLoadMore: () -&gt; Unit, onClearFilters: () -&gt; Unit, onRetryFailedSource: (String) -&gt; Unit ): Unit</ID>
     <ID>LongMethod:ExploreGridSection.kt$@Composable private fun FeaturedExploreCard( item: ExploreItem, onClick: () -&gt; Unit ): Unit</ID>
@@ -78,7 +73,6 @@
     <ID>LongMethod:MainActivity.kt$MainActivity$override fun onCreate(savedInstanceState: Bundle?)</ID>
     <ID>LongMethod:PdfContentLoader.kt$PdfContentLoader$internal fun processExtractedElements(filePath: String, pageNum: Int, extracted: ExtractedResult): List&lt;ContentElement&gt;</ID>
     <ID>LongMethod:ReaderContentArea.kt$@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class) @Composable internal fun ContentArea( uiState: ReaderViewModel.ReaderUiState, content: ChapterContent, readerViewModel: ReaderViewModel, onLibraryClick: () -&gt; Unit, onShowChapterList: () -&gt; Unit, onShowSettings: () -&gt; Unit ): Unit</ID>
-    <ID>LongMethod:ReaderContentGestures.kt$@Composable internal fun PullToNavigateOverlay( pullAmount: Float, threshold: Float, isThresholdReached: Boolean, isPagedMode: Boolean, isRtl: Boolean ): Unit</ID>
     <ID>LongMethod:ReaderContentRenderers.kt$@OptIn(ExperimentalFoundationApi::class) @Composable internal fun PagedReaderView( content: ChapterContent, pagerState: PagerState, uiState: ReaderViewModel.ReaderUiState, fontFamily: FontFamily, bgColor: Color, textColor: Color, readerViewModel: ReaderViewModel, isZoomable: Boolean )</ID>
     <ID>LongMethod:ReaderControls.kt$@Composable fun TopInfoBar( novelName: String, chapterTitle: String, onLibraryClick: () -&gt; Unit, onShowChapterList: () -&gt; Unit, onShowSettings: () -&gt; Unit )</ID>
     <ID>LongMethod:ReaderControls.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun BottomNavigationBar( progress: Float, canNavigatePrevious: Boolean, canNavigateNext: Boolean, onPreviousClick: () -&gt; Unit, onNextClick: () -&gt; Unit, onProgressChange: (Float) -&gt; Unit )</ID>
@@ -92,8 +86,6 @@
     <ID>LongMethod:SettingsScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsScreen( readerViewModel: ReaderViewModel, libraryViewModel: LibraryViewModel, onNavigateBack: () -&gt; Unit, backupViewModel: BackupViewModel = hiltViewModel(), settingsViewModel: SettingsViewModel = hiltViewModel() )</ID>
     <ID>LongMethod:WebContentLoader.kt$WebContentLoader$private suspend fun downloadAndCacheImageInternal( imageUrl: String, pageUrl: String, priority: ImageRequestPriority ): ImageDownloadResult</ID>
     <ID>LongMethod:ZoomableBox.kt$@Composable fun ZoomableBox( modifier: Modifier = Modifier, minScale: Float = 1f, maxScale: Float = 3f, enableZoom: Boolean = false, dynamicHeight: Boolean = false, zoomStateKey: Any? = null, onZoomChanged: ((Boolean) -&gt; Unit)? = null, lockTapWhileZoomed: Boolean = false, onTap: (() -&gt; Unit)? = null, content: @Composable BoxScope.() -&gt; Unit )</ID>
-    <ID>LongParameterList:ChapterSummaryDropdown.kt$( summary: String?, isGenerating: Boolean, onGenerateSummary: () -&gt; Unit, onCancel: (() -&gt; Unit)? = null, aiSupportedInBuild: Boolean = true, aiOptedIn: Boolean = true, onEnableAi: (() -&gt; Unit)? = null, isInitializing: Boolean = false, isReady: Boolean = aiSupportedInBuild &amp;&amp; aiOptedIn, modifier: Modifier = Modifier )</ID>
-    <ID>LongParameterList:ContentRenderer.kt$( url: String, altText: String?, side: ContentElement.Image.Side = ContentElement.Image.Side.FULL, width: Int = 0, height: Int = 0, pageUrl: String = "" )</ID>
     <ID>LongParameterList:ContentRepository.kt$ContentRepository$( private val webLoader: WebContentLoader, private val pdfLoader: PdfContentLoader, private val epubLoader: EpubContentLoader, private val localLoader: LocalContentLoader, private val contentUriTypeResolver: ContentUriTypeResolver, @ApplicationContext private val context: Context, private val okHttpClient: OkHttpClient )</ID>
     <ID>LongParameterList:ExploreGridSection.kt$( gridState: LazyGridState, modifier: Modifier = Modifier, uiState: ExploreViewModel.ExploreUiState, hasActiveFilters: Boolean, onItemSelect: (ExploreItem) -&gt; Unit, onLoadMore: () -&gt; Unit, onClearFilters: () -&gt; Unit, onRetryFailedSource: (String) -&gt; Unit )</ID>
     <ID>LongParameterList:ExploreScreen.kt$( uiState: ExploreViewModel.ExploreUiState, hasActiveFilters: Boolean, onOpenFilters: () -&gt; Unit, onSourceSelect: (String?) -&gt; Unit, onTagToggle: (String) -&gt; Unit, onClearFilters: () -&gt; Unit )</ID>
@@ -120,7 +112,6 @@
     <ID>LongParameterList:ReaderScreen.kt$( uiState: ReaderViewModel.ReaderUiState, readerViewModel: ReaderViewModel, onOpenLibrary: () -&gt; Unit, onOpenLibraryScreen: () -&gt; Unit, onShowChapterList: () -&gt; Unit, onShowSettings: () -&gt; Unit )</ID>
     <ID>LongParameterList:ReaderSettingsSheet.kt$( label: String, value: Float, onValueChange: (Float) -&gt; Unit, valueRange: ClosedFloatingPointRange&lt;Float&gt;, steps: Int, displayValue: String )</ID>
     <ID>LongParameterList:ReaderSettingsSheet.kt$( uiState: ReaderViewModel.ReaderUiState, onDismiss: () -&gt; Unit, onUpdatePagedMode: (Boolean) -&gt; Unit, onUpdateRtl: (Boolean) -&gt; Unit, onUpdateFontSize: (Float) -&gt; Unit, onUpdateLineHeight: (Float) -&gt; Unit, onUpdateFontFamily: (String) -&gt; Unit, onUpdateMargins: (Int) -&gt; Unit, onUpdateVerticalMargins: (Int) -&gt; Unit, onUpdateParagraphSpacing: (Float) -&gt; Unit, onUpdateBrightness: (Float) -&gt; Unit, onUpdateReaderTheme: (ReaderTheme) -&gt; Unit, sheetState: SheetState )</ID>
-    <ID>LongParameterList:ReaderStates.kt$( icon: ImageVector, iconTint: androidx.compose.ui.graphics.Color, iconDescription: String, title: String, body: String, action: @Composable (() -&gt; Unit)? = null )</ID>
     <ID>LongParameterList:ReaderViewModel.kt$ReaderViewModel$( progress: Int, scrollPosition: Float? = null, index: Int? = null, elementKey: String? = null, offsetFraction: Float? = null, currentChapterUrl: String? = null, forcePersist: Boolean = false )</ID>
     <ID>LongParameterList:ReaderViewModel.kt$ReaderViewModel$( scrollOffset: Float, maxScrollOffset: Float, viewportHeight: Float, index: Int, offsetFraction: Float, elementKey: String, canScrollForward: Boolean = true, firstVisibleItemSize: Int = 0 )</ID>
     <ID>LongParameterList:ReaderViewModel.kt$ReaderViewModel$( url: String, libraryItemId: String? = null, fromBottom: Boolean = false, isSilent: Boolean = false, isExplicitNavigation: Boolean = false, resetWebStateBeforeLoad: Boolean = false )</ID>
@@ -296,9 +287,6 @@
     <ID>MagicNumber:PreferencesManager.kt$PreferencesManager$16</ID>
     <ID>MagicNumber:PreferencesManager.kt$PreferencesManager$18f</ID>
     <ID>MagicNumber:ReaderContentArea.kt$100f</ID>
-    <ID>MagicNumber:ReaderContentGestures.kt$0.4f</ID>
-    <ID>MagicNumber:ReaderContentGestures.kt$0xFF4CAF50</ID>
-    <ID>MagicNumber:ReaderContentGestures.kt$180f</ID>
     <ID>MagicNumber:ReaderContentGestures.kt$&lt;no name provided&gt;$0.5f</ID>
     <ID>MagicNumber:ReaderImageView.kt$200</ID>
     <ID>MagicNumber:ReaderImageView.kt$750L</ID>
@@ -440,8 +428,6 @@
     <ID>MaxLineLength:PdfContentLoader.kt$PdfContentLoader$internal</ID>
     <ID>MaxLineLength:PdfContentLoader.kt$PdfContentLoader$suspend</ID>
     <ID>MaxLineLength:PdfContentLoader.kt$PdfContentLoader$val bitmap = BitmapFactory.decodeByteArray(raw.bytes, 0, raw.bytes.size, options) ?: return@mapIndexedNotNull null</ID>
-    <ID>MaxLineLength:ReaderContentGestures.kt$isPagedMode &amp;&amp; !isPrevious -&gt; if (isRtl) Icons.AutoMirrored.Filled.ArrowForward else Icons.AutoMirrored.Filled.ArrowBack</ID>
-    <ID>MaxLineLength:ReaderContentGestures.kt$isPagedMode &amp;&amp; isPrevious -&gt; if (isRtl) Icons.AutoMirrored.Filled.ArrowBack else Icons.AutoMirrored.Filled.ArrowForward</ID>
     <ID>MaxLineLength:ReaderContentRenderers.kt$zoomStateKey = "${content.url}_${page}_${subElement.url}_${subElement.side}"</ID>
     <ID>MaxLineLength:ReaderImageView.kt$// When dynamicHeight is true (scrolling mode zoom - though now disabled), we don't apply aspect ratio to the outer container.</ID>
     <ID>MaxLineLength:ReaderImageView.kt$// When enableZoom is true and dynamicHeight is false (Paged Manga mode), we fillMaxSize so zoom can cover black bars.</ID>
@@ -547,7 +533,6 @@
     <ID>ReturnCount:WebContentLoader.kt$WebContentLoader$suspend fun prefetch( url: String, mode: PrefetchMode, onProgress: (suspend (PrefetchResult) -&gt; Unit)? ): PrefetchResult</ID>
     <ID>ReturnCount:WebOfflineChapterStore.kt$WebOfflineChapterStore$fun hasImage(url: String, imageUrl: String): Boolean</ID>
     <ID>ReturnCount:WebViewUtils.kt$WebViewUtils$fun shouldAllowCloudflareNavigation(url: String?, expectedHost: String? = null): Boolean</ID>
-    <ID>SwallowedException:ContentRenderer.kt$ex: Exception</ID>
     <ID>SwallowedException:ContentRepository.kt$ContentRepository$e: TimeoutCancellationException</ID>
     <ID>SwallowedException:ImageDownloader.kt$ImageDownloader$e: Exception</ID>
     <ID>SwallowedException:PdfContentLoader.kt$PdfContentLoader$e: Exception</ID>
@@ -555,7 +540,6 @@
     <ID>ThrowsCount:EpubContentLoader.kt$EpubContentLoader$private fun resolveEpubFile(path: String, writeTier: StorageTier = StorageTier.CACHE): File</ID>
     <ID>ThrowsCount:WebContentLoader.kt$WebContentLoader$private suspend fun downloadHtml(url: String, priority: ImageRequestPriority = ImageRequestPriority.USER_REQUESTED): String</ID>
     <ID>TooGenericExceptionCaught:ChapterDownloadWorker.kt$ChapterDownloadWorker$t: Throwable</ID>
-    <ID>TooGenericExceptionCaught:ContentRenderer.kt$ex: Exception</ID>
     <ID>TooGenericExceptionCaught:ContentRepository.kt$ContentRepository$e: Exception</ID>
     <ID>TooGenericExceptionCaught:Converters.kt$Converters$e: Exception</ID>
     <ID>TooGenericExceptionCaught:EpubContentLoader.kt$EpubContentLoader$e: Exception</ID>
@@ -577,7 +561,6 @@
     <ID>TooGenericExceptionThrown:EpubContentLoader.kt$EpubContentLoader$throw Exception("No chapter bytes")</ID>
     <ID>TooGenericExceptionThrown:EpubContentLoader.kt$EpubContentLoader$throw Exception("No chapters")</ID>
     <ID>TooGenericExceptionThrown:EpubContentLoader.kt$EpubContentLoader$throw Exception("No container.xml")</ID>
-    <ID>TooGenericExceptionThrown:LibraryViewModel.kt$LibraryViewModel$throw Exception("Item already in library")</ID>
     <ID>TooGenericExceptionThrown:LibraryViewModel.kt$LibraryViewModel$throw Exception("No chapters found for this novel")</ID>
     <ID>TooGenericExceptionThrown:LibraryViewModel.kt$LibraryViewModel$throw Exception("No latest chapter found for this novel")</ID>
     <ID>TooGenericExceptionThrown:LibraryViewModel.kt$LibraryViewModel$throw Exception("This item already exists in your library")</ID>
@@ -612,7 +595,6 @@
     <ID>TooManyFunctions:WebContentLoader.kt$WebContentLoader</ID>
     <ID>TooManyFunctions:WebOfflineChapterStore.kt$WebOfflineChapterStore</ID>
     <ID>UnusedParameter:AsuraScansSource.kt$AsuraScansSource$seriesUrl: String</ID>
-    <ID>UnusedParameter:ComposeUtils.kt$height: Int</ID>
     <ID>UnusedParameter:NovelFireSource.kt$NovelFireSource$chaptersUrl: String</ID>
     <ID>UnusedParameter:SummaryService.kt$SummaryService$selectedContent: String</ID>
     <ID>UnusedParameter:TextFormattingPipeline.kt$TextFormattingPipeline$original: String</ID>
@@ -625,9 +607,6 @@
     <ID>VariableNaming:BaseViewModel.kt$BaseViewModel$protected val _uiState = MutableStateFlow(initialState)</ID>
     <ID>VariableNaming:LibraryViewModel.kt$LibraryViewModel$private val TAG = "LibraryViewModel"</ID>
     <ID>VariableNaming:SummaryViewModel.kt$SummaryViewModel$private val TAG = "SummaryViewModel"</ID>
-    <ID>WildcardImport:ContentRenderer.kt$import androidx.compose.foundation.layout.*</ID>
-    <ID>WildcardImport:ContentRenderer.kt$import androidx.compose.material3.*</ID>
-    <ID>WildcardImport:ContentRenderer.kt$import androidx.compose.runtime.*</ID>
     <ID>WildcardImport:ContentRepository.kt$import io.aatricks.easyreader.data.model.*</ID>
     <ID>WildcardImport:ContentRepository.kt$import io.aatricks.easyreader.data.repository.content.*</ID>
     <ID>WildcardImport:EpubContentLoader.kt$import io.aatricks.easyreader.data.model.*</ID>
