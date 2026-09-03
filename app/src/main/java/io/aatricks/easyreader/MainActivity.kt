@@ -6,8 +6,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
@@ -44,6 +45,7 @@ import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import io.aatricks.easyreader.util.FileUtils
 import io.aatricks.easyreader.util.UrlSecurity
 import io.aatricks.easyreader.work.LibraryUpdateWorker
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -65,6 +67,10 @@ class MainActivity : ComponentActivity() {
 
     private val readerViewModel: ReaderViewModel by viewModels()
     private val libraryViewModel: LibraryViewModel by viewModels()
+
+    // Buffered: handleIntent runs on a cold start before the collector attaches, and a dropped
+    // message means the user gets no explanation at all for a link Emaki refused.
+    private val shellMessages = Channel<String>(capacity = Channel.BUFFERED)
     
     @Inject lateinit var contentRepository: ContentRepository
     @Inject lateinit var preferencesManager: PreferencesManager
@@ -81,7 +87,7 @@ class MainActivity : ComponentActivity() {
         if (isGranted) {
             openFilePicker()
         } else {
-            Toast.makeText(this, "Storage permission required", Toast.LENGTH_LONG).show()
+            shellMessages.trySend("Storage permission required to pick a file")
         }
     }
 
@@ -148,9 +154,23 @@ class MainActivity : ComponentActivity() {
                 val rootSnackbarHostState = remember { SnackbarHostState() }
                 appUpdateHandler(updateViewModel, updateState, rootSnackbarHostState)
 
+                LaunchedEffect(rootSnackbarHostState) {
+                    for (message in shellMessages) {
+                        rootSnackbarHostState.showSnackbar(message)
+                    }
+                }
+
                 Box(modifier = Modifier.fillMaxSize()) {
                     NavHost(navController = navController, startDestination = ReaderRoute) {
                         composable<ReaderRoute> {
+                            // The reader is the start destination, so back would leave the app with
+                            // the drawer as the only route to the library. Offer the library first;
+                            // once the user has backed out of it, back exits as Android expects.
+                            var backOpensLibrary by rememberSaveable { mutableStateOf(true) }
+                            BackHandler(enabled = backOpensLibrary) {
+                                backOpensLibrary = false
+                                navController.navigate(LibraryRoute) { launchSingleTop = true }
+                            }
                             ReaderScreen(
                                 readerViewModel = readerViewModel,
                                 libraryViewModelProvider = { libraryViewModel },
@@ -176,6 +196,7 @@ class MainActivity : ComponentActivity() {
                                 onNavigateBack = { navController.popBackStack() },
                                 onOpenLibrary = {
                                     navController.navigate(LibraryRoute) {
+                                        popUpTo(LibraryRoute) { inclusive = false }
                                         launchSingleTop = true
                                     }
                                 },
@@ -241,7 +262,7 @@ class MainActivity : ComponentActivity() {
                         "content" -> handleFilePicked(uri)
                         else -> {
                             android.util.Log.w(TAG, "Rejected VIEW intent with scheme=${uri.scheme}")
-                            Toast.makeText(this, "Unsupported link", Toast.LENGTH_SHORT).show()
+                            shellMessages.trySend("Emaki cannot open that kind of link")
                         }
                     }
                 }
@@ -249,7 +270,12 @@ class MainActivity : ComponentActivity() {
             Intent.ACTION_SEND -> {
                 if (intent.type == "text/plain") {
                     intent.getStringExtra(Intent.EXTRA_TEXT)?.let { sharedText ->
-                        URL_REGEX.find(sharedText)?.value?.let { handleWebUrl(it) }
+                        val url = URL_REGEX.find(sharedText)?.value
+                        if (url != null) {
+                            handleWebUrl(url)
+                        } else {
+                            shellMessages.trySend("No link found in the shared text")
+                        }
                     }
                 }
             }
@@ -259,7 +285,7 @@ class MainActivity : ComponentActivity() {
     private fun handleWebUrl(url: String): Unit {
         if (!UrlSecurity.isSafeUrlSynchronous(url)) {
             android.util.Log.w(TAG, "Rejected unsafe URL intent")
-            Toast.makeText(this, "Link blocked for safety", Toast.LENGTH_SHORT).show()
+            shellMessages.trySend("Link blocked for safety")
             return
         }
         readerViewModel.requestOpenUrl(url)
@@ -274,7 +300,7 @@ class MainActivity : ComponentActivity() {
         
         val fileType = FileUtils.detectFileType(this, uri)
         val contentType = mapFileTypeToContentType(fileType) ?: run {
-            Toast.makeText(this, "Unsupported file type", Toast.LENGTH_SHORT).show()
+            shellMessages.trySend("Emaki cannot open that file type")
             return
         }
 
