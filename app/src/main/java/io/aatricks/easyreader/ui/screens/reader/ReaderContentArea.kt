@@ -90,6 +90,7 @@ import io.aatricks.easyreader.ui.screens.reader.ScrollingReaderState
 import io.aatricks.easyreader.ui.screens.reader.buildReaderRenderItems
 import io.aatricks.easyreader.ui.screens.reader.findRenderIndexForSource
 import io.aatricks.easyreader.ui.screens.reader.findSourcePositionForRender
+import io.aatricks.easyreader.ui.screens.reader.isManhwaLayout
 import io.aatricks.easyreader.ui.screens.reader.resolveReaderTapAction
 import io.aatricks.easyreader.ui.screens.reader.scrollingReaderView
 import io.aatricks.easyreader.ui.screens.reader.shouldRunPercentRestoreFallback
@@ -147,11 +148,7 @@ internal fun ContentArea(
         fontFamily = fontFamily
     )
 
-    val isManhwa = remember(content) {
-        val isManhwaByUrl = content.url.contains("manhwa", ignoreCase = true) ||
-            content.url.contains("webtoon", ignoreCase = true)
-        isManhwaByUrl || (content.getImageCount() > content.getTextCount() && content.getImageCount() > 2)
-    }
+    val isManhwa = remember(content) { isManhwaLayout(content) }
 
     val stableKeys = remember(content) {
         content.paragraphs.mapIndexed { idx, element ->
