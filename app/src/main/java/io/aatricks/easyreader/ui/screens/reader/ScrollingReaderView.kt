@@ -32,7 +32,8 @@ import io.aatricks.easyreader.ui.screens.readerContentType
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 
 private const val SCROLL_TO_END_OFFSET = 10_000_000
-private const val PLACEHOLDER_TEXT_ALPHA = 0.5f
+// 0.5 left the placeholder at about 3.5:1 on the Light reader theme.
+private const val PLACEHOLDER_TEXT_ALPHA = 0.7f
 private const val CONTENT_TYPE_IMAGE = "image"
 private const val TARGET_END_PERCENT = 100f
 

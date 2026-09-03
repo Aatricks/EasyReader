@@ -73,7 +73,8 @@ import kotlin.math.abs
 
 private const val MIN_READER_BRIGHTNESS = 0.1f
 private const val MAX_READER_BRIGHTNESS = 1.0f
-private const val DARK_SURFACE_LUMINANCE = 0.5f
+/** Luminance below which a background counts as dark, for picking readable foregrounds. */
+internal const val DARK_SURFACE_LUMINANCE = 0.5f
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable

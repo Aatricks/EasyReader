@@ -33,6 +33,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.unit.Velocity
@@ -59,76 +61,92 @@ internal fun shouldDispatchReaderScrollStart(
         abs(available.x) > USER_SCROLL_START_THRESHOLD_PX
 }
 
+// The pull scrim only darkens the reader background to about 60% of the way to black, so a
+// bright green on the LIGHT or SEPIA reader theme lands near 1:1 exactly when the user needs to
+// read it. Both the resting and the released state are picked from the reader theme instead.
+private val RELEASE_ACCENT_ON_DARK = Color(0xFF4CAF50)
+private val RELEASE_ACCENT_ON_LIGHT = Color(0xFF1B5E20)
+private const val PULL_SCRIM_MAX_ALPHA = 0.4f
+private const val PULL_ARROW_FLIP_DEGREES = 180f
+private val PULL_ARROW_SIZE = 48.dp
+
+private fun pullOverlayAlignment(isPagedMode: Boolean, isPrevious: Boolean, isRtl: Boolean): Alignment = when {
+    !isPagedMode -> if (isPrevious) Alignment.TopCenter else Alignment.BottomCenter
+    isPrevious -> if (isRtl) Alignment.CenterStart else Alignment.CenterEnd
+    else -> if (isRtl) Alignment.CenterEnd else Alignment.CenterStart
+}
+
+private fun pullOverlayIcon(isPagedMode: Boolean, isPrevious: Boolean, isRtl: Boolean): ImageVector = when {
+    !isPagedMode -> if (isPrevious) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward
+    isPrevious -> if (isRtl) Icons.AutoMirrored.Filled.ArrowBack else Icons.AutoMirrored.Filled.ArrowForward
+    else -> if (isRtl) Icons.AutoMirrored.Filled.ArrowForward else Icons.AutoMirrored.Filled.ArrowBack
+}
+
+private fun pullOverlayLabel(isPrevious: Boolean, isThresholdReached: Boolean): String = when {
+    isPrevious && isThresholdReached -> "Release for previous chapter"
+    isPrevious -> "Pull for previous chapter"
+    isThresholdReached -> "Release for next chapter"
+    else -> "Pull for next chapter"
+}
+
 @Composable
 internal fun PullToNavigateOverlay(
     pullAmount: Float,
     threshold: Float,
     isThresholdReached: Boolean,
-    isPagedMode: Boolean,
-    isRtl: Boolean
+    uiState: ReaderViewModel.ReaderUiState
 ): Unit {
     if (abs(pullAmount) <= 0f) return
 
+    val isPagedMode = uiState.isPagedMode
+    val isRtl = uiState.isRtl
+    val readerTheme = uiState.readerTheme
     val isPrevious = if (isPagedMode) {
         if (isRtl) pullAmount < 0 else pullAmount > 0
     } else {
         pullAmount > 0
     }
 
+    val releaseAccent = if (readerTheme.backgroundColor.luminance() < DARK_SURFACE_LUMINANCE) {
+        RELEASE_ACCENT_ON_DARK
+    } else {
+        RELEASE_ACCENT_ON_LIGHT
+    }
     val arrowColor by animateColorAsState(
-        if (isThresholdReached) Color(0xFF4CAF50) else Color.White,
+        if (isThresholdReached) releaseAccent else readerTheme.textColor,
         label = "arrowColor"
     )
-
-    val alignment = when {
-        isPagedMode && isPrevious -> if (isRtl) Alignment.CenterStart else Alignment.CenterEnd
-        isPagedMode && !isPrevious -> if (isRtl) Alignment.CenterEnd else Alignment.CenterStart
-        !isPagedMode && isPrevious -> Alignment.TopCenter
-        else -> Alignment.BottomCenter
-    }
+    val rotation by animateFloatAsState(
+        if (isThresholdReached) PULL_ARROW_FLIP_DEGREES else 0f,
+        label = "arrowRotation"
+    )
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Color.Black.copy(
-                    alpha = (abs(pullAmount) / threshold * 0.4f).coerceAtMost(0.4f)
+                    alpha = (abs(pullAmount) / threshold * PULL_SCRIM_MAX_ALPHA)
+                        .coerceAtMost(PULL_SCRIM_MAX_ALPHA)
                 )
             ),
-        contentAlignment = alignment
+        contentAlignment = pullOverlayAlignment(isPagedMode, isPrevious, isRtl)
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(EasyReaderSpacing.xxl)
         ) {
-            val icon = when {
-                isPagedMode && isPrevious -> if (isRtl) Icons.AutoMirrored.Filled.ArrowBack else Icons.AutoMirrored.Filled.ArrowForward
-                isPagedMode && !isPrevious -> if (isRtl) Icons.AutoMirrored.Filled.ArrowForward else Icons.AutoMirrored.Filled.ArrowBack
-                !isPagedMode && isPrevious -> Icons.Default.ArrowDownward
-                else -> Icons.Default.ArrowUpward
-            }
-
-            val rotation by animateFloatAsState(
-                if (isThresholdReached) 180f else 0f,
-                label = "arrowRotation"
-            )
-
             Icon(
-                imageVector = icon,
+                imageVector = pullOverlayIcon(isPagedMode, isPrevious, isRtl),
                 contentDescription = null,
                 tint = arrowColor,
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(PULL_ARROW_SIZE)
                     .rotate(if (isPagedMode) 0f else rotation)
             )
             Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
             Text(
-                text = when {
-                    isPrevious && isThresholdReached -> "Release for Previous Chapter"
-                    isPrevious && !isThresholdReached -> "Pull for Previous Chapter"
-                    !isPrevious && isThresholdReached -> "Release for Next Chapter"
-                    else -> "Pull for Next Chapter"
-                },
+                text = pullOverlayLabel(isPrevious, isThresholdReached),
                 color = arrowColor,
                 style = MaterialTheme.typography.titleMedium
             )

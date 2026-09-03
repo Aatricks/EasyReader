@@ -49,6 +49,8 @@ private const val CONTENT_TYPE_PAGE = "page"
 private const val CONTENT_TYPE_TEXT = "text"
 private const val CONTENT_TYPE_IMAGE = "image"
 private const val CONTENT_TYPE_IMAGE_GROUP = "image_group"
+// Matches the scroll-mode placeholder: 0.5 was about 3.5:1 on the Light reader theme.
+private const val PLACEHOLDER_TEXT_ALPHA = 0.7f
 
 internal val localReaderPages = compositionLocalOf<List<ReaderPage>> { emptyList() }
 
@@ -121,7 +123,7 @@ internal fun PagedReaderView(
                         ) {
                             Text(
                                 text = el.text,
-                                color = textColor.copy(alpha = 0.5f),
+                                color = textColor.copy(alpha = PLACEHOLDER_TEXT_ALPHA),
                                 style = MaterialTheme.typography.bodyLarge.copy(
                                     fontSize = uiState.fontSize.sp,
                                     fontFamily = fontFamily

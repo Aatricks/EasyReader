@@ -727,8 +727,7 @@ internal fun ContentArea(
             pullAmount = pullAmount,
             threshold = threshold,
             isThresholdReached = isThresholdReached,
-            isPagedMode = uiState.isPagedMode,
-            isRtl = uiState.isRtl
+            uiState = uiState
         )
 
         if (!uiState.isPagedMode && pullAmount == 0f && !uiState.showControls) {
@@ -736,7 +735,9 @@ internal fun ContentArea(
             val atBottom = !listState.canScrollForward
             EdgeNavigationHint(
                 atTop = atTop && uiState.canNavigatePrevious,
-                atBottom = atBottom && uiState.canNavigateNext
+                atBottom = atBottom && uiState.canNavigateNext,
+                textColor = textColor,
+                backgroundColor = bgColor
             )
         }
     }
@@ -1019,45 +1020,68 @@ internal data class ReaderScrollSnapshot(
 )
 
 @Composable
-private fun EdgeNavigationHint(atTop: Boolean, atBottom: Boolean) {
+private fun EdgeNavigationHint(
+    atTop: Boolean,
+    atBottom: Boolean,
+    textColor: Color,
+    backgroundColor: Color
+) {
     if (atTop) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-            EdgeHintChip(text = "Pull down for previous chapter", icon = Icons.Default.ArrowDownward)
+            EdgeHintChip(
+                text = "Pull down for previous chapter",
+                icon = Icons.Default.ArrowDownward,
+                textColor = textColor,
+                backgroundColor = backgroundColor
+            )
         }
     }
     if (atBottom) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-            EdgeHintChip(text = "Pull up for next chapter", icon = Icons.Default.ArrowUpward)
+            EdgeHintChip(
+                text = "Pull up for next chapter",
+                icon = Icons.Default.ArrowUpward,
+                textColor = textColor,
+                backgroundColor = backgroundColor
+            )
         }
     }
 }
 
+// The chip floats on the reader theme's background, not the app surface, so its colours have to
+// come from the same place -- MaterialTheme's surface left it at ~3.3:1 on the default setup.
+private const val EDGE_HINT_CHIP_ALPHA = 0.85f
+private val EDGE_HINT_ICON_SIZE = 16.dp
+private val EDGE_HINT_CHIP_PADDING = 6.dp
+
 @Composable
 private fun EdgeHintChip(
     text: String,
-    icon: ImageVector
+    icon: ImageVector,
+    textColor: Color,
+    backgroundColor: Color
 ) {
     androidx.compose.material3.Surface(
         modifier = Modifier.padding(vertical = EasyReaderSpacing.sm, horizontal = EasyReaderSpacing.md),
         shape = androidx.compose.material3.MaterialTheme.shapes.extraLarge,
-        color = androidx.compose.material3.MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
-        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+        color = backgroundColor.copy(alpha = EDGE_HINT_CHIP_ALPHA),
+        contentColor = textColor
     ) {
         androidx.compose.foundation.layout.Row(
-            modifier = Modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = EDGE_HINT_CHIP_PADDING),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(EDGE_HINT_CHIP_PADDING)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                modifier = Modifier.size(EDGE_HINT_ICON_SIZE),
+                tint = textColor
             )
             Text(
                 text = text,
                 style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                color = textColor
             )
         }
     }
