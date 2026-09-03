@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -24,6 +25,12 @@ import androidx.compose.ui.unit.DpSize
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+
+// Buttons grow past this when the label needs more room at a large font scale; the vertical
+// content padding is what was missing before, so the label had no slack and clipped instead.
+private val MIN_TOUCH_TARGET = 48.dp
+private val BUTTON_H_PADDING = 14.dp
+private val BUTTON_V_PADDING = 8.dp
 
 @Composable
 fun TopInfoBar(
@@ -86,8 +93,8 @@ fun TopInfoBar(
 
             FilledTonalButton(
                 onClick = onShowChapterList,
-                modifier = Modifier.height(48.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
+                modifier = Modifier.heightIn(min = MIN_TOUCH_TARGET),
+                contentPadding = PaddingValues(horizontal = BUTTON_H_PADDING, vertical = BUTTON_V_PADDING)
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.List,
@@ -104,9 +111,9 @@ fun TopInfoBar(
 
             OutlinedButton(
                 onClick = onShowSettings,
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                contentPadding = PaddingValues(horizontal = BUTTON_H_PADDING, vertical = BUTTON_V_PADDING),
                 modifier = Modifier
-                    .height(48.dp)
+                    .heightIn(min = MIN_TOUCH_TARGET)
                     .semantics { contentDescription = "Open reading settings" }
             ) {
                 Text(
@@ -184,7 +191,7 @@ fun BottomNavigationBar(
                 valueRange = 0f..100f,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .semantics { contentDescription = "Chapter progress, ${sliderValue.toInt()} percent" },
+                    .semantics { stateDescription = "${sliderValue.toInt()} percent read" },
                 colors = sliderColors,
                 interactionSource = sliderInteractionSource,
                 thumb = {
@@ -243,8 +250,8 @@ private fun ChapterNavButton(
             onClick()
         },
         enabled = enabled,
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
-        modifier = Modifier.height(48.dp)
+        contentPadding = PaddingValues(horizontal = BUTTON_H_PADDING, vertical = BUTTON_V_PADDING),
+        modifier = Modifier.heightIn(min = MIN_TOUCH_TARGET)
     ) {
         if (leading) {
             Icon(

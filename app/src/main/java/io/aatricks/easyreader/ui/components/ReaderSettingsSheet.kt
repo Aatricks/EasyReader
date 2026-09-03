@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import io.aatricks.easyreader.ui.util.toFontFamily
 import androidx.compose.ui.unit.dp
@@ -385,10 +386,11 @@ fun SettingSlider(
                 onValueChange = onValueChange,
                 valueRange = valueRange,
                 steps = steps,
+                // No fixed height: it sat outside the Slider's own minimumInteractiveComponentSize
+                // and pinned the grab area to 40 dp.
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(40.dp)
-                    .semantics { contentDescription = "$label, $displayValue" },
+                    .semantics { stateDescription = displayValue },
                 colors = SliderDefaults.colors(
                     thumbColor = MaterialTheme.colorScheme.primary,
                     activeTrackColor = MaterialTheme.colorScheme.primary,
