@@ -549,6 +549,7 @@ internal fun ContentArea(
                         when (action) {
                             ReaderTapAction.TOGGLE_CONTROLS -> readerViewModel.toggleControls()
                             ReaderTapAction.PAGE_FORWARD -> {
+                                readerViewModel.onUserInteraction()
                                 val nextPage = pagerState.currentPage + 1
                                 if (nextPage < pagerState.pageCount) {
                                     coroutineScope.launch {
@@ -560,6 +561,7 @@ internal fun ContentArea(
                                 }
                             }
                             ReaderTapAction.PAGE_BACK -> {
+                                readerViewModel.onUserInteraction()
                                 val prevPage = pagerState.currentPage - 1
                                 if (prevPage >= 0) {
                                     coroutineScope.launch {
