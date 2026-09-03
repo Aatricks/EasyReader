@@ -191,7 +191,10 @@ fun BottomNavigationBar(
                 valueRange = 0f..100f,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .semantics { stateDescription = "${sliderValue.toInt()} percent read" },
+                    .semantics {
+                        contentDescription = "Chapter progress"
+                        stateDescription = "${sliderValue.toInt()} percent read"
+                    },
                 colors = sliderColors,
                 interactionSource = sliderInteractionSource,
                 thumb = {

@@ -61,11 +61,11 @@ internal fun shouldDispatchReaderScrollStart(
         abs(available.x) > USER_SCROLL_START_THRESHOLD_PX
 }
 
-// The pull scrim only darkens the reader background to about 60% of the way to black, so a
-// bright green on the LIGHT or SEPIA reader theme lands near 1:1 exactly when the user needs to
-// read it. Both the resting and the released state are picked from the reader theme instead.
+// The scrim tops out at 40% black, so on a light reader theme the label sits on about #999999
+// and no usable green survives there -- even #1B5E20 only reaches 2.6:1. The green is kept for
+// dark themes, where it hits ~7:1, and light themes fall back to their own ink at ~6.6:1; the
+// flipped arrow and the changed label are what mark the released state either way.
 private val RELEASE_ACCENT_ON_DARK = Color(0xFF4CAF50)
-private val RELEASE_ACCENT_ON_LIGHT = Color(0xFF1B5E20)
 private const val PULL_SCRIM_MAX_ALPHA = 0.4f
 private const val PULL_ARROW_FLIP_DEGREES = 180f
 private val PULL_ARROW_SIZE = 48.dp
@@ -110,7 +110,7 @@ internal fun PullToNavigateOverlay(
     val releaseAccent = if (readerTheme.backgroundColor.luminance() < DARK_SURFACE_LUMINANCE) {
         RELEASE_ACCENT_ON_DARK
     } else {
-        RELEASE_ACCENT_ON_LIGHT
+        readerTheme.textColor
     }
     val arrowColor by animateColorAsState(
         if (isThresholdReached) releaseAccent else readerTheme.textColor,
