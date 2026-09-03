@@ -19,16 +19,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.SortMode
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 
 @Composable
 private fun GroupBySourceMenuItem(groupBySource: Boolean, onClick: () -> Unit): Unit {
+    val state = stringResource(if (groupBySource) R.string.common_on else R.string.common_off)
     DropdownMenuItem(
-        text = { Text("Group by source") },
+        text = { Text(stringResource(R.string.library_group_by_source)) },
         leadingIcon = {
             if (groupBySource) {
                 Icon(imageVector = Icons.Default.Check, contentDescription = null)
@@ -38,22 +41,27 @@ private fun GroupBySourceMenuItem(groupBySource: Boolean, onClick: () -> Unit): 
         // The check icon is the only visual cue; without this every item reads the same aloud.
         modifier = Modifier.semantics {
             selected = groupBySource
-            stateDescription = if (groupBySource) "On" else "Off"
+            stateDescription = state
         }
     )
 }
 
 @Composable
 private fun SortMenuItem(mode: SortMode, isSelected: Boolean, onClick: () -> Unit): Unit {
+    val state = stringResource(
+        if (isSelected) R.string.selected_icon_description else R.string.common_not_selected
+    )
     DropdownMenuItem(
         text = {
             Text(
-                when (mode) {
-                    SortMode.LAST_READ -> "Last read"
-                    SortMode.DATE_ADDED -> "Date added"
-                    SortMode.TITLE -> "Title"
-                    SortMode.PROGRESS -> "Progress"
-                }
+                stringResource(
+                    when (mode) {
+                        SortMode.LAST_READ -> R.string.library_sort_last_read
+                        SortMode.DATE_ADDED -> R.string.library_sort_date_added
+                        SortMode.TITLE -> R.string.library_sort_title
+                        SortMode.PROGRESS -> R.string.library_sort_progress
+                    }
+                )
             )
         },
         leadingIcon = {
@@ -65,7 +73,7 @@ private fun SortMenuItem(mode: SortMode, isSelected: Boolean, onClick: () -> Uni
         // The check icon is the only visual cue; without this every item reads the same aloud.
         modifier = Modifier.semantics {
             selected = isSelected
-            stateDescription = if (isSelected) "Selected" else "Not selected"
+            stateDescription = state
         }
     )
 }
@@ -81,11 +89,11 @@ internal fun LibraryOverflowMenu(
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
-            Icon(imageVector = Icons.Default.MoreVert, contentDescription = "More options")
+            Icon(imageVector = Icons.Default.MoreVert, contentDescription = stringResource(R.string.library_more_options))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             Text(
-                text = "Sort by",
+                text = stringResource(R.string.library_sort_by),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(
@@ -106,7 +114,7 @@ internal fun LibraryOverflowMenu(
             }
             HorizontalDivider()
             DropdownMenuItem(
-                text = { Text("Download all chapters") },
+                text = { Text(stringResource(R.string.library_download_all)) },
                 leadingIcon = { Icon(imageVector = Icons.Default.Download, contentDescription = null) },
                 onClick = {
                     expanded = false

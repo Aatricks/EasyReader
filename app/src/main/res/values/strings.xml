@@ -194,4 +194,61 @@
     <string name="settings_restore">Restore</string>
     <string name="settings_restore_library_dialog_title">Restore library?</string>
     <string name="settings_restore_library_dialog_body">Imports titles, progress, and bundled EPUBs. Existing titles whose URL matches a backup entry are skipped.</string>
+
+    <!-- Library Screen -->
+    <plurals name="library_titles_removed">
+        <item quantity="one">%1$d title removed</item>
+        <item quantity="other">%1$d titles removed</item>
+    </plurals>
+    <string name="library_undo">Undo</string>
+    <string name="library_download_all_title">Download all chapters?</string>
+    <plurals name="library_download_all_body">
+        <item quantity="one">This queues %1$d chapter for offline reading. It may use a lot of data and storage.</item>
+        <item quantity="other">This queues %1$d chapters for offline reading. It may use a lot of data and storage.</item>
+    </plurals>
+    <string name="library_back_to_reader">Back to reader</string>
+    <string name="library_explore_sources">Explore sources</string>
+    <string name="library_hide_add_tools">Hide add tools</string>
+    <string name="library_add_or_import">Add or import</string>
+    <string name="library_filter_chip_count">%1$s (%2$d)</string>
+    <string name="library_add_section_title">Add from the web or import a file</string>
+    <string name="library_add_section_body">Paste a novel URL to add it now, or import a file from your device.</string>
+    <string name="library_clear_url">Clear URL</string>
+    <string name="library_paste_url">Paste: %1$s</string>
+    <string name="library_add_from_web">Add from web</string>
+    <string name="library_import_file">Import file</string>
+    <string name="library_search_placeholder">Search your library</string>
+    <string name="library_selection_hint">Select titles to remove or download</string>
+    <plurals name="library_results_in_view">
+        <item quantity="one">%1$d result in view</item>
+        <item quantity="other">%1$d results in view</item>
+    </plurals>
+    <plurals name="library_title_count">
+        <item quantity="one">%1$d title</item>
+        <item quantity="other">%1$d titles</item>
+    </plurals>
+    <string name="library_selection_done">Done</string>
+    <string name="library_selection_select">Select</string>
+    <string name="library_select_all">Select all</string>
+    <string name="library_show_all_titles">Show all titles</string>
+    <string name="library_clear_search">Clear search</string>
+    <string name="library_browse_sources">Browse sources</string>
+    <string name="library_empty_filter_headline">Nothing in %1$s</string>
+    <string name="library_empty_filter_body">No titles have that status right now. Pick another filter to see everything.</string>
+    <string name="library_empty_search_headline">No matches for \"%1$s\"</string>
+    <string name="library_empty_search_body">No titles match your search. Try different words or clear the search to see everything.</string>
+    <string name="library_empty_body">Add a title from Explore or import a file to start building your shelf.</string>
+
+    <!-- Library Overflow Menu -->
+    <string name="library_group_by_source">Group by source</string>
+    <string name="common_on">On</string>
+    <string name="common_off">Off</string>
+    <string name="common_not_selected">Not selected</string>
+    <string name="library_sort_last_read">Last read</string>
+    <string name="library_sort_date_added">Date added</string>
+    <string name="library_sort_title">Title</string>
+    <string name="library_sort_progress">Progress</string>
+    <string name="library_more_options">More options</string>
+    <string name="library_sort_by">Sort by</string>
+    <string name="library_download_all">Download all chapters</string>
 </resources>

@@ -194,4 +194,61 @@
     <string name="settings_restore">Restaurer</string>
     <string name="settings_restore_library_dialog_title">Restaurer la bibliothèque ?</string>
     <string name="settings_restore_library_dialog_body">Importe les titres, la progression et les EPUB inclus. Les titres existants dont l\'adresse correspond à une entrée de la sauvegarde sont ignorés.</string>
+
+    <!-- Library Screen -->
+    <plurals name="library_titles_removed">
+        <item quantity="one">%1$d titre supprimé</item>
+        <item quantity="other">%1$d titres supprimés</item>
+    </plurals>
+    <string name="library_undo">Annuler</string>
+    <string name="library_download_all_title">Télécharger tous les chapitres ?</string>
+    <plurals name="library_download_all_body">
+        <item quantity="one">Cela met %1$d chapitre en file pour la lecture hors ligne. Cela peut consommer beaucoup de données et d\'espace.</item>
+        <item quantity="other">Cela met %1$d chapitres en file pour la lecture hors ligne. Cela peut consommer beaucoup de données et d\'espace.</item>
+    </plurals>
+    <string name="library_back_to_reader">Retour au lecteur</string>
+    <string name="library_explore_sources">Explorer les sources</string>
+    <string name="library_hide_add_tools">Masquer les outils d\'ajout</string>
+    <string name="library_add_or_import">Ajouter ou importer</string>
+    <string name="library_filter_chip_count">%1$s (%2$d)</string>
+    <string name="library_add_section_title">Ajouter depuis le web ou importer un fichier</string>
+    <string name="library_add_section_body">Collez le lien d\'un titre pour l\'ajouter, ou importez un fichier depuis votre appareil.</string>
+    <string name="library_clear_url">Effacer le lien</string>
+    <string name="library_paste_url">Coller : %1$s</string>
+    <string name="library_add_from_web">Ajouter depuis le web</string>
+    <string name="library_import_file">Importer un fichier</string>
+    <string name="library_search_placeholder">Rechercher dans votre bibliothèque</string>
+    <string name="library_selection_hint">Sélectionnez des titres à supprimer ou à télécharger</string>
+    <plurals name="library_results_in_view">
+        <item quantity="one">%1$d résultat affiché</item>
+        <item quantity="other">%1$d résultats affichés</item>
+    </plurals>
+    <plurals name="library_title_count">
+        <item quantity="one">%1$d titre</item>
+        <item quantity="other">%1$d titres</item>
+    </plurals>
+    <string name="library_selection_done">Terminé</string>
+    <string name="library_selection_select">Sélectionner</string>
+    <string name="library_select_all">Tout sélectionner</string>
+    <string name="library_show_all_titles">Afficher tous les titres</string>
+    <string name="library_clear_search">Effacer la recherche</string>
+    <string name="library_browse_sources">Parcourir les sources</string>
+    <string name="library_empty_filter_headline">Rien dans %1$s</string>
+    <string name="library_empty_filter_body">Aucun titre n\'a ce statut pour le moment. Choisissez un autre filtre pour tout voir.</string>
+    <string name="library_empty_search_headline">Aucun résultat pour \"%1$s\"</string>
+    <string name="library_empty_search_body">Aucun titre ne correspond à votre recherche. Essayez d\'autres mots ou effacez la recherche pour tout voir.</string>
+    <string name="library_empty_body">Ajoutez un titre depuis Explorer ou importez un fichier pour commencer votre bibliothèque.</string>
+
+    <!-- Library Overflow Menu -->
+    <string name="library_group_by_source">Grouper par source</string>
+    <string name="common_on">Activé</string>
+    <string name="common_off">Désactivé</string>
+    <string name="common_not_selected">Non sélectionné</string>
+    <string name="library_sort_last_read">Dernière lecture</string>
+    <string name="library_sort_date_added">Date d\'ajout</string>
+    <string name="library_sort_title">Titre</string>
+    <string name="library_sort_progress">Progression</string>
+    <string name="library_more_options">Plus d\'options</string>
+    <string name="library_sort_by">Trier par</string>
+    <string name="library_download_all">Télécharger tous les chapitres</string>
 </resources>

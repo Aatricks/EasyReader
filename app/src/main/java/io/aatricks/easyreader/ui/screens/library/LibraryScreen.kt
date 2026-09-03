@@ -30,6 +30,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -40,6 +43,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.*
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.SeriesReadingStatus
@@ -79,6 +83,8 @@ fun LibraryScreen(
     val summaryViewModel: SummaryViewModel = hiltViewModel()
     val summaryUiState by summaryViewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val resources = LocalContext.current.resources
+    val undoLabel = stringResource(R.string.library_undo)
 
     var urlInput by remember { mutableStateOf("") }
     var isAddSectionVisible by remember { mutableStateOf(false) }
@@ -98,10 +104,10 @@ fun LibraryScreen(
     LaunchedEffect(pendingDeletion) {
         if (pendingDeletion.isNotEmpty()) {
             val count = pendingDeletion.size
-            val label = if (count == 1) "1 title removed" else "$count titles removed"
+            val label = resources.getQuantityString(R.plurals.library_titles_removed, count, count)
             val result = snackbarHostState.showSnackbar(
                 message = label,
-                actionLabel = "Undo",
+                actionLabel = undoLabel,
                 duration = SnackbarDuration.Short,
                 withDismissAction = true
             )
@@ -173,21 +179,24 @@ fun LibraryScreen(
         AlertDialog(
             onDismissRequest = { showDownloadAllConfirmation = false },
             icon = { Icon(Icons.Filled.Download, contentDescription = null) },
-            title = { Text("Download all chapters?") },
+            title = { Text(stringResource(R.string.library_download_all_title)) },
             text = {
                 Text(
-                    "This queues ${formatLibraryCount(libraryUiState.items.size, "chapter")} for " +
-                        "offline reading. It may use a lot of data and storage."
+                    pluralStringResource(
+                        R.plurals.library_download_all_body,
+                        libraryUiState.items.size,
+                        libraryUiState.items.size
+                    )
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     showDownloadAllConfirmation = false
                     libraryViewModel.prefetchLibrary()
-                }) { Text("Download") }
+                }) { Text(stringResource(R.string.download_button)) }
             },
             dismissButton = {
-                TextButton(onClick = { showDownloadAllConfirmation = false }) { Text("Cancel") }
+                TextButton(onClick = { showDownloadAllConfirmation = false }) { Text(stringResource(R.string.common_cancel)) }
             }
         )
     }
@@ -195,12 +204,12 @@ fun LibraryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Library") },
+                title = { Text(stringResource(R.string.library_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back to reader"
+                            contentDescription = stringResource(R.string.library_back_to_reader)
                         )
                     }
                 },
@@ -208,13 +217,19 @@ fun LibraryScreen(
                     IconButton(onClick = { navController.navigate(ExploreRoute) }) {
                         Icon(
                             imageVector = Icons.Default.TravelExplore,
-                            contentDescription = "Explore sources"
+                            contentDescription = stringResource(R.string.library_explore_sources)
                         )
                     }
                     IconButton(onClick = { isAddSectionVisible = !isAddSectionVisible }) {
                         Icon(
                             imageVector = if (isAddSectionVisible) Icons.Default.Close else Icons.Default.Add,
-                            contentDescription = if (isAddSectionVisible) "Hide add tools" else "Add or import"
+                            contentDescription = stringResource(
+                                if (isAddSectionVisible) {
+                                    R.string.library_hide_add_tools
+                                } else {
+                                    R.string.library_add_or_import
+                                }
+                            )
                         )
                     }
                     LibraryOverflowMenu(
@@ -227,7 +242,7 @@ fun LibraryScreen(
                     IconButton(onClick = { navController.navigate(SettingsRoute) }) {
                         Icon(
                             imageVector = Icons.Default.Settings,
-                            contentDescription = "Settings"
+                            contentDescription = stringResource(R.string.settings_title)
                         )
                     }
                 }
@@ -402,8 +417,11 @@ private fun ReadingStatusFilterRow(
                 onClick = { onSelect(filter) },
                 label = {
                     Text(
-                        text = if (count > 0 || filter == SeriesReadingStatus.ALL)
-                            "${filter.label} ($count)" else filter.label
+                        text = if (count > 0 || filter == SeriesReadingStatus.ALL) {
+                            stringResource(R.string.library_filter_chip_count, filter.label, count)
+                        } else {
+                            filter.label
+                        }
                     )
                 }
             )
@@ -432,13 +450,13 @@ private fun AddNovelSection(
     ) {
         Column(modifier = Modifier.padding(EasyReaderSpacing.md)) {
             Text(
-                text = "Add from the web or import a file",
+                text = stringResource(R.string.library_add_section_title),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
             Text(
-                text = "Paste a novel URL to add it now, or import a file from your device.",
+                text = stringResource(R.string.library_add_section_body),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -447,13 +465,13 @@ private fun AddNovelSection(
             OutlinedTextField(
                 value = urlInput,
                 onValueChange = onUrlChange,
-                label = { Text("Web URL") },
-                placeholder = { Text("https://...") },
+                label = { Text(stringResource(R.string.novel_url_label)) },
+                placeholder = { Text(stringResource(R.string.novel_url_placeholder)) },
                 modifier = Modifier.fillMaxWidth(),
                 trailingIcon = {
                     if (urlInput.isNotEmpty()) {
                         IconButton(onClick = { onUrlChange("") }) {
-                            Icon(imageVector = Icons.Filled.Close, contentDescription = "Clear URL")
+                            Icon(imageVector = Icons.Filled.Close, contentDescription = stringResource(R.string.library_clear_url))
                         }
                     }
                 },
@@ -480,7 +498,11 @@ private fun AddNovelSection(
                     },
                     label = {
                         Text(
-                            text = "Paste: ${url.take(48)}${if (url.length > 48) "…" else ""}",
+                            text = stringResource(
+                                R.string.library_paste_url,
+                                url.take(PASTE_CHIP_URL_CHARS) +
+                                    if (url.length > PASTE_CHIP_URL_CHARS) "…" else ""
+                            ),
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -504,7 +526,7 @@ private fun AddNovelSection(
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-                    Text("Add from web", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.library_add_from_web), fontWeight = FontWeight.SemiBold)
                 }
 
                 FilledTonalButton(
@@ -516,7 +538,7 @@ private fun AddNovelSection(
                 ) {
                     Icon(Icons.Filled.FileOpen, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-                    Text("Import file", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.library_import_file), fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -531,12 +553,12 @@ private fun SearchLibraryField(
     TextField(
         value = query,
         onValueChange = onQueryChange,
-        placeholder = { Text("Search your library") },
+        placeholder = { Text(stringResource(R.string.library_search_placeholder)) },
         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
         trailingIcon = {
             if (query.isNotEmpty()) {
                 IconButton(onClick = { onQueryChange("") }) {
-                    Icon(Icons.Default.Close, contentDescription = "Clear")
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_clear))
                 }
             }
         },
@@ -564,10 +586,12 @@ private fun LibraryStatusRow(
     onSelectionClick: () -> Unit
 ): Unit {
     val statusText = when {
-        isSelectionMode && selectedCount > 0 -> "$selectedCount selected"
-        isSelectionMode -> "Select titles to remove or download"
-        query.isNotBlank() -> "${formatLibraryCount(visibleCount, "result")} in view"
-        else -> formatLibraryCount(totalCount, "title")
+        isSelectionMode && selectedCount > 0 ->
+            stringResource(R.string.chapter_selection_count, selectedCount)
+        isSelectionMode -> stringResource(R.string.library_selection_hint)
+        query.isNotBlank() ->
+            pluralStringResource(R.plurals.library_results_in_view, visibleCount, visibleCount)
+        else -> pluralStringResource(R.plurals.library_title_count, totalCount, totalCount)
     }
 
     Row(
@@ -581,7 +605,15 @@ private fun LibraryStatusRow(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         TextButton(onClick = onSelectionClick) {
-            Text(if (isSelectionMode) "Done" else "Select")
+            Text(
+                stringResource(
+                    if (isSelectionMode) {
+                        R.string.library_selection_done
+                    } else {
+                        R.string.library_selection_select
+                    }
+                )
+            )
         }
     }
 }
@@ -617,7 +649,7 @@ private fun SelectionActions(
         ) {
             Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-            Text("Delete", fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.common_delete), fontWeight = FontWeight.SemiBold)
         }
         Button(
             onClick = onDownload,
@@ -633,7 +665,7 @@ private fun SelectionActions(
         ) {
             Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-            Text("Download", fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.download_button), fontWeight = FontWeight.SemiBold)
         }
         Button(
             onClick = onSelectAll,
@@ -648,7 +680,7 @@ private fun SelectionActions(
         ) {
             Icon(Icons.Filled.SelectAll, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-            Text("Select all", fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.library_select_all), fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -698,7 +730,15 @@ private fun EmptyLibraryState(
                 if (isFilteredEmpty) {
                     Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
                     FilledTonalButton(onClick = onClearSearch) {
-                        Text(if (statusFilterLabel != null) "Show all titles" else "Clear search")
+                        Text(
+                            stringResource(
+                                if (statusFilterLabel != null) {
+                                    R.string.library_show_all_titles
+                                } else {
+                                    R.string.library_clear_search
+                                }
+                            )
+                        )
                     }
                 } else {
                     Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
@@ -706,10 +746,10 @@ private fun EmptyLibraryState(
                         horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)
                     ) {
                         Button(onClick = onBrowseSources) {
-                            Text("Browse sources")
+                            Text(stringResource(R.string.library_browse_sources))
                         }
                         OutlinedButton(onClick = onImportFile) {
-                            Text("Import file")
+                            Text(stringResource(R.string.library_import_file))
                         }
                     }
                 }
@@ -719,18 +759,15 @@ private fun EmptyLibraryState(
 }
 
 /** Headline and body for the empty shelf, the empty search and the empty status filter. */
+@Composable
 private fun emptyLibraryCopy(query: String, statusFilterLabel: String?): Pair<String, String> = when {
-    statusFilterLabel != null -> "Nothing in $statusFilterLabel" to
-        "No titles have that status right now. Pick another filter to see everything."
-    query.isNotBlank() -> "No matches for \"$query\"" to
-        "No titles match your search. Try different words or clear the search to see everything."
-    else -> "Your library is empty" to
-        "Add a title from Explore or import a file to start building your shelf."
+    statusFilterLabel != null ->
+        stringResource(R.string.library_empty_filter_headline, statusFilterLabel) to
+            stringResource(R.string.library_empty_filter_body)
+    query.isNotBlank() -> stringResource(R.string.library_empty_search_headline, query) to
+        stringResource(R.string.library_empty_search_body)
+    else -> stringResource(R.string.library_empty) to stringResource(R.string.library_empty_body)
 }
 
 private const val CHIP_ROW_FADE_WIDTH_PX = 48f
-
-private fun formatLibraryCount(count: Int, noun: String): String {
-    val suffix = if (count == 1) noun else "${noun}s"
-    return "$count $suffix"
-}
+private const val PASTE_CHIP_URL_CHARS = 48
