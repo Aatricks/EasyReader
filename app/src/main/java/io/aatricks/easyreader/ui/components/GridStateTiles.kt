@@ -22,7 +22,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,6 +29,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
+import io.aatricks.easyreader.ui.theme.rememberReducedMotion
+
+private const val SHIMMER_REST_ALPHA = 0.5f
 
 /**
  * Grid-cell-sized shimmer placeholder used while a list of items is loading.
@@ -41,16 +43,19 @@ fun LoadingTile(
     modifier: Modifier = Modifier,
     height: androidx.compose.ui.unit.Dp = 180.dp
 ) {
-    val transition = rememberInfiniteTransition(label = "loading-tile-shimmer")
-    val alpha by transition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.7f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "loading-tile-alpha"
-    )
+    val alpha = if (rememberReducedMotion()) {
+        SHIMMER_REST_ALPHA
+    } else {
+        rememberInfiniteTransition(label = "loading-tile-shimmer").animateFloat(
+            initialValue = 0.35f,
+            targetValue = 0.7f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 900),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "loading-tile-alpha"
+        ).value
+    }
     val base = MaterialTheme.colorScheme.surfaceVariant
     Box(
         modifier = modifier

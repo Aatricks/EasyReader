@@ -63,10 +63,13 @@ import coil3.request.crossfade
 import io.aatricks.easyreader.data.model.ExploreItem
 import io.aatricks.easyreader.ui.components.ErrorTile
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
+import io.aatricks.easyreader.ui.theme.rememberReducedMotion
 import io.aatricks.easyreader.ui.viewmodel.ExploreViewModel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+
+private const val SKELETON_REST_ALPHA = 0.4f
 
 @Composable
 internal fun ExploreGrid(
@@ -392,16 +395,19 @@ internal fun MetaPill(text: String): Unit {
 
 @Composable
 fun SkeletonExploreCard(): Unit {
-    val infiniteTransition = rememberInfiniteTransition(label = "skeleton")
-    val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.24f,
-        targetValue = 0.58f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(950),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "alpha"
-    )
+    val alpha = if (rememberReducedMotion()) {
+        SKELETON_REST_ALPHA
+    } else {
+        rememberInfiniteTransition(label = "skeleton").animateFloat(
+            initialValue = 0.24f,
+            targetValue = 0.58f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(950),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "alpha"
+        ).value
+    }
 
     Surface(
         shape = MaterialTheme.shapes.large,
@@ -438,16 +444,19 @@ fun SkeletonExploreCard(): Unit {
 
 @Composable
 private fun SkeletonFeaturedExploreCard(): Unit {
-    val infiniteTransition = rememberInfiniteTransition(label = "featured_skeleton")
-    val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.24f,
-        targetValue = 0.58f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(950),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "featured_alpha"
-    )
+    val alpha = if (rememberReducedMotion()) {
+        SKELETON_REST_ALPHA
+    } else {
+        rememberInfiniteTransition(label = "featured_skeleton").animateFloat(
+            initialValue = 0.24f,
+            targetValue = 0.58f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(950),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "featured_alpha"
+        ).value
+    }
 
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
