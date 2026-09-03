@@ -16,7 +16,6 @@
     <!-- Empty States -->
     <string name="no_content_available">Nothing to show yet</string>
     <string name="empty_icon_description">Empty</string>
-    <string name="add_novel_from_library">Add a novel from the library</string>
     <string name="library_empty">Your library is empty</string>
     <string name="add_first_novel_hint">Paste a URL or import a file above to add your first title</string>
 
@@ -33,7 +32,6 @@
 
     <!-- Library Sections -->
     <string name="section_currently_reading">Continue reading</string>
-    <string name="section_library">Library</string>
 
     <!-- Library Item -->
     <string name="reading_status">READING</string>
@@ -54,9 +52,6 @@
     <string name="content_type_pdf">PDF</string>
     <string name="content_type_html">HTML</string>
     <string name="content_type_epub">EPUB</string>
-
-    <!-- Accessibility -->
-    <string name="empty_library_icon_description">Empty library</string>
 
     <!-- Misc -->
     <string name="unknown_title">Unknown</string>

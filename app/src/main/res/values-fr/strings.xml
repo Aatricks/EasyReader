@@ -16,7 +16,6 @@
     <!-- Empty States -->
     <string name="no_content_available">Rien à afficher pour le moment</string>
     <string name="empty_icon_description">Vide</string>
-    <string name="add_novel_from_library">Ajouter un titre depuis la bibliothèque</string>
     <string name="library_empty">Votre bibliothèque est vide</string>
     <string name="add_first_novel_hint">Collez un lien ou importez un fichier pour ajouter votre premier titre</string>
 
@@ -33,7 +32,6 @@
 
     <!-- Library Sections -->
     <string name="section_currently_reading">Reprendre la lecture</string>
-    <string name="section_library">Bibliothèque</string>
 
     <!-- Library Item -->
     <string name="reading_status">EN LECTURE</string>
@@ -54,9 +52,6 @@
     <string name="content_type_pdf">PDF</string>
     <string name="content_type_html">HTML</string>
     <string name="content_type_epub">EPUB</string>
-
-    <!-- Accessibility -->
-    <string name="empty_library_icon_description">Bibliothèque vide</string>
 
     <!-- Misc -->
     <string name="unknown_title">Inconnu</string>
