@@ -610,10 +610,15 @@ fun SettingsScreen(
             },
             confirmButton = {
                 FilledTonalButton(onClick = {
-                    readerViewModel.clearAllCache()
                     showClearCacheDialog = false
-                    refreshKey++
-                    scope.launch { snackbarHostState.showSnackbar("Cache cleared") }
+                    scope.launch {
+                        val outcome = readerViewModel.clearAllCache()
+                        refreshKey++
+                        snackbarHostState.showSnackbar(
+                            if (outcome.isSuccess) "Cache cleared"
+                            else "Could not clear the cache: ${outcome.exceptionOrNull()?.message}"
+                        )
+                    }
                 }) {
                     Text("Clear")
                 }
@@ -638,10 +643,15 @@ fun SettingsScreen(
             },
             confirmButton = {
                 FilledTonalButton(onClick = {
-                    libraryViewModel.clearAllDownloads()
                     showClearDownloadsDialog = false
-                    refreshKey++
-                    scope.launch { snackbarHostState.showSnackbar("Downloads cleared") }
+                    scope.launch {
+                        val outcome = libraryViewModel.clearAllDownloads()
+                        refreshKey++
+                        snackbarHostState.showSnackbar(
+                            if (outcome.isSuccess) "Downloads cleared"
+                            else "Could not clear downloads: ${outcome.exceptionOrNull()?.message}"
+                        )
+                    }
                 }) {
                     Text("Clear")
                 }
@@ -694,10 +704,15 @@ fun SettingsScreen(
             confirmButton = {
                 FilledTonalButton(
                     onClick = {
-                        libraryViewModel.clearLibrary()
                         showClearLibraryDialog = false
-                        refreshKey++
-                        scope.launch { snackbarHostState.showSnackbar("Library cleared") }
+                        scope.launch {
+                            val outcome = libraryViewModel.clearLibrary()
+                            refreshKey++
+                            snackbarHostState.showSnackbar(
+                                if (outcome.isSuccess) "Library cleared"
+                                else "Could not clear the library: ${outcome.exceptionOrNull()?.message}"
+                            )
+                        }
                     }
                 ) {
                     Text("Clear all")

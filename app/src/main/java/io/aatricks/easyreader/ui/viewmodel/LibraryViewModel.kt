@@ -705,8 +705,9 @@ class LibraryViewModel @Inject constructor(
         selectionManager.clear()
     }
 
-    fun clearLibrary(): Unit {
-        viewModelScope.launch {
+    /** Settings waits on this so it only claims success once the library is actually gone. */
+    suspend fun clearLibrary(): Result<Unit> =
+        viewModelScope.async {
             runCatching {
                 downloadQueue.cancelAll()
                 repository.clearLibrary()
@@ -714,17 +715,15 @@ class LibraryViewModel @Inject constructor(
                 contentRepository.clearAllDownloads()
                 contentRepository.clearImportedEpubs()
                 selectionManager.clear()
-            }.onFailure { e ->
-                updateState { it.copy(error = "Failed to clear library: ${e.message}") }
             }
-        }
-    }
+        }.await()
 
-    fun clearAllDownloads(): Unit {
-        viewModelScope.launch {
-            val downloaded = repository.getDownloadedItems()
-            downloadQueue.cancelAll()
+    /** Settings waits on this so it only claims success once the downloads are actually gone. */
+    suspend fun clearAllDownloads(): Result<Unit> =
+        viewModelScope.async {
             runCatching {
+                val downloaded = repository.getDownloadedItems()
+                downloadQueue.cancelAll()
                 contentRepository.clearAllDownloads()
                 downloaded.forEach { item ->
                     downloadStatusReconciler.reconcile(
@@ -733,13 +732,9 @@ class LibraryViewModel @Inject constructor(
                         wasUserInspect = true
                     )
                 }
-            }.onSuccess {
                 downloadStates.refreshChapterCacheStates(downloaded.map { it.url })
-            }.onFailure { e ->
-                updateState { it.copy(error = "Failed to clear downloads: ${e.message}") }
             }
-        }
-    }
+        }.await()
 
     fun toggleSourceExpansion(sourceName: String): Unit {
         val current = _collapsedSources.value.toMutableSet()

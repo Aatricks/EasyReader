@@ -25,13 +25,13 @@ import io.aatricks.easyreader.util.FieldUpdate
 import io.aatricks.easyreader.util.computeDownloadCleanup
 import io.aatricks.easyreader.data.local.ReaderSettingsSnapshot
 import io.aatricks.easyreader.data.repository.ReaderCaches
-import io.aatricks.easyreader.util.ErrorMessages
 import io.aatricks.easyreader.util.UrlSanitizer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -1201,16 +1201,12 @@ class ReaderViewModel @Inject constructor(
         }.getOrDefault(false)
     }
 
-    fun clearAllCache() {
-        viewModelScope.launch {
+    /** Settings waits on this so it only claims success once the cache is actually gone. */
+    suspend fun clearAllCache(): Result<Unit> =
+        viewModelScope.async {
             runCatching { contentRepository.clearAllCache() }
-                .onFailure { e ->
-                    Log.w(TAG, "clearAllCache failed", e)
-                    val friendly = ErrorMessages.fromRaw(e.message)
-                    updateState { it.copy(error = "${friendly.title}: ${friendly.body}") }
-                }
-        }
-    }
+                .onFailure { e -> Log.w(TAG, "clearAllCache failed", e) }
+        }.await()
 
     suspend fun getCacheSize(): Long = contentRepository.getCacheSize()
 
