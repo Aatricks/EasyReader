@@ -284,8 +284,7 @@ class LibraryViewModelTest {
         verify(contentRepository, never()).prefetch(any(), any())
         assertEquals(latestUrl, loadedUrl)
         assertEquals(createdItem.id, loadedId)
-        assertFalse(viewModel.uiState.value.isLoading)
-        assertNull(viewModel.uiState.value.error)
+        assertEquals(OpenNextChapterState.Idle, viewModel.openNextChapterState.value)
     }
 
     @Test
@@ -341,8 +340,7 @@ class LibraryViewModelTest {
         verify(contentRepository, never()).prefetch(any(), any())
         assertEquals(latestUrl, loadedUrl)
         assertEquals(existingItem.id, loadedId)
-        assertFalse(viewModel.uiState.value.isLoading)
-        assertNull(viewModel.uiState.value.error)
+        assertEquals(OpenNextChapterState.Idle, viewModel.openNextChapterState.value)
     }
 
     @Test
@@ -404,7 +402,7 @@ class LibraryViewModelTest {
         )
         verify(libraryRepository).clearUpdateIndicator(stoppedAt.id)
         assertEquals(chapterUrl(214), loadedUrl)
-        assertNull(viewModel.uiState.value.error)
+        assertEquals(OpenNextChapterState.Idle, viewModel.openNextChapterState.value)
     }
 
     @Test
@@ -449,7 +447,7 @@ class LibraryViewModelTest {
         assertEquals(listOf(RecordedEnqueue(chapter.url, replaceExisting = false)), queue.enqueued)
         verify(contentRepository, never()).prefetchWithProgress(any(), any(), any())
         verify(libraryRepository, never()).markDownloaded("chapter-11-id", true)
-        val state = activeViewModel.uiState.value.chapterCacheStates[chapter.url]
+        val state = activeViewModel.chapterCacheStates.value[chapter.url]
         assertNotNull(state)
         assertTrue(state!!.isInProgress)
         assertTrue(state.isPersistentDownload)
@@ -486,7 +484,7 @@ class LibraryViewModelTest {
         assertEquals(listOf(RecordedEnqueue(chapter.url, replaceExisting = false)), queue.enqueued)
         verify(contentRepository, never()).prefetchWithProgress(any(), any(), any())
         verify(libraryRepository, never()).markDownloaded(existingItem.id, true)
-        val state = activeViewModel.uiState.value.chapterCacheStates[chapter.url]
+        val state = activeViewModel.chapterCacheStates.value[chapter.url]
         assertNotNull(state)
         assertTrue(state!!.isInProgress)
         assertTrue(state.isPersistentDownload)
@@ -509,7 +507,7 @@ class LibraryViewModelTest {
         viewModel.refreshChapterCacheStates(listOf(chapterUrl))
         advanceUntilIdle()
 
-        assertEquals(inspected, viewModel.uiState.value.chapterCacheStates[chapterUrl])
+        assertEquals(inspected, viewModel.chapterCacheStates.value[chapterUrl])
     }
 
     @Test
@@ -548,7 +546,7 @@ class LibraryViewModelTest {
         verify(contentRepository, timeout(1000)).inspectDownload(chapterUrl)
         verify(contentRepository, never()).inspectCache(chapterUrl)
         verify(libraryRepository, timeout(1000)).markDownloaded(downloadedItem.id, false)
-        assertEquals(inspected, activeViewModel.uiState.value.chapterCacheStates[chapterUrl])
+        assertEquals(inspected, activeViewModel.chapterCacheStates.value[chapterUrl])
     }
 
     @Test
@@ -630,7 +628,7 @@ class LibraryViewModelTest {
         verify(contentRepository).clearPermanentFailures(url)
         assertEquals(listOf(RecordedEnqueue(url, replaceExisting = true)), queue.enqueued)
         verify(contentRepository, never()).prefetchWithProgress(any(), any(), any())
-        val state = activeViewModel.uiState.value.chapterCacheStates[url]
+        val state = activeViewModel.chapterCacheStates.value[url]
         assertNotNull(state)
         assertTrue(state!!.isInProgress)
         assertTrue(state.isPersistentDownload)
@@ -667,15 +665,15 @@ class LibraryViewModelTest {
         advanceUntilIdle()
 
         verify(libraryRepository, timeout(1000)).markDownloaded(downloadedItem.id, false)
-        assertEquals(inspected, activeViewModel.uiState.value.chapterCacheStates[chapterUrl])
+        assertEquals(inspected, activeViewModel.chapterCacheStates.value[chapterUrl])
     }
 
     @Test
     fun `removeDownload cancels work clears disk and refreshes cache state`() = runTest {
         val itemId = "id-1"
         val url = "https://example.com/novel-1"
-        val item = LibraryItem(id = itemId, title = "Novel 1", url = url)
-        
+        val item = LibraryItem(id = itemId, title = "Novel 1", url = url, isDownloaded = true)
+
         whenever(libraryRepository.getItemById(itemId)).thenReturn(item)
         val queue: ChapterDownloadQueue = mock()
         whenever(queue.observeAll()).thenReturn(MutableStateFlow(emptyMap()))
@@ -697,16 +695,23 @@ class LibraryViewModelTest {
             isComplete = false
         )
         whenever(contentRepository.inspectCache(url)).thenReturn(inspected)
+        whenever(contentRepository.inspectDownload(url)).thenReturn(inspected)
         whenever(libraryRepository.markDownloaded(itemId, false)).thenReturn(true)
-        
+
         activeViewModel.removeDownload(itemId)
         advanceUntilIdle()
-        
+
         verify(queue).cancel(url)
         verify(contentRepository).clearDownload(url)
+        // Demotion goes through the reconciler, which inspects disk before writing the flag.
+        verify(contentRepository).inspectDownload(url)
         verify(libraryRepository).markDownloaded(itemId, false)
-        
-        assertEquals(inspected, activeViewModel.uiState.value.chapterCacheStates[url])
+
+        assertEquals(inspected, activeViewModel.chapterCacheStates.value[url])
+        assertEquals(
+            listOf(url),
+            activeViewModel.downloadRetryPrompt.value?.urls
+        )
     }
 
     @Test
@@ -735,18 +740,18 @@ class LibraryViewModelTest {
         activeViewModel.refreshChapterCacheStates(listOf(url))
         advanceUntilIdle()
         
-        assertEquals(result, activeViewModel.uiState.value.chapterCacheStates[url])
+        assertEquals(result, activeViewModel.chapterCacheStates.value[url])
         
         activeViewModel.removeItem(itemId)
         
         verify(queue, never()).cancel(url)
-        assertNotNull(activeViewModel.uiState.value.chapterCacheStates[url])
+        assertNotNull(activeViewModel.chapterCacheStates.value[url])
         
         advanceTimeBy(5001)
         runCurrent()
         
         verify(queue).cancel(url)
-        assertNull(activeViewModel.uiState.value.chapterCacheStates[url])
+        assertNull(activeViewModel.chapterCacheStates.value[url])
     }
 
     @Test
@@ -771,7 +776,7 @@ class LibraryViewModelTest {
         
         assertEquals("Failed to queue download", activeViewModel.uiState.value.error)
         
-        val state = activeViewModel.uiState.value.chapterCacheStates[url]
+        val state = activeViewModel.chapterCacheStates.value[url]
         assertTrue(state == null || !state.isInProgress)
     }
 
@@ -811,27 +816,73 @@ class LibraryViewModelTest {
         )
         advanceUntilIdle()
 
-        val item1 = LibraryItem(id = "id-1", title = "Novel 1", url = "https://example.com/novel-1")
-        val item2 = LibraryItem(id = "id-2", title = "Novel 2", url = "https://example.com/novel-2")
+        val item1 = LibraryItem(id = "id-1", title = "Novel 1", url = "https://example.com/novel-1", isDownloaded = true)
+        val item2 = LibraryItem(id = "id-2", title = "Novel 2", url = "https://example.com/novel-2", isDownloaded = true)
         val downloaded = listOf(item1, item2)
         whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(downloaded))
         whenever(libraryRepository.getDownloadedItems()).thenReturn(downloaded)
 
         val inspected1 = PrefetchResult(url = item1.url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
         val inspected2 = PrefetchResult(url = item2.url, htmlCached = false, totalImages = 0, cachedImages = 0, isComplete = false)
-        whenever(contentRepository.inspectCache(item1.url)).thenReturn(inspected1)
-        whenever(contentRepository.inspectCache(item2.url)).thenReturn(inspected2)
+        whenever(contentRepository.inspectDownload(item1.url)).thenReturn(inspected1)
+        whenever(contentRepository.inspectDownload(item2.url)).thenReturn(inspected2)
 
         activeViewModel.clearAllDownloads()
         advanceUntilIdle()
 
         verify(queue).cancelAll()
         verify(contentRepository).clearAllDownloads()
-        verify(libraryRepository).markDownloaded("id-1", false)
-        verify(libraryRepository).markDownloaded("id-2", false)
+        verify(libraryRepository, atLeastOnce()).markDownloaded("id-1", false)
+        verify(libraryRepository, atLeastOnce()).markDownloaded("id-2", false)
 
-        assertEquals(inspected1, activeViewModel.uiState.value.chapterCacheStates[item1.url])
-        assertEquals(inspected2, activeViewModel.uiState.value.chapterCacheStates[item2.url])
+        assertEquals(inspected1, activeViewModel.chapterCacheStates.value[item1.url])
+        assertEquals(inspected2, activeViewModel.chapterCacheStates.value[item2.url])
+    }
+
+    @Test
+    fun `download badge emission does not regroup the library`() = runTest {
+        val item = LibraryItem(id = "id-1", title = "Novel 1", url = "https://example.com/novel-1")
+        whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(listOf(item)))
+        val queue = RecordingChapterDownloadQueue()
+        val activeViewModel = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, queue, reconciler)
+        advanceUntilIdle()
+
+        clearInvocations(libraryRepository)
+        queue.results.value = mapOf(
+            item.url to PrefetchResult(
+                url = item.url,
+                htmlCached = false,
+                totalImages = 4,
+                cachedImages = 1,
+                isComplete = false,
+                isInProgress = true
+            )
+        )
+        advanceUntilIdle()
+
+        verify(libraryRepository, never()).getGroupedByTitle(anyOrNull())
+        verify(libraryRepository, never()).getGroupedBySourceAndTitle(anyOrNull())
+        assertTrue(activeViewModel.chapterCacheStates.value[item.url]?.isInProgress == true)
+    }
+
+    @Test
+    fun `refreshUpdates checks sources for new chapters then reconciles downloads`() = runTest {
+        val activeViewModel = LibraryViewModel(
+            libraryRepository,
+            contentRepository,
+            exploreRepository,
+            io.aatricks.easyreader.work.NoOpChapterDownloadQueue(),
+            reconciler
+        )
+        advanceUntilIdle()
+
+        activeViewModel.refreshUpdates()
+        advanceUntilIdle()
+
+        verify(libraryRepository).refreshLibraryUpdates(exploreRepository, true)
+        verify(libraryRepository, atLeastOnce()).getAllItemsSnapshot()
+        assertFalse(activeViewModel.isRefreshing.value)
+        verify(contentRepository, never()).prefetch(any(), any())
     }
 
     @Test
@@ -977,6 +1028,7 @@ class LibraryViewModelTest {
             io.aatricks.easyreader.work.NoOpChapterDownloadQueue(),
             reconciler
         )
+        testViewModel.backfillMissingCovers()
         advanceUntilIdle()
         
         verify(exploreRepository, times(1)).getNovelDetails("https://example.com/novel-1", "Source1")
@@ -1006,6 +1058,7 @@ class LibraryViewModelTest {
             io.aatricks.easyreader.work.NoOpChapterDownloadQueue(),
             reconciler
         )
+        testViewModel.backfillMissingCovers()
         advanceUntilIdle()
         
         verify(exploreRepository, never()).getNovelDetails(any(), any())
@@ -1061,6 +1114,7 @@ class LibraryViewModelTest {
             io.aatricks.easyreader.work.NoOpChapterDownloadQueue(),
             reconciler
         )
+        testViewModel.backfillMissingCovers()
         advanceUntilIdle()
         
         verify(exploreRepository, times(1)).getNovelDetails("https://example.com/novel-1", "Source1")
@@ -1073,7 +1127,7 @@ private data class RecordedEnqueue(val url: String, val replaceExisting: Boolean
 
 private class RecordingChapterDownloadQueue : ChapterDownloadQueue {
     val enqueued = mutableListOf<RecordedEnqueue>()
-    private val results = MutableStateFlow<Map<String, PrefetchResult>>(emptyMap())
+    val results = MutableStateFlow<Map<String, PrefetchResult>>(emptyMap())
     var cancelAllCalled = false
 
     override fun enqueue(url: String, replaceExisting: Boolean): Boolean {

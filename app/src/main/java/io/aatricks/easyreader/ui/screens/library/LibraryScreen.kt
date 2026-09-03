@@ -47,6 +47,7 @@ import io.aatricks.easyreader.ui.components.ChapterSummaryDropdown
 import io.aatricks.easyreader.ui.theme.EasyReaderMotion
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
+import io.aatricks.easyreader.ui.viewmodel.OpenNextChapterState
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import io.aatricks.easyreader.ui.viewmodel.SummaryViewModel
 import kotlinx.coroutines.launch
@@ -65,6 +66,10 @@ fun LibraryScreen(
     val searchQuery by libraryViewModel.searchQuery.collectAsState()
     val pendingDeletion by libraryViewModel.pendingDeletion.collectAsState()
     val statusFilter by libraryViewModel.statusFilter.collectAsState()
+    val sortMode by libraryViewModel.sortMode.collectAsState()
+    val isRefreshing by libraryViewModel.isRefreshing.collectAsState()
+    val openNextChapterState by libraryViewModel.openNextChapterState.collectAsState()
+    val downloadRetryPrompt by libraryViewModel.downloadRetryPrompt.collectAsState()
     val summaryViewModel: SummaryViewModel = hiltViewModel()
     val summaryUiState by summaryViewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -82,6 +87,7 @@ fun LibraryScreen(
     LaunchedEffect(Unit) {
         summaryViewModel.initializeSummaryService()
         libraryViewModel.reconcileDownloadedItemsOnDemand()
+        libraryViewModel.backfillMissingCovers()
     }
 
     LaunchedEffect(pendingDeletion) {
@@ -111,6 +117,28 @@ fun LibraryScreen(
         }
     }
 
+    LaunchedEffect(openNextChapterState) {
+        (openNextChapterState as? OpenNextChapterState.Error)?.let { state ->
+            snackbarHostState.showSnackbar(message = state.message, duration = SnackbarDuration.Short)
+            libraryViewModel.consumeOpenNextChapterError()
+        }
+    }
+
+    LaunchedEffect(downloadRetryPrompt) {
+        downloadRetryPrompt?.let { prompt ->
+            val result = snackbarHostState.showSnackbar(
+                message = prompt.message,
+                actionLabel = prompt.actionLabel,
+                duration = SnackbarDuration.Short,
+                withDismissAction = true
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                libraryViewModel.retryDownloads(prompt.urls)
+            }
+            libraryViewModel.consumeDownloadRetryPrompt()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -127,7 +155,7 @@ fun LibraryScreen(
                     IconButton(onClick = { navController.navigate(ExploreRoute) }) {
                         Icon(
                             imageVector = Icons.Default.TravelExplore,
-                            contentDescription = "Discover sources"
+                            contentDescription = "Explore sources"
                         )
                     }
                     IconButton(onClick = { isAddSectionVisible = !isAddSectionVisible }) {
@@ -136,6 +164,14 @@ fun LibraryScreen(
                             contentDescription = if (isAddSectionVisible) "Hide add tools" else "Add or import"
                         )
                     }
+                    LibraryOverflowMenu(
+                        sortMode = sortMode,
+                        onSortModeSelected = { libraryViewModel.setSortMode(it) },
+                        onDownloadAll = {
+                            libraryViewModel.prefetchLibrary()
+                            scope.launch { snackbarHostState.showSnackbar("Refreshing offline cache…") }
+                        }
+                    )
                     IconButton(onClick = { navController.navigate(SettingsRoute) }) {
                         Icon(
                             imageVector = Icons.Default.Settings,
@@ -154,6 +190,11 @@ fun LibraryScreen(
                 .padding(paddingValues)
                 .padding(horizontal = EasyReaderSpacing.md, vertical = EasyReaderSpacing.md)
         ) {
+            if (openNextChapterState is OpenNextChapterState.Loading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
+            }
+
             AnimatedVisibility(
                 visible = isAddSectionVisible,
                 enter = expandVertically(animationSpec = tween(EasyReaderMotion.medium)) + fadeIn(animationSpec = tween(EasyReaderMotion.short)),
@@ -241,21 +282,12 @@ fun LibraryScreen(
                     query = searchQuery
                 )
             } else {
-                var isRefreshing by remember { mutableStateOf(false) }
                 val pullState = rememberPullToRefreshState()
-
-                LaunchedEffect(libraryUiState.isLoading) {
-                    if (!libraryUiState.isLoading) isRefreshing = false
-                }
 
                 PullToRefreshBox(
                     isRefreshing = isRefreshing,
                     state = pullState,
-                    onRefresh = {
-                        isRefreshing = true
-                        libraryViewModel.prefetchLibrary()
-                        scope.launch { snackbarHostState.showSnackbar("Refreshing offline cache…") }
-                    },
+                    onRefresh = { libraryViewModel.refreshUpdates() },
                     modifier = Modifier.fillMaxSize()
                 ) {
                     LibraryItemList(
@@ -269,6 +301,63 @@ fun LibraryScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun LibraryOverflowMenu(
+    sortMode: SortMode,
+    onSortModeSelected: (SortMode) -> Unit,
+    onDownloadAll: () -> Unit
+): Unit {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(imageVector = Icons.Default.MoreVert, contentDescription = "More options")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            Text(
+                text = "Sort by",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(
+                    horizontal = EasyReaderSpacing.md,
+                    vertical = EasyReaderSpacing.xs
+                )
+            )
+            SortMode.entries.forEach { mode ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            when (mode) {
+                                SortMode.LAST_READ -> "Last read"
+                                SortMode.DATE_ADDED -> "Date added"
+                                SortMode.TITLE -> "Title"
+                                SortMode.PROGRESS -> "Progress"
+                            }
+                        )
+                    },
+                    leadingIcon = {
+                        if (mode == sortMode) {
+                            Icon(imageVector = Icons.Default.Check, contentDescription = null)
+                        }
+                    },
+                    onClick = {
+                        expanded = false
+                        onSortModeSelected(mode)
+                    }
+                )
+            }
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("Download all chapters") },
+                leadingIcon = { Icon(imageVector = Icons.Default.Download, contentDescription = null) },
+                onClick = {
+                    expanded = false
+                    onDownloadAll()
+                }
+            )
         }
     }
 }
@@ -570,7 +659,7 @@ private fun EmptyLibraryState(
                     text = if (isFilteredEmpty)
                         "No titles match your search. Try different words or clear the search to see everything."
                     else
-                        "Add a title from Discover or import a file to start building your shelf.",
+                        "Add a title from Explore or import a file to start building your shelf.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center

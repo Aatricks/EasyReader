@@ -59,6 +59,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.ChapterInfo
+import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.model.isStrictOfflineReady
 import io.aatricks.easyreader.data.model.libraryDisplayTitle
@@ -85,6 +86,8 @@ fun ChapterListSheet(
     val selectedChapterUrls = remember { mutableStateListOf<String>() }
     val chaptersListState = rememberLazyListState()
     val libraryUiState by libraryViewModel.uiState.collectAsState()
+    val cacheStates by libraryViewModel.chapterCacheStates.collectAsState()
+    val downloadFailures by libraryViewModel.downloadFailures.collectAsState()
     var pendingBulkDelete by remember { mutableStateOf<Set<String>?>(null) }
 
     ModalBottomSheet(
@@ -93,42 +96,45 @@ fun ChapterListSheet(
         containerColor = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface
     ) {
-        val libraryItemsInGroup = libraryUiState.groupedItems[uiState.baseTitle]
-            ?: libraryUiState.items.filter {
-                it.libraryDisplayTitle().equals(uiState.baseTitle, ignoreCase = true) ||
-                    it.baseTitle.equals(uiState.baseTitle, ignoreCase = true) ||
-                    it.title.equals(uiState.baseTitle, ignoreCase = true)
-            }
-        val libraryItemsByUrl = libraryItemsInGroup.associateBy { it.url }
-        val libraryItemsByNormalizedUrl = libraryItemsInGroup.associateBy { normalizeChapterUrl(it.url) }
-        val libraryUrls = libraryItemsInGroup.map { it.url }.toSet()
-        val downloadedUrls = libraryItemsInGroup
-            .asSequence()
-            .filter { it.isDownloaded }
-            .map { it.url }
-            .toSet()
-        val readUrls = libraryItemsInGroup.filter { it.progress == 100 }.map { it.url }.toSet()
-
-        val allChapters = normalizeChapterList(
-            uiState.fullChapterList.ifEmpty {
-                libraryItemsInGroup.map {
-                    ChapterInfo(it.currentChapter.ifBlank { it.title }, it.url)
+        val libraryItemsInGroup = remember(
+            libraryUiState.groupedItems,
+            libraryUiState.items,
+            uiState.baseTitle
+        ) {
+            libraryUiState.groupedItems[uiState.baseTitle]
+                ?: libraryUiState.items.filter {
+                    it.libraryDisplayTitle().equals(uiState.baseTitle, ignoreCase = true) ||
+                        it.baseTitle.equals(uiState.baseTitle, ignoreCase = true) ||
+                        it.title.equals(uiState.baseTitle, ignoreCase = true)
                 }
-            }
-        )
-        val cacheStates = libraryUiState.chapterCacheStates
+        }
+        val group = remember(libraryItemsInGroup) { ChapterGroupIndex(libraryItemsInGroup) }
 
-        val filteredChapters = if (isSelectionMode) {
-            if (isDeleteMode) {
-                allChapters.filter { ch -> libraryUrls.any { areChapterUrlsMatching(it, ch.url) } }
-            } else {
-                allChapters.filter { ch -> downloadedUrls.none { areChapterUrlsMatching(it, ch.url) } }
-            }
-        } else {
-            allChapters
+        val allChapters = remember(uiState.fullChapterList, libraryItemsInGroup) {
+            normalizeChapterList(
+                uiState.fullChapterList.ifEmpty {
+                    libraryItemsInGroup.map {
+                        ChapterInfo(it.currentChapter.ifBlank { it.title }, it.url)
+                    }
+                }
+            )
         }
 
-        val currentIndex = matchChapterIndex(filteredChapters, uiState.content?.url, uiState.chapterTitle)
+        val filteredChapters = remember(allChapters, group, isSelectionMode, isDeleteMode) {
+            when {
+                !isSelectionMode -> allChapters
+                isDeleteMode -> allChapters.filter { chapterMatchKey(it.url) in group.libraryKeys }
+                else -> allChapters.filter { chapterMatchKey(it.url) !in group.downloadedKeys }
+            }
+        }
+
+        val rows = remember(filteredChapters, group, uiState.content?.url, uiState.chapterTitle) {
+            group.buildRows(filteredChapters, uiState.content?.url, uiState.chapterTitle)
+        }
+        val currentIndex = rows.indexOfFirst { it.isCurrent }
+        val failedKeys = remember(downloadFailures) {
+            downloadFailures.mapTo(mutableSetOf()) { chapterMatchKey(it) }
+        }
 
         LaunchedEffect(allChapters) {
             libraryViewModel.refreshChapterCacheStates(allChapters.map { it.url })
@@ -170,8 +176,8 @@ fun ChapterListSheet(
                                 computeUnreadChapterSelection(
                                     allChapters = allChapters,
                                     currentChapterUrl = uiState.content?.url,
-                                    readUrls = readUrls,
-                                    downloadedUrls = downloadedUrls
+                                    readUrls = group.readUrls,
+                                    downloadedUrls = group.downloadedUrls
                                 )
                             )
                         },
@@ -179,7 +185,7 @@ fun ChapterListSheet(
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.PlaylistAddCheck,
-                                contentDescription = stringResource(R.string.chapter_filter_unread),
+                                contentDescription = null,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -190,13 +196,13 @@ fun ChapterListSheet(
                             isSelectionMode = true
                             isDeleteMode = true
                             selectedChapterUrls.clear()
-                            selectedChapterUrls.addAll(libraryUrls)
+                            selectedChapterUrls.addAll(group.urls)
                         },
                         label = { Text(stringResource(R.string.chapter_filter_in_library)) },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.LibraryAddCheck,
-                                contentDescription = stringResource(R.string.chapter_filter_in_library),
+                                contentDescription = null,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -213,7 +219,7 @@ fun ChapterListSheet(
                         onClick = {
                             if (isDeleteMode) {
                                 val idsToRemove = selectedChapterUrls.mapNotNull { url ->
-                                    libraryItemsInGroup.find { it.url == url }?.id
+                                    group.find(url)?.id
                                 }.toSet()
                                 if (idsToRemove.isNotEmpty()) {
                                     pendingBulkDelete = idsToRemove
@@ -285,25 +291,25 @@ fun ChapterListSheet(
                         .heightIn(max = 450.dp),
                     verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)
                 ) {
-                    itemsIndexed(filteredChapters, key = { _, chapter -> chapter.url }) { index, chapter ->
-                        val cacheState = cacheStates[chapter.url]
-                        val libraryItem = libraryItemsByUrl[chapter.url]
-                            ?: libraryItemsByNormalizedUrl[normalizeChapterUrl(chapter.url)]
-                            ?: libraryItemsInGroup.find { areChapterUrlsMatching(it.url, chapter.url) }
-                        val isDownloaded = libraryItem?.isDownloaded == true ||
-                            downloadedUrls.any { areChapterUrlsMatching(it, chapter.url) }
-                        val isInLibrary = libraryItem != null ||
-                            chapter.url in libraryUrls ||
-                            libraryUrls.any { areChapterUrlsMatching(it, chapter.url) }
+                    itemsIndexed(rows, key = { _, row -> row.chapter.url }) { index, row ->
+                        val chapter = row.chapter
+                        val libraryItem = row.libraryItem
                         val isSelected = chapter.url in selectedChapterUrls
-                        val isCurrent = areChapterUrlsMatching(chapter.url, uiState.content?.url) ||
-                            (currentIndex >= 0 && index == currentIndex)
-                        val statusKind = chapterCacheStatusKind(
+                        val isCurrent = row.isCurrent
+                        val resolvedKind = chapterCacheStatusKind(
                             isCurrent = isCurrent,
-                            cacheState = cacheState,
-                            isInLibrary = isInLibrary,
-                            isDownloaded = isDownloaded
+                            cacheState = cacheStates[chapter.url],
+                            isInLibrary = libraryItem != null,
+                            isDownloaded = row.isDownloaded
                         )
+                        // A failed download leaves nothing on disk, so the inspect-driven status
+                        // degrades to the plain "In library" label; the failure set is what tells
+                        // these apart.
+                        val statusKind = if (resolvedKind == ChapterStatus.InLibrary && row.matchKey in failedKeys) {
+                            ChapterStatus.DownloadFailed
+                        } else {
+                            resolvedKind
+                        }
                         val isOfflineReady = statusKind == ChapterStatus.Downloaded
                         val isDownloading = statusKind == ChapterStatus.Caching
                         val statusText = chapterCacheStatusLabel(statusKind)
@@ -350,7 +356,9 @@ fun ChapterListSheet(
                                         IconButton(
                                             onClick = {
                                                 if (libraryItem != null) {
-                                                    libraryViewModel.retryDownload(chapter.url)
+                                                    // The offline store is keyed by the library
+                                                    // row's own URL, not the list URL's spelling.
+                                                    libraryViewModel.retryDownload(libraryItem.url)
                                                 } else {
                                                     libraryViewModel.addChapters(
                                                         chapters = listOf(chapter),
@@ -414,13 +422,16 @@ fun ChapterListSheet(
                                                 selectedChapterUrls.add(chapter.url)
                                             }
                                         } else {
-                                            onNavigateToChapter(chapter.url, chapter.title)
+                                            // Open the library row's stored URL when there is one:
+                                            // that is the key the offline store was written under,
+                                            // and the list URL may spell it differently.
+                                            onNavigateToChapter(libraryItem?.url ?: chapter.url, chapter.title)
                                         }
                                     },
                                     onLongClick = {
                                         if (!isSelectionMode) {
                                             isSelectionMode = true
-                                            isDeleteMode = isInLibrary
+                                            isDeleteMode = libraryItem != null
                                             selectedChapterUrls.clear()
                                             selectedChapterUrls.add(chapter.url)
                                         }
@@ -435,7 +446,7 @@ fun ChapterListSheet(
                             )
                         )
 
-                        if (index < filteredChapters.lastIndex) {
+                        if (index < rows.lastIndex) {
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         }
                     }
@@ -482,6 +493,62 @@ fun ChapterListSheet(
 }
 
 /**
+ * Key two chapter URLs match on. Equality here is exactly [areChapterUrlsMatching]: scheme, `www.`
+ * and trailing-slash insensitive. Indexing on it turns the sheet's per-row fuzzy scans (a URI parse
+ * per library row per chapter) into map lookups.
+ */
+private fun chapterMatchKey(url: String): String = normalizeChapterUrl(url).substringAfter("://")
+
+private data class ChapterRowInfo(
+    val chapter: ChapterInfo,
+    val matchKey: String,
+    val libraryItem: LibraryItem?,
+    val isDownloaded: Boolean,
+    val isCurrent: Boolean
+)
+
+/** Match-key index over the library rows of one novel, rebuilt only when those rows change. */
+private class ChapterGroupIndex(items: List<LibraryItem>) {
+    // Reversed so the first matching row wins, as the previous `find` did.
+    private val byMatchKey: Map<String, LibraryItem> =
+        items.asReversed().associateBy { chapterMatchKey(it.url) }
+    val libraryKeys: Set<String> = byMatchKey.keys
+    val downloadedKeys: Set<String> =
+        items.asSequence().filter { it.isDownloaded }.mapTo(mutableSetOf()) { chapterMatchKey(it.url) }
+    val urls: Set<String> = items.mapTo(mutableSetOf()) { it.url }
+    val downloadedUrls: Set<String> =
+        items.asSequence().filter { it.isDownloaded }.mapTo(mutableSetOf()) { it.url }
+    val readUrls: Set<String> =
+        items.asSequence().filter { it.progress == READ_PROGRESS }.mapTo(mutableSetOf()) { it.url }
+
+    fun find(url: String): LibraryItem? = byMatchKey[chapterMatchKey(url)]
+
+    fun buildRows(
+        chapters: List<ChapterInfo>,
+        currentUrl: String?,
+        currentTitle: String?
+    ): List<ChapterRowInfo> {
+        val currentKey = currentUrl?.takeIf { it.isNotBlank() }?.let(::chapterMatchKey)
+        val currentIndex = matchChapterIndex(chapters, currentUrl, currentTitle)
+        return chapters.mapIndexed { index, chapter ->
+            val key = chapterMatchKey(chapter.url)
+            val libraryItem = byMatchKey[key]
+            ChapterRowInfo(
+                chapter = chapter,
+                matchKey = key,
+                libraryItem = libraryItem,
+                isDownloaded = libraryItem?.isDownloaded == true || key in downloadedKeys,
+                isCurrent = key == currentKey || index == currentIndex
+            )
+        }
+    }
+
+    private companion object {
+        const val READ_PROGRESS = 100
+    }
+}
+
+/**
  * Status kind for a chapter row. Plain data so this function stays unit-testable;
  * callers translate to user strings via [ChapterStatus.label].
  */
@@ -490,6 +557,7 @@ internal sealed class ChapterStatus {
     data object Downloaded : ChapterStatus()
     data object Caching : ChapterStatus()
     data object VerifyingDownload : ChapterStatus()
+    data object DownloadFailed : ChapterStatus()
     data class DownloadIncomplete(val cached: Int, val total: Int) : ChapterStatus()
     data object InLibrary : ChapterStatus()
 }
@@ -538,6 +606,7 @@ internal fun chapterCacheStatusText(
     ChapterStatus.Downloaded -> "Downloaded"
     ChapterStatus.Caching -> "Downloading..."
     ChapterStatus.VerifyingDownload -> "Verifying download..."
+    ChapterStatus.DownloadFailed -> "Download failed"
     is ChapterStatus.DownloadIncomplete -> "Download incomplete: ${kind.cached}/${kind.total} images"
     ChapterStatus.InLibrary -> "In library"
     null -> null
@@ -549,6 +618,7 @@ internal fun chapterCacheStatusLabel(status: ChapterStatus?): String? = when (st
     ChapterStatus.Downloaded -> stringResource(R.string.chapter_status_downloaded)
     ChapterStatus.Caching -> stringResource(R.string.chapter_status_caching)
     ChapterStatus.VerifyingDownload -> stringResource(R.string.chapter_status_verifying_download)
+    ChapterStatus.DownloadFailed -> stringResource(R.string.chapter_status_download_failed)
     is ChapterStatus.DownloadIncomplete -> stringResource(
         R.string.chapter_status_download_incomplete,
         status.cached,

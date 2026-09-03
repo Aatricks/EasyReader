@@ -75,6 +75,7 @@
     <string name="chapter_status_saved_offline">Disponible hors ligne</string>
     <string name="chapter_status_caching">Téléchargement…</string>
     <string name="chapter_status_verifying_download">Vérification du téléchargement…</string>
+    <string name="chapter_status_download_failed">Échec du téléchargement</string>
     <string name="chapter_status_in_library">Dans la bibliothèque</string>
     <string name="chapter_status_download_incomplete">Téléchargement incomplet : %1$d/%2$d images</string>
     <string name="chapter_selection_count">%1$d sélectionné(s)</string>

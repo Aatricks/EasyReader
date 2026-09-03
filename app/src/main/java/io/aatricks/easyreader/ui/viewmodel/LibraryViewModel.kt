@@ -26,6 +26,7 @@ import android.util.Log
 import io.aatricks.easyreader.ui.screens.DrawerNovelSections
 import io.aatricks.easyreader.ui.screens.buildDrawerNovelSections
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import io.aatricks.easyreader.data.model.libraryDisplayTitle
 import io.aatricks.easyreader.data.model.libraryNovelKey
 import io.aatricks.easyreader.data.model.resolvedChapterNumber
@@ -76,49 +77,36 @@ class LibraryViewModel @Inject constructor(
     )
     val pendingDeletion: StateFlow<Set<String>> = deletionCoordinator.pendingDeletion
 
+    /**
+     * Per-chapter badge state. Deliberately NOT part of [uiState]: a download progress tick must not
+     * re-run the whole-library filter/group/sort that the ui state combine performs.
+     */
+    val chapterCacheStates: StateFlow<Map<String, PrefetchResult>> = downloadStates.chapterCacheStates
+
+    /** Chapters whose queued download ended in failure; cleared when the download is re-queued. */
+    val downloadFailures: StateFlow<Set<String>> = downloadStates.downloadFailures
+
+    val downloadRetryPrompt: StateFlow<DownloadRetryPrompt?> = downloadStates.retryPrompt
+
+    private val _openNextChapterState = MutableStateFlow<OpenNextChapterState>(OpenNextChapterState.Idle)
+    val openNextChapterState: StateFlow<OpenNextChapterState> = _openNextChapterState.asStateFlow()
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
     init {
         _collapsedSources.value = repository.loadCollapsedSources()
-        backfillMissingCovers()
     }
 
-    private fun backfillMissingCovers() {
+    /**
+     * Fetches covers for library novels that have none. Screen-triggered rather than run from
+     * `init`: the ViewModel is also created off the reader's drawer, where a fan-out of novel-detail
+     * fetches has no visible payoff. Still at most once per process.
+     */
+    fun backfillMissingCovers(): Unit {
         if (coversBackfillAttempted.compareAndSet(false, true)) {
             viewModelScope.launch(defaultDispatcher) {
-                runCatching {
-                    val items = repository.getAllItemsSnapshot()
-                    val itemsToBackfill = items.filter {
-                        it.coverImageUrl.isBlank() && it.contentType == ContentType.WEB
-                    }
-                    if (itemsToBackfill.isEmpty()) return@launch
-
-                    val grouped = itemsToBackfill.groupBy { it.libraryNovelKey() }
-                    val semaphore = Semaphore(BACKFILL_CONCURRENCY)
-                    val jobs = grouped.values.map { novelGroup ->
-                        async {
-                            semaphore.withPermit {
-                                val firstItem = novelGroup.first()
-                                val url = firstItem.baseNovelUrl.ifBlank { firstItem.url }
-                                val sourceName = firstItem.sourceName
-                                val displayTitle = firstItem.libraryDisplayTitle()
-                                
-                                runCatching {
-                                    val knownSources = exploreRepository.getSourceNames()
-                                    val details = if (knownSources.contains(sourceName)) {
-                                        exploreRepository.getNovelDetails(url, sourceName)
-                                    } else {
-                                        exploreRepository.getNovelDetailsByUrl(url)
-                                    }
-                                    
-                                    val coverUrl = details?.coverUrl
-                                    if (!coverUrl.isNullOrBlank()) {
-                                        repository.updateCoverImageUrl(displayTitle, sourceName, coverUrl)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    jobs.awaitAll()
-                }
+                runCatching { backfillCovers(repository, exploreRepository) }
             }
         }
     }
@@ -137,11 +125,10 @@ class LibraryViewModel @Inject constructor(
             Triple(items, selected, collapsed) to selectionModeEnabled
         },
         combine(
-            downloadStates.chapterCacheStates,
             deletionCoordinator.pendingDeletion,
             filters.statusFilter
-        ) { c, p, s ->
-            Triple(c, p, s)
+        ) { p, s ->
+            p to s
         },
         combine(
             filters.searchQuery,
@@ -151,10 +138,10 @@ class LibraryViewModel @Inject constructor(
             Triple(query, filter, sort)
         },
         _uiState
-    ) { repoState, cachePending, filterParams, manualUiState ->
+    ) { repoState, pendingStatus, filterParams, manualUiState ->
         val (repoData, selectionModeEnabled) = repoState
         val (rawItems, selectedIds, collapsedSources) = repoData
-        val (cacheStates, pendingIds, statusFilter) = cachePending
+        val (pendingIds, statusFilter) = pendingStatus
         val (query, filter, sort) = filterParams
 
         val items = if (pendingIds.isEmpty()) rawItems else rawItems.filterNot { it.id in pendingIds }
@@ -171,7 +158,6 @@ class LibraryViewModel @Inject constructor(
             selectedCount = selectedIds.size,
             isEmpty = items.isEmpty(),
             currentlyReading = items.find { it.isCurrentlyReading },
-            chapterCacheStates = cacheStates,
             isLoading = manualUiState.isLoading,
             error = manualUiState.error,
             snackbarMessage = manualUiState.snackbarMessage
@@ -222,8 +208,7 @@ class LibraryViewModel @Inject constructor(
         val selectedIds: Set<String> = emptySet(),
         val selectedCount: Int = 0,
         val isEmpty: Boolean = true,
-        val currentlyReading: LibraryItem? = null,
-        val chapterCacheStates: Map<String, PrefetchResult> = emptyMap()
+        val currentlyReading: LibraryItem? = null
     )
 
     data class DrawerUiState(
@@ -501,7 +486,7 @@ class LibraryViewModel @Inject constructor(
         if (openNewChapterJob?.isActive == true) return
         openNewChapterJob = viewModelScope.launch {
             runCatching {
-                updateState { it.copy(isLoading = true) }
+                _openNextChapterState.value = OpenNextChapterState.Loading
                 val details = exploreRepository.getNovelDetails(item.baseNovelUrl, item.sourceName)
                 val normalizedChapters = normalizeChapterList(details?.chapters.orEmpty())
                 if (details == null || normalizedChapters.isEmpty()) {
@@ -510,32 +495,41 @@ class LibraryViewModel @Inject constructor(
 
                 val nextChapter = selectNextChapter(normalizedChapters, item.resolvedChapterNumber())
                     ?: throw Exception("No latest chapter found for this novel")
-                var target = repository.getItemByUrl(nextChapter.url)
-
-                if (target == null) {
-                    target = repository.addItem(
-                        title = nextChapter.title,
-                        url = nextChapter.url,
-                        contentType = ContentType.WEB,
-                        currentChapter = TextUtils.extractChapterLabel(nextChapter.title)
-                            ?: TextUtils.extractChapterLabelFromUrl(nextChapter.url)
-                            ?: nextChapter.title,
-                        baseTitle = item.libraryDisplayTitle(),
-                        baseNovelUrl = item.baseNovelUrl,
-                        sourceName = item.sourceName,
-                        totalChapters = normalizedChapters.size
-                    )
-                } else if (target.totalChapters < normalizedChapters.size) {
-                    repository.updateItem(target.copy(totalChapters = normalizedChapters.size))
-                }
+                val target = adoptChapterIntoSeries(repository, item, nextChapter, normalizedChapters.size)
 
                 repository.clearUpdateIndicator(item.id)
                 onChapterLoaded(target.url, target.id)
-                updateState { it.copy(isLoading = false) }
+                _openNextChapterState.value = OpenNextChapterState.Idle
             }.rethrowCancellation().onFailure { e ->
                 Log.e(TAG, "Failed to open new chapter", e)
-                updateState { it.copy(isLoading = false, error = "Failed to load new chapter: ${e.message}") }
+                _openNextChapterState.value =
+                    OpenNextChapterState.Error("Failed to load new chapter: ${e.message}")
             }
+        }
+    }
+
+    fun consumeOpenNextChapterError(): Unit {
+        if (_openNextChapterState.value is OpenNextChapterState.Error) {
+            _openNextChapterState.value = OpenNextChapterState.Idle
+        }
+    }
+
+    /**
+     * Pull-to-refresh: check the sources for new chapters (the same refresh the periodic
+     * [io.aatricks.easyreader.work.LibraryUpdateWorker] runs), then re-verify download state.
+     * [isRefreshing] stays true for the whole check so the indicator doesn't flash.
+     */
+    fun refreshUpdates(): Unit {
+        if (_isRefreshing.value) return
+        _isRefreshing.value = true
+        viewModelScope.launch {
+            runCatching {
+                repository.refreshLibraryUpdates(exploreRepository, ignoreActivityThreshold = true)
+            }.onFailure { e ->
+                updateState { it.copy(error = "Update check failed: ${e.message}") }
+            }
+            reconcileDownloadedItemsOnDemand()
+            _isRefreshing.value = false
         }
     }
 
@@ -559,6 +553,14 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    fun retryDownloads(urls: List<String>): Unit {
+        urls.forEach { retryDownload(it) }
+    }
+
+    fun consumeDownloadRetryPrompt(): Unit {
+        downloadStates.consumeRetryPrompt()
+    }
+
     fun retryDownload(url: String): Unit {
         viewModelScope.launch {
             runCatching { contentRepository.clearPermanentFailures(url) }
@@ -577,13 +579,7 @@ class LibraryViewModel @Inject constructor(
     fun removeDownload(itemId: String): Unit {
         viewModelScope.launch {
             val item = repository.getItemById(itemId) ?: return@launch
-            downloadQueue.cancel(item.url)
-            runCatching {
-                contentRepository.clearDownload(item.url)
-                repository.markDownloaded(itemId, false)
-            }.onSuccess {
-                downloadStates.refreshChapterCacheStates(listOf(item.url))
-            }
+            downloadStates.removeDownload(item)
         }
     }
 
@@ -693,7 +689,13 @@ class LibraryViewModel @Inject constructor(
             downloadQueue.cancelAll()
             runCatching {
                 contentRepository.clearAllDownloads()
-                downloaded.forEach { repository.markDownloaded(it.id, false) }
+                downloaded.forEach { item ->
+                    downloadStatusReconciler.reconcile(
+                        item,
+                        contentRepository.inspectDownload(item.url),
+                        wasUserInspect = true
+                    )
+                }
             }.onSuccess {
                 downloadStates.refreshChapterCacheStates(downloaded.map { it.url })
             }.onFailure { e ->
@@ -740,8 +742,90 @@ class LibraryViewModel @Inject constructor(
         var defaultDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default
         var isUnderTest: Boolean = false
         val coversBackfillAttempted = AtomicBoolean(false)
-        private const val BACKFILL_CONCURRENCY = 3
     }
+}
+
+/** One-shot snackbar prompt whose action re-queues [urls]. */
+data class DownloadRetryPrompt(
+    val message: String,
+    val actionLabel: String,
+    val urls: List<String>
+)
+
+/**
+ * Progress/error for "read next" opened from the reader's library drawer. Separate from
+ * [LibraryViewModel.LibraryUiState] because the drawer never observes the library screen's state.
+ */
+sealed interface OpenNextChapterState {
+    data object Idle : OpenNextChapterState
+    data object Loading : OpenNextChapterState
+    data class Error(val message: String) : OpenNextChapterState
+}
+
+/**
+ * The library row for [nextChapter] of [series], inserting it if the user never opened that chapter,
+ * and keeping the stored chapter count in step with the source's current list.
+ */
+private suspend fun adoptChapterIntoSeries(
+    repository: LibraryRepository,
+    series: LibraryItem,
+    nextChapter: ChapterInfo,
+    totalChapters: Int
+): LibraryItem {
+    val existing = repository.getItemByUrl(nextChapter.url)
+    if (existing != null) {
+        if (existing.totalChapters < totalChapters) {
+            repository.updateItem(existing.copy(totalChapters = totalChapters))
+        }
+        return existing
+    }
+    return repository.addItem(
+        title = nextChapter.title,
+        url = nextChapter.url,
+        contentType = ContentType.WEB,
+        currentChapter = TextUtils.extractChapterLabel(nextChapter.title)
+            ?: TextUtils.extractChapterLabelFromUrl(nextChapter.url)
+            ?: nextChapter.title,
+        baseTitle = series.libraryDisplayTitle(),
+        baseNovelUrl = series.baseNovelUrl,
+        sourceName = series.sourceName,
+        totalChapters = totalChapters
+    )
+}
+
+private const val BACKFILL_CONCURRENCY = 3
+
+/** Fetches and stores a cover for every cover-less WEB novel, [BACKFILL_CONCURRENCY] at a time. */
+private suspend fun backfillCovers(
+    repository: LibraryRepository,
+    exploreRepository: ExploreRepository
+) = coroutineScope {
+    val itemsToBackfill = repository.getAllItemsSnapshot().filter {
+        it.coverImageUrl.isBlank() && it.contentType == ContentType.WEB
+    }
+    if (itemsToBackfill.isEmpty()) return@coroutineScope
+
+    val semaphore = Semaphore(BACKFILL_CONCURRENCY)
+    itemsToBackfill.groupBy { it.libraryNovelKey() }.values.map { novelGroup ->
+        async {
+            semaphore.withPermit {
+                val firstItem = novelGroup.first()
+                val url = firstItem.baseNovelUrl.ifBlank { firstItem.url }
+                val sourceName = firstItem.sourceName
+                runCatching {
+                    val knownSources = exploreRepository.getSourceNames()
+                    val details = if (knownSources.contains(sourceName)) {
+                        exploreRepository.getNovelDetails(url, sourceName)
+                    } else {
+                        exploreRepository.getNovelDetailsByUrl(url)
+                    }
+                    details?.coverUrl?.takeIf { it.isNotBlank() }?.let { coverUrl ->
+                        repository.updateCoverImageUrl(firstItem.libraryDisplayTitle(), sourceName, coverUrl)
+                    }
+                }
+            }
+        }
+    }.awaitAll()
 }
 
 /**

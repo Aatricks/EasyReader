@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -196,7 +197,7 @@ private fun chapterRowActions(presentation: ChapterRowPresentation, context: Lib
             modifier = Modifier.minimumInteractiveComponentSize()
         ) {
             Icon(
-                imageVector = Icons.Default.DownloadDone,
+                imageVector = Icons.Outlined.Delete,
                 contentDescription = "Remove download",
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(REMOVE_DOWNLOAD_ICON_SIZE_DP.dp)

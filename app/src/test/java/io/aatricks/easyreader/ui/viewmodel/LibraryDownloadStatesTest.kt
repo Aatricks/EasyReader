@@ -317,6 +317,71 @@ class LibraryDownloadStatesTest {
     }
 
     @Test
+    fun `terminal first emission ends a locally pending download`() = runTest(testDispatcher) {
+        // The worker fast path can finish before WorkManager ever reports ENQUEUED/RUNNING, so the
+        // url never enters queueInProgressUrls and only the local pending state marks it in flight.
+        val url = "https://example.com/chapter10"
+        val item = LibraryItem(id = "item-id", title = "Chapter 10", url = url, isDownloaded = true)
+        val onDisk = PrefetchResult(
+            url = url,
+            htmlCached = true,
+            totalImages = 3,
+            cachedImages = 3,
+            isComplete = true,
+            isPersistentDownload = true
+        )
+        whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(listOf(item)))
+        whenever(contentRepository.inspectDownload(url)).thenReturn(onDisk)
+
+        downloadStates.markPendingAndEnqueue(url)
+        testScheduler.advanceUntilIdle()
+        assertTrue(downloadStates.chapterCacheStates.value[url]?.isInProgress == true)
+
+        fakeQueue.results.value = mapOf(
+            url to PrefetchResult(
+                url = url,
+                htmlCached = true,
+                totalImages = 3,
+                cachedImages = 3,
+                isComplete = true,
+                isInProgress = false
+            )
+        )
+        testScheduler.advanceUntilIdle()
+
+        verify(contentRepository).inspectDownload(url)
+        assertEquals(onDisk, downloadStates.chapterCacheStates.value[url])
+        assertTrue(downloadStates.downloadFailures.value.isEmpty())
+    }
+
+    @Test
+    fun `terminal failure for a pending download is surfaced and cleared on retry`() = runTest(testDispatcher) {
+        val url = "https://example.com/chapter11"
+
+        downloadStates.markPendingAndEnqueue(url)
+        testScheduler.advanceUntilIdle()
+
+        fakeQueue.results.value = mapOf(
+            url to PrefetchResult(
+                url = url,
+                htmlCached = false,
+                totalImages = 0,
+                cachedImages = 0,
+                isComplete = false,
+                isInProgress = false
+            )
+        )
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(setOf(url), downloadStates.downloadFailures.value)
+
+        downloadStates.markPendingAndEnqueue(url, replaceExisting = true)
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(downloadStates.downloadFailures.value.isEmpty())
+    }
+
+    @Test
     fun `removeCacheStates drops entries`() = runTest(testDispatcher) {
         val url1 = "https://example.com/chapter9a"
         val url2 = "https://example.com/chapter9b"

@@ -75,6 +75,7 @@
     <string name="chapter_status_saved_offline">Saved offline</string>
     <string name="chapter_status_caching">Downloading…</string>
     <string name="chapter_status_verifying_download">Verifying download…</string>
+    <string name="chapter_status_download_failed">Download failed</string>
     <string name="chapter_status_in_library">In library</string>
     <string name="chapter_status_download_incomplete">Download incomplete: %1$d/%2$d images</string>
     <string name="chapter_selection_count">%1$d selected</string>

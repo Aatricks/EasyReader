@@ -34,6 +34,8 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -52,6 +54,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -99,16 +102,27 @@ internal fun LibraryItemList(
     val expandedNovelState = remember { mutableStateMapOf<String, Boolean>() }
     val showFullChaptersState = remember { mutableStateMapOf<String, Boolean>() }
     val expandedSummaryState = remember { mutableStateMapOf<String, String?>() }
-    val renderItems = flattenLibraryItems(
-        LibraryFlattenState(
-            groupedBySource = uiState.groupedBySource,
-            collapsedSources = uiState.collapsedSources,
-            expandedNovels = expandedNovelState,
-            showFullChapters = showFullChaptersState,
-            expandedSummaryChapterUrls = expandedSummaryState,
-            isSelectionMode = uiState.isSelectionMode
-        )
-    )
+    // Keyed on the grouping inputs; derivedStateOf so the expand/collapse state maps (snapshot
+    // state read inside the flattener) still invalidate it. Without this the whole library is
+    // re-flattened on every unrelated recomposition, e.g. each reader scroll-progress tick.
+    val renderItems by remember(
+        uiState.groupedBySource,
+        uiState.collapsedSources,
+        uiState.isSelectionMode
+    ) {
+        derivedStateOf {
+            flattenLibraryItems(
+                LibraryFlattenState(
+                    groupedBySource = uiState.groupedBySource,
+                    collapsedSources = uiState.collapsedSources,
+                    expandedNovels = expandedNovelState,
+                    showFullChapters = showFullChaptersState,
+                    expandedSummaryChapterUrls = expandedSummaryState,
+                    isSelectionMode = uiState.isSelectionMode
+                )
+            )
+        }
+    }
     val context = LibraryRenderContext(
         uiState = uiState,
         readerUiState = readerUiState,
@@ -268,6 +282,14 @@ private fun novelGroupCard(
     val isExpanded = header.isExpanded
     val isGroupSelected = items.all { it.id in uiState.selectedIds }
     val hasGroupSelection = items.any { it.id in uiState.selectedIds }
+    var showResetConfirmation by remember { mutableStateOf(false) }
+
+    if (showResetConfirmation) {
+        ResetProgressDialog(title, onDismiss = { showResetConfirmation = false }) {
+            showResetConfirmation = false
+            libraryViewModel.resetNovelProgress(title)
+        }
+    }
 
     Card(
         modifier = Modifier
@@ -308,11 +330,41 @@ private fun novelGroupCard(
                         onCloseLibrary()
                     }
                 },
-                onResetProgress = { libraryViewModel.resetNovelProgress(title) },
+                onResetProgress = { showResetConfirmation = true },
                 onRemoveGroup = { libraryViewModel.removeGroup(title) }
             )
         }
     }
+}
+
+@Composable
+private fun ResetProgressDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.RestartAlt,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error
+            )
+        },
+        title = { Text("Reset reading progress?") },
+        text = { Text("Clears your position in every chapter of \"$title\". Downloads are kept.") },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Reset", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
