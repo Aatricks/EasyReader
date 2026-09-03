@@ -5,6 +5,7 @@ import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.model.ExploreItem
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.PrefetchResult
+import io.aatricks.easyreader.data.model.SortMode
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.DownloadStatusReconciler
 import io.aatricks.easyreader.data.repository.ExploreRepository
@@ -426,6 +427,11 @@ class LibraryViewModelTest {
         assertEquals(bySource, vm.uiState.value.groupedBySource)
         assertTrue(vm.uiState.value.groupBySource)
         verify(libraryRepository).saveGroupBySource(true)
+
+        vm.setSortMode(SortMode.TITLE)
+        advanceUntilIdle()
+
+        assertEquals(SortMode.TITLE, vm.uiState.value.sortMode)
     }
 
     @Test

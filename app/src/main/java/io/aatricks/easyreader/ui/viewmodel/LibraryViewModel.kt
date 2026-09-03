@@ -165,6 +165,7 @@ class LibraryViewModel @Inject constructor(
                 mapOf(FLAT_LIBRARY_SECTION to groupedItems)
             },
             groupBySource = filterParams.groupBySource,
+            sortMode = filterParams.sort,
             collapsedSources = collapsedSources,
             isSelectionMode = selectionModeEnabled || selectedIds.isNotEmpty(),
             selectedIds = selectedIds,
@@ -221,6 +222,7 @@ class LibraryViewModel @Inject constructor(
         val groupedItems: Map<String, List<LibraryItem>> = emptyMap(),
         val groupedBySource: Map<String, Map<String, List<LibraryItem>>> = emptyMap(),
         val groupBySource: Boolean = false,
+        val sortMode: SortMode = SortMode.LAST_READ,
         val collapsedSources: Set<String> = emptySet(),
         val isLoading: Boolean = false,
         val error: String? = null,

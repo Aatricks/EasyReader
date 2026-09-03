@@ -87,7 +87,6 @@ import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import io.aatricks.easyreader.ui.viewmodel.SummaryViewModel
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.lazy.LazyListState
 import io.aatricks.easyreader.data.model.SortMode
 import kotlinx.coroutines.launch
@@ -145,8 +144,9 @@ internal fun LibraryItemList(
     )
 
     val listState = rememberLazyListState()
-    val sortMode by libraryViewModel.sortMode.collectAsState()
-    ScrollToTopOnOrderingChange(listState, sortMode, uiState.groupBySource)
+    // Read the ordering from uiState, not the ViewModel flows: it changes in the same emission as
+    // the re-sorted items, so the jump lands on the new list rather than the old one.
+    ScrollToTopOnOrderingChange(listState, uiState.sortMode, uiState.groupBySource)
 
     LazyColumn(
         state = listState,
