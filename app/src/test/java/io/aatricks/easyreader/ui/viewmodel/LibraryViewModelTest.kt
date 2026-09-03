@@ -1016,6 +1016,57 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun `addExploreItem returns the failure to its caller instead of the library error state`() = runTest {
+        val item = ExploreItem(
+            title = "Novel Title",
+            url = "https://example.com/novel",
+            source = "Source1",
+            readingUrl = "https://example.com/novel/read"
+        )
+        whenever(libraryRepository.getItemByUrl(item.readingUrl!!)).thenReturn(null)
+        whenever(
+            libraryRepository.addItem(
+                title = any(),
+                url = any(),
+                contentType = any(),
+                currentChapter = any(),
+                baseTitle = any(),
+                baseNovelUrl = anyOrNull(),
+                sourceName = anyOrNull(),
+                totalChapters = any(),
+                coverImageUrl = any()
+            )
+        ).thenThrow(RuntimeException("Source unreachable"))
+
+        val result = viewModel.addExploreItem(item)
+        advanceUntilIdle()
+
+        assertTrue(result.isFailure)
+        assertEquals("Source unreachable", result.exceptionOrNull()?.message)
+        // The Explore snackbar owns this message now; it must not surface on the Library screen.
+        assertNull(viewModel.uiState.value.error)
+    }
+
+    @Test
+    fun `addExploreItem reports an item already in the library as a non-failure`() = runTest {
+        val item = ExploreItem(
+            title = "Novel Title",
+            url = "https://example.com/novel",
+            source = "Source1",
+            readingUrl = "https://example.com/novel/read"
+        )
+        whenever(libraryRepository.getItemByUrl(item.readingUrl!!)).thenReturn(
+            LibraryItem(id = "existing", title = item.title, url = item.readingUrl!!)
+        )
+
+        val result = viewModel.addExploreItem(item)
+        advanceUntilIdle()
+
+        assertEquals(false, result.getOrNull())
+        assertNull(viewModel.uiState.value.error)
+    }
+
+    @Test
     fun `backfillMissingCovers updates blank covers from explore details once per novel`() = runTest {
         LibraryViewModel.coversBackfillAttempted.set(false)
         val item1 = LibraryItem(

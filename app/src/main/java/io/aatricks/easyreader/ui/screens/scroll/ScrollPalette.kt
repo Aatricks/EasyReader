@@ -30,6 +30,10 @@ internal data class ScrollPalette(
     val gold: Color,
     val frame: Color,
     val labelInk: Color,
+    /** Ink for text drawn on [frame] (the stats card, the end-cap scrim). Light in both palettes. */
+    val onFrameInk: Color,
+    /** Gold at text contrast on [frame]; [gold] itself stays tuned for the painting. */
+    val frameGold: Color,
     val sealKanji: Color,
 )
 
@@ -54,6 +58,8 @@ private val NIGHT_PALETTE = ScrollPalette(
     gold = Color(0xFFE3C27E),
     frame = Color(0xFF0E1120),
     labelInk = Color(0xFFD9DDF2),
+    onFrameInk = Color(0xFFE4E7F7),
+    frameGold = Color(0xFFEBCE8C),
     sealKanji = Color(0xFFF6ECDA),
 )
 
@@ -78,6 +84,8 @@ private val DAWN_PALETTE = ScrollPalette(
     gold = Color(0xFF9C7A25),
     frame = Color(0xFF3E3423),
     labelInk = Color(0xFF3E3448),
+    onFrameInk = Color(0xFFF3EADA),
+    frameGold = Color(0xFFF0C874),
     sealKanji = Color(0xFFF6ECDA),
 )
 

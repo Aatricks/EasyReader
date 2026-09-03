@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -116,27 +117,27 @@ fun ExploreScreen(
             contentColor = MaterialTheme.colorScheme.onSurface
         ) {
             ExploreItemDetailSheet(
-                item = activeItem,
-                isLoading = uiState.isFetchingDetails,
+                uiState = uiState,
                 isInLibrary = isInLibrary(activeItem),
+                onRetryDetails = { exploreViewModel.selectItem(activeItem) },
                 onAddToLibrary = {
-                    libraryViewModel.addExploreItem(activeItem)
                     exploreViewModel.dismissItem()
                     scope.launch {
-                        val result = snackbarHostState.showSnackbar(
-                            message = "Saved to library",
-                            actionLabel = "Open library",
-                            duration = SnackbarDuration.Short
-                        )
-                        if (result == SnackbarResult.ActionPerformed) onOpenLibrary()
+                        saveExploreItem(activeItem, libraryViewModel, snackbarHostState, onOpenLibrary)
                     }
                 },
                 onRead = {
-                    if (!isInLibrary(activeItem)) {
-                        libraryViewModel.addExploreItem(activeItem)
-                    }
-                    onReadItem(activeItem)
+                    val alreadySaved = isInLibrary(activeItem)
                     exploreViewModel.dismissItem()
+                    scope.launch {
+                        readExploreItem(
+                            activeItem,
+                            alreadySaved,
+                            libraryViewModel,
+                            snackbarHostState,
+                            onReadItem
+                        )
+                    }
                 }
             )
         }
@@ -189,7 +190,15 @@ private fun ExploreContent(
 ): Unit {
     val gridState = rememberLazyGridState()
 
-    Column(modifier = modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.xs)) {
+    LaunchedEffect(uiState.searchQuery, uiState.browseMode, uiState.selectedSource, uiState.selectedTags) {
+        gridState.scrollToItem(0)
+    }
+
+    Column(
+        modifier = modifier
+            .imePadding()
+            .padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.xs)
+    ) {
         SearchField(
             query = uiState.searchQuery,
             onQueryChange = onSearchQueryChange,
@@ -237,6 +246,7 @@ private fun SearchField(
     onQueryChange: (String) -> Unit,
     onPerformSearch: () -> Unit
 ): Unit {
+    val keyboardController = LocalSoftwareKeyboardController.current
     OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
@@ -260,7 +270,12 @@ private fun SearchField(
         },
         singleLine = true,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { onPerformSearch() }),
+        keyboardActions = KeyboardActions(
+            onSearch = {
+                keyboardController?.hide()
+                onPerformSearch()
+            }
+        ),
         shape = MaterialTheme.shapes.large
     )
 }
@@ -460,3 +475,40 @@ private fun FiltersBottomSheetContent(
         Spacer(modifier = Modifier.height(EasyReaderSpacing.lg))
     }
 }
+
+/** Saves the item, then reports the real outcome on Explore's own snackbar. */
+private suspend fun saveExploreItem(
+    item: ExploreItem,
+    libraryViewModel: LibraryViewModel,
+    snackbarHostState: SnackbarHostState,
+    onOpenLibrary: () -> Unit
+) {
+    val added = libraryViewModel.addExploreItem(item)
+    val result = snackbarHostState.showSnackbar(
+        message = addOutcomeMessage(added),
+        actionLabel = if (added.isFailure) null else "Open library",
+        duration = SnackbarDuration.Short
+    )
+    if (result == SnackbarResult.ActionPerformed) onOpenLibrary()
+}
+
+/** Opens the item only once it is actually in the library; a failed add says why instead. */
+private suspend fun readExploreItem(
+    item: ExploreItem,
+    alreadySaved: Boolean,
+    libraryViewModel: LibraryViewModel,
+    snackbarHostState: SnackbarHostState,
+    onReadItem: (ExploreItem) -> Unit
+) {
+    val added = if (alreadySaved) Result.success(false) else libraryViewModel.addExploreItem(item)
+    if (added.isFailure) {
+        snackbarHostState.showSnackbar(addOutcomeMessage(added))
+    } else {
+        onReadItem(item)
+    }
+}
+
+private fun addOutcomeMessage(outcome: Result<Boolean>): String = outcome.fold(
+    onSuccess = { added -> if (added) "Saved to library" else "Already in your library" },
+    onFailure = { e -> "Could not add: ${e.message ?: "something went wrong"}" }
+)

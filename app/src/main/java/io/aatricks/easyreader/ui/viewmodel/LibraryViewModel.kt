@@ -292,17 +292,26 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    fun addExploreItem(item: ExploreItem): Unit {
-        viewModelScope.launch {
-            runCatching {
-                updateState { it.copy(isLoading = true) }
-                addExploreItemInternal(item)
-                updateState { it.copy(isLoading = false) }
-            }.onFailure { e ->
-                updateState { it.copy(isLoading = false, error = "Failed to add: ${e.message}") }
-            }
-        }
-    }
+    private class AlreadyInLibraryException : Exception("Item already in library")
+
+    /**
+     * Adds [item] and hands the outcome back so the calling screen can say what happened on its
+     * own snackbar: success carries true when the item was written and false when the resolved
+     * reading URL was already in the library. Runs on [viewModelScope], so a caller that goes
+     * away mid-add does not abort a half-finished write.
+     */
+    suspend fun addExploreItem(item: ExploreItem): Result<Boolean> =
+        viewModelScope.async {
+            updateState { it.copy(isLoading = true) }
+            val outcome = runCatching { addExploreItemInternal(item) }.fold(
+                onSuccess = { Result.success(true) },
+                onFailure = { e ->
+                    if (e is AlreadyInLibraryException) Result.success(false) else Result.failure(e)
+                }
+            )
+            updateState { it.copy(isLoading = false) }
+            outcome
+        }.await()
 
     /**
      * Add a resolved [ExploreItem] (from Explore or from a pasted URL) as a proper series:
@@ -318,7 +327,7 @@ class LibraryViewModel @Inject constructor(
             ?: item.url
 
         if (repository.getItemByUrl(readingUrl) != null) {
-            throw Exception("Item already in library")
+            throw AlreadyInLibraryException()
         }
 
         val contentType = determineContentType(readingUrl)
@@ -717,8 +726,9 @@ class LibraryViewModel @Inject constructor(
         selectionManager.clear()
     }
 
-    fun clearLibrary(): Unit {
-        viewModelScope.launch {
+    /** Settings waits on this so it only claims success once the library is actually gone. */
+    suspend fun clearLibrary(): Result<Unit> =
+        viewModelScope.async {
             runCatching {
                 downloadQueue.cancelAll()
                 repository.clearLibrary()
@@ -726,17 +736,15 @@ class LibraryViewModel @Inject constructor(
                 contentRepository.clearAllDownloads()
                 contentRepository.clearImportedEpubs()
                 selectionManager.clear()
-            }.onFailure { e ->
-                updateState { it.copy(error = "Failed to clear library: ${e.message}") }
             }
-        }
-    }
+        }.await()
 
-    fun clearAllDownloads(): Unit {
-        viewModelScope.launch {
-            val downloaded = repository.getDownloadedItems()
-            downloadQueue.cancelAll()
+    /** Settings waits on this so it only claims success once the downloads are actually gone. */
+    suspend fun clearAllDownloads(): Result<Unit> =
+        viewModelScope.async {
             runCatching {
+                val downloaded = repository.getDownloadedItems()
+                downloadQueue.cancelAll()
                 contentRepository.clearAllDownloads()
                 downloaded.forEach { item ->
                     downloadStatusReconciler.reconcile(
@@ -745,13 +753,9 @@ class LibraryViewModel @Inject constructor(
                         wasUserInspect = true
                     )
                 }
-            }.onSuccess {
                 downloadStates.refreshChapterCacheStates(downloaded.map { it.url })
-            }.onFailure { e ->
-                updateState { it.copy(error = "Failed to clear downloads: ${e.message}") }
             }
-        }
-    }
+        }.await()
 
     fun toggleSourceExpansion(sourceName: String): Unit {
         val current = _collapsedSources.value.toMutableSet()

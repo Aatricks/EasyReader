@@ -150,4 +150,39 @@ class ExploreViewModelTest {
         assertTrue(errorViewModel.uiState.value.hasError)
         assertFalse(errorViewModel.uiState.value.isLoading)
     }
+
+    @Test
+    fun `clearing the query drops the stale source-failure banner`() = runTest {
+        advanceUntilIdle()
+        whenever(exploreRepository.searchNovelsDetailed(any(), any(), anyOrNull())).thenReturn(
+            SearchOutcome(emptyList(), listOf(SourceFailure("MangaBat", "timeout", null)))
+        )
+
+        viewModel.updateSearchQuery("shadow")
+        advanceTimeBy(500)
+        advanceUntilIdle()
+        assertEquals(1, viewModel.uiState.value.searchFailures.size)
+
+        viewModel.updateSearchQuery("")
+        advanceTimeBy(500)
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.searchFailures.isEmpty())
+    }
+
+    @Test
+    fun `clearFilters drops the stale source-failure banner`() = runTest {
+        advanceUntilIdle()
+        whenever(exploreRepository.searchNovelsDetailed(any(), any(), anyOrNull())).thenReturn(
+            SearchOutcome(emptyList(), listOf(SourceFailure("MangaBat", "timeout", null)))
+        )
+
+        viewModel.updateSearchQuery("shadow")
+        advanceTimeBy(500)
+        advanceUntilIdle()
+        assertEquals(1, viewModel.uiState.value.searchFailures.size)
+
+        viewModel.clearFilters()
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.searchFailures.isEmpty())
+    }
 }
