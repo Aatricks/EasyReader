@@ -88,6 +88,16 @@ class ChapterListNormalizerTest {
     }
 
     @Test
+    fun `resolveChapterLabelFromList drops site boilerplate from the list title`() {
+        val resolved = resolveChapterLabelFromList(
+            url = "https://example.com/nebula/chapter-3",
+            currentLabel = "Chapter 141313",
+            chapters = listOf(ChapterInfo(title = "Chapter 3: Read Online", url = "https://example.com/nebula/chapter-3"))
+        )
+        assertEquals("Chapter 3", resolved)
+    }
+
+    @Test
     fun `resolveChapterLabelFromList is a no-op when the label already has the right number`() {
         // Sources whose URL encodes the real number already show it — don't override their label.
         val resolved = resolveChapterLabelFromList(

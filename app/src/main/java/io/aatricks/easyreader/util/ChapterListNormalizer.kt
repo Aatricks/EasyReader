@@ -85,7 +85,7 @@ internal fun resolveChapterLabelFromList(
     val match = if (target.isBlank()) null else chapters.firstOrNull { areChapterUrlsMatching(it.url, target) }
     val listNumber = match?.let { it.number ?: TextUtils.extractChapterNumber(it.title) }
     val differs = listNumber != null && TextUtils.extractChapterNumber(currentLabel) != listNumber
-    return match?.title?.trim()?.takeIf { it.isNotBlank() && differs }
+    return match?.title?.let(TextUtils::stripSiteBoilerplate)?.takeIf { it.isNotBlank() && differs }
 }
 
 private fun formatChapterNum(n: Double): String =

@@ -242,11 +242,14 @@ object TextUtils {
     /**
      * Clean a chapter title by removing junk and the novel name.
      */
+    /** Drops trailing site link text such as "Read Online Free" from a chapter label. */
+    fun stripSiteBoilerplate(title: String): String = title.replace(READ_ONLINE_SUFFIX_REGEX, "").trim()
+
     fun cleanChapterTitle(fullTitle: String?, novelName: String): String {
         if (fullTitle.isNullOrBlank()) return ""
         // Strip before removeCommonJunk: its "online free" pattern would eat the tail and
         // leave a dangling "Read" behind.
-        var cleaned = removeCommonJunk(fullTitle.replace(READ_ONLINE_SUFFIX_REGEX, ""))
+        var cleaned = removeCommonJunk(stripSiteBoilerplate(fullTitle))
 
         if (novelName.isNotBlank() && cleaned.contains(novelName, ignoreCase = true)) {
             cleaned = cleaned.replace(novelName, "", ignoreCase = true)
