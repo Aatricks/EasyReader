@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -224,7 +226,10 @@ private fun FeaturedExploreCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(220.dp)
+                .heightIn(min = 220.dp)
+                // Fixes the row's height to its content so the children's fillMaxHeight
+                // (SpaceBetween pills, full-bleed cover) still has a bound to fill.
+                .height(IntrinsicSize.Min)
                 .padding(EasyReaderSpacing.lg),
             horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.lg)
         ) {
@@ -266,7 +271,7 @@ private fun FeaturedExploreCard(
 
             AsyncImage(
                 model = imageRequest,
-                contentDescription = item.title,
+                contentDescription = null,
                 modifier = Modifier
                     .width(128.dp)
                     .fillMaxHeight()
@@ -297,7 +302,7 @@ fun ExploreItemCard(
             ) {
                 AsyncImage(
                     model = imageRequest,
-                    contentDescription = item.title,
+                    contentDescription = null,
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(RoundedCornerShape(topStart = EasyReaderSpacing.lg, topEnd = EasyReaderSpacing.lg)),

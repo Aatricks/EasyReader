@@ -168,6 +168,11 @@ class MainActivity : ComponentActivity() {
                             exploreViewModel = exploreViewModel,
                             libraryViewModel = libraryViewModel,
                             onNavigateBack = { navController.popBackStack() },
+                            onOpenLibrary = {
+                                navController.navigate(LibraryRoute) {
+                                    launchSingleTop = true
+                                }
+                            },
                             onReadItem = { item ->
                                 val chapterUrl = item.readingUrl ?: item.chapters.firstOrNull()?.url ?: item.url
                                 readerViewModel.loadContent(chapterUrl)

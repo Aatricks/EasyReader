@@ -109,9 +109,9 @@
 
     <!-- File / URL Confirmation Dialogs -->
     <string name="file_confirm_title">Open this file?</string>
-    <string name="file_confirm_intro">Another app sent this file to Reader:</string>
-    <string name="file_confirm_trust">Only open files you trust. Reader will read its contents in the app sandbox.</string>
+    <string name="file_confirm_intro">Another app sent this file to Emaki:</string>
+    <string name="file_confirm_trust">Only open files you trust. Emaki will read its contents in the app sandbox.</string>
     <string name="url_confirm_title">Open this link?</string>
-    <string name="url_confirm_intro">Another app sent this URL to Reader:</string>
-    <string name="url_confirm_transient">Reader will open it once. It won\'t be saved to your library unless you add it.</string>
+    <string name="url_confirm_intro">Another app sent this URL to Emaki:</string>
+    <string name="url_confirm_transient">Emaki will open it once. It won\'t be saved to your library unless you add it.</string>
 </resources>

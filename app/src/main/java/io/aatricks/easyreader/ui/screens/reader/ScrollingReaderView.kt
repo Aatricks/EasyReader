@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import io.aatricks.easyreader.data.model.ChapterContent
 import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.ui.components.ReaderImageView
+import io.aatricks.easyreader.ui.components.ZoomableBox
 import io.aatricks.easyreader.ui.components.readerImageTileView
 import io.aatricks.easyreader.ui.screens.readerContentType
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
@@ -60,6 +61,24 @@ internal fun scrollingReaderView(state: ScrollingReaderState) = with(state) {
             listState.scrollToItem(renderItems.lastIndex, SCROLL_TO_END_OFFSET)
         }
     }
+    // Manhwa strips are decoded at screen width, so pinch is the only way to inspect small
+    // lettering. Text chapters stay on the bare list: ZoomableBox's pointer loop would sit
+    // between the reader's tuned gesture stack and the list for no gain.
+    if (isManhwa) {
+        ZoomableBox(
+            modifier = Modifier.fillMaxSize(),
+            enableZoom = true,
+            zoomStateKey = contentUrl
+        ) {
+            scrollingReaderList(state)
+        }
+    } else {
+        scrollingReaderList(state)
+    }
+}
+
+@Composable
+private fun scrollingReaderList(state: ScrollingReaderState) = with(state) {
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),

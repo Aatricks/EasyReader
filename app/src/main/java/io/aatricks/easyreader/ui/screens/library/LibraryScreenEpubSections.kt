@@ -186,10 +186,7 @@ private fun EpubTocItemView(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (tocItem.hasChildren()) {
-                IconButton(
-                    onClick = { isExpanded = !isExpanded },
-                    modifier = Modifier.size(20.dp)
-                ) {
+                IconButton(onClick = { isExpanded = !isExpanded }) {
                     Icon(
                         imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = if (isExpanded) "Collapse" else "Expand",
@@ -197,9 +194,9 @@ private fun EpubTocItemView(
                         modifier = Modifier.size(16.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
             } else {
-                Spacer(modifier = Modifier.width(EasyReaderSpacing.xl))
+                // Matches the IconButton's default 48 dp target so titles stay aligned.
+                Spacer(modifier = Modifier.width(48.dp))
             }
 
             Text(

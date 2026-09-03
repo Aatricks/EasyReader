@@ -34,6 +34,7 @@ fun ExploreScreen(
     exploreViewModel: ExploreViewModel,
     libraryViewModel: LibraryViewModel,
     onNavigateBack: () -> Unit,
+    onOpenLibrary: () -> Unit,
     onReadItem: (ExploreItem) -> Unit
 ): Unit {
     val uiState by exploreViewModel.uiState.collectAsState()
@@ -127,7 +128,7 @@ fun ExploreScreen(
                             actionLabel = "Open library",
                             duration = SnackbarDuration.Short
                         )
-                        if (result == SnackbarResult.ActionPerformed) onNavigateBack()
+                        if (result == SnackbarResult.ActionPerformed) onOpenLibrary()
                     }
                 },
                 onRead = {

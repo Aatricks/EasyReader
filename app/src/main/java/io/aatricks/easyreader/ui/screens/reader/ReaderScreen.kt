@@ -83,7 +83,6 @@ fun ReaderScreen(
 ): Unit {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
     var showCloudflareWebView by rememberSaveable { mutableStateOf(false) }
@@ -115,7 +114,7 @@ fun ReaderScreen(
 
     LaunchedEffect(uiState.toastMessage) {
         uiState.toastMessage?.let { message ->
-            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+            snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
             readerViewModel.clearToast()
         }
     }
@@ -125,6 +124,12 @@ fun ReaderScreen(
     val readerTheme = uiState.readerTheme
     val appIsDark = isSystemInDarkTheme()
     val currentAppIsDark by rememberUpdatedState(appIsDark)
+
+    val isReadingContent = uiState.content != null
+    DisposableEffect(view, isReadingContent) {
+        view.keepScreenOn = isReadingContent
+        onDispose { view.keepScreenOn = false }
+    }
 
     LaunchedEffect(uiState.showControls, readerTheme, uiState.content, appIsDark) {
         if (window != null) {
@@ -222,7 +227,7 @@ fun ReaderScreen(
                         onOpenLatestUpdate = { item ->
                             if (item.baseNovelUrl.isBlank() || item.sourceName.isBlank()) {
                                 val loadUrl = if (item.currentChapterUrl.isNotBlank()) item.currentChapterUrl else item.url
-                                readerViewModel.openChapterFromStart(loadUrl, item.id)
+                                readerViewModel.loadContent(loadUrl, item.id)
                                 libraryViewModel.markAsCurrentlyReading(item.id)
                             } else {
                                 libraryViewModel.openNewChapter(item) { url, id ->
@@ -287,11 +292,20 @@ fun ReaderScreen(
                         .align(Alignment.BottomCenter)
                         .padding(bottom = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding() + 32.dp)
                 ) {
-                    Text(
-                        text = xpNotice ?: "",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
+                    Surface(
+                        shape = MaterialTheme.shapes.extraLarge,
+                        color = uiState.readerTheme.textColor.copy(alpha = 0.12f),
+                        contentColor = uiState.readerTheme.textColor
+                    ) {
+                        Text(
+                            text = xpNotice ?: "",
+                            modifier = Modifier.padding(
+                                horizontal = EasyReaderSpacing.sm,
+                                vertical = EasyReaderSpacing.xxs
+                            ),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
                 }
             }
         }
@@ -373,7 +387,7 @@ private fun CloudflareDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "Network Access Required",
+                            "Network access required",
                             style = MaterialTheme.typography.titleLarge
                         )
                         Text(

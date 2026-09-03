@@ -65,7 +65,7 @@ fun EmptyState(onOpenLibrary: () -> Unit) {
         body = "Open your library to resume where you left off, open the latest chapter, or start something new.",
         action = {
             FilledTonalButton(onClick = onOpenLibrary) {
-                Text("Open Library")
+                Text("Open library")
             }
         }
     )

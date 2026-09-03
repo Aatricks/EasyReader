@@ -19,8 +19,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -195,13 +193,20 @@ fun ExploreItemDetailSheet(
                     verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xxs)
                 ) {
                     item.genres.forEach { tag ->
-                        AssistChip(
-                            onClick = {},
-                            label = { Text(tag) },
-                            colors = AssistChipDefaults.assistChipColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        ) {
+                            Text(
+                                text = tag,
+                                modifier = Modifier.padding(
+                                    horizontal = EasyReaderSpacing.sm,
+                                    vertical = EasyReaderSpacing.xs
+                                ),
+                                style = MaterialTheme.typography.labelLarge
                             )
-                        )
+                        }
                     }
                 }
             }

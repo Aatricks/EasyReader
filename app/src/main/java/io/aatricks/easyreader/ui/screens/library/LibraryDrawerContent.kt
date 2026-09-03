@@ -85,7 +85,7 @@ fun LibraryDrawerContent(
                     },
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("Discover")
+                    Text("Explore")
                 }
             }
         }
@@ -377,7 +377,7 @@ private fun EmptyQuickAccessState(): Unit {
                 )
             }
             Text(
-                text = "Use Discover to find something new or import a file directly.",
+                text = "Use Explore to find something new or import a file directly.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
