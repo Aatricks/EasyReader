@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -189,7 +190,15 @@ private fun ExploreContent(
 ): Unit {
     val gridState = rememberLazyGridState()
 
-    Column(modifier = modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.xs)) {
+    LaunchedEffect(uiState.searchQuery, uiState.browseMode, uiState.selectedSource, uiState.selectedTags) {
+        gridState.scrollToItem(0)
+    }
+
+    Column(
+        modifier = modifier
+            .imePadding()
+            .padding(horizontal = EasyReaderSpacing.sm, vertical = EasyReaderSpacing.xs)
+    ) {
         SearchField(
             query = uiState.searchQuery,
             onQueryChange = onSearchQueryChange,
@@ -237,6 +246,7 @@ private fun SearchField(
     onQueryChange: (String) -> Unit,
     onPerformSearch: () -> Unit
 ): Unit {
+    val keyboardController = LocalSoftwareKeyboardController.current
     OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
@@ -260,7 +270,12 @@ private fun SearchField(
         },
         singleLine = true,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { onPerformSearch() }),
+        keyboardActions = KeyboardActions(
+            onSearch = {
+                keyboardController?.hide()
+                onPerformSearch()
+            }
+        ),
         shape = MaterialTheme.shapes.large
     )
 }
