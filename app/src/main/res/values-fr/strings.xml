@@ -349,4 +349,31 @@
     <string name="common_retry">Réessayer</string>
     <string name="explore_source_unavailable">%1$s est indisponible</string>
     <string name="explore_source_unavailable_reason">%1$s est indisponible : %2$s</string>
+
+    <!-- The Scroll -->
+    <string name="scroll_title">Votre Rouleau</string>
+    <string name="scroll_xp_to_next_level">%1$d XP avant le niveau %2$d</string>
+    <string name="scroll_stat_level">NIVEAU</string>
+    <string name="scroll_stat_time">TEMPS</string>
+    <string name="scroll_stat_chapters">CHAPITRES</string>
+    <string name="scroll_stat_series">SÉRIES</string>
+    <string name="scroll_stat_days">JOURS</string>
+    <string name="scroll_xp_explainer">Vous gagnez de l\'XP pour chaque minute lue, chaque chapitre terminé, chaque série achevée et chaque jour de lecture.</string>
+    <string name="scroll_reading_time">%1$d h %2$d min</string>
+
+    <!-- App Update -->
+    <string name="update_download_failed">Échec du téléchargement : %1$s</string>
+    <string name="update_dialog_title">Mettre à jour Emaki</string>
+    <string name="update_version_change">Version %1$s  →  %2$s</string>
+    <string name="update_whats_new">Nouveautés</string>
+    <string name="update_download_size">Téléchargement · %1$s</string>
+    <string name="update_action_update">Mettre à jour</string>
+    <string name="update_action_not_now">Plus tard</string>
+    <string name="update_downloading_title">Téléchargement de la mise à jour</string>
+    <string name="update_install_title">Installer la mise à jour</string>
+    <string name="update_install_body">La mise à jour a été téléchargée. Touchez Installer pour lancer l\'installation.</string>
+    <string name="update_action_install">Installer</string>
+    <string name="update_permission_title">Autorisation requise</string>
+    <string name="update_permission_body">Pour installer les mises à jour, Emaki a besoin de l\'autorisation d\'installer des applications de sources inconnues. Vous allez être redirigé vers les paramètres système.</string>
+    <string name="update_action_settings">Paramètres</string>
 </resources>

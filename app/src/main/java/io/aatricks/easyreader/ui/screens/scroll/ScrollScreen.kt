@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -64,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.MilestoneState
 import io.aatricks.easyreader.data.model.ScrollProgression
 import io.aatricks.easyreader.data.repository.FinishedSeriesData
@@ -129,7 +131,7 @@ fun ScrollScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Your Scroll",
+                        stringResource(R.string.scroll_title),
                         fontFamily = FontFamily.Serif,
                         color = palette.labelInk
                     )
@@ -138,7 +140,7 @@ fun ScrollScreen(
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = stringResource(R.string.common_back),
                             tint = palette.labelInk
                         )
                     }
@@ -318,7 +320,11 @@ private fun RankEndCap(
                 )
                 Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
                 Text(
-                    text = "${progression.xpToNextLevel} XP to level ${progression.level + 1}",
+                    text = stringResource(
+                        R.string.scroll_xp_to_next_level,
+                        progression.xpToNextLevel,
+                        progression.level + 1
+                    ),
                     style = MaterialTheme.typography.labelMedium,
                     color = palette.onFrameInk.copy(alpha = LEVEL_CAPTION_ALPHA)
                 )
@@ -373,7 +379,7 @@ private fun LevelMedallion(progression: ScrollProgression, palette: ScrollPalett
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = "LEVEL",
+                text = stringResource(R.string.scroll_stat_level),
                 style = MaterialTheme.typography.labelSmall,
                 letterSpacing = LEVEL_LABEL_SPACING_SP.sp,
                 color = palette.onFrameInk.copy(alpha = LEVEL_CAPTION_ALPHA)
@@ -404,19 +410,33 @@ private fun StatsCard(
         Column(modifier = Modifier.padding(EasyReaderSpacing.md)) {
             Row(horizontalArrangement = Arrangement.SpaceBetween) {
                 StatItem(
-                    "TIME",
+                    stringResource(R.string.scroll_stat_time),
                     formatReadingTime(progression.totalActiveMillis),
                     palette,
                     Modifier.weight(TIME_STAT_WEIGHT)
                 )
-                StatItem("CHAPTERS", progression.totalChaptersCompleted.toString(), palette, Modifier.weight(1f))
-                StatItem("SERIES", progression.finishedSeriesCount.toString(), palette, Modifier.weight(1f))
-                StatItem("DAYS", progression.readingDayCount.toString(), palette, Modifier.weight(1f))
+                StatItem(
+                    stringResource(R.string.scroll_stat_chapters),
+                    progression.totalChaptersCompleted.toString(),
+                    palette,
+                    Modifier.weight(1f)
+                )
+                StatItem(
+                    stringResource(R.string.scroll_stat_series),
+                    progression.finishedSeriesCount.toString(),
+                    palette,
+                    Modifier.weight(1f)
+                )
+                StatItem(
+                    stringResource(R.string.scroll_stat_days),
+                    progression.readingDayCount.toString(),
+                    palette,
+                    Modifier.weight(1f)
+                )
             }
             Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
             Text(
-                text = "You earn XP for every minute read, every chapter finished, " +
-                    "every series completed and every day you read.",
+                text = stringResource(R.string.scroll_xp_explainer),
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
@@ -447,9 +467,10 @@ private fun StatItem(label: String, value: String, palette: ScrollPalette, modif
     }
 }
 
+@Composable
 internal fun formatReadingTime(millis: Long): String {
     val totalMinutes = millis / MILLIS_PER_MINUTE
     val hours = totalMinutes / MINUTES_PER_HOUR
     val minutes = totalMinutes % MINUTES_PER_HOUR
-    return "${hours}h ${minutes}m"
+    return stringResource(R.string.scroll_reading_time, hours, minutes)
 }

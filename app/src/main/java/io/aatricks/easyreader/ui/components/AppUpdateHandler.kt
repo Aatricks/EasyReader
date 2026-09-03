@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
@@ -27,6 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Surface
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.UpdateViewModel
 import io.aatricks.easyreader.updater.DownloadStatus
@@ -47,6 +49,7 @@ fun appUpdateHandler(
     var showInstallDialog by remember { mutableStateOf(false) }
     var showPermissionWarningDialog by remember { mutableStateOf(false) }
     var showDownloadProgressDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         delay(DEFERRED_STARTUP_DELAY_MS)
@@ -66,7 +69,8 @@ fun appUpdateHandler(
             showInstallDialog = true
         } else if (status is DownloadStatus.Error) {
             showDownloadProgressDialog = false
-            snackbarHostState.showSnackbar("Download failed: ${status.message}", duration = SnackbarDuration.Long)
+            val failure = context.getString(R.string.update_download_failed, status.message)
+            snackbarHostState.showSnackbar(failure, duration = SnackbarDuration.Long)
         } else if (status is DownloadStatus.Progress) {
             showDownloadProgressDialog = true
         }
@@ -119,24 +123,31 @@ private fun updateDialog(
             onDismiss()
             updateViewModel.clearUpdateState()
         },
-        title = { Text("Update Emaki") },
+        title = { Text(stringResource(R.string.update_dialog_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm)) {
                 Text(
-                    text = "Version $currentVersion  →  ${update.versionName}",
+                    text = stringResource(
+                        R.string.update_version_change,
+                        currentVersion,
+                        update.versionName
+                    ),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold
                 )
                 if (update.changelog.isNotBlank()) {
                     Text(
-                        text = "What's new",
+                        text = stringResource(R.string.update_whats_new),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold
                     )
                     changelogContent(update.changelog)
                 }
                 Text(
-                    text = "Download · ${FormatBytesUtils.formatBytes(update.fileSize)}",
+                    text = stringResource(
+                        R.string.update_download_size,
+                        FormatBytesUtils.formatBytes(update.fileSize)
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -147,7 +158,7 @@ private fun updateDialog(
                 onDismiss()
                 updateViewModel.startDownload(update.downloadUrl, update.versionName, update.fileSize)
             }) {
-                Text("Update")
+                Text(stringResource(R.string.update_action_update))
             }
         },
         dismissButton = {
@@ -155,7 +166,7 @@ private fun updateDialog(
                 onDismiss()
                 updateViewModel.clearUpdateState()
             }) {
-                Text("Not now")
+                Text(stringResource(R.string.update_action_not_now))
             }
         }
     )
@@ -202,9 +213,9 @@ private fun downloadProgressDialog(
         -1
     }
     val progressText = if (percent >= 0) {
-        "Downloading update ($percent%)…"
+        stringResource(R.string.settings_status_downloading_update_percent, percent)
     } else {
-        "Downloading update…"
+        stringResource(R.string.settings_status_downloading_update)
     }
     val cancel = {
         onDismiss()
@@ -212,12 +223,12 @@ private fun downloadProgressDialog(
     }
     AlertDialog(
         onDismissRequest = cancel,
-        title = { Text("Downloading Update") },
+        title = { Text(stringResource(R.string.update_downloading_title)) },
         text = { Text(progressText) },
         confirmButton = {},
         dismissButton = {
             TextButton(onClick = cancel) {
-                Text("Cancel")
+                Text(stringResource(R.string.common_cancel))
             }
         }
     )
@@ -231,12 +242,9 @@ private fun installDialog(
 ) {
     AlertDialog(
         onDismissRequest = {},
-        title = { Text("Install Update") },
+        title = { Text(stringResource(R.string.update_install_title)) },
         text = {
-            Text(
-                "The update was downloaded successfully. " +
-                    "Tap Install to start the installation."
-            )
+            Text(stringResource(R.string.update_install_body))
         },
         confirmButton = {
             FilledTonalButton(onClick = {
@@ -246,12 +254,12 @@ private fun installDialog(
                     onShowPermissionWarning()
                 }
             }) {
-                Text("Install")
+                Text(stringResource(R.string.update_action_install))
             }
         },
         dismissButton = {
             TextButton(onClick = { updateViewModel.cancelDownload() }) {
-                Text("Cancel")
+                Text(stringResource(R.string.common_cancel))
             }
         }
     )
@@ -265,12 +273,9 @@ private fun permissionWarningDialog(
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Permission Required") },
+        title = { Text(stringResource(R.string.update_permission_title)) },
         text = {
-            Text(
-                "To install updates, Emaki needs permission to install apps from " +
-                    "unknown sources. You will be taken to system settings to enable this."
-            )
+            Text(stringResource(R.string.update_permission_body))
         },
         confirmButton = {
             FilledTonalButton(onClick = {
@@ -280,7 +285,7 @@ private fun permissionWarningDialog(
                     runCatching { context.startActivity(intent) }
                 }
             }) {
-                Text("Settings")
+                Text(stringResource(R.string.update_action_settings))
             }
         },
         dismissButton = {
@@ -288,7 +293,7 @@ private fun permissionWarningDialog(
                 onDismiss()
                 updateViewModel.clearUpdateState()
             }) {
-                Text("Cancel")
+                Text(stringResource(R.string.common_cancel))
             }
         }
     )

@@ -349,4 +349,31 @@
     <string name="common_retry">Retry</string>
     <string name="explore_source_unavailable">%1$s is unavailable</string>
     <string name="explore_source_unavailable_reason">%1$s is unavailable: %2$s</string>
+
+    <!-- The Scroll -->
+    <string name="scroll_title">Your Scroll</string>
+    <string name="scroll_xp_to_next_level">%1$d XP to level %2$d</string>
+    <string name="scroll_stat_level">LEVEL</string>
+    <string name="scroll_stat_time">TIME</string>
+    <string name="scroll_stat_chapters">CHAPTERS</string>
+    <string name="scroll_stat_series">SERIES</string>
+    <string name="scroll_stat_days">DAYS</string>
+    <string name="scroll_xp_explainer">You earn XP for every minute read, every chapter finished, every series completed and every day you read.</string>
+    <string name="scroll_reading_time">%1$dh %2$dm</string>
+
+    <!-- App Update -->
+    <string name="update_download_failed">Download failed: %1$s</string>
+    <string name="update_dialog_title">Update Emaki</string>
+    <string name="update_version_change">Version %1$s  →  %2$s</string>
+    <string name="update_whats_new">What\'s new</string>
+    <string name="update_download_size">Download · %1$s</string>
+    <string name="update_action_update">Update</string>
+    <string name="update_action_not_now">Not now</string>
+    <string name="update_downloading_title">Downloading Update</string>
+    <string name="update_install_title">Install Update</string>
+    <string name="update_install_body">The update was downloaded successfully. Tap Install to start the installation.</string>
+    <string name="update_action_install">Install</string>
+    <string name="update_permission_title">Permission Required</string>
+    <string name="update_permission_body">To install updates, Emaki needs permission to install apps from unknown sources. You will be taken to system settings to enable this.</string>
+    <string name="update_action_settings">Settings</string>
 </resources>
