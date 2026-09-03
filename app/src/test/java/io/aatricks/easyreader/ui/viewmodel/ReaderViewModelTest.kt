@@ -142,6 +142,16 @@ class ReaderViewModelTest {
     }
 
     @Test
+    fun `reading direction defaults to LTR and setRtl persists the choice`() {
+        assertEquals(false, viewModel.uiState.value.isRtl)
+
+        viewModel.setRtl(true)
+
+        verify(preferencesManager).readingDirectionRtl = true
+        assertEquals(true, viewModel.uiState.value.isRtl)
+    }
+
+    @Test
     fun `loadContent saves current progress before loading new`() = runTest {
         val initialItemId = "item-1"
         val initialUrl = "https://example.com/1"

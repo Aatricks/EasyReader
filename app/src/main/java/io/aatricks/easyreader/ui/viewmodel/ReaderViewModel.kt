@@ -205,7 +205,8 @@ class ReaderViewModel @Inject constructor(
                 readerTheme = runCatching { ReaderTheme.valueOf(snapshot.readerTheme) }
                     .getOrDefault(ReaderTheme.DARK),
                 accentTheme = runCatching { AccentTheme.valueOf(snapshot.accentTheme) }
-                    .getOrDefault(AccentTheme.MOSS)
+                    .getOrDefault(AccentTheme.MOSS),
+                isRtl = snapshot.isRtl
             )
         }
     }
@@ -316,7 +317,7 @@ class ReaderViewModel @Inject constructor(
         val baseNovelUrl: String = "",
         val sourceName: String = "",
         val isPagedMode: Boolean = false,
-        val isRtl: Boolean = true,
+        val isRtl: Boolean = false,
         val fullChapterList: List<ChapterInfo> = emptyList(),
         val isChaptersLoading: Boolean = false,
         val isFullChapterListLoaded: Boolean = false,
@@ -1330,9 +1331,12 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun setRtl(isRtl: Boolean) = updateState {
-        if (it.isRtl == isRtl) it
-        else it.copy(isRtl = isRtl, toastMessage = if (isRtl) "Direction: RTL" else "Direction: LTR")
+    fun setRtl(isRtl: Boolean) {
+        if (preferencesManager.readingDirectionRtl == isRtl && _uiState.value.isRtl == isRtl) return
+        preferencesManager.readingDirectionRtl = isRtl
+        updateState {
+            it.copy(isRtl = isRtl, toastMessage = if (isRtl) "Direction: RTL" else "Direction: LTR")
+        }
     }
 
     fun navigateToChapter(url: String, title: String) {

@@ -29,7 +29,8 @@ data class ReaderSettingsSnapshot(
     val paragraphSpacing: Float,
     val readerTheme: String,
     val accentTheme: String,
-    val brightness: Float = 1.0f
+    val brightness: Float = 1.0f,
+    val isRtl: Boolean = false
 )
 
 data class AppearanceSettingsSnapshot(
@@ -87,7 +88,8 @@ class PreferencesManager @Inject constructor(
             ?: io.aatricks.easyreader.data.model.ReaderTheme.DARK.name,
         accentTheme = prefs.getString(KEY_ACCENT_THEME, io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name)
             ?: io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name,
-        brightness = brightness
+        brightness = brightness,
+        isRtl = readingDirectionRtl
     )
 
     private fun readAppearanceSettingsSnapshot(): AppearanceSettingsSnapshot = AppearanceSettingsSnapshot(
@@ -212,6 +214,11 @@ class PreferencesManager @Inject constructor(
             ?: io.aatricks.easyreader.ui.theme.AccentTheme.MOSS.name
         set(value) = prefs.edit().putString(KEY_ACCENT_THEME, value).apply()
 
+    // Right-to-left page turns. Off by default: most sources read left-to-right.
+    var readingDirectionRtl: Boolean
+        get() = prefs.getBoolean(KEY_READING_DIRECTION_RTL, false)
+        set(value) = prefs.edit().putBoolean(KEY_READING_DIRECTION_RTL, value).apply()
+
     // Opt-in for AI summary model. False by default so the model is never
     // downloaded unless the user explicitly enables the feature.
     var aiSummaryEnabled: Boolean
@@ -316,6 +323,7 @@ class PreferencesManager @Inject constructor(
         private const val KEY_BRIGHTNESS = "reader_brightness"
         private const val KEY_READER_THEME = "reader_theme"
         private const val KEY_ACCENT_THEME = "accent_theme"
+        private const val KEY_READING_DIRECTION_RTL = "reader_direction_rtl"
 
         private const val KEY_AI_SUMMARY_ENABLED = "ai_summary_enabled"
         private const val KEY_WEB_OFFLINE_PIPELINE_VERSION = "web_offline_pipeline_version"
@@ -338,7 +346,8 @@ class PreferencesManager @Inject constructor(
             KEY_PARAGRAPH_SPACING,
             KEY_BRIGHTNESS,
             KEY_READER_THEME,
-            KEY_ACCENT_THEME
+            KEY_ACCENT_THEME,
+            KEY_READING_DIRECTION_RTL
         )
 
         private val APPEARANCE_SETTINGS_KEYS = setOf(
