@@ -376,14 +376,14 @@ private fun LevelMedallion(progression: ScrollProgression, palette: ScrollPalett
                 text = "LEVEL",
                 style = MaterialTheme.typography.labelSmall,
                 letterSpacing = LEVEL_LABEL_SPACING_SP.sp,
-                color = palette.labelInk.copy(alpha = LEVEL_CAPTION_ALPHA)
+                color = palette.onFrameInk.copy(alpha = LEVEL_CAPTION_ALPHA)
             )
             Text(
                 text = progression.level.toString(),
                 style = MaterialTheme.typography.displaySmall,
                 fontFamily = FontFamily.Serif,
                 fontWeight = FontWeight.Bold,
-                color = palette.gold
+                color = palette.frameGold
             )
         }
     }
