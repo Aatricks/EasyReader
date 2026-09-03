@@ -5,6 +5,9 @@ import io.aatricks.easyreader.data.model.LibraryItem
 
 private const val PREVIEW_CHAPTER_COUNT = 3
 
+/** Section key used when the library is not grouped by source: one section, no header. */
+internal const val FLAT_LIBRARY_SECTION = ""
+
 internal sealed interface LibraryRenderItem {
     val key: String
 
@@ -58,11 +61,20 @@ internal data class LibraryFlattenState(
     val isSelectionMode: Boolean = false
 )
 
+/**
+ * Adds the section header unless this is the flat (ungrouped) section, which has none.
+ * Returns whether the section's novels should follow.
+ */
+private fun MutableList<LibraryRenderItem>.addSourceHeader(sourceName: String, collapsedSources: Set<String>): Boolean {
+    if (sourceName == FLAT_LIBRARY_SECTION) return true
+    val isSourceExpanded = sourceName !in collapsedSources
+    add(LibraryRenderItem.SourceHeader(sourceName, isSourceExpanded))
+    return isSourceExpanded
+}
+
 internal fun flattenLibraryItems(state: LibraryFlattenState): List<LibraryRenderItem> = buildList {
     state.groupedBySource.forEach source@{ (sourceName, novels) ->
-        val isSourceExpanded = sourceName !in state.collapsedSources
-        add(LibraryRenderItem.SourceHeader(sourceName, isSourceExpanded))
-        if (!isSourceExpanded) return@source
+        if (!addSourceHeader(sourceName, state.collapsedSources)) return@source
 
         novels.forEach novel@{ (groupTitle, chapterItems) ->
             val firstItem = chapterItems.firstOrNull() ?: return@novel

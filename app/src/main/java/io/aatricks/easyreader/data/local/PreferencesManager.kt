@@ -141,6 +141,12 @@ class PreferencesManager @Inject constructor(
         prefs.edit().putString(KEY_COLLAPSED_SOURCES, jsonString).apply()
     }
 
+    fun saveGroupBySource(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_GROUP_BY_SOURCE, enabled).apply()
+    }
+
+    fun loadGroupBySource(): Boolean = prefs.getBoolean(KEY_GROUP_BY_SOURCE, false)
+
     fun loadCollapsedSources(): Set<String> {
         val jsonString = prefs.getString(KEY_COLLAPSED_SOURCES, null) ?: return emptySet()
         return try {
@@ -295,6 +301,7 @@ class PreferencesManager @Inject constructor(
         private const val KEY_LAST_READ_LIBRARY_ITEM_ID = "last_read_library_item_id"
         private const val KEY_LIBRARY_ITEMS = "library_items"
         private const val KEY_COLLAPSED_SOURCES = "collapsed_sources"
+        private const val KEY_GROUP_BY_SOURCE = "group_by_source"
         private const val KEY_LAST_UPDATE_CHECK = "last_update_check"
         private const val KEY_LAST_APP_UPDATE_CHECK = "last_app_update_check"
         private const val KEY_AUTOMATIC_UPDATE_CHECKS_ENABLED = "automatic_update_checks_enabled"

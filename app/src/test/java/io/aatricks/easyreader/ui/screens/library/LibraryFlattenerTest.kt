@@ -2,6 +2,7 @@ package io.aatricks.easyreader.ui.screens
 
 import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.model.LibraryItem
+import io.aatricks.easyreader.ui.screens.library.FLAT_LIBRARY_SECTION
 import io.aatricks.easyreader.ui.screens.library.LibraryFlattenState
 import io.aatricks.easyreader.ui.screens.library.LibraryRenderItem
 import io.aatricks.easyreader.ui.screens.library.flattenLibraryItems
@@ -104,5 +105,22 @@ class LibraryFlattenerTest {
 
         val keys = flattened.map { it.key }
         assertEquals(keys.size, keys.toSet().size)
+    }
+
+    @Test
+    fun `flat library section renders novels without a source header`() {
+        val item = LibraryItem(id = "1", title = "Novel - Chapter 1", url = "https://s/novel/1", baseTitle = "Novel", sourceName = "Src")
+        val state = LibraryFlattenState(
+            groupedBySource = mapOf(FLAT_LIBRARY_SECTION to mapOf("Novel" to listOf(item))),
+            collapsedSources = emptySet(),
+            expandedNovels = emptyMap(),
+            showFullChapters = emptyMap(),
+            expandedSummaryChapterUrls = emptyMap()
+        )
+
+        val rendered = flattenLibraryItems(state)
+
+        assertTrue(rendered.none { it is LibraryRenderItem.SourceHeader })
+        assertEquals(1, rendered.size)
     }
 }

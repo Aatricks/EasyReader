@@ -402,6 +402,12 @@ class LibraryRepository @Inject constructor(
 
     fun loadCollapsedSources(): Set<String> = preferencesManager.loadCollapsedSources()
 
+    fun loadGroupBySource(): Boolean = preferencesManager.loadGroupBySource()
+
+    fun saveGroupBySource(enabled: Boolean): Unit {
+        preferencesManager.saveGroupBySource(enabled)
+    }
+
     fun saveCollapsedSources(sources: Set<String>): Unit {
         preferencesManager.saveCollapsedSources(sources)
     }

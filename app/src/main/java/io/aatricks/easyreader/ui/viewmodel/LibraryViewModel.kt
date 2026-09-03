@@ -25,6 +25,7 @@ import javax.inject.Inject
 import android.util.Log
 import io.aatricks.easyreader.ui.screens.DrawerNovelSections
 import io.aatricks.easyreader.ui.screens.buildDrawerNovelSections
+import io.aatricks.easyreader.ui.screens.library.FLAT_LIBRARY_SECTION
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import io.aatricks.easyreader.data.model.libraryDisplayTitle
@@ -58,6 +59,8 @@ class LibraryViewModel @Inject constructor(
 
     private val selectionManager = LibrarySelectionManager()
     private val _collapsedSources = MutableStateFlow<Set<String>>(emptySet())
+    private val _groupBySource = MutableStateFlow(false)
+    val groupBySource: StateFlow<Boolean> = _groupBySource.asStateFlow()
     private val downloadStates = LibraryDownloadStates(
         scope = viewModelScope,
         repository = repository,
@@ -96,6 +99,7 @@ class LibraryViewModel @Inject constructor(
 
     init {
         _collapsedSources.value = repository.loadCollapsedSources()
+        _groupBySource.value = repository.loadGroupBySource()
     }
 
     /**
@@ -133,25 +137,33 @@ class LibraryViewModel @Inject constructor(
         combine(
             filters.searchQuery,
             filters.contentTypeFilter,
-            filters.sortMode
-        ) { query, filter, sort ->
-            Triple(query, filter, sort)
+            filters.sortMode,
+            _groupBySource
+        ) { query, filter, sort, groupBySource ->
+            FilterParams(query, filter, sort, groupBySource)
         },
         _uiState
     ) { repoState, pendingStatus, filterParams, manualUiState ->
         val (repoData, selectionModeEnabled) = repoState
         val (rawItems, selectedIds, collapsedSources) = repoData
         val (pendingIds, statusFilter) = pendingStatus
-        val (query, filter, sort) = filterParams
 
         val items = if (pendingIds.isEmpty()) rawItems else rawItems.filterNot { it.id in pendingIds }
-        val filteredItems = filters.apply(items, query, filter, sort, statusFilter)
+        val filteredItems = filters.apply(
+            items, filterParams.query, filterParams.contentType, filterParams.sort, statusFilter
+        )
+        val groupedItems = repository.getGroupedByTitle(filteredItems)
 
         LibraryUiState(
             items = items,
             filteredItems = filteredItems,
-            groupedItems = repository.getGroupedByTitle(filteredItems),
-            groupedBySource = repository.getGroupedBySourceAndTitle(filteredItems),
+            groupedItems = groupedItems,
+            // Flat list keeps the sort order across sources; sections only when the user asks.
+            groupedBySource = if (filterParams.groupBySource) {
+                repository.getGroupedBySourceAndTitle(filteredItems)
+            } else {
+                mapOf(FLAT_LIBRARY_SECTION to groupedItems)
+            },
             collapsedSources = collapsedSources,
             isSelectionMode = selectionModeEnabled || selectedIds.isNotEmpty(),
             selectedIds = selectedIds,
@@ -194,6 +206,13 @@ class LibraryViewModel @Inject constructor(
             started = if (isUnderTest) SharingStarted.Eagerly else SharingStarted.WhileSubscribed(0),
             initialValue = DrawerUiState(DrawerNovelSections(null, emptyList(), emptyList()), true)
         )
+
+    private data class FilterParams(
+        val query: String,
+        val contentType: ContentType?,
+        val sort: SortMode,
+        val groupBySource: Boolean
+    )
 
     data class LibraryUiState(
         val items: List<LibraryItem> = emptyList(),
@@ -651,6 +670,11 @@ class LibraryViewModel @Inject constructor(
 
     fun setContentTypeFilter(contentType: ContentType?): Unit {
         filters.setContentTypeFilter(contentType)
+    }
+
+    fun setGroupBySource(enabled: Boolean): Unit {
+        _groupBySource.value = enabled
+        repository.saveGroupBySource(enabled)
     }
 
     fun setSortMode(mode: SortMode): Unit {

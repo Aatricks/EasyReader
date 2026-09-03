@@ -9,6 +9,7 @@ import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.DownloadStatusReconciler
 import io.aatricks.easyreader.data.repository.ExploreRepository
 import io.aatricks.easyreader.data.repository.LibraryRepository
+import io.aatricks.easyreader.ui.screens.library.FLAT_LIBRARY_SECTION
 import io.aatricks.easyreader.work.ChapterDownloadQueue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -403,6 +404,26 @@ class LibraryViewModelTest {
         verify(libraryRepository).clearUpdateIndicator(stoppedAt.id)
         assertEquals(chapterUrl(214), loadedUrl)
         assertEquals(OpenNextChapterState.Idle, viewModel.openNextChapterState.value)
+    }
+
+    @Test
+    fun `library is one flat section unless grouping by source is enabled`() = runTest {
+        val item = LibraryItem(id = "1", title = "Novel - Chapter 1", url = "https://s/novel/1", baseTitle = "Novel", sourceName = "Src")
+        val byTitle = mapOf("Novel" to listOf(item))
+        val bySource = mapOf("Src" to byTitle)
+        whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(listOf(item)))
+        whenever(libraryRepository.getGroupedByTitle(anyOrNull())).thenReturn(byTitle)
+        whenever(libraryRepository.getGroupedBySourceAndTitle(anyOrNull())).thenReturn(bySource)
+        val vm = LibraryViewModel(libraryRepository, contentRepository, exploreRepository, io.aatricks.easyreader.work.NoOpChapterDownloadQueue(), reconciler)
+        advanceUntilIdle()
+
+        assertEquals(mapOf(FLAT_LIBRARY_SECTION to byTitle), vm.uiState.value.groupedBySource)
+
+        vm.setGroupBySource(true)
+        advanceUntilIdle()
+
+        assertEquals(bySource, vm.uiState.value.groupedBySource)
+        verify(libraryRepository).saveGroupBySource(true)
     }
 
     @Test

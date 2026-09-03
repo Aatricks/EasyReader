@@ -67,6 +67,7 @@ fun LibraryScreen(
     val pendingDeletion by libraryViewModel.pendingDeletion.collectAsState()
     val statusFilter by libraryViewModel.statusFilter.collectAsState()
     val sortMode by libraryViewModel.sortMode.collectAsState()
+    val groupBySource by libraryViewModel.groupBySource.collectAsState()
     val isRefreshing by libraryViewModel.isRefreshing.collectAsState()
     val openNextChapterState by libraryViewModel.openNextChapterState.collectAsState()
     val downloadRetryPrompt by libraryViewModel.downloadRetryPrompt.collectAsState()
@@ -167,6 +168,8 @@ fun LibraryScreen(
                     LibraryOverflowMenu(
                         sortMode = sortMode,
                         onSortModeSelected = { libraryViewModel.setSortMode(it) },
+                        groupBySource = groupBySource,
+                        onGroupBySourceChanged = { libraryViewModel.setGroupBySource(it) },
                         onDownloadAll = {
                             libraryViewModel.prefetchLibrary()
                             scope.launch { snackbarHostState.showSnackbar("Refreshing offline cache…") }
@@ -301,63 +304,6 @@ fun LibraryScreen(
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun LibraryOverflowMenu(
-    sortMode: SortMode,
-    onSortModeSelected: (SortMode) -> Unit,
-    onDownloadAll: () -> Unit
-): Unit {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { expanded = true }) {
-            Icon(imageVector = Icons.Default.MoreVert, contentDescription = "More options")
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            Text(
-                text = "Sort by",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(
-                    horizontal = EasyReaderSpacing.md,
-                    vertical = EasyReaderSpacing.xs
-                )
-            )
-            SortMode.entries.forEach { mode ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            when (mode) {
-                                SortMode.LAST_READ -> "Last read"
-                                SortMode.DATE_ADDED -> "Date added"
-                                SortMode.TITLE -> "Title"
-                                SortMode.PROGRESS -> "Progress"
-                            }
-                        )
-                    },
-                    leadingIcon = {
-                        if (mode == sortMode) {
-                            Icon(imageVector = Icons.Default.Check, contentDescription = null)
-                        }
-                    },
-                    onClick = {
-                        expanded = false
-                        onSortModeSelected(mode)
-                    }
-                )
-            }
-            HorizontalDivider()
-            DropdownMenuItem(
-                text = { Text("Download all chapters") },
-                leadingIcon = { Icon(imageVector = Icons.Default.Download, contentDescription = null) },
-                onClick = {
-                    expanded = false
-                    onDownloadAll()
-                }
-            )
         }
     }
 }
