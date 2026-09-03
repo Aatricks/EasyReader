@@ -125,4 +125,45 @@ class SummaryViewModelTest {
         assertEquals("ABC", customVm.uiState.value.currentSummary)
         assertEquals("ABC", customVm.uiState.value.summariesCache["https://example.com/ch1"])
     }
+
+    @Test
+    fun `a failed generation stays attributed to its chapter and drops the partial text`() =
+        runTest(testDispatcher) {
+            val chapterUrl = "https://example.com/ch1"
+            val failingEngine = object : SummaryEngine {
+                override val supportsAi: Boolean = true
+                override fun isAvailable(): Boolean = true
+                override suspend fun initialize(): Result<Unit> = Result.success(Unit)
+                override suspend fun generateSummary(
+                    prompt: String,
+                    onProgress: ((String) -> Unit)?
+                ): Result<String> {
+                    onProgress?.invoke("Half a sen")
+                    return Result.failure(IllegalStateException("Ran out of memory"))
+                }
+                override fun cancelGeneration() {}
+                override fun release() {}
+            }
+            val vm = SummaryViewModel(SummaryService(failingEngine, testDispatcher), preferencesManager)
+
+            vm.generateSummary(chapterUrl, "Ch 1", listOf("text")) {}
+            advanceUntilIdle()
+
+            val state = vm.uiState.value
+            assertFalse(state.isGenerating)
+            assertEquals("Ran out of memory", state.error)
+            // The row that failed needs to be identifiable so only it shows the error.
+            assertEquals(chapterUrl, state.activeChapterUrl)
+            assertNull(state.currentSummary)
+        }
+
+    @Test
+    fun `reportGenerationFailure surfaces a failure that happened before generation started`() {
+        viewModel.reportGenerationFailure("https://example.com/ch9", "Could not load the chapter")
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isGenerating)
+        assertEquals("Could not load the chapter", state.error)
+        assertEquals("https://example.com/ch9", state.activeChapterUrl)
+    }
 }

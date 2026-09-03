@@ -112,7 +112,7 @@ class SummaryViewModel @Inject constructor(
             }).onSuccess { summary ->
                 handleGenerationSuccess(chapterUrl, summary, onComplete)
             }.onFailure { e ->
-                handleGenerationFailure(e)
+                reportGenerationFailure(chapterUrl, e.message ?: "Failed to generate summary")
             }
         }
     }
@@ -135,12 +135,17 @@ class SummaryViewModel @Inject constructor(
         onComplete(summary)
     }
 
-    private fun handleGenerationFailure(e: Throwable) {
-        val error = e.message ?: "Failed to generate summary"
+    /**
+     * Record a failed summary for [chapterUrl]. [activeChapterUrl] stays set so the caller can
+     * show the error on the row that asked for it and nowhere else; [currentSummary] is cleared
+     * so a half-streamed recap is never left on screen as if it were finished.
+     */
+    fun reportGenerationFailure(chapterUrl: String, message: String) {
         updateState { it.copy(
             isGenerating = false,
-            activeChapterUrl = null,
-            error = error
+            activeChapterUrl = chapterUrl,
+            currentSummary = null,
+            error = message
         ) }
     }
 

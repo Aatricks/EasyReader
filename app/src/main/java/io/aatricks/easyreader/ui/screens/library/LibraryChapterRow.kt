@@ -44,6 +44,7 @@ import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.ContentResult
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.ui.components.ChapterSummaryDropdown
+import io.aatricks.easyreader.ui.components.ChapterSummaryState
 import io.aatricks.easyreader.ui.screens.LibraryRenderContext
 import io.aatricks.easyreader.ui.screens.openLibraryChapter
 import io.aatricks.easyreader.ui.theme.EasyReaderMotion
@@ -227,16 +228,20 @@ private fun chapterSummary(
         exit = shrinkVertically(animationSpec = tween(EasyReaderMotion.short)) +
             fadeOut(animationSpec = tween(EasyReaderMotion.short))
     ) {
+        val isThisChapter = activeChapterUrl == presentation.chapterUrl
         ChapterSummaryDropdown(
-            summary = displayedSummary,
-            isGenerating = isGenerating && activeChapterUrl == presentation.chapterUrl,
-            aiSupportedInBuild = supportsAi,
-            aiOptedIn = isEnabled,
-            onEnableAi = { context.summaryViewModel.setAiSummaryEnabled(true) },
-            isInitializing = isInitializing,
-            isReady = context.summaryViewModel.isServiceReady(),
+            state = ChapterSummaryState(
+                summary = displayedSummary,
+                error = error.takeIf { isThisChapter },
+                isGenerating = isGenerating && isThisChapter,
+                isInitializing = isInitializing,
+                aiSupportedInBuild = supportsAi,
+                aiOptedIn = isEnabled,
+                isReady = context.summaryViewModel.isServiceReady()
+            ),
             onGenerateSummary = onGenerate,
             onCancel = { context.summaryViewModel.cancelGeneration() },
+            onEnableAi = { context.summaryViewModel.setAiSummaryEnabled(true) },
             modifier = Modifier.padding(top = EasyReaderSpacing.xxs)
         )
     }
@@ -247,7 +252,13 @@ private suspend fun generateChapterSummary(
     context: LibraryRenderContext
 ) {
     val result = context.readerViewModel.contentRepository.loadContent(presentation.chapterUrl)
-    if (result !is ContentResult.Success) return
+    if (result !is ContentResult.Success) {
+        context.summaryViewModel.reportGenerationFailure(
+            presentation.chapterUrl,
+            "Could not load the chapter to summarise"
+        )
+        return
+    }
     context.summaryViewModel.generateSummary(
         chapterUrl = presentation.chapterUrl,
         chapterTitle = presentation.item.currentChapter.ifBlank { presentation.item.title },

@@ -2,6 +2,7 @@ package io.aatricks.easyreader.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,15 +23,10 @@ import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 
 @Composable
 fun ChapterSummaryDropdown(
-    summary: String?,
-    isGenerating: Boolean,
+    state: ChapterSummaryState,
     onGenerateSummary: () -> Unit,
     onCancel: (() -> Unit)? = null,
-    aiSupportedInBuild: Boolean = true,
-    aiOptedIn: Boolean = true,
     onEnableAi: (() -> Unit)? = null,
-    isInitializing: Boolean = false,
-    isReady: Boolean = aiSupportedInBuild && aiOptedIn,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -53,104 +49,119 @@ fun ChapterSummaryDropdown(
                 Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
 
                 when {
-                    !aiSupportedInBuild -> {
-                        Text(
-                            text = "AI summaries aren't available in this build.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
-                        Text(
-                            text = "Install the AI variant to enable on-device chapter recaps.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    !state.aiSupportedInBuild -> AiUnavailableNotice()
+                    !state.aiOptedIn -> AiOptInPrompt(onEnableAi)
+                    state.isInitializing && !state.isReady ->
+                        SummaryProgress("Downloading AI model…", onCancel = null)
 
-                    !aiOptedIn -> {
-                        Text(
-                            text = "Enable AI summaries to generate on-device chapter recaps.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
-                        Text(
-                            text = "The AI model is downloaded once (a few hundred MB) and then runs offline.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        if (onEnableAi != null) {
-                            FilledTonalButton(onClick = onEnableAi) {
-                                Text("Enable AI summaries")
-                            }
-                        }
-                    }
+                    state.isGenerating -> SummaryProgress("Generating a quick recap…", onCancel)
+                    state.error != null -> SummaryError(state.error, onGenerateSummary)
+                    state.summary != null -> Text(
+                        text = state.summary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
 
-                    isInitializing && !isReady -> {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = "Downloading AI model…",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    isGenerating -> {
-                        Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = "Generating a quick recap…",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (onCancel != null) {
-                                TextButton(onClick = onCancel) {
-                                    Text("Cancel")
-                                }
-                            }
-                        }
-                    }
-
-                    summary != null -> {
-                        Text(
-                            text = summary,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-
-                    else -> {
-                        Text(
-                            text = "Need a quick refresher before you open this chapter?",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        FilledTonalButton(onClick = onGenerateSummary) {
-                            Text("Generate summary")
-                        }
-                    }
+                    else -> SummaryPrompt(onGenerateSummary)
                 }
             }
         }
     }
 }
+
+@Composable
+private fun ColumnScope.AiUnavailableNotice() {
+    Text(
+        text = "AI summaries aren't available in this build.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurface
+    )
+    Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
+    Text(
+        text = "Install the AI variant to enable on-device chapter recaps.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+@Composable
+private fun ColumnScope.AiOptInPrompt(onEnableAi: (() -> Unit)?) {
+    Text(
+        text = "Enable AI summaries to generate on-device chapter recaps.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurface
+    )
+    Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
+    Text(
+        text = "The AI model is downloaded once (a few hundred MB) and then runs offline.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    if (onEnableAi != null) {
+        FilledTonalButton(onClick = onEnableAi) {
+            Text("Enable AI summaries")
+        }
+    }
+}
+
+@Composable
+private fun SummaryProgress(label: String, onCancel: (() -> Unit)?) {
+    Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (onCancel != null) {
+            TextButton(onClick = onCancel) {
+                Text("Cancel")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ColumnScope.SummaryError(error: String, onRetry: () -> Unit) {
+    Text(
+        text = error,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.error
+    )
+    FilledTonalButton(onClick = onRetry) {
+        Text("Retry")
+    }
+}
+
+@Composable
+private fun ColumnScope.SummaryPrompt(onGenerateSummary: () -> Unit) {
+    Text(
+        text = "Need a quick refresher before you open this chapter?",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    FilledTonalButton(onClick = onGenerateSummary) {
+        Text("Generate summary")
+    }
+}
+
+/** The slice of `SummaryViewModel.SummaryUiState` this panel renders, scoped to one chapter. */
+data class ChapterSummaryState(
+    val summary: String? = null,
+    val error: String? = null,
+    val isGenerating: Boolean = false,
+    val isInitializing: Boolean = false,
+    val aiSupportedInBuild: Boolean = true,
+    val aiOptedIn: Boolean = true,
+    val isReady: Boolean = aiSupportedInBuild && aiOptedIn
+)
