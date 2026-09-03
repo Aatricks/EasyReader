@@ -780,7 +780,18 @@ class ReaderViewModel @Inject constructor(
     }
 
     private fun handleLoadError(result: ContentResult.Error) {
-        updateState { it.copy(isLoading = false, isNavigating = false, error = result.message) }
+        // A silent load leaves the current chapter in uiState (performLoad only nulls `content`
+        // for a visible load), so swapping in the error screen would throw away what the user
+        // was reading. Report it and stay put instead.
+        val keepCurrentChapter = _uiState.value.content != null
+        updateState {
+            it.copy(
+                isLoading = false,
+                isNavigating = false,
+                error = if (keepCurrentChapter) null else result.message,
+                toastMessage = if (keepCurrentChapter) result.message else it.toastMessage
+            )
+        }
     }
 
     private fun getBaseTitle(content: ChapterContent, libraryItem: LibraryItem?): String {
@@ -804,6 +815,9 @@ class ReaderViewModel @Inject constructor(
         loadJob = viewModelScope.launch {
             isExplicitNavigation = true
             libraryRepository.getItemByUrl(url)?.let { existingItem ->
+                // A silent load draws no spinner of its own, so the overlay is the only feedback
+                // during the fetch. Prev is never prefetched, so that fetch is not instant.
+                updateState { it.copy(isNavigating = true) }
                 loadContent(url, existingItem.id, fromBottom = fromBottom, isSilent = true, isExplicitNavigation = true)
                 return@launch
             }

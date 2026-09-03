@@ -319,4 +319,92 @@ class ReaderViewModelNavigationTest {
             eq(false)
         )
     }
+
+    @Test
+    fun `silent navigation to a library chapter shows the navigation overlay`() = runTest {
+        val currentUrl = "http://example.com/ch1"
+        val nextUrl = "http://example.com/ch2"
+        val currentItem = LibraryItem(
+            id = "current-id",
+            title = "Chapter 1",
+            url = currentUrl,
+            currentChapter = "Chapter 1",
+            baseTitle = "My Manga",
+            baseNovelUrl = "http://example.com/series",
+            sourceName = "Source"
+        )
+        val nextItem = currentItem.copy(id = "next-id", title = "Chapter 2", url = nextUrl, currentChapter = "Chapter 2")
+
+        var navigatingDuringFetch: Boolean? = null
+        whenever(contentRepository.loadContent(currentUrl)).thenReturn(
+            ContentResult.Success(listOf(ContentElement.Text("Current")), "Chapter 1", currentUrl)
+        )
+        whenever(contentRepository.loadContent(nextUrl)).thenAnswer {
+            navigatingDuringFetch = viewModel.uiState.value.isNavigating
+            ContentResult.Success(listOf(ContentElement.Text("Next")), "Chapter 2", nextUrl)
+        }
+        whenever(contentRepository.incrementChapterUrl(currentUrl)).thenReturn(nextUrl)
+        whenever(contentRepository.decrementChapterUrl(currentUrl)).thenReturn(null)
+        whenever(contentRepository.incrementChapterUrl(nextUrl)).thenReturn(null)
+        whenever(contentRepository.decrementChapterUrl(nextUrl)).thenReturn(currentUrl)
+        whenever(libraryRepository.getItemByUrl(currentUrl)).thenReturn(currentItem)
+        whenever(libraryRepository.getItemByUrl(nextUrl)).thenReturn(nextItem)
+        whenever(libraryRepository.getItemById(currentItem.id)).thenReturn(currentItem)
+        whenever(libraryRepository.getItemById(nextItem.id)).thenReturn(nextItem)
+        whenever(libraryRepository.getChaptersByBaseTitle(currentItem.baseTitle)).thenReturn(listOf(currentItem, nextItem))
+        whenever(exploreRepository.getNovelDetails(any(), any())).thenReturn(null)
+
+        viewModel.loadContent(currentUrl, currentItem.id)
+        advanceUntilIdle()
+
+        viewModel.navigateToNextChapter()
+        advanceUntilIdle()
+
+        assertEquals(true, navigatingDuringFetch)
+        assertEquals(nextUrl, viewModel.uiState.value.content?.url)
+        assertEquals(false, viewModel.uiState.value.isNavigating)
+    }
+
+    @Test
+    fun `failed silent navigation keeps the current chapter and reports it`() = runTest {
+        val currentUrl = "http://example.com/ch1"
+        val nextUrl = "http://example.com/ch2"
+        val currentItem = LibraryItem(
+            id = "current-id",
+            title = "Chapter 1",
+            url = currentUrl,
+            currentChapter = "Chapter 1",
+            baseTitle = "My Manga",
+            baseNovelUrl = "http://example.com/series",
+            sourceName = "Source"
+        )
+        val nextItem = currentItem.copy(id = "next-id", title = "Chapter 2", url = nextUrl, currentChapter = "Chapter 2")
+
+        whenever(contentRepository.loadContent(currentUrl)).thenReturn(
+            ContentResult.Success(listOf(ContentElement.Text("Current")), "Chapter 1", currentUrl)
+        )
+        whenever(contentRepository.loadContent(nextUrl)).thenReturn(
+            ContentResult.Error("Server error (500)")
+        )
+        whenever(contentRepository.incrementChapterUrl(currentUrl)).thenReturn(nextUrl)
+        whenever(contentRepository.decrementChapterUrl(currentUrl)).thenReturn(null)
+        whenever(libraryRepository.getItemByUrl(currentUrl)).thenReturn(currentItem)
+        whenever(libraryRepository.getItemByUrl(nextUrl)).thenReturn(nextItem)
+        whenever(libraryRepository.getItemById(currentItem.id)).thenReturn(currentItem)
+        whenever(libraryRepository.getItemById(nextItem.id)).thenReturn(nextItem)
+        whenever(libraryRepository.getChaptersByBaseTitle(currentItem.baseTitle)).thenReturn(listOf(currentItem, nextItem))
+        whenever(exploreRepository.getNovelDetails(any(), any())).thenReturn(null)
+
+        viewModel.loadContent(currentUrl, currentItem.id)
+        advanceUntilIdle()
+
+        viewModel.navigateToNextChapter()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(null, state.error)
+        assertEquals(currentUrl, state.content?.url)
+        assertNotNull(state.toastMessage)
+        assertEquals(false, state.isNavigating)
+    }
 }
