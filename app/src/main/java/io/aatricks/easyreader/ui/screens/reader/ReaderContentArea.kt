@@ -37,6 +37,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -522,9 +526,53 @@ internal fun ContentArea(
             }
             .background(bgColor)
     ) {
+        // Hoisted out of detectTapGestures so the accessibility actions below turn pages
+        // through exactly the same path as a tap.
+        val goToNextPage = {
+            readerViewModel.onUserInteraction()
+            val nextPage = pagerState.currentPage + 1
+            if (nextPage < pagerState.pageCount) {
+                coroutineScope.launch { pagerState.animateScrollToPage(nextPage) }
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.SegmentTick)
+            } else if (uiState.canNavigateNext) {
+                readerViewModel.navigateToNextChapter()
+            }
+        }
+        val goToPreviousPage = {
+            readerViewModel.onUserInteraction()
+            val prevPage = pagerState.currentPage - 1
+            if (prevPage >= 0) {
+                coroutineScope.launch { pagerState.animateScrollToPage(prevPage) }
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.SegmentTick)
+            } else if (uiState.canNavigatePrevious) {
+                readerViewModel.navigateToPreviousChapter(fromBottom = true)
+            }
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                // The gestures below are raw pointer input, invisible to a screen reader.
+                // These expose the same three actions as a semantics node so the controls
+                // and, in paged mode, the page turns stay reachable with TalkBack on.
+                .semantics {
+                    onClick(label = "Show reader controls") {
+                        readerViewModel.toggleControls()
+                        true
+                    }
+                    if (uiState.isPagedMode) {
+                        customActions = listOf(
+                            CustomAccessibilityAction("Next page") {
+                                goToNextPage()
+                                true
+                            },
+                            CustomAccessibilityAction("Previous page") {
+                                goToPreviousPage()
+                                true
+                            }
+                        )
+                    }
+                }
                 // Single full-screen tap authority for toggling the reader controls. The
                 // per-item clickables only cover text glyphs, so horizontal margins,
                 // inter-paragraph gaps, and empty space below a short chapter were dead
@@ -548,30 +596,8 @@ internal fun ContentArea(
                         )
                         when (action) {
                             ReaderTapAction.TOGGLE_CONTROLS -> readerViewModel.toggleControls()
-                            ReaderTapAction.PAGE_FORWARD -> {
-                                readerViewModel.onUserInteraction()
-                                val nextPage = pagerState.currentPage + 1
-                                if (nextPage < pagerState.pageCount) {
-                                    coroutineScope.launch {
-                                        pagerState.animateScrollToPage(nextPage)
-                                    }
-                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                                } else if (uiState.canNavigateNext) {
-                                    readerViewModel.navigateToNextChapter()
-                                }
-                            }
-                            ReaderTapAction.PAGE_BACK -> {
-                                readerViewModel.onUserInteraction()
-                                val prevPage = pagerState.currentPage - 1
-                                if (prevPage >= 0) {
-                                    coroutineScope.launch {
-                                        pagerState.animateScrollToPage(prevPage)
-                                    }
-                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                                } else if (uiState.canNavigatePrevious) {
-                                    readerViewModel.navigateToPreviousChapter(fromBottom = true)
-                                }
-                            }
+                            ReaderTapAction.PAGE_FORWARD -> goToNextPage()
+                            ReaderTapAction.PAGE_BACK -> goToPreviousPage()
                         }
                     }
                 }

@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -248,28 +249,31 @@ private fun pagedTextContent(
     fontFamily: FontFamily,
     textColor: Color
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(
-                horizontal = uiState.margins.dp,
-                vertical = uiState.verticalMargins.dp
-            )
-    ) {
-        page.fragments.forEachIndexed { index, fragment ->
-            if (index > 0) {
-                Spacer(modifier = Modifier.height((uiState.fontSize * uiState.paragraphSpacing).dp))
+    // Selectable so a passage can be copied, shared or translated, as in scroll mode.
+    SelectionContainer {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    horizontal = uiState.margins.dp,
+                    vertical = uiState.verticalMargins.dp
+                )
+        ) {
+            page.fragments.forEachIndexed { index, fragment ->
+                if (index > 0) {
+                    Spacer(modifier = Modifier.height((uiState.fontSize * uiState.paragraphSpacing).dp))
+                }
+                Text(
+                    text = fragment.text,
+                    color = textColor,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = uiState.fontSize.sp,
+                        lineHeight = (uiState.fontSize * uiState.lineHeight).sp,
+                        fontFamily = fontFamily
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
-            Text(
-                text = fragment.text,
-                color = textColor,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = uiState.fontSize.sp,
-                    lineHeight = (uiState.fontSize * uiState.lineHeight).sp,
-                    fontFamily = fontFamily
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
         }
     }
 }
