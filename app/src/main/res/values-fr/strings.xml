@@ -134,6 +134,7 @@
     <plurals name="settings_library_size_summary">
         <item quantity="one">%1$d titre · %2$d entrées</item>
         <item quantity="other">%1$d titres · %2$d entrées</item>
+        <item quantity="many">%1$d de titres · %2$d entrées</item>
     </plurals>
     <string name="settings_clear_library_button">Vider toute la bibliothèque</string>
     <string name="settings_section_ai">Fonctions IA</string>
@@ -194,12 +195,14 @@
     <plurals name="library_titles_removed">
         <item quantity="one">%1$d titre supprimé</item>
         <item quantity="other">%1$d titres supprimés</item>
+        <item quantity="many">%1$d de titres supprimés</item>
     </plurals>
     <string name="library_undo">Annuler</string>
     <string name="library_download_all_title">Télécharger tous les chapitres ?</string>
     <plurals name="library_download_all_body">
         <item quantity="one">Cela met %1$d chapitre en file pour la lecture hors ligne. Cela peut consommer beaucoup de données et d\'espace.</item>
         <item quantity="other">Cela met %1$d chapitres en file pour la lecture hors ligne. Cela peut consommer beaucoup de données et d\'espace.</item>
+        <item quantity="many">Cela met %1$d de chapitres en file pour la lecture hors ligne. Cela peut consommer beaucoup de données et d\'espace.</item>
     </plurals>
     <string name="library_back_to_reader">Retour au lecteur</string>
     <string name="library_explore_sources">Explorer les sources</string>
@@ -217,10 +220,12 @@
     <plurals name="library_results_in_view">
         <item quantity="one">%1$d résultat affiché</item>
         <item quantity="other">%1$d résultats affichés</item>
+        <item quantity="many">%1$d de résultats affichés</item>
     </plurals>
     <plurals name="library_title_count">
         <item quantity="one">%1$d titre</item>
         <item quantity="other">%1$d titres</item>
+        <item quantity="many">%1$d de titres</item>
     </plurals>
     <string name="library_selection_done">Terminé</string>
     <string name="library_selection_select">Sélectionner</string>
@@ -253,6 +258,7 @@
     <plurals name="drawer_scroll_level_milestones">
         <item quantity="one">Niveau %1$d, %2$d nouveau jalon</item>
         <item quantity="other">Niveau %1$d, %2$d nouveaux jalons</item>
+        <item quantity="many">Niveau %1$d, %2$d de nouveaux jalons</item>
     </plurals>
     <string name="drawer_section_new_chapters">Nouveaux chapitres</string>
     <string name="drawer_continue_after">Continuer après %1$s</string>
@@ -298,10 +304,12 @@
     <plurals name="explore_filter_source_and_genres">
         <item quantity="one">%1$s + %2$d genre</item>
         <item quantity="other">%1$s + %2$d genres</item>
+        <item quantity="many">%1$s + %2$d de genres</item>
     </plurals>
     <plurals name="explore_filter_genres">
         <item quantity="one">%1$d genre</item>
         <item quantity="other">%1$d genres</item>
+        <item quantity="many">%1$d de genres</item>
     </plurals>
     <string name="explore_filters">Filtres</string>
     <string name="explore_remove_source_filter">Retirer le filtre de source</string>
@@ -327,6 +335,7 @@
     <plurals name="explore_chapter_count">
         <item quantity="one">%1$d chapitre</item>
         <item quantity="other">%1$d chapitres</item>
+        <item quantity="many">%1$d de chapitres</item>
     </plurals>
     <string name="explore_rating">Note %1$s</string>
     <string name="explore_open_details">Voir les détails</string>

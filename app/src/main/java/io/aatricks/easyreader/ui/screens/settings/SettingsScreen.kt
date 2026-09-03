@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -96,6 +97,7 @@ fun SettingsScreen(
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val libraryState by libraryViewModel.uiState.collectAsState()
@@ -162,11 +164,11 @@ fun SettingsScreen(
             val update = updateState.updateAvailable
             if (err != null) {
                 snackbarHostState.showSnackbar(
-                    context.getString(R.string.settings_update_check_error, err)
+                    resources.getString(R.string.settings_update_check_error, err)
                 )
             } else if (update == null) {
                 snackbarHostState.showSnackbar(
-                    context.getString(R.string.settings_up_to_date, updateState.currentVersion)
+                    resources.getString(R.string.settings_up_to_date, updateState.currentVersion)
                 )
             }
             userTriggeredCheck = false
@@ -653,9 +655,9 @@ fun SettingsScreen(
                         refreshKey++
                         snackbarHostState.showSnackbar(
                             if (outcome.isSuccess) {
-                                context.getString(R.string.settings_cache_cleared)
+                                resources.getString(R.string.settings_cache_cleared)
                             } else {
-                                context.getString(
+                                resources.getString(
                                     R.string.settings_cache_clear_failed,
                                     outcome.exceptionOrNull()?.message
                                 )
@@ -694,9 +696,9 @@ fun SettingsScreen(
                         refreshKey++
                         snackbarHostState.showSnackbar(
                             if (outcome.isSuccess) {
-                                context.getString(R.string.settings_downloads_cleared)
+                                resources.getString(R.string.settings_downloads_cleared)
                             } else {
-                                context.getString(
+                                resources.getString(
                                     R.string.settings_downloads_clear_failed,
                                     outcome.exceptionOrNull()?.message
                                 )
@@ -750,9 +752,9 @@ fun SettingsScreen(
                             refreshKey++
                             snackbarHostState.showSnackbar(
                                 if (outcome.isSuccess) {
-                                    context.getString(R.string.settings_library_cleared)
+                                    resources.getString(R.string.settings_library_cleared)
                                 } else {
-                                    context.getString(
+                                    resources.getString(
                                         R.string.settings_library_clear_failed,
                                         outcome.exceptionOrNull()?.message
                                     )

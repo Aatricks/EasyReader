@@ -30,7 +30,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboard
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -83,7 +83,7 @@ fun LibraryScreen(
     val summaryViewModel: SummaryViewModel = hiltViewModel()
     val summaryUiState by summaryViewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val resources = LocalContext.current.resources
+    val resources = LocalResources.current
     val undoLabel = stringResource(R.string.library_undo)
 
     var urlInput by remember { mutableStateOf("") }

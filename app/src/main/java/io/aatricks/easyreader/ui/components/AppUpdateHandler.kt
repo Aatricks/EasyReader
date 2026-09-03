@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -49,7 +50,7 @@ fun appUpdateHandler(
     var showInstallDialog by remember { mutableStateOf(false) }
     var showPermissionWarningDialog by remember { mutableStateOf(false) }
     var showDownloadProgressDialog by remember { mutableStateOf(false) }
-    val context = LocalContext.current
+    val resources = LocalResources.current
 
     LaunchedEffect(Unit) {
         delay(DEFERRED_STARTUP_DELAY_MS)
@@ -69,7 +70,7 @@ fun appUpdateHandler(
             showInstallDialog = true
         } else if (status is DownloadStatus.Error) {
             showDownloadProgressDialog = false
-            val failure = context.getString(R.string.update_download_failed, status.message)
+            val failure = resources.getString(R.string.update_download_failed, status.message)
             snackbarHostState.showSnackbar(failure, duration = SnackbarDuration.Long)
         } else if (status is DownloadStatus.Progress) {
             showDownloadProgressDialog = true
