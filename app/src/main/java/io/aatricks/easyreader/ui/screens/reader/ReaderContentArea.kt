@@ -21,6 +21,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -736,6 +737,7 @@ internal fun ContentArea(
             EdgeNavigationHint(
                 atTop = atTop && uiState.canNavigatePrevious,
                 atBottom = atBottom && uiState.canNavigateNext,
+                caughtUp = atBottom && uiState.isCaughtUp,
                 textColor = textColor,
                 backgroundColor = bgColor
             )
@@ -1023,6 +1025,7 @@ internal data class ReaderScrollSnapshot(
 private fun EdgeNavigationHint(
     atTop: Boolean,
     atBottom: Boolean,
+    caughtUp: Boolean,
     textColor: Color,
     backgroundColor: Color
 ) {
@@ -1041,6 +1044,16 @@ private fun EdgeNavigationHint(
             EdgeHintChip(
                 text = "Pull up for next chapter",
                 icon = Icons.Default.ArrowUpward,
+                textColor = textColor,
+                backgroundColor = backgroundColor
+            )
+        }
+    }
+    if (caughtUp) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+            EdgeHintChip(
+                text = "You're caught up. No newer chapter yet.",
+                icon = Icons.Default.Check,
                 textColor = textColor,
                 backgroundColor = backgroundColor
             )
