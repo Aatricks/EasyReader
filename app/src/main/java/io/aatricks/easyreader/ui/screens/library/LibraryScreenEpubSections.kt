@@ -91,14 +91,7 @@ internal fun EpubItemCard(
                                 if (uiState.isSelectionMode) {
                                     libraryViewModel.toggleSelection(item.id)
                                 } else {
-                                    epubBook?.let { book ->
-                                        val firstHref = book.getFirstReadableHref()
-                                        if (firstHref != null) {
-                                            readerViewModel.loadEpubChapter(item.url, firstHref, item.id)
-                                            libraryViewModel.markAsCurrentlyReading(item.id)
-                                            onCloseLibrary()
-                                        }
-                                    }
+                                    openEpubItem(item, epubBook, readerViewModel, libraryViewModel, onCloseLibrary)
                                 }
                             },
                             onLongClick = {
@@ -153,6 +146,29 @@ internal fun EpubItemCard(
     }
 }
 
+/**
+ * Resume where the user stopped. [LibraryItem.currentChapterUrl] is stored as `path#href`, which
+ * `loadContent` routes back through the EPUB loader; only a row that never recorded one (or a
+ * legacy row without the anchor) falls back to the book's first readable chapter.
+ */
+private fun openEpubItem(
+    item: LibraryItem,
+    epubBook: EpubBook?,
+    readerViewModel: ReaderViewModel,
+    libraryViewModel: LibraryViewModel,
+    onCloseLibrary: () -> Unit
+) {
+    val resumeUrl = item.currentChapterUrl.takeIf { it.contains("#") }
+    if (resumeUrl != null) {
+        readerViewModel.loadContent(resumeUrl, item.id)
+    } else {
+        val firstHref = epubBook?.getFirstReadableHref() ?: return
+        readerViewModel.loadEpubChapter(item.url, firstHref, item.id)
+    }
+    libraryViewModel.markAsCurrentlyReading(item.id)
+    onCloseLibrary()
+}
+
 @Composable
 private fun EpubTocItemView(
     tocItem: EpubTocItem,
@@ -177,7 +193,13 @@ private fun EpubTocItemView(
                 .fillMaxWidth()
                 .clickable(
                     onClick = {
-                        readerViewModel.loadEpubChapter(epubPath, tocItem.href, itemId)
+                        // Explicit navigation, so the reader starts at the top of the chapter
+                        // instead of restoring the stored percentage of a different one.
+                        readerViewModel.loadContent(
+                            "$epubPath#${tocItem.href}",
+                            itemId,
+                            isExplicitNavigation = true
+                        )
                         libraryViewModel.markAsCurrentlyReading(itemId)
                         onCloseLibrary()
                     }
