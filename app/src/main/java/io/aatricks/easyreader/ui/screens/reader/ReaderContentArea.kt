@@ -10,6 +10,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -638,6 +639,18 @@ internal fun ContentArea(
                         textColor = textColor,
                         readerViewModel = readerViewModel
                     )
+                )
+            }
+
+            // Brightness dims the page only: drawn over the content but under the control bars,
+            // which were unreadable at low brightness. A background-only Spacer takes no
+            // pointers, so the tap authority above still sees every tap.
+            val overlayAlpha = brightnessOverlayAlpha(uiState.brightness)
+            if (overlayAlpha > 0f) {
+                Spacer(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = overlayAlpha))
                 )
             }
         }
