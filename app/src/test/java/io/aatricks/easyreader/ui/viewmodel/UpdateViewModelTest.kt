@@ -6,6 +6,7 @@ import io.aatricks.easyreader.updater.DownloadStatus
 import io.aatricks.easyreader.updater.UpdateCheckResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -185,5 +186,22 @@ class UpdateViewModelTest {
         assertNull(viewModel.uiState.value.updateAvailable)
         assertEquals(DownloadStatus.Idle, viewModel.uiState.value.downloadStatus)
         assertNull(viewModel.uiState.value.error)
+    }
+
+    @Test
+    fun `cancelDownload stops the download and clears the progress state`() = runTest {
+        val emissions = MutableSharedFlow<DownloadStatus>(extraBufferCapacity = 8)
+        whenever(appUpdateManager.downloadUpdate(any(), any(), any())).doReturn(emissions)
+
+        viewModel.startDownload("https://example.com/apk", "0.5.2", 1000L)
+        emissions.emit(DownloadStatus.Progress(100, 1000))
+        assertEquals(DownloadStatus.Progress(100, 1000), viewModel.uiState.value.downloadStatus)
+
+        viewModel.cancelDownload()
+        assertEquals(DownloadStatus.Idle, viewModel.uiState.value.downloadStatus)
+
+        // A later emission from the in-flight download must not re-open the progress dialog.
+        emissions.emit(DownloadStatus.Progress(200, 1000))
+        assertEquals(DownloadStatus.Idle, viewModel.uiState.value.downloadStatus)
     }
 }

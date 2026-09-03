@@ -206,16 +206,17 @@ private fun downloadProgressDialog(
     } else {
         "Downloading update…"
     }
+    val cancel = {
+        onDismiss()
+        updateViewModel.cancelDownload()
+    }
     AlertDialog(
-        onDismissRequest = {},
+        onDismissRequest = cancel,
         title = { Text("Downloading Update") },
         text = { Text(progressText) },
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = {
-                onDismiss()
-                updateViewModel.clearUpdateState()
-            }) {
+            TextButton(onClick = cancel) {
                 Text("Cancel")
             }
         }
@@ -249,7 +250,7 @@ private fun installDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = { updateViewModel.clearUpdateState() }) {
+            TextButton(onClick = { updateViewModel.cancelDownload() }) {
                 Text("Cancel")
             }
         }

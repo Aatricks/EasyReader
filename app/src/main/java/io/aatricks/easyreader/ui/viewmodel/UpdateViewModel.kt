@@ -12,6 +12,7 @@ import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.updater.AppUpdateManager
 import io.aatricks.easyreader.updater.DownloadStatus
 import io.aatricks.easyreader.updater.UpdateCheckResult
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -88,16 +89,29 @@ class UpdateViewModel @Inject constructor(
         updateState { it.copy(automaticUpdateChecksEnabled = enabled) }
     }
 
+    private var downloadJob: Job? = null
+
     fun startDownload(
         downloadUrl: String,
         versionName: String,
         expectedSize: Long
     ) {
-        viewModelScope.launch {
+        downloadJob?.cancel()
+        downloadJob = viewModelScope.launch {
             appUpdateManager.downloadUpdate(downloadUrl, versionName, expectedSize).collect { status ->
                 updateState { it.copy(downloadStatus = status) }
             }
         }
+    }
+
+    /**
+     * Stops an in-flight download and clears the state behind the progress dialog. Cancelling the
+     * collector matters: a surviving one re-emits Progress and re-opens the dialog the user closed.
+     */
+    fun cancelDownload() {
+        downloadJob?.cancel()
+        downloadJob = null
+        clearUpdateState()
     }
 
     fun installApk(apkFile: java.io.File) {
