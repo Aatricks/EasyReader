@@ -220,13 +220,12 @@ fun ReaderScreen(
                             libraryViewModel.markAsCurrentlyReading(item.id)
                         },
                         onOpenLatestUpdate = { item ->
-                            val baseTitle = item.libraryDisplayTitle()
                             if (item.baseNovelUrl.isBlank() || item.sourceName.isBlank()) {
                                 val loadUrl = if (item.currentChapterUrl.isNotBlank()) item.currentChapterUrl else item.url
                                 readerViewModel.openChapterFromStart(loadUrl, item.id)
                                 libraryViewModel.markAsCurrentlyReading(item.id)
                             } else {
-                                libraryViewModel.openNewChapter(baseTitle, item.baseNovelUrl, item.sourceName) { url, id ->
+                                libraryViewModel.openNewChapter(item) { url, id ->
                                     readerViewModel.openChapterFromStart(url, id)
                                     libraryViewModel.markAsCurrentlyReading(id)
                                 }

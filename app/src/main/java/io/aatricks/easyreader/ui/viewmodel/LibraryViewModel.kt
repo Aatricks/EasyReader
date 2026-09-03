@@ -28,6 +28,7 @@ import io.aatricks.easyreader.ui.screens.buildDrawerNovelSections
 import kotlinx.coroutines.Dispatchers
 import io.aatricks.easyreader.data.model.libraryDisplayTitle
 import io.aatricks.easyreader.data.model.libraryNovelKey
+import io.aatricks.easyreader.data.model.resolvedChapterNumber
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -489,45 +490,47 @@ class LibraryViewModel @Inject constructor(
         return baseTitle.ifBlank { fullTitle }
     }
 
+    /**
+     * Open the chapter that follows [item] (the row carrying the "new chapter" badge), so a user
+     * who stopped at 213 lands on 214 even if 215-217 were released since the badge appeared.
+     */
     fun openNewChapter(
-        baseTitle: String,
-        baseNovelUrl: String,
-        sourceName: String,
+        item: LibraryItem,
         onChapterLoaded: (String, String) -> Unit
     ): Unit {
         if (openNewChapterJob?.isActive == true) return
         openNewChapterJob = viewModelScope.launch {
             runCatching {
                 updateState { it.copy(isLoading = true) }
-                val details = exploreRepository.getNovelDetails(baseNovelUrl, sourceName)
+                val details = exploreRepository.getNovelDetails(item.baseNovelUrl, item.sourceName)
                 val normalizedChapters = normalizeChapterList(details?.chapters.orEmpty())
                 if (details == null || normalizedChapters.isEmpty()) {
                     throw Exception("No chapters found for this novel")
                 }
 
-                val latestChapter = selectLatestChapter(normalizedChapters)
+                val nextChapter = selectNextChapter(normalizedChapters, item.resolvedChapterNumber())
                     ?: throw Exception("No latest chapter found for this novel")
-                var item = repository.getItemByUrl(latestChapter.url)
-                
-                if (item == null) {
-                    item = repository.addItem(
-                        title = latestChapter.title,
-                        url = latestChapter.url,
+                var target = repository.getItemByUrl(nextChapter.url)
+
+                if (target == null) {
+                    target = repository.addItem(
+                        title = nextChapter.title,
+                        url = nextChapter.url,
                         contentType = ContentType.WEB,
-                        currentChapter = TextUtils.extractChapterLabel(latestChapter.title) 
-                            ?: TextUtils.extractChapterLabelFromUrl(latestChapter.url) 
-                            ?: latestChapter.title,
-                        baseTitle = baseTitle,
-                        baseNovelUrl = baseNovelUrl,
-                        sourceName = sourceName,
+                        currentChapter = TextUtils.extractChapterLabel(nextChapter.title)
+                            ?: TextUtils.extractChapterLabelFromUrl(nextChapter.url)
+                            ?: nextChapter.title,
+                        baseTitle = item.libraryDisplayTitle(),
+                        baseNovelUrl = item.baseNovelUrl,
+                        sourceName = item.sourceName,
                         totalChapters = normalizedChapters.size
                     )
-                } else if (item.totalChapters < normalizedChapters.size) {
-                    repository.updateItem(item.copy(totalChapters = normalizedChapters.size))
+                } else if (target.totalChapters < normalizedChapters.size) {
+                    repository.updateItem(target.copy(totalChapters = normalizedChapters.size))
                 }
-                
+
                 repository.clearUpdateIndicator(item.id)
-                onChapterLoaded(item.url, item.id)
+                onChapterLoaded(target.url, target.id)
                 updateState { it.copy(isLoading = false) }
             }.rethrowCancellation().onFailure { e ->
                 Log.e(TAG, "Failed to open new chapter", e)
@@ -741,19 +744,23 @@ class LibraryViewModel @Inject constructor(
     }
 }
 
-internal fun selectLatestChapter(chapters: List<ChapterInfo>): ChapterInfo? {
+/**
+ * The first chapter numbered after [afterNumber] (where the user stopped). Falls back to the
+ * newest chapter when the user's position is unknown or nothing newer exists.
+ */
+internal fun selectNextChapter(chapters: List<ChapterInfo>, afterNumber: Double?): ChapterInfo? {
     if (chapters.isEmpty()) return null
 
-    val latestByNumber = chapters.withIndex()
-        .mapNotNull { indexedChapter ->
-            val chapter = indexedChapter.value
-            val chapterNumber = TextUtils.extractChapterNumber(chapter.title)
-                ?: TextUtils.extractChapterNumber(chapter.url)
-                ?: return@mapNotNull null
-            Triple(chapterNumber, indexedChapter.index, chapter)
-        }
-        .maxWithOrNull(compareBy<Triple<Double, Int, ChapterInfo>>({ it.first }, { it.second }))
-        ?.third
+    val numbered = chapters.withIndex().mapNotNull { (index, chapter) ->
+        val chapterNumber = chapter.number
+            ?: TextUtils.extractChapterNumber(chapter.title)
+            ?: TextUtils.extractChapterNumber(chapter.url)
+            ?: return@mapNotNull null
+        Triple(chapterNumber, index, chapter)
+    }
+    val order = compareBy<Triple<Double, Int, ChapterInfo>>({ it.first }, { it.second })
+    val next = afterNumber?.let { after -> numbered.filter { it.first > after }.minWithOrNull(order) }
+    val latest = numbered.maxWithOrNull(order)
 
-    return latestByNumber ?: chapters.lastOrNull()
+    return (next ?: latest)?.third ?: chapters.lastOrNull()
 }

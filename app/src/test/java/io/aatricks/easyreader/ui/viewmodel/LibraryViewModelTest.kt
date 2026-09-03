@@ -230,6 +230,18 @@ class LibraryViewModelTest {
 
         whenever(exploreRepository.getNovelDetails(baseNovelUrl, sourceName)).thenReturn(details)
         whenever(libraryRepository.getItemByUrl(latestUrl)).thenReturn(null)
+        val badgeItem = LibraryItem(
+            id = "ch-9",
+            title = "Chapter 9",
+            url = "https://example.com/novel/chapter-9",
+            currentChapter = "Chapter 9",
+            progress = 100,
+            hasUpdates = true,
+            baseTitle = baseTitle,
+            baseNovelUrl = baseNovelUrl,
+            sourceName = sourceName,
+            totalChapters = 1
+        )
         whenever(
             libraryRepository.addItem(
                 any(),
@@ -244,7 +256,7 @@ class LibraryViewModelTest {
             )
         ).thenReturn(createdItem)
 
-        viewModel.openNewChapter(baseTitle, baseNovelUrl, sourceName) { url, id ->
+        viewModel.openNewChapter(badgeItem) { url, id ->
             loadedUrl = url
             loadedId = id
         }
@@ -306,8 +318,16 @@ class LibraryViewModelTest {
 
         whenever(exploreRepository.getNovelDetails(baseNovelUrl, sourceName)).thenReturn(details)
         whenever(libraryRepository.getItemByUrl(latestUrl)).thenReturn(existingItem)
+        val badgeItem = existingItem.copy(
+            id = "ch-9",
+            title = "Chapter 9",
+            url = "https://example.com/novel/chapter-9",
+            currentChapter = "Chapter 9",
+            progress = 100,
+            hasUpdates = true
+        )
 
-        viewModel.openNewChapter(baseTitle, baseNovelUrl, sourceName) { url, id ->
+        viewModel.openNewChapter(badgeItem) { url, id ->
             loadedUrl = url
             loadedId = id
         }
@@ -322,6 +342,68 @@ class LibraryViewModelTest {
         assertEquals(latestUrl, loadedUrl)
         assertEquals(existingItem.id, loadedId)
         assertFalse(viewModel.uiState.value.isLoading)
+        assertNull(viewModel.uiState.value.error)
+    }
+
+    @Test
+    fun `openNewChapter opens the chapter after the one the user stopped at, not the newest`() = runTest {
+        val baseTitle = "Novel"
+        val baseNovelUrl = "https://example.com/novel"
+        val sourceName = "Source1"
+        fun chapterUrl(n: Int) = "https://example.com/novel/chapter-$n"
+        val stoppedAt = LibraryItem(
+            id = "ch-213",
+            title = "Novel - Chapter 213",
+            url = chapterUrl(213),
+            currentChapter = "Chapter 213",
+            progress = 100,
+            hasUpdates = true,
+            baseTitle = baseTitle,
+            baseNovelUrl = baseNovelUrl,
+            sourceName = sourceName,
+            totalChapters = 213
+        )
+        // 214 was released (badge appeared), then 215-217 landed before the user tapped it.
+        val details = ExploreItem(
+            title = baseTitle,
+            url = baseNovelUrl,
+            source = sourceName,
+            chapters = (210..217).map { ChapterInfo("Chapter $it", chapterUrl(it)) }
+        )
+        val createdItem = LibraryItem(
+            id = "ch-214",
+            title = "Chapter 214",
+            url = chapterUrl(214),
+            currentChapter = "Chapter 214",
+            baseTitle = baseTitle,
+            baseNovelUrl = baseNovelUrl,
+            sourceName = sourceName,
+            totalChapters = details.chapters.size
+        )
+        var loadedUrl: String? = null
+
+        whenever(exploreRepository.getNovelDetails(baseNovelUrl, sourceName)).thenReturn(details)
+        whenever(libraryRepository.getItemByUrl(any())).thenReturn(null)
+        whenever(
+            libraryRepository.addItem(any(), any(), any(), any(), any(), any(), any(), any(), any())
+        ).thenReturn(createdItem)
+
+        viewModel.openNewChapter(stoppedAt) { url, _ -> loadedUrl = url }
+        advanceUntilIdle()
+
+        verify(libraryRepository, timeout(1000)).addItem(
+            eq("Chapter 214"),
+            eq(chapterUrl(214)),
+            eq(ContentType.WEB),
+            eq("Chapter 214"),
+            eq(baseTitle),
+            eq(baseNovelUrl),
+            eq(sourceName),
+            eq(details.chapters.size),
+            any()
+        )
+        verify(libraryRepository).clearUpdateIndicator(stoppedAt.id)
+        assertEquals(chapterUrl(214), loadedUrl)
         assertNull(viewModel.uiState.value.error)
     }
 
