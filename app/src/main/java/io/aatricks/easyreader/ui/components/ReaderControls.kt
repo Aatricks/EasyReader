@@ -18,10 +18,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpSize
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -64,7 +66,7 @@ fun TopInfoBar(
             ) {
                 Icon(
                     imageVector = Icons.Default.Menu,
-                    contentDescription = "Open library drawer"
+                    contentDescription = stringResource(R.string.reader_open_drawer)
                 )
             }
 
@@ -73,7 +75,7 @@ fun TopInfoBar(
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
-                    text = novelName.ifBlank { "Reader" },
+                    text = novelName.ifBlank { stringResource(R.string.app_name) },
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -103,18 +105,19 @@ fun TopInfoBar(
                 )
                 Spacer(modifier = Modifier.width(EasyReaderSpacing.xxs))
                 Text(
-                    text = "Chapters",
+                    text = stringResource(R.string.reader_chapters),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold
                 )
             }
 
+            val openSettingsLabel = stringResource(R.string.reader_open_settings)
             OutlinedButton(
                 onClick = onShowSettings,
                 contentPadding = PaddingValues(horizontal = BUTTON_H_PADDING, vertical = BUTTON_V_PADDING),
                 modifier = Modifier
                     .heightIn(min = MIN_TOUCH_TARGET)
-                    .semantics { contentDescription = "Open reading settings" }
+                    .semantics { contentDescription = openSettingsLabel }
             ) {
                 Text(
                     text = "Aa",
@@ -165,7 +168,7 @@ fun BottomNavigationBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Chapter progress",
+                    text = stringResource(R.string.reader_chapter_progress),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -176,7 +179,7 @@ fun BottomNavigationBar(
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 ) {
                     Text(
-                        text = "${sliderValue.toInt()}%",
+                        text = stringResource(R.string.progress_percentage, sliderValue.toInt()),
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = EasyReaderSpacing.xxs),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold
@@ -184,6 +187,8 @@ fun BottomNavigationBar(
                 }
             }
 
+            val progressLabel = stringResource(R.string.reader_chapter_progress)
+            val progressState = stringResource(R.string.reader_progress_state, sliderValue.toInt())
             Slider(
                 value = sliderValue,
                 onValueChange = { sliderValue = it },
@@ -192,8 +197,8 @@ fun BottomNavigationBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .semantics {
-                        contentDescription = "Chapter progress"
-                        stateDescription = "${sliderValue.toInt()} percent read"
+                        contentDescription = progressLabel
+                        stateDescription = progressState
                     },
                 colors = sliderColors,
                 interactionSource = sliderInteractionSource,
@@ -221,7 +226,7 @@ fun BottomNavigationBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 ChapterNavButton(
-                    text = "Prev",
+                    text = stringResource(R.string.reader_previous_chapter),
                     enabled = canNavigatePrevious,
                     onClick = onPreviousClick,
                     leading = true
@@ -229,7 +234,7 @@ fun BottomNavigationBar(
 
                 Spacer(modifier = Modifier.weight(1f))
                 ChapterNavButton(
-                    text = "Next",
+                    text = stringResource(R.string.reader_next_chapter),
                     enabled = canNavigateNext,
                     onClick = onNextClick,
                     leading = false

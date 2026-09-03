@@ -16,7 +16,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
@@ -386,12 +388,18 @@ fun ReaderImageView(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = altText ?: "Image unavailable",
+                        text = altText ?: stringResource(R.string.reader_image_unavailable),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall
                     )
                     Text(
-                        text = if (imageUrl.startsWith("http")) "Tap to retry" else "Tap to reload",
+                        text = stringResource(
+                            if (imageUrl.startsWith("http")) {
+                                R.string.reader_tap_to_retry
+                            } else {
+                                R.string.reader_tap_to_reload
+                            }
+                        ),
                         color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(top = EasyReaderSpacing.xxs)

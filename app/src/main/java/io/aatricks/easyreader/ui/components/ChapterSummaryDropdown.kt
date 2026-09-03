@@ -18,7 +18,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 
 @Composable
@@ -42,7 +44,7 @@ fun ChapterSummaryDropdown(
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "Chapter summary",
+                    text = stringResource(R.string.library_chapter_summary),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -52,9 +54,9 @@ fun ChapterSummaryDropdown(
                     !state.aiSupportedInBuild -> AiUnavailableNotice()
                     !state.aiOptedIn -> AiOptInPrompt(onEnableAi)
                     state.isInitializing && !state.isReady ->
-                        SummaryProgress("Downloading AI model…", onCancel = null)
+                        SummaryProgress(stringResource(R.string.summary_downloading_model), onCancel = null)
 
-                    state.isGenerating -> SummaryProgress("Generating a quick recap…", onCancel)
+                    state.isGenerating -> SummaryProgress(stringResource(R.string.summary_generating), onCancel)
                     state.error != null -> SummaryError(state.error, onGenerateSummary)
                     state.summary != null -> Text(
                         text = state.summary,
@@ -72,13 +74,13 @@ fun ChapterSummaryDropdown(
 @Composable
 private fun ColumnScope.AiUnavailableNotice() {
     Text(
-        text = "AI summaries aren't available in this build.",
+        text = stringResource(R.string.summary_unavailable_title),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurface
     )
     Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
     Text(
-        text = "Install the AI variant to enable on-device chapter recaps.",
+        text = stringResource(R.string.summary_unavailable_body),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -87,19 +89,19 @@ private fun ColumnScope.AiUnavailableNotice() {
 @Composable
 private fun ColumnScope.AiOptInPrompt(onEnableAi: (() -> Unit)?) {
     Text(
-        text = "Enable AI summaries to generate on-device chapter recaps.",
+        text = stringResource(R.string.summary_optin_title),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurface
     )
     Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
     Text(
-        text = "The AI model is downloaded once (a few hundred MB) and then runs offline.",
+        text = stringResource(R.string.summary_optin_body),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     if (onEnableAi != null) {
         FilledTonalButton(onClick = onEnableAi) {
-            Text("Enable AI summaries")
+            Text(stringResource(R.string.summary_enable))
         }
     }
 }
@@ -125,7 +127,7 @@ private fun SummaryProgress(label: String, onCancel: (() -> Unit)?) {
         }
         if (onCancel != null) {
             TextButton(onClick = onCancel) {
-                Text("Cancel")
+                Text(stringResource(R.string.common_cancel))
             }
         }
     }
@@ -139,19 +141,19 @@ private fun ColumnScope.SummaryError(error: String, onRetry: () -> Unit) {
         color = MaterialTheme.colorScheme.error
     )
     FilledTonalButton(onClick = onRetry) {
-        Text("Retry")
+        Text(stringResource(R.string.common_retry))
     }
 }
 
 @Composable
 private fun ColumnScope.SummaryPrompt(onGenerateSummary: () -> Unit) {
     Text(
-        text = "Need a quick refresher before you open this chapter?",
+        text = stringResource(R.string.summary_prompt),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     FilledTonalButton(onClick = onGenerateSummary) {
-        Text("Generate summary")
+        Text(stringResource(R.string.summary_generate))
     }
 }
 

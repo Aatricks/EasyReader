@@ -376,4 +376,38 @@
     <string name="update_permission_title">Autorisation requise</string>
     <string name="update_permission_body">Pour installer les mises à jour, Emaki a besoin de l\'autorisation d\'installer des applications de sources inconnues. Vous allez être redirigé vers les paramètres système.</string>
     <string name="update_action_settings">Paramètres</string>
+
+    <!-- Reader Controls and States -->
+    <string name="reader_open_drawer">Ouvrir le menu de la bibliothèque</string>
+    <string name="reader_chapters">Chapitres</string>
+    <string name="reader_open_settings">Ouvrir les réglages de lecture</string>
+    <string name="reader_chapter_progress">Progression du chapitre</string>
+    <string name="reader_progress_state">%1$d pour cent lus</string>
+    <string name="reader_previous_chapter">Préc.</string>
+    <string name="reader_next_chapter">Suiv.</string>
+    <string name="reader_loading_title">Chargement du chapitre</string>
+    <string name="reader_loading_body">Préparation de votre chapitre. Si vous l\'avez déjà lu, votre position sera restaurée.</string>
+    <string name="reader_empty_title">Choisissez une lecture</string>
+    <string name="reader_empty_body">Ouvrez votre bibliothèque pour reprendre où vous en étiez, ouvrir le dernier chapitre ou commencer autre chose.</string>
+    <string name="reader_theme_description">Thème %1$s</string>
+    <string name="reader_layout_paged_hint">Balayez horizontalement pour tourner les pages.</string>
+    <string name="reader_layout_scroll_hint">Faites défiler verticalement pour lire.</string>
+    <string name="reader_image_unavailable">Image indisponible</string>
+    <string name="reader_tap_to_retry">Touchez pour réessayer</string>
+    <string name="reader_tap_to_reload">Touchez pour recharger</string>
+    <string name="reader_pull_release_previous">Relâchez pour le chapitre précédent</string>
+    <string name="reader_pull_previous">Tirez pour le chapitre précédent</string>
+    <string name="reader_pull_release_next">Relâchez pour le chapitre suivant</string>
+    <string name="reader_pull_next">Tirez pour le chapitre suivant</string>
+
+    <!-- Chapter Summary -->
+    <string name="summary_downloading_model">Téléchargement du modèle IA…</string>
+    <string name="summary_generating">Génération d\'un résumé…</string>
+    <string name="summary_unavailable_title">Les résumés IA ne sont pas disponibles dans cette version.</string>
+    <string name="summary_unavailable_body">Installez la variante IA pour activer les résumés de chapitre sur l\'appareil.</string>
+    <string name="summary_optin_title">Activez les résumés IA pour générer des résumés de chapitre sur l\'appareil.</string>
+    <string name="summary_optin_body">Le modèle IA est téléchargé une seule fois (quelques centaines de Mo), puis fonctionne hors ligne.</string>
+    <string name="summary_enable">Activer les résumés IA</string>
+    <string name="summary_prompt">Besoin d\'un rappel avant d\'ouvrir ce chapitre ?</string>
+    <string name="summary_generate">Générer un résumé</string>
 </resources>

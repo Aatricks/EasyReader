@@ -37,8 +37,10 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -82,12 +84,15 @@ private fun pullOverlayIcon(isPagedMode: Boolean, isPrevious: Boolean, isRtl: Bo
     else -> if (isRtl) Icons.AutoMirrored.Filled.ArrowForward else Icons.AutoMirrored.Filled.ArrowBack
 }
 
-private fun pullOverlayLabel(isPrevious: Boolean, isThresholdReached: Boolean): String = when {
-    isPrevious && isThresholdReached -> "Release for previous chapter"
-    isPrevious -> "Pull for previous chapter"
-    isThresholdReached -> "Release for next chapter"
-    else -> "Pull for next chapter"
-}
+@Composable
+private fun pullOverlayLabel(isPrevious: Boolean, isThresholdReached: Boolean): String = stringResource(
+    when {
+        isPrevious && isThresholdReached -> R.string.reader_pull_release_previous
+        isPrevious -> R.string.reader_pull_previous
+        isThresholdReached -> R.string.reader_pull_release_next
+        else -> R.string.reader_pull_next
+    }
+)
 
 @Composable
 internal fun PullToNavigateOverlay(

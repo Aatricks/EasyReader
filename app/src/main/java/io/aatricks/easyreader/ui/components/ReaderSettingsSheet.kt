@@ -79,6 +79,7 @@ private fun ReaderThemeOption(
     val checkColor = if (isLightSurface) Color.Black else Color.White
     val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
     val borderWidth = if (isSelected) 3.dp else 1.dp
+    val themeDescription = stringResource(R.string.reader_theme_description, theme.name.lowercase())
     Box(
         modifier = Modifier
             .size(48.dp)
@@ -87,7 +88,7 @@ private fun ReaderThemeOption(
             .border(borderWidth, borderColor, CircleShape)
             .clickable(onClick = onClick)
             .semantics {
-                contentDescription = "Theme ${theme.name.lowercase()}"
+                contentDescription = themeDescription
                 role = Role.Button
                 selected = isSelected
             },
@@ -199,10 +200,13 @@ fun ReaderSettingsSheet(
                     )
                 }
                 Text(
-                    text = if (uiState.isPagedMode)
-                        "Swipe horizontally to turn pages."
-                    else
-                        "Scroll vertically to read.",
+                    text = stringResource(
+                        if (uiState.isPagedMode) {
+                            R.string.reader_layout_paged_hint
+                        } else {
+                            R.string.reader_layout_scroll_hint
+                        }
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -10,9 +10,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.util.ErrorMessages
 
@@ -21,8 +23,8 @@ fun LoadingState() {
     ReaderStatePanel(
         icon = Icons.Default.AutoStories,
         iconTint = MaterialTheme.colorScheme.primary,
-        title = "Loading chapter",
-        body = "Preparing your chapter. If you've read it before, we'll restore your place.",
+        title = stringResource(R.string.reader_loading_title),
+        body = stringResource(R.string.reader_loading_body),
         action = {
             CircularProgressIndicator(
                 modifier = Modifier.size(26.dp),
@@ -47,11 +49,11 @@ fun ErrorState(error: String, onRetry: () -> Unit, onOpenLibrary: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)) {
                 if (friendly.isRetryable) {
                     FilledTonalButton(onClick = onRetry) {
-                        Text("Retry")
+                        Text(stringResource(R.string.common_retry))
                     }
                 }
                 TextButton(onClick = onOpenLibrary) {
-                    Text("Open library")
+                    Text(stringResource(R.string.open_library))
                 }
             }
         }
@@ -63,11 +65,11 @@ fun EmptyState(onOpenLibrary: () -> Unit) {
     ReaderStatePanel(
         icon = Icons.AutoMirrored.Filled.MenuBook,
         iconTint = MaterialTheme.colorScheme.primary,
-        title = "Pick something to read",
-        body = "Open your library to resume where you left off, open the latest chapter, or start something new.",
+        title = stringResource(R.string.reader_empty_title),
+        body = stringResource(R.string.reader_empty_body),
         action = {
             FilledTonalButton(onClick = onOpenLibrary) {
-                Text("Open library")
+                Text(stringResource(R.string.open_library))
             }
         }
     )

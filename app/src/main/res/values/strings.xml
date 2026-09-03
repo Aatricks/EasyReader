@@ -376,4 +376,38 @@
     <string name="update_permission_title">Permission Required</string>
     <string name="update_permission_body">To install updates, Emaki needs permission to install apps from unknown sources. You will be taken to system settings to enable this.</string>
     <string name="update_action_settings">Settings</string>
+
+    <!-- Reader Controls and States -->
+    <string name="reader_open_drawer">Open library drawer</string>
+    <string name="reader_chapters">Chapters</string>
+    <string name="reader_open_settings">Open reading settings</string>
+    <string name="reader_chapter_progress">Chapter progress</string>
+    <string name="reader_progress_state">%1$d percent read</string>
+    <string name="reader_previous_chapter">Prev</string>
+    <string name="reader_next_chapter">Next</string>
+    <string name="reader_loading_title">Loading chapter</string>
+    <string name="reader_loading_body">Preparing your chapter. If you\'ve read it before, we\'ll restore your place.</string>
+    <string name="reader_empty_title">Pick something to read</string>
+    <string name="reader_empty_body">Open your library to resume where you left off, open the latest chapter, or start something new.</string>
+    <string name="reader_theme_description">Theme %1$s</string>
+    <string name="reader_layout_paged_hint">Swipe horizontally to turn pages.</string>
+    <string name="reader_layout_scroll_hint">Scroll vertically to read.</string>
+    <string name="reader_image_unavailable">Image unavailable</string>
+    <string name="reader_tap_to_retry">Tap to retry</string>
+    <string name="reader_tap_to_reload">Tap to reload</string>
+    <string name="reader_pull_release_previous">Release for previous chapter</string>
+    <string name="reader_pull_previous">Pull for previous chapter</string>
+    <string name="reader_pull_release_next">Release for next chapter</string>
+    <string name="reader_pull_next">Pull for next chapter</string>
+
+    <!-- Chapter Summary -->
+    <string name="summary_downloading_model">Downloading AI model…</string>
+    <string name="summary_generating">Generating a quick recap…</string>
+    <string name="summary_unavailable_title">AI summaries aren\'t available in this build.</string>
+    <string name="summary_unavailable_body">Install the AI variant to enable on-device chapter recaps.</string>
+    <string name="summary_optin_title">Enable AI summaries to generate on-device chapter recaps.</string>
+    <string name="summary_optin_body">The AI model is downloaded once (a few hundred MB) and then runs offline.</string>
+    <string name="summary_enable">Enable AI summaries</string>
+    <string name="summary_prompt">Need a quick refresher before you open this chapter?</string>
+    <string name="summary_generate">Generate summary</string>
 </resources>
