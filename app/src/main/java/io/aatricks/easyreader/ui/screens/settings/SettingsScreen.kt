@@ -55,6 +55,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.background
@@ -67,6 +69,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.ui.screens.countDistinctNovelTitles
 import androidx.hilt.navigation.compose.hiltViewModel
 import io.aatricks.easyreader.ui.theme.AccentTheme
@@ -158,9 +161,13 @@ fun SettingsScreen(
             val err = updateState.error
             val update = updateState.updateAvailable
             if (err != null) {
-                snackbarHostState.showSnackbar("Error checking updates: $err")
+                snackbarHostState.showSnackbar(
+                    context.getString(R.string.settings_update_check_error, err)
+                )
             } else if (update == null) {
-                snackbarHostState.showSnackbar("Emaki is up to date (${updateState.currentVersion})")
+                snackbarHostState.showSnackbar(
+                    context.getString(R.string.settings_up_to_date, updateState.currentVersion)
+                )
             }
             userTriggeredCheck = false
         }
@@ -171,12 +178,12 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
+                            contentDescription = stringResource(R.string.common_back)
                         )
                     }
                 }
@@ -192,10 +199,10 @@ fun SettingsScreen(
                 .padding(horizontal = EasyReaderSpacing.md, vertical = EasyReaderSpacing.md),
             verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.lg)
         ) {
-            SettingsSection(title = "Appearance") {
+            SettingsSection(title = stringResource(R.string.settings_section_appearance)) {
                 Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)) {
                     Text(
-                        text = "Theme",
+                        text = stringResource(R.string.settings_theme),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -203,7 +210,11 @@ fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
                     ) {
-                        val themes = listOf("SYSTEM" to "System", "LIGHT" to "Light", "DARK" to "Dark")
+                        val themes = listOf(
+                            "SYSTEM" to stringResource(R.string.settings_theme_system),
+                            "LIGHT" to stringResource(R.string.settings_theme_light),
+                            "DARK" to stringResource(R.string.settings_theme_dark)
+                        )
                         themes.forEach { (mode, label) ->
                             FilterChip(
                                 selected = appearanceSettings.themeMode == mode,
@@ -237,12 +248,12 @@ fun SettingsScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Dynamic color",
+                                text = stringResource(R.string.settings_dynamic_color),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Use wallpaper colors",
+                                text = stringResource(R.string.settings_dynamic_color_subtitle),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -258,7 +269,7 @@ fun SettingsScreen(
                 val accentEnabled = !appearanceSettings.dynamicColor
                 Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)) {
                     Text(
-                        text = "Accent",
+                        text = stringResource(R.string.settings_accent),
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (accentEnabled) {
                             MaterialTheme.colorScheme.onSurface
@@ -285,7 +296,7 @@ fun SettingsScreen(
                     }
                     if (!accentEnabled) {
                         Text(
-                            text = "Dynamic color is active. Disable it to customize accent color.",
+                            text = stringResource(R.string.settings_accent_disabled_hint),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -295,10 +306,14 @@ fun SettingsScreen(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-            SettingsSection(title = "Storage") {
+            SettingsSection(title = stringResource(R.string.settings_section_storage)) {
                 SettingsRow(
-                    title = "Cache size",
-                    subtitle = if (cacheBytes < 0) "Calculating…" else formatBytes(cacheBytes)
+                    title = stringResource(R.string.settings_cache_size),
+                    subtitle = if (cacheBytes < 0) {
+                        stringResource(R.string.settings_calculating)
+                    } else {
+                        formatBytes(cacheBytes)
+                    }
                 )
                 FilledTonalButton(
                     onClick = { showClearCacheDialog = true },
@@ -311,11 +326,15 @@ fun SettingsScreen(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-                    Text("Clear cached chapters and images")
+                    Text(stringResource(R.string.settings_clear_cache_button))
                 }
                 SettingsRow(
-                    title = "Downloads size",
-                    subtitle = if (downloadsBytes < 0) "Calculating…" else formatBytes(downloadsBytes)
+                    title = stringResource(R.string.settings_downloads_size),
+                    subtitle = if (downloadsBytes < 0) {
+                        stringResource(R.string.settings_calculating)
+                    } else {
+                        formatBytes(downloadsBytes)
+                    }
                 )
                 FilledTonalButton(
                     onClick = { showClearDownloadsDialog = true },
@@ -328,31 +347,32 @@ fun SettingsScreen(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-                    Text("Clear all downloads")
+                    Text(stringResource(R.string.settings_clear_downloads_button))
                 }
                 val titlesCount = countDistinctNovelTitles(libraryState.items)
                 val entriesCount = libraryState.items.size
                 SettingsRow(
-                    title = "Library size",
-                    subtitle = if (titlesCount == 1) {
-                        "1 title · $entriesCount entries"
-                    } else {
-                        "$titlesCount titles · $entriesCount entries"
-                    }
+                    title = stringResource(R.string.settings_library_size),
+                    subtitle = pluralStringResource(
+                        R.plurals.settings_library_size_summary,
+                        titlesCount,
+                        titlesCount,
+                        entriesCount
+                    )
                 )
                 OutlinedButton(
                     onClick = { showClearLibraryDialog = true },
                     enabled = libraryState.items.isNotEmpty(),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Clear entire library")
+                    Text(stringResource(R.string.settings_clear_library_button))
                 }
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
             if (summaryUiState.supportsAi) {
-                SettingsSection(title = "AI features") {
+                SettingsSection(title = stringResource(R.string.settings_section_ai)) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -372,15 +392,15 @@ fun SettingsScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Chapter summaries",
+                                text = stringResource(R.string.settings_ai_summaries),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
                                 text = if (summaryUiState.isEnabled) {
-                                    "Model runs on-device. Disable to free memory."
+                                    stringResource(R.string.settings_ai_summaries_on)
                                 } else {
-                                    "Downloads a small on-device model (a few hundred MB)."
+                                    stringResource(R.string.settings_ai_summaries_off)
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -393,14 +413,17 @@ fun SettingsScreen(
                         )
                     }
                     if (summaryUiState.isInitializing) {
-                        SettingsRow(title = "Status", subtitle = "Downloading model…")
+                        SettingsRow(
+                            title = stringResource(R.string.settings_status),
+                            subtitle = stringResource(R.string.settings_status_downloading_model)
+                        )
                     }
                 }
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             }
 
-            SettingsSection(title = "Progression") {
+            SettingsSection(title = stringResource(R.string.settings_section_progression)) {
                 val scrollViewModel: io.aatricks.easyreader.ui.viewmodel.ScrollViewModel =
                     androidx.hilt.navigation.compose.hiltViewModel()
                 val scrollEnabled by scrollViewModel.gamificationEnabled.collectAsState()
@@ -417,15 +440,15 @@ fun SettingsScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "The Scroll",
+                            text = stringResource(R.string.settings_scroll),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = if (scrollEnabled) {
-                                "Reading time, levels, and milestones are tracked."
+                                stringResource(R.string.settings_scroll_on)
                             } else {
-                                "Tracking is off. Existing progress is kept."
+                                stringResource(R.string.settings_scroll_off)
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -441,36 +464,36 @@ fun SettingsScreen(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-            SettingsSection(title = "Backup & restore") {
+            SettingsSection(title = stringResource(R.string.settings_section_backup)) {
                 val inProgress = backupStatus is BackupViewModel.OpStatus.InProgress
                 SettingsRow(
-                    title = "Settings",
-                    subtitle = "Reader font, theme, margins"
+                    title = stringResource(R.string.settings_title),
+                    subtitle = stringResource(R.string.settings_backup_settings_subtitle)
                 )
                 FilledTonalButton(
                     onClick = { exportSettingsLauncher.launch(defaultSettingsFilename()) },
                     enabled = !inProgress,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Export settings")
+                    Text(stringResource(R.string.settings_export_settings))
                 }
                 OutlinedButton(
                     onClick = { importSettingsLauncher.launch(arrayOf("application/json")) },
                     enabled = !inProgress,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Import settings")
+                    Text(stringResource(R.string.settings_import_settings))
                 }
                 SettingsRow(
-                    title = "Library",
-                    subtitle = "Titles, progress, bundled EPUBs"
+                    title = stringResource(R.string.library_title),
+                    subtitle = stringResource(R.string.settings_backup_library_subtitle)
                 )
                 FilledTonalButton(
                     onClick = { exportLibraryLauncher.launch(defaultLibraryFilename()) },
                     enabled = !inProgress && libraryState.items.isNotEmpty(),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Export library")
+                    Text(stringResource(R.string.settings_export_library))
                 }
                 OutlinedButton(
                     onClick = {
@@ -479,18 +502,24 @@ fun SettingsScreen(
                     enabled = !inProgress,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Import library")
+                    Text(stringResource(R.string.settings_import_library))
                 }
                 if (inProgress) {
-                    SettingsRow(title = "Status", subtitle = "Working…")
+                    SettingsRow(
+                        title = stringResource(R.string.settings_status),
+                        subtitle = stringResource(R.string.settings_status_working)
+                    )
                 }
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-            SettingsSection(title = "About") {
-                SettingsRow(title = "App", subtitle = "Emaki (${updateState.currentVersion})")
-                SettingsRow(title = "License", subtitle = "GPL-3.0")
+            SettingsSection(title = stringResource(R.string.settings_section_about)) {
+                SettingsRow(
+                    title = stringResource(R.string.settings_app),
+                    subtitle = stringResource(R.string.settings_app_version, updateState.currentVersion)
+                )
+                SettingsRow(title = stringResource(R.string.settings_license), subtitle = "GPL-3.0")
 
                 Row(
                     modifier = Modifier
@@ -505,12 +534,12 @@ fun SettingsScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Automatically check for updates",
+                            text = stringResource(R.string.settings_auto_update),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Check once a day when Emaki opens",
+                            text = stringResource(R.string.settings_auto_update_subtitle),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -526,7 +555,10 @@ fun SettingsScreen(
                 val downloadStatus = updateState.downloadStatus
                 
                 if (isChecking) {
-                    SettingsRow(title = "Status", subtitle = "Checking for updates…")
+                    SettingsRow(
+                        title = stringResource(R.string.settings_status),
+                        subtitle = stringResource(R.string.settings_status_checking_updates)
+                    )
                 } else {
                     when (downloadStatus) {
                         is DownloadStatus.Progress -> {
@@ -538,11 +570,14 @@ fun SettingsScreen(
                                 -1
                             }
                             val progressText = if (percent >= 0) {
-                                "Downloading update ($percent%)…"
+                                stringResource(R.string.settings_status_downloading_update_percent, percent)
                             } else {
-                                "Downloading update…"
+                                stringResource(R.string.settings_status_downloading_update)
                             }
-                            SettingsRow(title = "Status", subtitle = progressText)
+                            SettingsRow(
+                                title = stringResource(R.string.settings_status),
+                                subtitle = progressText
+                            )
                         }
                         is DownloadStatus.Success -> {
                             FilledTonalButton(
@@ -558,7 +593,7 @@ fun SettingsScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Install downloaded update")
+                                Text(stringResource(R.string.settings_install_update))
                             }
                         }
                         else -> {
@@ -569,7 +604,7 @@ fun SettingsScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Check for updates")
+                                Text(stringResource(R.string.settings_check_updates))
                             }
                         }
                     }
@@ -592,7 +627,7 @@ fun SettingsScreen(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-                    Text("Open project on GitHub")
+                    Text(stringResource(R.string.settings_open_github))
                 }
             }
         }
@@ -601,11 +636,13 @@ fun SettingsScreen(
     if (showClearCacheDialog) {
         AlertDialog(
             onDismissRequest = { showClearCacheDialog = false },
-            title = { Text("Clear cache?") },
+            title = { Text(stringResource(R.string.settings_clear_cache_dialog_title)) },
             text = {
                 Text(
-                    "This frees ${formatBytes(cacheBytes)} of cached chapters and images. " +
-                        "Your library and reading progress are not affected."
+                    stringResource(
+                        R.string.settings_clear_cache_dialog_body,
+                        formatBytes(cacheBytes)
+                    )
                 )
             },
             confirmButton = {
@@ -615,17 +652,23 @@ fun SettingsScreen(
                         val outcome = readerViewModel.clearAllCache()
                         refreshKey++
                         snackbarHostState.showSnackbar(
-                            if (outcome.isSuccess) "Cache cleared"
-                            else "Could not clear the cache: ${outcome.exceptionOrNull()?.message}"
+                            if (outcome.isSuccess) {
+                                context.getString(R.string.settings_cache_cleared)
+                            } else {
+                                context.getString(
+                                    R.string.settings_cache_clear_failed,
+                                    outcome.exceptionOrNull()?.message
+                                )
+                            }
                         )
                     }
                 }) {
-                    Text("Clear")
+                    Text(stringResource(R.string.common_clear))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearCacheDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -634,11 +677,13 @@ fun SettingsScreen(
     if (showClearDownloadsDialog) {
         AlertDialog(
             onDismissRequest = { showClearDownloadsDialog = false },
-            title = { Text("Clear downloads?") },
+            title = { Text(stringResource(R.string.settings_clear_downloads_dialog_title)) },
             text = {
                 Text(
-                    "This frees ${formatBytes(downloadsBytes)} of offline downloads. " +
-                        "Your library and reading progress are not affected."
+                    stringResource(
+                        R.string.settings_clear_downloads_dialog_body,
+                        formatBytes(downloadsBytes)
+                    )
                 )
             },
             confirmButton = {
@@ -648,17 +693,23 @@ fun SettingsScreen(
                         val outcome = libraryViewModel.clearAllDownloads()
                         refreshKey++
                         snackbarHostState.showSnackbar(
-                            if (outcome.isSuccess) "Downloads cleared"
-                            else "Could not clear downloads: ${outcome.exceptionOrNull()?.message}"
+                            if (outcome.isSuccess) {
+                                context.getString(R.string.settings_downloads_cleared)
+                            } else {
+                                context.getString(
+                                    R.string.settings_downloads_clear_failed,
+                                    outcome.exceptionOrNull()?.message
+                                )
+                            }
                         )
                     }
                 }) {
-                    Text("Clear")
+                    Text(stringResource(R.string.common_clear))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearDownloadsDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -667,25 +718,19 @@ fun SettingsScreen(
     if (showEnableAiDialog) {
         AlertDialog(
             onDismissRequest = { showEnableAiDialog = false },
-            title = { Text("Enable AI summaries?") },
-            text = {
-                Text(
-                    "This downloads a small on-device language model (a few hundred MB) " +
-                        "the first time it is needed. After that it runs offline. " +
-                        "You can disable AI summaries at any time."
-                )
-            },
+            title = { Text(stringResource(R.string.settings_enable_ai_dialog_title)) },
+            text = { Text(stringResource(R.string.settings_enable_ai_dialog_body)) },
             confirmButton = {
                 FilledTonalButton(onClick = {
                     summaryViewModel.setAiSummaryEnabled(true)
                     showEnableAiDialog = false
                 }) {
-                    Text("Download and enable")
+                    Text(stringResource(R.string.settings_enable_ai_confirm))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showEnableAiDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -694,13 +739,8 @@ fun SettingsScreen(
     if (showClearLibraryDialog) {
         AlertDialog(
             onDismissRequest = { showClearLibraryDialog = false },
-            title = { Text("Clear entire library?") },
-            text = {
-                Text(
-                    "This permanently removes every title and all reading progress. " +
-                        "This cannot be undone."
-                )
-            },
+            title = { Text(stringResource(R.string.settings_clear_library_dialog_title)) },
+            text = { Text(stringResource(R.string.settings_clear_library_dialog_body)) },
             confirmButton = {
                 FilledTonalButton(
                     onClick = {
@@ -709,18 +749,24 @@ fun SettingsScreen(
                             val outcome = libraryViewModel.clearLibrary()
                             refreshKey++
                             snackbarHostState.showSnackbar(
-                                if (outcome.isSuccess) "Library cleared"
-                                else "Could not clear the library: ${outcome.exceptionOrNull()?.message}"
+                                if (outcome.isSuccess) {
+                                    context.getString(R.string.settings_library_cleared)
+                                } else {
+                                    context.getString(
+                                        R.string.settings_library_clear_failed,
+                                        outcome.exceptionOrNull()?.message
+                                    )
+                                }
                             )
                         }
                     }
                 ) {
-                    Text("Clear all")
+                    Text(stringResource(R.string.settings_clear_all))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearLibraryDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -729,24 +775,19 @@ fun SettingsScreen(
     pendingSettingsImportUri?.let { uri ->
         AlertDialog(
             onDismissRequest = { pendingSettingsImportUri = null },
-            title = { Text("Restore settings?") },
-            text = {
-                Text(
-                    "This replaces your current reader font, theme, and margins " +
-                        "with the values from the backup."
-                )
-            },
+            title = { Text(stringResource(R.string.settings_restore_settings_dialog_title)) },
+            text = { Text(stringResource(R.string.settings_restore_settings_dialog_body)) },
             confirmButton = {
                 FilledTonalButton(onClick = {
                     backupViewModel.importSettings(uri)
                     pendingSettingsImportUri = null
                 }) {
-                    Text("Restore")
+                    Text(stringResource(R.string.settings_restore))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingSettingsImportUri = null }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -755,24 +796,19 @@ fun SettingsScreen(
     pendingLibraryImportUri?.let { uri ->
         AlertDialog(
             onDismissRequest = { pendingLibraryImportUri = null },
-            title = { Text("Restore library?") },
-            text = {
-                Text(
-                    "Imports titles, progress, and bundled EPUBs. " +
-                        "Existing titles whose URL matches a backup entry are skipped."
-                )
-            },
+            title = { Text(stringResource(R.string.settings_restore_library_dialog_title)) },
+            text = { Text(stringResource(R.string.settings_restore_library_dialog_body)) },
             confirmButton = {
                 FilledTonalButton(onClick = {
                     backupViewModel.importLibrary(uri)
                     pendingLibraryImportUri = null
                 }) {
-                    Text("Restore")
+                    Text(stringResource(R.string.settings_restore))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingLibraryImportUri = null }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
