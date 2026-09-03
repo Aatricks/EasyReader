@@ -150,27 +150,37 @@ class LibraryRepositoryTest {
     }
 
     @Test
-    fun testMarkAsCurrentlyReadingClearsUpdates() = runBlocking {
-        val itemId = "test-id"
-        val item = LibraryItem(id = itemId, title = "Test", url = "url", baseTitle = "Test Base", hasUpdates = true)
-        whenever(libraryDao.getItemById(itemId)).thenReturn(item)
+    fun `opening a later chapter clears the new-chapter badge on the row it overtook`() = runBlocking {
+        val badged = LibraryItem(
+            id = "ch13", title = "Test", url = "url13", currentChapter = "Chapter 13",
+            baseTitle = "Test Base", hasUpdates = true
+        )
+        val opened = LibraryItem(
+            id = "ch14", title = "Test", url = "url14", currentChapter = "Chapter 14",
+            baseTitle = "Test Base"
+        )
+        whenever(libraryDao.getItemById("ch14")).thenReturn(opened)
+        whenever(libraryDao.getUpdatedItemsForBaseTitle("Test Base")).thenReturn(listOf(badged))
 
-        repository.markAsCurrentlyReading(itemId)
+        repository.markAsCurrentlyReading("ch14")
 
-        verify(libraryDao).clearUpdatesForBaseTitle("Test Base")
-        verify(libraryDao).setCurrentReading(eq(itemId), any())
+        verify(libraryDao).clearUpdatesForId("ch13")
+        verify(libraryDao).setCurrentReading(eq("ch14"), any())
     }
 
     @Test
-    fun testMarkAsCurrentlyReadingClearsUpdatesNoBaseTitle() = runBlocking {
-        val itemId = "test-id-2"
-        val item = LibraryItem(id = itemId, title = "Test", url = "url", baseTitle = "", hasUpdates = true)
-        whenever(libraryDao.getItemById(itemId)).thenReturn(item)
+    fun `resuming the badged row itself keeps its new-chapter badge`() = runBlocking {
+        val badged = LibraryItem(
+            id = "ch13", title = "Test", url = "url13", currentChapter = "Chapter 13",
+            baseTitle = "Test Base", hasUpdates = true
+        )
+        whenever(libraryDao.getItemById("ch13")).thenReturn(badged)
+        whenever(libraryDao.getUpdatedItemsForBaseTitle("Test Base")).thenReturn(listOf(badged))
 
-        repository.markAsCurrentlyReading(itemId)
+        repository.markAsCurrentlyReading("ch13")
 
-        verify(libraryDao).clearUpdatesForId(itemId)
-        verify(libraryDao).setCurrentReading(eq(itemId), any())
+        verify(libraryDao, never()).clearUpdatesForId(any())
+        verify(libraryDao).setCurrentReading(eq("ch13"), any())
     }
 
     @Test

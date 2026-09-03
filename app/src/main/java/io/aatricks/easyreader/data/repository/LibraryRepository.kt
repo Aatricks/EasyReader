@@ -57,11 +57,19 @@ class LibraryRepository @Inject constructor(
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val progressMutex = Mutex()
 
+    private val _libraryLoaded = MutableStateFlow(false)
+
+    /** False until Room's first emission, so the UI can tell "empty" from "not read yet". */
+    val libraryLoaded: StateFlow<Boolean> = _libraryLoaded.asStateFlow()
+
     val libraryItems: StateFlow<List<LibraryItem>> = libraryDao.getAllItems()
         .catch { e ->
             Log.e(TAG, "Error collecting library items", e)
             emit(emptyList())
         }
+        // After catch, so the fallback emission also counts as loaded and a failing query shows
+        // the empty state instead of a permanent shimmer.
+        .onEach { _libraryLoaded.value = true }
         .stateIn(repositoryScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     companion object {
@@ -310,16 +318,24 @@ class LibraryRepository @Inject constructor(
     }
 
     suspend fun markAsCurrentlyReading(itemId: String): Boolean = runRepoCatching("Failed to mark as reading", false) {
-        libraryDao.getItemById(itemId)?.let { item ->
-            if (item.baseTitle.isNotBlank()) {
-                libraryDao.clearUpdatesForBaseTitle(item.baseTitle)
-            } else {
-                libraryDao.clearUpdatesForId(itemId)
-            }
-        }
+        libraryDao.getItemById(itemId)?.let { clearUpdatesOvertakenBy(it) }
         libraryDao.setCurrentReading(itemId)
         true
     } ?: false
+
+    /**
+     * The "new chapter" badge sits on the row the user had reached, so re-opening that row is a
+     * resume and has to leave the badge up — otherwise it disappears before the user ever sees the
+     * new chapter, and a later refresh cannot bring it back. Only rows the opened chapter is newer
+     * than have actually been read past.
+     */
+    private suspend fun clearUpdatesOvertakenBy(opened: LibraryItem) {
+        if (opened.baseTitle.isBlank()) return
+        val openedNumber = opened.resolvedChapterNumber() ?: return
+        libraryDao.getUpdatedItemsForBaseTitle(opened.baseTitle)
+            .filter { (it.resolvedChapterNumber() ?: Double.MAX_VALUE) < openedNumber }
+            .forEach { libraryDao.clearUpdatesForId(it.id) }
+    }
 
     suspend fun getCurrentlyReading(): LibraryItem? = runRepoCatching("Failed to get currently reading") {
         libraryDao.getCurrentlyReading() ?: libraryDao.getAllItems().firstOrNull()?.firstOrNull()
@@ -548,6 +564,19 @@ class LibraryRepository @Inject constructor(
     suspend fun getDownloadedItems(): List<LibraryItem> = runRepoCatching("Failed to fetch downloaded items", emptyList<LibraryItem>()) {
         libraryDao.getDownloadedItems()
     } ?: emptyList()
+
+    /**
+     * [refreshLibraryUpdates], reporting how many rows it newly badged so pull-to-refresh can say
+     * what it found. Counted from the DB, not [libraryItems], whose emission is asynchronous.
+     */
+    suspend fun refreshLibraryUpdatesAndCount(
+        exploreRepository: ExploreRepository,
+        ignoreActivityThreshold: Boolean = false
+    ): Int {
+        val before = libraryDao.getAllItemsDirect().count { it.hasUpdates }
+        refreshLibraryUpdates(exploreRepository, ignoreActivityThreshold)
+        return libraryDao.getAllItemsDirect().count { it.hasUpdates } - before
+    }
 
     suspend fun getAllItemsSnapshot(): List<LibraryItem> = runRepoCatching("Failed to fetch all items", emptyList<LibraryItem>()) {
         libraryDao.getAllItems().first()

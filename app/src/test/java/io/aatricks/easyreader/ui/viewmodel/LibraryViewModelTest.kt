@@ -46,6 +46,7 @@ class LibraryViewModelTest {
         LibraryViewModel.coversBackfillAttempted.set(false)
 
         whenever(libraryRepository.libraryItems).thenReturn(MutableStateFlow(emptyList()))
+        whenever(libraryRepository.libraryLoaded).thenReturn(MutableStateFlow(true))
         whenever(libraryRepository.loadCollapsedSources()).thenReturn(emptySet())
         whenever(libraryRepository.getGroupedByTitle(anyOrNull())).thenReturn(emptyMap())
         whenever(libraryRepository.getGroupedBySourceAndTitle(anyOrNull())).thenReturn(emptyMap())
@@ -908,7 +909,7 @@ class LibraryViewModelTest {
         activeViewModel.refreshUpdates()
         advanceUntilIdle()
 
-        verify(libraryRepository).refreshLibraryUpdates(exploreRepository, true)
+        verify(libraryRepository).refreshLibraryUpdatesAndCount(exploreRepository, true)
         verify(libraryRepository, atLeastOnce()).getAllItemsSnapshot()
         assertFalse(activeViewModel.isRefreshing.value)
         verify(contentRepository, never()).prefetch(any(), any())
@@ -1149,6 +1150,69 @@ class LibraryViewModelTest {
         verify(exploreRepository, times(1)).getNovelDetails("https://example.com/novel-1", "Source1")
         verify(exploreRepository, times(1)).getNovelDetails("https://example.com/novel-2", "Source2")
         verify(libraryRepository, times(1)).updateCoverImageUrl("Novel 2", "Source2", "https://example.com/novel-2/cover.jpg")
+    }
+
+    @Test
+    fun `a stalled source lands in the error state instead of blocking for ever`() = runTest {
+        val item = LibraryItem(
+            id = "ch-1", title = "Novel - Chapter 1", url = "https://example.com/novel/1",
+            currentChapter = "Chapter 1", baseTitle = "Novel",
+            baseNovelUrl = "https://example.com/novel", sourceName = "Source1"
+        )
+        whenever(exploreRepository.getNovelDetails(any(), any())).doSuspendableAnswer {
+            kotlinx.coroutines.delay(Long.MAX_VALUE / 2)
+            null
+        }
+
+        viewModel.openNewChapter(item) { _, _ -> }
+        advanceUntilIdle()
+
+        assertTrue(viewModel.openNextChapterState.value is OpenNextChapterState.Error)
+    }
+
+    @Test
+    fun `cancelling the next-chapter fetch returns to idle`() = runTest {
+        val item = LibraryItem(
+            id = "ch-1", title = "Novel - Chapter 1", url = "https://example.com/novel/1",
+            currentChapter = "Chapter 1", baseTitle = "Novel",
+            baseNovelUrl = "https://example.com/novel", sourceName = "Source1"
+        )
+        whenever(exploreRepository.getNovelDetails(any(), any())).doSuspendableAnswer {
+            kotlinx.coroutines.delay(Long.MAX_VALUE / 2)
+            null
+        }
+
+        viewModel.openNewChapter(item) { _, _ -> }
+        runCurrent()
+        assertEquals(OpenNextChapterState.Loading, viewModel.openNextChapterState.value)
+
+        viewModel.cancelOpenNewChapter()
+
+        assertEquals(OpenNextChapterState.Idle, viewModel.openNextChapterState.value)
+    }
+
+    @Test
+    fun `pull to refresh reports what the update check found`() = runTest {
+        whenever(
+            libraryRepository.refreshLibraryUpdatesAndCount(any(), any())
+        ).thenReturn(2)
+
+        viewModel.refreshUpdates()
+        advanceUntilIdle()
+
+        assertEquals("2 titles updated", viewModel.uiState.value.snackbarMessage)
+    }
+
+    @Test
+    fun `pull to refresh says so when nothing is new`() = runTest {
+        whenever(
+            libraryRepository.refreshLibraryUpdatesAndCount(any(), any())
+        ).thenReturn(0)
+
+        viewModel.refreshUpdates()
+        advanceUntilIdle()
+
+        assertEquals("No new chapters", viewModel.uiState.value.snackbarMessage)
     }
 }
 

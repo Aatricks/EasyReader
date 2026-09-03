@@ -18,6 +18,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -114,7 +117,18 @@ fun LibraryDrawerContent(
                     label = { Text(scrollProgression.rankName) },
                     icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) },
                     badge = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        // The ring and the dot are pure graphics inside a merged item, so the
+                        // badge is silent to a screen reader without an explicit description.
+                        val badgeDescription = buildString {
+                            append("Level ${scrollProgression.level}")
+                            if (unseenMilestones > 0) {
+                                append(", $unseenMilestones new milestones")
+                            }
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.semantics { contentDescription = badgeDescription }
+                        ) {
                             CircularProgressIndicator(
                                 progress = {
                                     val current = scrollProgression.xpIntoLevel.toFloat()
@@ -274,6 +288,7 @@ private fun DrawerSectionLabel(text: String): Unit {
     Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
         Text(
+            modifier = Modifier.semantics { heading() },
             text = text,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,

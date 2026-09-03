@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -43,8 +44,11 @@ import androidx.compose.ui.unit.dp
 import io.aatricks.easyreader.data.model.ContentElement
 import io.aatricks.easyreader.data.model.ContentResult
 import io.aatricks.easyreader.data.model.LibraryItem
+import io.aatricks.easyreader.ui.components.ChapterStatus
 import io.aatricks.easyreader.ui.components.ChapterSummaryDropdown
 import io.aatricks.easyreader.ui.components.ChapterSummaryState
+import io.aatricks.easyreader.ui.components.chapterCacheStatusKind
+import io.aatricks.easyreader.ui.components.chapterCacheStatusLabel
 import io.aatricks.easyreader.ui.screens.LibraryRenderContext
 import io.aatricks.easyreader.ui.screens.openLibraryChapter
 import io.aatricks.easyreader.ui.theme.EasyReaderMotion
@@ -149,15 +153,38 @@ private fun chapterRowSurface(
                         onCheckedChange = { openLibraryChapter(presentation.item, context) }
                     )
                 }
-                chapterRowTitle(presentation, Modifier.weight(1f))
+                chapterRowTitle(presentation, context, Modifier.weight(1f))
                 chapterRowActions(presentation, context)
             }
         }
     }
 }
 
+/**
+ * The badge state the chapter list sheet shows, minus the two kinds the library row already says
+ * another way: every row here is in the library, and the current one shows "Resume here".
+ */
 @Composable
-private fun chapterRowTitle(presentation: ChapterRowPresentation, modifier: Modifier) {
+private fun chapterDownloadStatus(presentation: ChapterRowPresentation, context: LibraryRenderContext): ChapterStatus? {
+    val cacheStates by context.libraryViewModel.chapterCacheStates.collectAsState()
+    val failures by context.libraryViewModel.downloadFailures.collectAsState()
+    val url = presentation.item.url
+    if (url in failures) return ChapterStatus.DownloadFailed
+    val status = chapterCacheStatusKind(
+        isCurrent = false,
+        cacheState = cacheStates[url],
+        isInLibrary = true,
+        isDownloaded = presentation.item.isDownloaded
+    )
+    return status.takeUnless { it == ChapterStatus.InLibrary || it == ChapterStatus.Downloaded }
+}
+
+@Composable
+private fun chapterRowTitle(
+    presentation: ChapterRowPresentation,
+    context: LibraryRenderContext,
+    modifier: Modifier
+) {
     Column(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (presentation.item.isDownloaded) {
@@ -184,6 +211,18 @@ private fun chapterRowTitle(presentation: ChapterRowPresentation, modifier: Modi
                 "Resume here",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.secondary
+            )
+        }
+        val downloadStatus = chapterDownloadStatus(presentation, context)
+        chapterCacheStatusLabel(downloadStatus)?.let { label ->
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (downloadStatus == ChapterStatus.DownloadFailed) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
             )
         }
     }

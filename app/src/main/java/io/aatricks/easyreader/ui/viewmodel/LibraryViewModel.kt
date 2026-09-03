@@ -9,6 +9,7 @@ import io.aatricks.easyreader.data.model.ExploreItem
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.model.SortMode
 import io.aatricks.easyreader.data.model.SeriesReadingStatus
+import io.aatricks.easyreader.data.model.hasActionableUpdate
 import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.data.repository.DownloadStatusReconciler
 import io.aatricks.easyreader.data.repository.ExploreRepository
@@ -17,6 +18,7 @@ import io.aatricks.easyreader.util.TextUtils
 import io.aatricks.easyreader.util.normalizeChapterList
 import io.aatricks.easyreader.work.ChapterDownloadQueue
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
@@ -130,9 +132,10 @@ class LibraryViewModel @Inject constructor(
         },
         combine(
             deletionCoordinator.pendingDeletion,
-            filters.statusFilter
-        ) { p, s ->
-            p to s
+            filters.statusFilter,
+            repository.libraryLoaded
+        ) { p, s, loaded ->
+            Triple(p, s, loaded)
         },
         combine(
             filters.searchQuery,
@@ -146,7 +149,7 @@ class LibraryViewModel @Inject constructor(
     ) { repoState, pendingStatus, filterParams, manualUiState ->
         val (repoData, selectionModeEnabled) = repoState
         val (rawItems, selectedIds, collapsedSources) = repoData
-        val (pendingIds, statusFilter) = pendingStatus
+        val (pendingIds, statusFilter, hasLoaded) = pendingStatus
 
         val items = if (pendingIds.isEmpty()) rawItems else rawItems.filterNot { it.id in pendingIds }
         val filteredItems = filters.apply(
@@ -171,6 +174,7 @@ class LibraryViewModel @Inject constructor(
             selectedIds = selectedIds,
             selectedCount = selectedIds.size,
             isEmpty = items.isEmpty(),
+            hasLoaded = hasLoaded,
             currentlyReading = items.find { it.isCurrentlyReading },
             isLoading = manualUiState.isLoading,
             error = manualUiState.error,
@@ -231,6 +235,8 @@ class LibraryViewModel @Inject constructor(
         val selectedIds: Set<String> = emptySet(),
         val selectedCount: Int = 0,
         val isEmpty: Boolean = true,
+        /** False until the library has been read from the database; empty state waits on it. */
+        val hasLoaded: Boolean = false,
         val currentlyReading: LibraryItem? = null
     )
 
@@ -277,7 +283,9 @@ class LibraryViewModel @Inject constructor(
                     currentChapter = currentChapter,
                     baseTitle = baseTitle
                 )
-                updateState { it.copy(isLoading = false) }
+                updateState {
+                    it.copy(isLoading = false, snackbarMessage = "Added \"${title.trim()}\" to library")
+                }
             }.onFailure { e ->
                 updateState { it.copy(isLoading = false, error = "Failed to add item: ${e.message}") }
             }
@@ -510,7 +518,12 @@ class LibraryViewModel @Inject constructor(
         openNewChapterJob = viewModelScope.launch {
             runCatching {
                 _openNextChapterState.value = OpenNextChapterState.Loading
-                val details = exploreRepository.getNovelDetails(item.baseNovelUrl, item.sourceName)
+                // withTimeoutOrNull, not withTimeout: a TimeoutCancellationException would be
+                // rethrown by rethrowCancellation() and never reach the error state below, leaving
+                // the blocking overlay up for good.
+                val details = withTimeoutOrNull(OPEN_NEXT_CHAPTER_TIMEOUT_MS) {
+                    exploreRepository.getNovelDetails(item.baseNovelUrl, item.sourceName)
+                }
                 val normalizedChapters = normalizeChapterList(details?.chapters.orEmpty())
                 if (details == null || normalizedChapters.isEmpty()) {
                     throw Exception("No chapters found for this novel")
@@ -531,6 +544,13 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    /** Backs the overlay's Cancel action; the cancelled job cannot clear the state itself. */
+    fun cancelOpenNewChapter(): Unit {
+        openNewChapterJob?.cancel()
+        openNewChapterJob = null
+        _openNextChapterState.value = OpenNextChapterState.Idle
+    }
+
     fun consumeOpenNextChapterError(): Unit {
         if (_openNextChapterState.value is OpenNextChapterState.Error) {
             _openNextChapterState.value = OpenNextChapterState.Idle
@@ -547,7 +567,9 @@ class LibraryViewModel @Inject constructor(
         _isRefreshing.value = true
         viewModelScope.launch {
             runCatching {
-                repository.refreshLibraryUpdates(exploreRepository, ignoreActivityThreshold = true)
+                repository.refreshLibraryUpdatesAndCount(exploreRepository, ignoreActivityThreshold = true)
+            }.onSuccess { updated ->
+                updateState { it.copy(snackbarMessage = refreshResultMessage(updated)) }
             }.onFailure { e ->
                 updateState { it.copy(error = "Update check failed: ${e.message}") }
             }
@@ -559,7 +581,6 @@ class LibraryViewModel @Inject constructor(
     fun prefetchLibrary(selectedOnly: Boolean = false): Unit {
         viewModelScope.launch {
             runCatching {
-                updateState { it.copy(isLoading = true) }
                 val items = if (selectedOnly) {
                     val selectedIds = selectionManager.selectedIds
                     repository.libraryItems.value.filter { it.id in selectedIds }
@@ -569,9 +590,9 @@ class LibraryViewModel @Inject constructor(
                 items.forEach { item ->
                     downloadStates.markPendingAndEnqueue(item.url)
                 }
-                updateState { it.copy(isLoading = false) }
+                updateState { it.copy(snackbarMessage = downloadQueuedMessage(items.size)) }
             }.onFailure { e ->
-                updateState { it.copy(isLoading = false, error = "Prefetch failed: ${e.message}") }
+                updateState { it.copy(error = "Could not start the download: ${e.message}") }
             }
         }
     }
@@ -819,6 +840,20 @@ private suspend fun adoptChapterIntoSeries(
         sourceName = series.sourceName,
         totalChapters = totalChapters
     )
+}
+
+private const val OPEN_NEXT_CHAPTER_TIMEOUT_MS = 20_000L
+
+internal fun refreshResultMessage(updatedCount: Int): String = when (updatedCount) {
+    0 -> "No new chapters"
+    1 -> "1 title updated"
+    else -> "$updatedCount titles updated"
+}
+
+internal fun downloadQueuedMessage(chapterCount: Int): String = when (chapterCount) {
+    0 -> "Nothing to download"
+    1 -> "Downloading 1 chapter"
+    else -> "Downloading $chapterCount chapters"
 }
 
 private const val BACKFILL_CONCURRENCY = 3

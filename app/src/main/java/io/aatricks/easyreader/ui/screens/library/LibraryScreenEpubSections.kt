@@ -6,6 +6,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,9 +18,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -53,11 +57,17 @@ internal fun EpubItemCard(
 ): Unit {
     val hapticFeedback = LocalHapticFeedback.current
     var epubBook by remember { mutableStateOf<EpubBook?>(null) }
+    var isReadable by remember { mutableStateOf(true) }
     var isExpanded by remember { mutableStateOf(false) }
+    var menuExpanded by remember { mutableStateOf(false) }
     val isSelected = item.id in uiState.selectedIds
 
     LaunchedEffect(item.url) {
+        isReadable = true
         epubBook = contentRepository.getEpubBook(item.url)
+        // getEpubBook returns null for good once the SAF grant is gone (reinstall, file moved or
+        // deleted), which otherwise leaves the card a permanently dead tap with no way out.
+        isReadable = epubBook != null
     }
 
     Card(
@@ -91,14 +101,7 @@ internal fun EpubItemCard(
                                 if (uiState.isSelectionMode) {
                                     libraryViewModel.toggleSelection(item.id)
                                 } else {
-                                    epubBook?.let { book ->
-                                        val firstHref = book.getFirstReadableHref()
-                                        if (firstHref != null) {
-                                            readerViewModel.loadEpubChapter(item.url, firstHref, item.id)
-                                            libraryViewModel.markAsCurrentlyReading(item.id)
-                                            onCloseLibrary()
-                                        }
-                                    }
+                                    openEpubItem(item, epubBook, readerViewModel, libraryViewModel, onCloseLibrary)
                                 }
                             },
                             onLongClick = {
@@ -112,13 +115,7 @@ internal fun EpubItemCard(
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    epubBook?.let { book ->
-                        Text(
-                            text = book.metadata.author ?: "Unknown Author",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    EpubSupportingLine(epubBook, isReadable)
                 }
 
                 IconButton(onClick = { isExpanded = !isExpanded }) {
@@ -126,6 +123,14 @@ internal fun EpubItemCard(
                         imageVector = if (isExpanded) Icons.Filled.ArrowDropDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = if (isExpanded) "Collapse" else "Expand",
                         tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                if (!uiState.isSelectionMode) {
+                    EpubCardMenu(
+                        expanded = menuExpanded,
+                        onExpandedChange = { menuExpanded = it },
+                        onRemove = { libraryViewModel.removeItem(item.id) }
                     )
                 }
             }
@@ -153,6 +158,84 @@ internal fun EpubItemCard(
     }
 }
 
+/** Author once the book opens, otherwise why it hasn't. */
+@Composable
+private fun EpubSupportingLine(epubBook: EpubBook?, isReadable: Boolean): Unit {
+    Text(
+        text = when {
+            epubBook != null -> epubBook.metadata.author ?: "Unknown Author"
+            isReadable -> "Opening book\u2026"
+            else -> "This file can't be opened. It may have been moved or deleted."
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = if (isReadable) {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        } else {
+            MaterialTheme.colorScheme.error
+        }
+    )
+}
+
+@Composable
+private fun EpubCardMenu(
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onRemove: () -> Unit
+): Unit {
+    Box {
+        IconButton(onClick = { onExpandedChange(true) }) {
+            Icon(Icons.Default.MoreVert, contentDescription = "More actions")
+        }
+        DropdownMenu(expanded, onDismissRequest = { onExpandedChange(false) }) {
+            DropdownMenuItem(
+                text = { Text("Remove from library") },
+                onClick = {
+                    onExpandedChange(false)
+                    onRemove()
+                }
+            )
+        }
+    }
+}
+
+/**
+ * Resume where the user stopped. [LibraryItem.currentChapterUrl] is stored as `path#href`, which
+ * `loadContent` routes back through the EPUB loader; only a row that never recorded one (or a
+ * legacy row without the anchor) falls back to the book's first readable chapter.
+ */
+private fun openEpubItem(
+    item: LibraryItem,
+    epubBook: EpubBook?,
+    readerViewModel: ReaderViewModel,
+    libraryViewModel: LibraryViewModel,
+    onCloseLibrary: () -> Unit
+) {
+    val resumeUrl = item.currentChapterUrl.takeIf { it.contains("#") }
+    if (resumeUrl != null) {
+        readerViewModel.loadContent(resumeUrl, item.id)
+    } else {
+        val firstHref = epubBook?.getFirstReadableHref() ?: return
+        readerViewModel.loadEpubChapter(item.url, firstHref, item.id)
+    }
+    libraryViewModel.markAsCurrentlyReading(item.id)
+    onCloseLibrary()
+}
+
+/**
+ * Explicit navigation, so the reader starts at the top of the tapped chapter instead of restoring
+ * the stored percentage of a different one.
+ */
+private fun openEpubToc(
+    epubPath: String,
+    href: String,
+    itemId: String,
+    readerViewModel: ReaderViewModel,
+    libraryViewModel: LibraryViewModel
+) {
+    readerViewModel.loadContent("$epubPath#$href", itemId, isExplicitNavigation = true)
+    libraryViewModel.markAsCurrentlyReading(itemId)
+}
+
 @Composable
 private fun EpubTocItemView(
     tocItem: EpubTocItem,
@@ -177,8 +260,7 @@ private fun EpubTocItemView(
                 .fillMaxWidth()
                 .clickable(
                     onClick = {
-                        readerViewModel.loadEpubChapter(epubPath, tocItem.href, itemId)
-                        libraryViewModel.markAsCurrentlyReading(itemId)
+                        openEpubToc(epubPath, tocItem.href, itemId, readerViewModel, libraryViewModel)
                         onCloseLibrary()
                     }
                 )

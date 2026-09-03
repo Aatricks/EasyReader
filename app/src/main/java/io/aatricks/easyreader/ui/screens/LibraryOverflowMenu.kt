@@ -19,6 +19,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import io.aatricks.easyreader.data.model.SortMode
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 
@@ -31,7 +34,39 @@ private fun GroupBySourceMenuItem(groupBySource: Boolean, onClick: () -> Unit): 
                 Icon(imageVector = Icons.Default.Check, contentDescription = null)
             }
         },
-        onClick = onClick
+        onClick = onClick,
+        // The check icon is the only visual cue; without this every item reads the same aloud.
+        modifier = Modifier.semantics {
+            selected = groupBySource
+            stateDescription = if (groupBySource) "On" else "Off"
+        }
+    )
+}
+
+@Composable
+private fun SortMenuItem(mode: SortMode, isSelected: Boolean, onClick: () -> Unit): Unit {
+    DropdownMenuItem(
+        text = {
+            Text(
+                when (mode) {
+                    SortMode.LAST_READ -> "Last read"
+                    SortMode.DATE_ADDED -> "Date added"
+                    SortMode.TITLE -> "Title"
+                    SortMode.PROGRESS -> "Progress"
+                }
+            )
+        },
+        leadingIcon = {
+            if (isSelected) {
+                Icon(imageVector = Icons.Default.Check, contentDescription = null)
+            }
+        },
+        onClick = onClick,
+        // The check icon is the only visual cue; without this every item reads the same aloud.
+        modifier = Modifier.semantics {
+            selected = isSelected
+            stateDescription = if (isSelected) "Selected" else "Not selected"
+        }
     )
 }
 
@@ -59,27 +94,10 @@ internal fun LibraryOverflowMenu(
                 )
             )
             SortMode.entries.forEach { mode ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            when (mode) {
-                                SortMode.LAST_READ -> "Last read"
-                                SortMode.DATE_ADDED -> "Date added"
-                                SortMode.TITLE -> "Title"
-                                SortMode.PROGRESS -> "Progress"
-                            }
-                        )
-                    },
-                    leadingIcon = {
-                        if (mode == sortMode) {
-                            Icon(imageVector = Icons.Default.Check, contentDescription = null)
-                        }
-                    },
-                    onClick = {
-                        expanded = false
-                        onSortModeSelected(mode)
-                    }
-                )
+                SortMenuItem(mode, isSelected = mode == sortMode) {
+                    expanded = false
+                    onSortModeSelected(mode)
+                }
             }
             HorizontalDivider()
             GroupBySourceMenuItem(groupBySource) {

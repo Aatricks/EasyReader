@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -33,6 +34,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import io.aatricks.easyreader.data.model.*
@@ -44,13 +49,13 @@ import io.aatricks.easyreader.data.repository.ContentRepository
 import io.aatricks.easyreader.ui.ExploreRoute
 import io.aatricks.easyreader.ui.SettingsRoute
 import io.aatricks.easyreader.ui.components.ChapterSummaryDropdown
+import io.aatricks.easyreader.ui.components.LoadingTile
 import io.aatricks.easyreader.ui.theme.EasyReaderMotion
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.viewmodel.LibraryViewModel
 import io.aatricks.easyreader.ui.viewmodel.OpenNextChapterState
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 import io.aatricks.easyreader.ui.viewmodel.SummaryViewModel
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -74,7 +79,6 @@ fun LibraryScreen(
     val summaryViewModel: SummaryViewModel = hiltViewModel()
     val summaryUiState by summaryViewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
 
     var urlInput by remember { mutableStateOf("") }
     var isAddSectionVisible by remember { mutableStateOf(false) }
@@ -118,6 +122,20 @@ fun LibraryScreen(
         }
     }
 
+    // The typed URL survives a failed add, so the user can correct it instead of retyping.
+    var addInFlight by remember { mutableStateOf(false) }
+    LaunchedEffect(libraryUiState.isLoading) {
+        if (libraryUiState.isLoading) {
+            addInFlight = true
+        } else if (addInFlight) {
+            addInFlight = false
+            if (libraryUiState.error == null) {
+                urlInput = ""
+                isAddSectionVisible = false
+            }
+        }
+    }
+
     LaunchedEffect(openNextChapterState) {
         (openNextChapterState as? OpenNextChapterState.Error)?.let { state ->
             snackbarHostState.showSnackbar(message = state.message, duration = SnackbarDuration.Short)
@@ -138,6 +156,40 @@ fun LibraryScreen(
             }
             libraryViewModel.consumeDownloadRetryPrompt()
         }
+    }
+
+    // Back exits selection mode or clears the search before it leaves the screen, matching the
+    // reader and Explore.
+    BackHandler(enabled = libraryUiState.isSelectionMode || searchQuery.isNotBlank()) {
+        if (libraryUiState.isSelectionMode) {
+            libraryViewModel.clearSelection()
+        } else {
+            libraryViewModel.updateSearchQuery("")
+        }
+    }
+
+    var showDownloadAllConfirmation by remember { mutableStateOf(false) }
+    if (showDownloadAllConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDownloadAllConfirmation = false },
+            icon = { Icon(Icons.Filled.Download, contentDescription = null) },
+            title = { Text("Download all chapters?") },
+            text = {
+                Text(
+                    "This queues ${formatLibraryCount(libraryUiState.items.size, "chapter")} for " +
+                        "offline reading. It may use a lot of data and storage."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDownloadAllConfirmation = false
+                    libraryViewModel.prefetchLibrary()
+                }) { Text("Download") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDownloadAllConfirmation = false }) { Text("Cancel") }
+            }
+        )
     }
 
     Scaffold(
@@ -170,10 +222,7 @@ fun LibraryScreen(
                         onSortModeSelected = { libraryViewModel.setSortMode(it) },
                         groupBySource = groupBySource,
                         onGroupBySourceChanged = { libraryViewModel.setGroupBySource(it) },
-                        onDownloadAll = {
-                            libraryViewModel.prefetchLibrary()
-                            scope.launch { snackbarHostState.showSnackbar("Refreshing offline cache…") }
-                        }
+                        onDownloadAll = { showDownloadAllConfirmation = true }
                     )
                     IconButton(onClick = { navController.navigate(SettingsRoute) }) {
                         Icon(
@@ -191,9 +240,10 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.surface)
                 .padding(paddingValues)
+                .imePadding()
                 .padding(horizontal = EasyReaderSpacing.md, vertical = EasyReaderSpacing.md)
         ) {
-            if (openNextChapterState is OpenNextChapterState.Loading) {
+            if (openNextChapterState is OpenNextChapterState.Loading || libraryUiState.isLoading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
             }
@@ -206,11 +256,7 @@ fun LibraryScreen(
                 AddNovelSection(
                     urlInput = urlInput,
                     onUrlChange = { urlInput = it },
-                    onAddClick = {
-                        libraryViewModel.fetchAndAdd(urlInput)
-                        urlInput = ""
-                        isAddSectionVisible = false
-                    },
+                    onAddClick = { libraryViewModel.fetchAndAdd(urlInput) },
                     onOpenPdfClick = {
                         onNavigateBack()
                         onOpenFilePicker()
@@ -250,8 +296,10 @@ fun LibraryScreen(
             if (libraryUiState.isSelectionMode) {
                 Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
                 SelectionActions(
+                    selectedCount = libraryUiState.selectedCount,
                     onDelete = { libraryViewModel.removeSelectedItems() },
-                    onCancel = { libraryViewModel.clearSelection() }
+                    onSelectAll = { libraryViewModel.selectAll() },
+                    onDownload = { libraryViewModel.prefetchLibrary(selectedOnly = true) }
                 )
             }
 
@@ -266,34 +314,37 @@ fun LibraryScreen(
 
             Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
 
-            if (libraryUiState.items.isEmpty()) {
-                EmptyLibraryState(
-                    isFilteredEmpty = searchQuery.isNotBlank(),
-                    onClearSearch = { libraryViewModel.updateSearchQuery("") },
-                    onBrowseSources = { navController.navigate(ExploreRoute) },
-                    onImportFile = onOpenFilePicker
-                )
-            } else if (libraryUiState.filteredItems.isEmpty() &&
-                (searchQuery.isNotBlank() || statusFilter != SeriesReadingStatus.ALL)
+            val pullState = rememberPullToRefreshState()
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                state = pullState,
+                onRefresh = { libraryViewModel.refreshUpdates() },
+                modifier = Modifier.fillMaxSize()
             ) {
-                EmptyLibraryState(
-                    isFilteredEmpty = true,
-                    onClearSearch = {
-                        libraryViewModel.updateSearchQuery("")
-                        libraryViewModel.setStatusFilter(SeriesReadingStatus.ALL)
-                    },
-                    query = searchQuery
-                )
-            } else {
-                val pullState = rememberPullToRefreshState()
-
-                PullToRefreshBox(
-                    isRefreshing = isRefreshing,
-                    state = pullState,
-                    onRefresh = { libraryViewModel.refreshUpdates() },
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    LibraryItemList(
+                when {
+                    // Waiting on the first database read, not an empty shelf: showing the empty
+                    // card here flashes "Your library is empty" on every cold start.
+                    !libraryUiState.hasLoaded -> LoadingTile(modifier = Modifier.fillMaxWidth())
+                    libraryUiState.items.isEmpty() -> EmptyLibraryState(
+                        onBrowseSources = { navController.navigate(ExploreRoute) },
+                        onImportFile = {
+                            onNavigateBack()
+                            onOpenFilePicker()
+                        }
+                    )
+                    libraryUiState.filteredItems.isEmpty() &&
+                        (searchQuery.isNotBlank() || statusFilter != SeriesReadingStatus.ALL) ->
+                        EmptyLibraryState(
+                            onClearSearch = {
+                                libraryViewModel.updateSearchQuery("")
+                                libraryViewModel.setStatusFilter(SeriesReadingStatus.ALL)
+                            },
+                            query = searchQuery,
+                            statusFilterLabel = statusFilter.takeIf {
+                                searchQuery.isBlank() && it != SeriesReadingStatus.ALL
+                            }?.label
+                        )
+                    else -> LibraryItemList(
                         uiState = libraryUiState,
                         readerUiState = readerUiState,
                         summaryUiState = summaryUiState,
@@ -328,6 +379,19 @@ private fun ReadingStatusFilterRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // Fades the trailing edge so a clipped last chip reads as "there is more to scroll".
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(Color.Black, Color.Transparent),
+                        startX = size.width - CHIP_ROW_FADE_WIDTH_PX,
+                        endX = size.width
+                    ),
+                    blendMode = BlendMode.DstIn
+                )
+            }
             .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
     ) {
@@ -433,7 +497,7 @@ private fun AddNovelSection(
                     onClick = onAddClick,
                     modifier = Modifier
                         .weight(1f)
-                        .height(48.dp),
+                        .heightIn(min = 48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     enabled = urlInput.isNotBlank(),
                     shape = MaterialTheme.shapes.large
@@ -447,7 +511,7 @@ private fun AddNovelSection(
                     onClick = onOpenPdfClick,
                     modifier = Modifier
                         .weight(1f)
-                        .height(48.dp),
+                        .heightIn(min = 48.dp),
                     shape = MaterialTheme.shapes.large
                 ) {
                     Icon(Icons.Filled.FileOpen, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -501,7 +565,7 @@ private fun LibraryStatusRow(
 ): Unit {
     val statusText = when {
         isSelectionMode && selectedCount > 0 -> "$selectedCount selected"
-        isSelectionMode -> "Select titles to remove them"
+        isSelectionMode -> "Select titles to remove or download"
         query.isNotBlank() -> "${formatLibraryCount(visibleCount, "result")} in view"
         else -> formatLibraryCount(totalCount, "title")
     }
@@ -522,10 +586,16 @@ private fun LibraryStatusRow(
     }
 }
 
+/**
+ * Exiting selection mode lives on the "Done" button in [LibraryStatusRow]; this row carries only
+ * the actions that operate on the selection.
+ */
 @Composable
 private fun SelectionActions(
+    selectedCount: Int,
     onDelete: () -> Unit,
-    onCancel: () -> Unit
+    onSelectAll: () -> Unit,
+    onDownload: () -> Unit
 ): Unit {
     Row(
         modifier = Modifier
@@ -535,9 +605,10 @@ private fun SelectionActions(
     ) {
         Button(
             onClick = onDelete,
+            enabled = selectedCount > 0,
             modifier = Modifier
                 .weight(1f)
-                .height(48.dp),
+                .heightIn(min = 48.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.errorContainer,
                 contentColor = MaterialTheme.colorScheme.onErrorContainer
@@ -546,36 +617,59 @@ private fun SelectionActions(
         ) {
             Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-            Text("Delete selected", fontWeight = FontWeight.SemiBold)
+            Text("Delete", fontWeight = FontWeight.SemiBold)
         }
         Button(
-            onClick = onCancel,
+            onClick = onDownload,
+            enabled = selectedCount > 0,
             modifier = Modifier
                 .weight(1f)
-                .height(48.dp),
+                .heightIn(min = 48.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+            ),
+            shape = MaterialTheme.shapes.large
+        ) {
+            Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
+            Text("Download", fontWeight = FontWeight.SemiBold)
+        }
+        Button(
+            onClick = onSelectAll,
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 48.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
                 contentColor = MaterialTheme.colorScheme.onSurface
             ),
             shape = MaterialTheme.shapes.large
         ) {
-            Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(20.dp))
+            Icon(Icons.Filled.SelectAll, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-            Text("Done selecting", fontWeight = FontWeight.SemiBold)
+            Text("Select all", fontWeight = FontWeight.SemiBold)
         }
     }
 }
 
+
+
 @Composable
 private fun EmptyLibraryState(
-    isFilteredEmpty: Boolean = false,
     onClearSearch: () -> Unit = {},
     onBrowseSources: () -> Unit = {},
     onImportFile: () -> Unit = {},
-    query: String = ""
+    query: String = "",
+    statusFilterLabel: String? = null
 ) {
+    val isFilteredEmpty = query.isNotBlank() || statusFilterLabel != null
+    val (headline, body) = emptyLibraryCopy(query, statusFilterLabel)
     Box(
-        modifier = Modifier.fillMaxSize(),
+        // Scrollable so pull-to-refresh still has a gesture to hook when the list is empty.
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
         contentAlignment = Alignment.Center
     ) {
         Surface(
@@ -594,18 +688,9 @@ private fun EmptyLibraryState(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(40.dp)
                 )
+                Text(text = headline, style = MaterialTheme.typography.headlineSmall)
                 Text(
-                    text = when {
-                        isFilteredEmpty -> "No matches" + if (query.isNotBlank()) " for \"$query\"" else ""
-                        else -> "Your library is empty"
-                    },
-                    style = MaterialTheme.typography.headlineSmall
-                )
-                Text(
-                    text = if (isFilteredEmpty)
-                        "No titles match your search. Try different words or clear the search to see everything."
-                    else
-                        "Add a title from Explore or import a file to start building your shelf.",
+                    text = body,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -613,7 +698,7 @@ private fun EmptyLibraryState(
                 if (isFilteredEmpty) {
                     Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
                     FilledTonalButton(onClick = onClearSearch) {
-                        Text("Clear search")
+                        Text(if (statusFilterLabel != null) "Show all titles" else "Clear search")
                     }
                 } else {
                     Spacer(modifier = Modifier.height(EasyReaderSpacing.xs))
@@ -632,6 +717,18 @@ private fun EmptyLibraryState(
         }
     }
 }
+
+/** Headline and body for the empty shelf, the empty search and the empty status filter. */
+private fun emptyLibraryCopy(query: String, statusFilterLabel: String?): Pair<String, String> = when {
+    statusFilterLabel != null -> "Nothing in $statusFilterLabel" to
+        "No titles have that status right now. Pick another filter to see everything."
+    query.isNotBlank() -> "No matches for \"$query\"" to
+        "No titles match your search. Try different words or clear the search to see everything."
+    else -> "Your library is empty" to
+        "Add a title from Explore or import a file to start building your shelf."
+}
+
+private const val CHIP_ROW_FADE_WIDTH_PX = 48f
 
 private fun formatLibraryCount(count: Int, noun: String): String {
     val suffix = if (count == 1) noun else "${noun}s"
