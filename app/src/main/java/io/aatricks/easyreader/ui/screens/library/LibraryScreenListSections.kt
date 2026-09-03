@@ -407,7 +407,7 @@ private fun NovelGroupHeader(
                     Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
                     AssistChip(
                         onClick = { onOpenNewChapter(updateItem) },
-                        label = { Text("Open latest") }
+                        label = { Text("Read next") }
                     )
                 }
             }

@@ -159,11 +159,12 @@ fun LibraryDrawerContent(
         }
 
         if (recentUpdates.isNotEmpty()) {
-            item { DrawerSectionLabel("Latest updates") }
+            item { DrawerSectionLabel("New chapters") }
             items(recentUpdates, key = { "update_${it.novelKey}" }) { novel ->
-                val chapter = novel.updateItem.currentChapter.ifBlank {
-                    novel.updateItem.title.takeIf { it != novel.updateItem.baseTitle } ?: "New chapter"
-                }.ifBlank { "New chapter" }
+                val chapter = novel.updateItem.currentChapter.takeIf { it.isNotBlank() }
+                    ?.let { "Continue after $it" }
+                    ?: novel.updateItem.title.takeIf { it != novel.updateItem.baseTitle }.orEmpty()
+                        .ifBlank { "New chapter" }
                 QuickLibraryItem(
                     item = novel.updateItem,
                     supportingText = chapter,
