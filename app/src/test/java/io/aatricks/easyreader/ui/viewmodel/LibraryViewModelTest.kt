@@ -418,11 +418,13 @@ class LibraryViewModelTest {
         advanceUntilIdle()
 
         assertEquals(mapOf(FLAT_LIBRARY_SECTION to byTitle), vm.uiState.value.groupedBySource)
+        assertFalse(vm.uiState.value.groupBySource)
 
         vm.setGroupBySource(true)
         advanceUntilIdle()
 
         assertEquals(bySource, vm.uiState.value.groupedBySource)
+        assertTrue(vm.uiState.value.groupBySource)
         verify(libraryRepository).saveGroupBySource(true)
     }
 

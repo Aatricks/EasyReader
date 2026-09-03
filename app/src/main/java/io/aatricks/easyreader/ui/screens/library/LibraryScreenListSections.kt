@@ -105,10 +105,12 @@ internal fun LibraryItemList(
     // Keyed on the grouping inputs; derivedStateOf so the expand/collapse state maps (snapshot
     // state read inside the flattener) still invalidate it. Without this the whole library is
     // re-flattened on every unrelated recomposition, e.g. each reader scroll-progress tick.
-    // filteredItems (not groupedBySource) is the key: Map equality ignores entry order, so a
-    // sort-mode change that only reorders novels would otherwise keep the stale flattened list.
+    // filteredItems + groupBySource (not groupedBySource) are the keys: Map equality ignores entry
+    // order, so a sort-mode change that only reorders novels, or a grouping flip, would otherwise
+    // keep the stale flattened list.
     val renderItems by remember(
         uiState.filteredItems,
+        uiState.groupBySource,
         uiState.collapsedSources,
         uiState.isSelectionMode
     ) {
