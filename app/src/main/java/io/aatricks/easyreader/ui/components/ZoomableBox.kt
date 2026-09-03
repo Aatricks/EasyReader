@@ -34,6 +34,28 @@ internal fun shouldHandleTap(scale: Float, minScale: Float, lockTapWhileZoomed: 
     return !lockTapWhileZoomed || !isZoomed(scale = scale, minScale = minScale)
 }
 
+/**
+ * Whether a zoom-gesture event should be consumed.
+ *
+ * A pinch always belongs to the box. A one-finger drag only keeps the gesture while the zoomed
+ * content still moves under the finger on the axis being dragged: once the clamped pan is pinned
+ * there, the event is left unconsumed so an enclosing scroller (the manhwa LazyColumn) takes over
+ * instead of the page freezing. A motionless press is likewise never consumed, which is what lets
+ * a tap while zoomed still reach the tap handler that brings the reader controls back.
+ *
+ * @param requested the pan the gesture asked for this event
+ * @param applied how far the clamped offset actually moved
+ */
+internal fun consumesZoomDrag(
+    pointerCount: Int,
+    zoomChange: Float,
+    requested: Offset,
+    applied: Offset
+): Boolean {
+    if (pointerCount > 1 || zoomChange != 1f) return true
+    return if (abs(requested.y) >= abs(requested.x)) applied.y != 0f else applied.x != 0f
+}
+
 @Composable
 fun ZoomableBox(
     modifier: Modifier = Modifier,
@@ -120,10 +142,19 @@ fun ZoomableBox(
 
                                 scale = newScale
                                 emitZoomState(scale)
+                                val previousOffset = Offset(offsetX, offsetY)
                                 offsetX = clampOffset(offsetX + panChange.x, width, scale)
                                 offsetY = clampOffset(offsetY + panChange.y, height, scale, isDynamic = dynamicHeight)
 
-                                event.changes.fastForEach { it.consume() }
+                                val consumesDrag = consumesZoomDrag(
+                                    pointerCount = event.changes.count { it.pressed },
+                                    zoomChange = zoomChange,
+                                    requested = panChange,
+                                    applied = Offset(offsetX, offsetY) - previousOffset
+                                )
+                                if (consumesDrag) {
+                                    event.changes.fastForEach { it.consume() }
+                                }
                             }
 
                             val upChange = event.changes.firstOrNull { !it.pressed }

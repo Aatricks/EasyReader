@@ -10,6 +10,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -37,6 +38,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -86,6 +91,7 @@ import io.aatricks.easyreader.ui.screens.reader.ScrollingReaderState
 import io.aatricks.easyreader.ui.screens.reader.buildReaderRenderItems
 import io.aatricks.easyreader.ui.screens.reader.findRenderIndexForSource
 import io.aatricks.easyreader.ui.screens.reader.findSourcePositionForRender
+import io.aatricks.easyreader.ui.screens.reader.isManhwaLayout
 import io.aatricks.easyreader.ui.screens.reader.resolveReaderTapAction
 import io.aatricks.easyreader.ui.screens.reader.scrollingReaderView
 import io.aatricks.easyreader.ui.screens.reader.shouldRunPercentRestoreFallback
@@ -143,11 +149,7 @@ internal fun ContentArea(
         fontFamily = fontFamily
     )
 
-    val isManhwa = remember(content) {
-        val isManhwaByUrl = content.url.contains("manhwa", ignoreCase = true) ||
-            content.url.contains("webtoon", ignoreCase = true)
-        isManhwaByUrl || (content.getImageCount() > content.getTextCount() && content.getImageCount() > 2)
-    }
+    val isManhwa = remember(content) { isManhwaLayout(content) }
 
     val stableKeys = remember(content) {
         content.paragraphs.mapIndexed { idx, element ->
@@ -522,9 +524,53 @@ internal fun ContentArea(
             }
             .background(bgColor)
     ) {
+        // Hoisted out of detectTapGestures so the accessibility actions below turn pages
+        // through exactly the same path as a tap.
+        val goToNextPage = {
+            readerViewModel.onUserInteraction()
+            val nextPage = pagerState.currentPage + 1
+            if (nextPage < pagerState.pageCount) {
+                coroutineScope.launch { pagerState.animateScrollToPage(nextPage) }
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.SegmentTick)
+            } else if (uiState.canNavigateNext) {
+                readerViewModel.navigateToNextChapter()
+            }
+        }
+        val goToPreviousPage = {
+            readerViewModel.onUserInteraction()
+            val prevPage = pagerState.currentPage - 1
+            if (prevPage >= 0) {
+                coroutineScope.launch { pagerState.animateScrollToPage(prevPage) }
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.SegmentTick)
+            } else if (uiState.canNavigatePrevious) {
+                readerViewModel.navigateToPreviousChapter(fromBottom = true)
+            }
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                // The gestures below are raw pointer input, invisible to a screen reader.
+                // These expose the same three actions as a semantics node so the controls
+                // and, in paged mode, the page turns stay reachable with TalkBack on.
+                .semantics {
+                    onClick(label = "Show reader controls") {
+                        readerViewModel.toggleControls()
+                        true
+                    }
+                    if (uiState.isPagedMode) {
+                        customActions = listOf(
+                            CustomAccessibilityAction("Next page") {
+                                goToNextPage()
+                                true
+                            },
+                            CustomAccessibilityAction("Previous page") {
+                                goToPreviousPage()
+                                true
+                            }
+                        )
+                    }
+                }
                 // Single full-screen tap authority for toggling the reader controls. The
                 // per-item clickables only cover text glyphs, so horizontal margins,
                 // inter-paragraph gaps, and empty space below a short chapter were dead
@@ -548,28 +594,8 @@ internal fun ContentArea(
                         )
                         when (action) {
                             ReaderTapAction.TOGGLE_CONTROLS -> readerViewModel.toggleControls()
-                            ReaderTapAction.PAGE_FORWARD -> {
-                                val nextPage = pagerState.currentPage + 1
-                                if (nextPage < pagerState.pageCount) {
-                                    coroutineScope.launch {
-                                        pagerState.animateScrollToPage(nextPage)
-                                    }
-                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                                } else if (uiState.canNavigateNext) {
-                                    readerViewModel.navigateToNextChapter()
-                                }
-                            }
-                            ReaderTapAction.PAGE_BACK -> {
-                                val prevPage = pagerState.currentPage - 1
-                                if (prevPage >= 0) {
-                                    coroutineScope.launch {
-                                        pagerState.animateScrollToPage(prevPage)
-                                    }
-                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                                } else if (uiState.canNavigatePrevious) {
-                                    readerViewModel.navigateToPreviousChapter(fromBottom = true)
-                                }
-                            }
+                            ReaderTapAction.PAGE_FORWARD -> goToNextPage()
+                            ReaderTapAction.PAGE_BACK -> goToPreviousPage()
                         }
                     }
                 }
@@ -613,6 +639,18 @@ internal fun ContentArea(
                         textColor = textColor,
                         readerViewModel = readerViewModel
                     )
+                )
+            }
+
+            // Brightness dims the page only: drawn over the content but under the control bars,
+            // which were unreadable at low brightness. A background-only Spacer takes no
+            // pointers, so the tap authority above still sees every tap.
+            val overlayAlpha = brightnessOverlayAlpha(uiState.brightness)
+            if (overlayAlpha > 0f) {
+                Spacer(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = overlayAlpha))
                 )
             }
         }
@@ -689,8 +727,7 @@ internal fun ContentArea(
             pullAmount = pullAmount,
             threshold = threshold,
             isThresholdReached = isThresholdReached,
-            isPagedMode = uiState.isPagedMode,
-            isRtl = uiState.isRtl
+            uiState = uiState
         )
 
         if (!uiState.isPagedMode && pullAmount == 0f && !uiState.showControls) {
@@ -698,7 +735,9 @@ internal fun ContentArea(
             val atBottom = !listState.canScrollForward
             EdgeNavigationHint(
                 atTop = atTop && uiState.canNavigatePrevious,
-                atBottom = atBottom && uiState.canNavigateNext
+                atBottom = atBottom && uiState.canNavigateNext,
+                textColor = textColor,
+                backgroundColor = bgColor
             )
         }
     }
@@ -981,45 +1020,68 @@ internal data class ReaderScrollSnapshot(
 )
 
 @Composable
-private fun EdgeNavigationHint(atTop: Boolean, atBottom: Boolean) {
+private fun EdgeNavigationHint(
+    atTop: Boolean,
+    atBottom: Boolean,
+    textColor: Color,
+    backgroundColor: Color
+) {
     if (atTop) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-            EdgeHintChip(text = "Pull down for previous chapter", icon = Icons.Default.ArrowDownward)
+            EdgeHintChip(
+                text = "Pull down for previous chapter",
+                icon = Icons.Default.ArrowDownward,
+                textColor = textColor,
+                backgroundColor = backgroundColor
+            )
         }
     }
     if (atBottom) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-            EdgeHintChip(text = "Pull up for next chapter", icon = Icons.Default.ArrowUpward)
+            EdgeHintChip(
+                text = "Pull up for next chapter",
+                icon = Icons.Default.ArrowUpward,
+                textColor = textColor,
+                backgroundColor = backgroundColor
+            )
         }
     }
 }
 
+// The chip floats on the reader theme's background, not the app surface, so its colours have to
+// come from the same place -- MaterialTheme's surface left it at ~3.3:1 on the default setup.
+private const val EDGE_HINT_CHIP_ALPHA = 0.85f
+private val EDGE_HINT_ICON_SIZE = 16.dp
+private val EDGE_HINT_CHIP_PADDING = 6.dp
+
 @Composable
 private fun EdgeHintChip(
     text: String,
-    icon: ImageVector
+    icon: ImageVector,
+    textColor: Color,
+    backgroundColor: Color
 ) {
     androidx.compose.material3.Surface(
         modifier = Modifier.padding(vertical = EasyReaderSpacing.sm, horizontal = EasyReaderSpacing.md),
         shape = androidx.compose.material3.MaterialTheme.shapes.extraLarge,
-        color = androidx.compose.material3.MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
-        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+        color = backgroundColor.copy(alpha = EDGE_HINT_CHIP_ALPHA),
+        contentColor = textColor
     ) {
         androidx.compose.foundation.layout.Row(
-            modifier = Modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = EasyReaderSpacing.sm, vertical = EDGE_HINT_CHIP_PADDING),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(EDGE_HINT_CHIP_PADDING)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                modifier = Modifier.size(EDGE_HINT_ICON_SIZE),
+                tint = textColor
             )
             Text(
                 text = text,
                 style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                color = textColor
             )
         }
     }

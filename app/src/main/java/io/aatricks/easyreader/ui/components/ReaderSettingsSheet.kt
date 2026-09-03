@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import io.aatricks.easyreader.ui.util.toFontFamily
 import androidx.compose.ui.unit.dp
@@ -122,6 +123,7 @@ private fun ReaderThemeOption(
 @Composable
 private fun FontFamilyChip(
     font: String,
+    labelRes: Int,
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
@@ -131,7 +133,7 @@ private fun FontFamilyChip(
         onClick = onClick,
         label = {
             Text(
-                text = font,
+                text = stringResource(labelRes),
                 fontFamily = fontFamily
             )
         },
@@ -317,9 +319,15 @@ fun ReaderSettingsSheet(
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
                 ) {
-                    listOf("Default", "Serif", "Monospace").forEach { font ->
+                    // The left half is the stored value; only the label is translated.
+                    listOf(
+                        "Default" to R.string.reader_font_default,
+                        "Serif" to R.string.reader_font_serif,
+                        "Monospace" to R.string.reader_font_monospace
+                    ).forEach { (font, labelRes) ->
                         FontFamilyChip(
                             font = font,
+                            labelRes = labelRes,
                             isSelected = uiState.fontFamily == font,
                             onClick = { onUpdateFontFamily(font) }
                         )
@@ -385,10 +393,11 @@ fun SettingSlider(
                 onValueChange = onValueChange,
                 valueRange = valueRange,
                 steps = steps,
+                // No fixed height: it sat outside the Slider's own minimumInteractiveComponentSize
+                // and pinned the grab area to 40 dp.
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(40.dp)
-                    .semantics { contentDescription = "$label, $displayValue" },
+                    .semantics { stateDescription = displayValue },
                 colors = SliderDefaults.colors(
                     thumbColor = MaterialTheme.colorScheme.primary,
                     activeTrackColor = MaterialTheme.colorScheme.primary,

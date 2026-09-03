@@ -7,6 +7,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -375,27 +376,27 @@ fun ReaderImageView(
         }
 
         if (isError) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .padding(EasyReaderSpacing.md)
-                    .clickable {
-                        isError = false
-                        isLoadingHoisted = true
-                        retryTrigger = System.currentTimeMillis()
-                    }
+            TextButton(
+                onClick = {
+                    isError = false
+                    isLoadingHoisted = true
+                    retryTrigger = System.currentTimeMillis()
+                },
+                modifier = Modifier.padding(EasyReaderSpacing.md)
             ) {
-                Text(
-                    text = altText ?: "Image unavailable",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Text(
-                    text = if (imageUrl.startsWith("http")) "Tap to retry" else "Tap to reload",
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(top = EasyReaderSpacing.xxs)
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = altText ?: "Image unavailable",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        text = if (imageUrl.startsWith("http")) "Tap to retry" else "Tap to reload",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(top = EasyReaderSpacing.xxs)
+                    )
+                }
             }
         }
     }

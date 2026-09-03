@@ -24,6 +24,22 @@ internal data class ReaderRenderItem(
     val tileCount: Int? = null
 )
 
+// A manhwa strip is rendered edge to edge with no paragraph spacing and pinch-zoom on, which
+// ruins a prose chapter that merely happens to carry a few images. The ratio is the real gate:
+// a chapter is only image-led when images outnumber text at least two to one, so a novel on a
+// "webtoon" domain keeps its margins while a 40-image chapter with 15 credit lines does not.
+private const val MANHWA_IMAGE_TO_TEXT_RATIO = 2
+private const val MANHWA_MIN_IMAGES = 3
+
+internal fun isManhwaLayout(content: ChapterContent): Boolean {
+    val imageCount = content.getImageCount()
+    val textCount = content.getTextCount()
+    if (imageCount <= textCount * MANHWA_IMAGE_TO_TEXT_RATIO) return false
+    val isManhwaByUrl = content.url.contains("manhwa", ignoreCase = true) ||
+        content.url.contains("webtoon", ignoreCase = true)
+    return isManhwaByUrl || imageCount >= MANHWA_MIN_IMAGES
+}
+
 internal fun buildReaderRenderItems(
     content: ChapterContent,
     isManhwa: Boolean,

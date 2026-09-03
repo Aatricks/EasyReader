@@ -1,7 +1,5 @@
 package io.aatricks.easyreader.ui.screens.reader
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,8 +14,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -34,7 +32,8 @@ import io.aatricks.easyreader.ui.screens.readerContentType
 import io.aatricks.easyreader.ui.viewmodel.ReaderViewModel
 
 private const val SCROLL_TO_END_OFFSET = 10_000_000
-private const val PLACEHOLDER_TEXT_ALPHA = 0.5f
+// 0.5 left the placeholder at about 3.5:1 on the Light reader theme.
+private const val PLACEHOLDER_TEXT_ALPHA = 0.7f
 private const val CONTENT_TYPE_IMAGE = "image"
 private const val TARGET_END_PERCENT = 100f
 
@@ -73,7 +72,8 @@ internal fun scrollingReaderView(state: ScrollingReaderState) = with(state) {
             scrollingReaderList(state)
         }
     } else {
-        scrollingReaderList(state)
+        // Text chapters only: lets a passage be long-pressed for Copy / Share / translate.
+        SelectionContainer { scrollingReaderList(state) }
     }
 }
 
@@ -123,7 +123,7 @@ private fun scrollingReaderItem(item: ReaderRenderItem, state: ScrollingReaderSt
 @Composable
 private fun scrollingPlaceholder(element: ContentElement.Placeholder, state: ScrollingReaderState) {
     Box(
-        modifier = Modifier.fillMaxWidth().height(element.heightDp.dp).readerTap(state.readerViewModel),
+        modifier = Modifier.fillMaxWidth().height(element.heightDp.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -140,7 +140,7 @@ private fun scrollingPlaceholder(element: ContentElement.Placeholder, state: Scr
 @Composable
 private fun scrollingPageContent(element: ContentElement.PageContent, state: ScrollingReaderState) {
     Column(
-        modifier = Modifier.fillMaxWidth().readerTap(state.readerViewModel)
+        modifier = Modifier.fillMaxWidth()
             .padding(horizontal = state.uiState.margins.dp),
         verticalArrangement = Arrangement.spacedBy((state.uiState.fontSize * state.uiState.paragraphSpacing).dp)
     ) {
@@ -157,7 +157,7 @@ private fun scrollingPageContent(element: ContentElement.PageContent, state: Scr
 @Composable
 private fun scrollingText(element: ContentElement.Text, state: ScrollingReaderState, addHorizontalPadding: Boolean) {
     val modifier = if (addHorizontalPadding) {
-        Modifier.fillMaxWidth().padding(horizontal = state.uiState.margins.dp).readerTap(state.readerViewModel)
+        Modifier.fillMaxWidth().padding(horizontal = state.uiState.margins.dp)
     } else {
         Modifier.fillMaxWidth()
     }
@@ -199,9 +199,3 @@ private fun scrollingImageGroup(element: ContentElement.ImageGroup, state: Scrol
     }
 }
 
-@Composable
-private fun Modifier.readerTap(readerViewModel: ReaderViewModel): Modifier = clickable(
-    interactionSource = remember { MutableInteractionSource() },
-    indication = null,
-    onClick = readerViewModel::toggleControls
-)

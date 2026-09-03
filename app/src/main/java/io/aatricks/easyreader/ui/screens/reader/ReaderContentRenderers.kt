@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -48,6 +49,8 @@ private const val CONTENT_TYPE_PAGE = "page"
 private const val CONTENT_TYPE_TEXT = "text"
 private const val CONTENT_TYPE_IMAGE = "image"
 private const val CONTENT_TYPE_IMAGE_GROUP = "image_group"
+// Matches the scroll-mode placeholder: 0.5 was about 3.5:1 on the Light reader theme.
+private const val PLACEHOLDER_TEXT_ALPHA = 0.7f
 
 internal val localReaderPages = compositionLocalOf<List<ReaderPage>> { emptyList() }
 
@@ -120,7 +123,7 @@ internal fun PagedReaderView(
                         ) {
                             Text(
                                 text = el.text,
-                                color = textColor.copy(alpha = 0.5f),
+                                color = textColor.copy(alpha = PLACEHOLDER_TEXT_ALPHA),
                                 style = MaterialTheme.typography.bodyLarge.copy(
                                     fontSize = uiState.fontSize.sp,
                                     fontFamily = fontFamily
@@ -248,28 +251,31 @@ private fun pagedTextContent(
     fontFamily: FontFamily,
     textColor: Color
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(
-                horizontal = uiState.margins.dp,
-                vertical = uiState.verticalMargins.dp
-            )
-    ) {
-        page.fragments.forEachIndexed { index, fragment ->
-            if (index > 0) {
-                Spacer(modifier = Modifier.height((uiState.fontSize * uiState.paragraphSpacing).dp))
+    // Selectable so a passage can be copied, shared or translated, as in scroll mode.
+    SelectionContainer {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    horizontal = uiState.margins.dp,
+                    vertical = uiState.verticalMargins.dp
+                )
+        ) {
+            page.fragments.forEachIndexed { index, fragment ->
+                if (index > 0) {
+                    Spacer(modifier = Modifier.height((uiState.fontSize * uiState.paragraphSpacing).dp))
+                }
+                Text(
+                    text = fragment.text,
+                    color = textColor,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = uiState.fontSize.sp,
+                        lineHeight = (uiState.fontSize * uiState.lineHeight).sp,
+                        fontFamily = fontFamily
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
-            Text(
-                text = fragment.text,
-                color = textColor,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = uiState.fontSize.sp,
-                    lineHeight = (uiState.fontSize * uiState.lineHeight).sp,
-                    fontFamily = fontFamily
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
         }
     }
 }

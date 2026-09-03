@@ -3,6 +3,7 @@ package io.aatricks.easyreader.ui.screens.reader
 import io.aatricks.easyreader.data.model.ChapterContent
 import io.aatricks.easyreader.data.model.ContentElement
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -126,5 +127,43 @@ class ReaderRenderItemTest {
         val (srcIdx, srcFrac) = findSourcePositionForRender(items, renderIndex = 1, localOffsetFraction = 0.3f)
         assertEquals(1, srcIdx)
         assertEquals(0.3f, srcFrac, 0.001f)
+    }
+
+    private fun chapter(url: String, images: Int, texts: Int) = ChapterContent(
+        url = url,
+        paragraphs = List(images) {
+            ContentElement.Image(
+                url = "http://example.com/img$it.jpg",
+                altText = "",
+                width = 800,
+                height = 1200,
+                side = ContentElement.Image.Side.FULL
+            )
+        } + List(texts) { ContentElement.Text("paragraph $it") }
+    )
+
+    @Test
+    fun `image-heavy chapter uses the manhwa layout`() {
+        assertTrue(isManhwaLayout(chapter("http://example.com/ch1", images = 40, texts = 3)))
+    }
+
+    @Test
+    fun `manhwa keeps its layout despite a handful of credit lines`() {
+        assertTrue(isManhwaLayout(chapter("http://example.com/ch1", images = 40, texts = 15)))
+    }
+
+    @Test
+    fun `prose chapter with a few images keeps paragraph spacing`() {
+        assertFalse(isManhwaLayout(chapter("http://example.com/ch1", images = 3, texts = 2)))
+    }
+
+    @Test
+    fun `webtoon url does not collapse a text chapter`() {
+        assertFalse(isManhwaLayout(chapter("http://webtoon.example.com/ch1", images = 0, texts = 40)))
+    }
+
+    @Test
+    fun `webtoon url still wins for a short image-only chapter`() {
+        assertTrue(isManhwaLayout(chapter("http://webtoon.example.com/ch1", images = 2, texts = 0)))
     }
 }

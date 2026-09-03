@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -72,6 +73,8 @@ import kotlin.math.abs
 
 private const val MIN_READER_BRIGHTNESS = 0.1f
 private const val MAX_READER_BRIGHTNESS = 1.0f
+/** Luminance below which a background counts as dark, for picking readable foregrounds. */
+internal const val DARK_SURFACE_LUMINANCE = 0.5f
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -127,7 +130,9 @@ fun ReaderScreen(
     val view = LocalView.current
     val window = (view.context as? Activity)?.window
     val readerTheme = uiState.readerTheme
-    val appIsDark = isSystemInDarkTheme()
+    // Derived from the theme actually applied rather than isSystemInDarkTheme(), so forcing
+    // Dark or Light in Settings on a phone set the other way still gets matching bar icons.
+    val appIsDark = MaterialTheme.colorScheme.background.luminance() < DARK_SURFACE_LUMINANCE
     val currentAppIsDark by rememberUpdatedState(appIsDark)
 
     val isReadingContent = uiState.content != null
@@ -142,13 +147,15 @@ fun ReaderScreen(
             windowInsetsController.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 
-            val isDark = if (uiState.content != null) {
-                readerTheme == ReaderTheme.DARK || readerTheme == ReaderTheme.OLED
-            } else {
-                appIsDark
+            val isReading = uiState.content != null
+            // The control bars stack a ~70% black gradient behind the status and navigation
+            // bars, so while they are up the icons need to be light whatever the reader theme.
+            val isDark = when {
+                isReading && uiState.showControls -> true
+                isReading -> readerTheme == ReaderTheme.DARK || readerTheme == ReaderTheme.OLED
+                else -> appIsDark
             }
             val systemBars = WindowInsetsCompat.Type.systemBars()
-            val isReading = uiState.content != null
 
             if (isReading && !uiState.showControls) {
                 windowInsetsController.hide(systemBars)
@@ -262,7 +269,6 @@ fun ReaderScreen(
             Box(
                 modifier = Modifier.fillMaxSize()
             ) {
-                val overlayAlpha = brightnessOverlayAlpha(uiState.brightness)
                 ReaderContent(
                     uiState = uiState,
                     readerViewModel = readerViewModel,
@@ -276,13 +282,6 @@ fun ReaderScreen(
                     onShowSettings = { showSettings = true }
                 )
 
-                if (uiState.content != null && overlayAlpha > 0f) {
-                    Spacer(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = overlayAlpha))
-                    )
-                }
 
                 if (uiState.isNavigating) {
                     NavigationOverlay()
@@ -541,7 +540,8 @@ private fun ReaderContent(
         uiState.isLoading -> LoadingState()
         uiState.error != null -> ErrorState(
             error = uiState.error,
-            onRetry = { readerViewModel.retryLoad() }
+            onRetry = { readerViewModel.retryLoad() },
+            onOpenLibrary = onOpenLibraryScreen
         )
         uiState.content == null -> EmptyState(onOpenLibrary = onOpenLibraryScreen)
         else -> ContentArea(
@@ -564,6 +564,22 @@ private fun ReaderContent(
 private fun LibraryFollowUps(libraryViewModel: LibraryViewModel, snackbarHostState: SnackbarHostState) {
     val openNextChapterState by libraryViewModel.openNextChapterState.collectAsState()
     val downloadRetryPrompt by libraryViewModel.downloadRetryPrompt.collectAsState()
+    val libraryUiState by libraryViewModel.uiState.collectAsState()
+
+    // Add, import and download failures started from the drawer or the chapter sheet used to
+    // wait, unconsumed, until the Library screen next composed and then fired out of context.
+    LaunchedEffect(libraryUiState.error) {
+        libraryUiState.error?.let { message ->
+            snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
+            libraryViewModel.consumeError()
+        }
+    }
+    LaunchedEffect(libraryUiState.snackbarMessage) {
+        libraryUiState.snackbarMessage?.let { message ->
+            snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
+            libraryViewModel.consumeSnackbarMessage()
+        }
+    }
     if (openNextChapterState is OpenNextChapterState.Loading) {
         NavigationOverlay(onCancel = { libraryViewModel.cancelOpenNewChapter() })
     }

@@ -21,8 +21,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.LibraryAddCheck
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Checkbox
@@ -53,6 +53,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -88,6 +90,7 @@ fun ChapterListSheet(
     val cacheStates by libraryViewModel.chapterCacheStates.collectAsState()
     val downloadFailures by libraryViewModel.downloadFailures.collectAsState()
     var pendingBulkDelete by remember { mutableStateOf<Set<String>?>(null) }
+    var pendingRemoveDownload by remember { mutableStateOf<LibraryItem?>(null) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -151,6 +154,13 @@ fun ChapterListSheet(
                 .padding(horizontal = EasyReaderSpacing.md, vertical = EasyReaderSpacing.sm),
             verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.md)
         ) {
+            Text(
+                text = "Chapters",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.semantics { heading() }
+            )
+
             if (isSelectionMode) {
                 Text(
                     text = stringResource(R.string.chapter_selection_count, selectedChapterUrls.size),
@@ -339,14 +349,12 @@ fun ChapterListSheet(
                                 if (!isSelectionMode && !isCurrent && !isDownloading) {
                                     if (isOfflineReady && libraryItem != null) {
                                         IconButton(
-                                            onClick = {
-                                                libraryViewModel.removeDownload(libraryItem.id)
-                                            }
+                                            onClick = { pendingRemoveDownload = libraryItem }
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.DownloadDone,
+                                                imageVector = Icons.Outlined.Delete,
                                                 contentDescription = stringResource(R.string.chapter_action_remove_download),
-                                                tint = MaterialTheme.colorScheme.primary,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 modifier = Modifier.size(20.dp)
                                             )
                                         }
@@ -453,6 +461,37 @@ fun ChapterListSheet(
 
             Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
         }
+    }
+
+    pendingRemoveDownload?.let { item ->
+        AlertDialog(
+            onDismissRequest = { pendingRemoveDownload = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Outlined.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("Remove download?") },
+            text = { Text("The chapter stays in your library but you will need to be online to read it again.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    libraryViewModel.removeDownload(item.id)
+                    pendingRemoveDownload = null
+                }) {
+                    Text(
+                        text = stringResource(R.string.chapter_action_remove_download),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRemoveDownload = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
     }
 
     pendingBulkDelete?.let { ids ->
