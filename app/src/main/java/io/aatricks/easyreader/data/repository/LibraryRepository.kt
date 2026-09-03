@@ -354,12 +354,14 @@ class LibraryRepository @Inject constructor(
 
     fun getGroupedBySourceAndTitle(items: List<LibraryItem>? = null): Map<String, Map<String, List<LibraryItem>>> {
         val targetItems = items ?: libraryItems.value
+        // Novels keep the caller's item order (LibraryFilters.apply has already applied the sort
+        // mode); only the source sections are alphabetical.
         return targetItems.groupBy { it.sourceName.ifBlank { "Local" } }
             .mapValues { (_, sourceItems) ->
                 sourceItems.groupBy { it.libraryDisplayTitle() }
                     .mapValues { (_, novelItems) ->
                         sortChapters(novelItems)
-                    }.toSortedMap()
+                    }
             }.toSortedMap()
     }
 

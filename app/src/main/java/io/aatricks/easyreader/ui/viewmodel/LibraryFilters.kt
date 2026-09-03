@@ -4,6 +4,7 @@ import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.SeriesReadingStatus
 import io.aatricks.easyreader.data.model.SortMode
+import io.aatricks.easyreader.data.model.libraryDisplayTitle
 import io.aatricks.easyreader.data.model.libraryNovelKey
 import io.aatricks.easyreader.data.model.seriesReadingStatus
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -76,7 +77,7 @@ class LibraryFilters {
         return when (sort) {
             SortMode.LAST_READ -> filtered.sortedByDescending { it.lastRead }
             SortMode.DATE_ADDED -> filtered.sortedByDescending { it.dateAdded }
-            SortMode.TITLE -> filtered.sortedBy { it.title.lowercase() }
+            SortMode.TITLE -> filtered.sortedBy { it.libraryDisplayTitle().lowercase() }
             SortMode.PROGRESS -> filtered.sortedByDescending { it.progress }
         }
     }

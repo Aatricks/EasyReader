@@ -172,4 +172,17 @@ class LibraryRepositoryTest {
         verify(libraryDao).clearUpdatesForId(itemId)
         verify(libraryDao).setCurrentReading(eq(itemId), any())
     }
+
+    @Test
+    fun `getGroupedBySourceAndTitle keeps the incoming novel order instead of re-sorting titles`() {
+        // Items arrive already ordered by the library sort mode (here: most recently read first).
+        val items = listOf(
+            LibraryItem(id = "b", title = "Beta - Chapter 3", url = "https://s/beta/3", baseTitle = "Beta", sourceName = "Src", lastRead = 200L),
+            LibraryItem(id = "a", title = "Alpha - Chapter 7", url = "https://s/alpha/7", baseTitle = "Alpha", sourceName = "Src", lastRead = 100L)
+        )
+
+        val grouped = repository.getGroupedBySourceAndTitle(items)
+
+        assertEquals(listOf("Beta", "Alpha"), grouped.getValue("Src").keys.toList())
+    }
 }
