@@ -12,8 +12,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.util.ErrorMessages
@@ -23,7 +21,6 @@ fun LoadingState() {
     ReaderStatePanel(
         icon = Icons.Default.AutoStories,
         iconTint = MaterialTheme.colorScheme.primary,
-        iconDescription = "Loading",
         title = "Loading chapter",
         body = "Preparing your chapter. If you've read it before, we'll restore your place.",
         action = {
@@ -37,21 +34,27 @@ fun LoadingState() {
 }
 
 @Composable
-fun ErrorState(error: String, onRetry: () -> Unit) {
+fun ErrorState(error: String, onRetry: () -> Unit, onOpenLibrary: () -> Unit) {
     val friendly = ErrorMessages.fromRaw(error)
     ReaderStatePanel(
         icon = Icons.Default.WarningAmber,
         iconTint = MaterialTheme.colorScheme.error,
-        iconDescription = "Error",
         title = friendly.title,
         body = friendly.body,
-        action = if (friendly.isRetryable) {
-            {
-                FilledTonalButton(onClick = onRetry) {
-                    Text("Retry")
+        // The error panel replaces the whole reader, top bar included, and in paged mode the
+        // drawer swipe is off too -- without this there is no way out but the back key.
+        action = {
+            Row(horizontalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)) {
+                if (friendly.isRetryable) {
+                    FilledTonalButton(onClick = onRetry) {
+                        Text("Retry")
+                    }
+                }
+                TextButton(onClick = onOpenLibrary) {
+                    Text("Open library")
                 }
             }
-        } else null
+        }
     )
 }
 
@@ -60,7 +63,6 @@ fun EmptyState(onOpenLibrary: () -> Unit) {
     ReaderStatePanel(
         icon = Icons.AutoMirrored.Filled.MenuBook,
         iconTint = MaterialTheme.colorScheme.primary,
-        iconDescription = "Library",
         title = "Pick something to read",
         body = "Open your library to resume where you left off, open the latest chapter, or start something new.",
         action = {
@@ -75,7 +77,6 @@ fun EmptyState(onOpenLibrary: () -> Unit) {
 private fun ReaderStatePanel(
     icon: ImageVector,
     iconTint: androidx.compose.ui.graphics.Color,
-    iconDescription: String,
     title: String,
     body: String,
     action: @Composable (() -> Unit)? = null
@@ -99,7 +100,7 @@ private fun ReaderStatePanel(
             ) {
                 Icon(
                     imageVector = icon,
-                    contentDescription = iconDescription,
+                    contentDescription = null,
                     tint = iconTint,
                     modifier = Modifier.size(34.dp)
                 )
@@ -113,8 +114,7 @@ private fun ReaderStatePanel(
                     text = body,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.semantics { contentDescription = body }
+                    textAlign = TextAlign.Center
                 )
                 if (action != null) {
                     Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))

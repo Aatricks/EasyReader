@@ -541,7 +541,8 @@ private fun ReaderContent(
         uiState.isLoading -> LoadingState()
         uiState.error != null -> ErrorState(
             error = uiState.error,
-            onRetry = { readerViewModel.retryLoad() }
+            onRetry = { readerViewModel.retryLoad() },
+            onOpenLibrary = onOpenLibraryScreen
         )
         uiState.content == null -> EmptyState(onOpenLibrary = onOpenLibraryScreen)
         else -> ContentArea(
