@@ -565,6 +565,22 @@ private fun ReaderContent(
 private fun LibraryFollowUps(libraryViewModel: LibraryViewModel, snackbarHostState: SnackbarHostState) {
     val openNextChapterState by libraryViewModel.openNextChapterState.collectAsState()
     val downloadRetryPrompt by libraryViewModel.downloadRetryPrompt.collectAsState()
+    val libraryUiState by libraryViewModel.uiState.collectAsState()
+
+    // Add, import and download failures started from the drawer or the chapter sheet used to
+    // wait, unconsumed, until the Library screen next composed and then fired out of context.
+    LaunchedEffect(libraryUiState.error) {
+        libraryUiState.error?.let { message ->
+            snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
+            libraryViewModel.consumeError()
+        }
+    }
+    LaunchedEffect(libraryUiState.snackbarMessage) {
+        libraryUiState.snackbarMessage?.let { message ->
+            snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
+            libraryViewModel.consumeSnackbarMessage()
+        }
+    }
     if (openNextChapterState is OpenNextChapterState.Loading) {
         NavigationOverlay()
     }
