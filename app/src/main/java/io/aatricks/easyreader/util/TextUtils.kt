@@ -45,6 +45,11 @@ object TextUtils {
     private val CLEAN_SEPARATORS_END_REGEX = Regex("[\\s–—\\-:\\|]+$")
     private val CLEAN_CHAPTER_TITLE_SUBTITLE_REGEX = Regex("(?i)(?:chapter|ch|ch\\.)\\s*\\d+[\\s:\\-—–|]+(.+)")
 
+    // Site link text such as "… Chapter 3 Read Online Free" otherwise survives into the
+    // chapter subtitle, because the subtitle regex above captures everything after the number.
+    private val READ_ONLINE_SUFFIX_REGEX =
+        Regex("(?i)[\\s–—\\-:|]*\\bread\\s+(?:free\\s+)?online(?:\\s+free)?\\s*$")
+
     private val CHAPTER_URL_REGEX = Regex("(\\d+)(?!.*\\d)")
 
     private val CHAPTER_NUMBER_REGEXES = listOf(
@@ -239,7 +244,9 @@ object TextUtils {
      */
     fun cleanChapterTitle(fullTitle: String?, novelName: String): String {
         if (fullTitle.isNullOrBlank()) return ""
-        var cleaned = removeCommonJunk(fullTitle)
+        // Strip before removeCommonJunk: its "online free" pattern would eat the tail and
+        // leave a dangling "Read" behind.
+        var cleaned = removeCommonJunk(fullTitle.replace(READ_ONLINE_SUFFIX_REGEX, ""))
 
         if (novelName.isNotBlank() && cleaned.contains(novelName, ignoreCase = true)) {
             cleaned = cleaned.replace(novelName, "", ignoreCase = true)

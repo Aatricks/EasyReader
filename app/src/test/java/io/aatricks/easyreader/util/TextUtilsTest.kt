@@ -147,6 +147,30 @@ class TextUtilsTest {
 
 
     @Test
+    fun testCleanChapterTitleStripsReadOnlineBoilerplate() {
+        assertEquals(
+            "Chapter 3",
+            TextUtils.cleanChapterTitle("Solo Leveling Chapter 3 Read Online", "Solo Leveling")
+        )
+
+        assertEquals(
+            "Chapter 3",
+            TextUtils.cleanChapterTitle("Solo Leveling Chapter 3 Read Online Free", "Solo Leveling")
+        )
+
+        assertEquals(
+            "Chapter 3",
+            TextUtils.cleanChapterTitle("Solo Leveling - Chapter 3 - Read Free Online", "Solo Leveling")
+        )
+
+        // A real subtitle must survive.
+        assertEquals(
+            "Chapter 3: The Awakening",
+            TextUtils.cleanChapterTitle("Solo Leveling Chapter 3: The Awakening", "Solo Leveling")
+        )
+    }
+
+    @Test
 
     fun testExtractChapterLabel() {
 
