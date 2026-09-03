@@ -56,21 +56,23 @@ class LibraryRepositoryTest {
     }
 
     @Test
-    fun testUpdateProgress() = runBlocking {
+    fun testUpdateProgress(): Unit = runBlocking {
         val itemId = "test-id"
         val item = LibraryItem(id = itemId, title = "Test", url = "url")
         whenever(libraryDao.getItemById(itemId)).thenReturn(item)
         
         repository.updateProgress(itemId, "Chapter 2", 50)
-        
-        verify(libraryDao).insertItem(check {
+
+        // Targeted column update, never the REPLACE funnel.
+        verify(libraryDao, never()).insertItem(any())
+        verify(libraryDao).updateProgressFields(check {
             assertEquals("Chapter 2", it.currentChapter)
             assertEquals(50, it.progress)
         })
     }
 
     @Test
-    fun testUpdateProgressExplicit() = runBlocking {
+    fun testUpdateProgressExplicit(): Unit = runBlocking {
         val itemId = "test-id"
         val item = LibraryItem(
             id = itemId,
@@ -89,16 +91,16 @@ class LibraryRepositoryTest {
             lastReadOffsetFraction = FieldUpdate.Set(FRACTION_UNKNOWN)
         )
 
-        verify(libraryDao).insertItem(check {
+        verify(libraryDao).updateProgressFields(check {
+            assertEquals(itemId, it.id)
             assertEquals(20, it.lastReadIndex)
             assertEquals("img:https://cdn/new.jpg", it.lastReadElementKey)
             assertEquals(FRACTION_UNKNOWN, it.lastReadOffsetFraction)
-            assertEquals("Test", it.title)
         })
     }
 
     @Test
-    fun testUpdateProgressExplicitPreserve() = runBlocking {
+    fun testUpdateProgressExplicitPreserve(): Unit = runBlocking {
         val itemId = "test-id"
         val item = LibraryItem(
             id = itemId,
@@ -112,7 +114,7 @@ class LibraryRepositoryTest {
         // Passing null for opt-out fields should leave them unchanged.
         repository.updateProgress(itemId, "Chapter 1", 10, lastReadOffsetFraction = null, lastReadElementKey = null)
 
-        verify(libraryDao).insertItem(check {
+        verify(libraryDao).updateProgressFields(check {
             assertEquals(0.5f, it.lastReadOffsetFraction)
             assertEquals("img:abc", it.lastReadElementKey)
         })

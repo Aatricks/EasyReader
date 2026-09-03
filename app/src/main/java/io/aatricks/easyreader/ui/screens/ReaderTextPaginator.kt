@@ -6,7 +6,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.yield
 import kotlin.math.floor
 
-private const val PAGINATION_FRAME_BUDGET_NANOS = 8_000_000L
+private const val PAGINATION_FRAME_BUDGET_NANOS = 4_000_000L
 private const val LINKED_HASH_MAP_LOAD_FACTOR = 0.75f
 
 internal data class TextMeasureKey(

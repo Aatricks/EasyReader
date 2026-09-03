@@ -40,8 +40,11 @@ Android reader app (web novels + manhwa). Kotlin, Hilt, Room, WorkManager, Compo
   (`filesDir/downloads/web_chapters_v2/{urlHash}/manifest.json` + `images/`,
   `WebOfflineChapterStore`). The cache tiers (`cacheDir/html_cache`, `media_cache`) are
   LRU-evictable; download storage is never trimmed.
-- "Downloaded" truth is `PrefetchResult.isStrictOfflineReady()`; the DB flag
-  `LibraryItem.isDownloaded` is written ONLY through `DownloadStatusReconciler`.
+- "Downloaded" truth is `PrefetchResult.isStrictOfflineReady()`. The DB flag
+  `LibraryItem.isDownloaded` is only ever promoted to true by `DownloadStatusReconciler`;
+  direct demotion to false is allowed only immediately after clearing that download from
+  disk (auto-deletion, the legacy-pipeline reset). Anywhere else, inspect first and demote
+  only when `contentRepository.inspectDownload(url).isStrictOfflineReady()` is false.
 - UI badge state (`LibraryDownloadStates.chapterCacheStates`): WorkManager emissions
   supply in-progress states only; disk inspects are the only writer of terminal states.
   Don't bypass this arbitration.

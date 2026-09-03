@@ -60,6 +60,9 @@ class ReaderViewModel @Inject constructor(
         private const val MAX_READER_BRIGHTNESS = 1.0f
         private val DOUBLE_NEWLINE_REGEX = Regex("""\n\s*\n""")
         internal var contentDimensionDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Default
+        // Chapter-list cache IO (file read/write + JSON) and the per-chapter URL matching scans
+        // it feeds. Both are O(list) and used to run on the main thread on every chapter open.
+        internal var chapterListDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO
     }
 
     // Current library item ID being read
@@ -1186,8 +1189,11 @@ class ReaderViewModel @Inject constructor(
 
         return runCatching {
             contentRepository.invalidateCachedMediaFile(imageUrl, pageUrl)
+            // invalidateCachedMediaFile drops the LRU media cache, not the persistent download,
+            // so only demote the row when the download store really no longer holds the chapter.
+            // Demoting blindly would contradict DownloadStatusReconciler on the next inspect.
             libraryRepository.getItemByUrl(pageUrl)
-                ?.takeIf { it.isDownloaded }
+                ?.takeIf { it.isDownloaded && !contentRepository.inspectDownload(pageUrl).isStrictOfflineReady() }
                 ?.let { libraryRepository.markDownloaded(it.id, false) }
             contentRepository.downloadAndCacheImage(imageUrl, pageUrl) != null
         }.onFailure { e ->
@@ -1371,19 +1377,26 @@ class ReaderViewModel @Inject constructor(
 
     fun loadFullChapterList(baseUrl: String, sourceName: String) {
         viewModelScope.launch {
-            val cached = readerCaches.chapterListCache.load(baseUrl, sourceName)
-            if (cached != null && cached.chapters.isNotEmpty()) {
-                val normalizedCached = normalizeChapterList(cached.chapters)
-                applyFullChapterList(normalizedCached)
-                if (readerCaches.chapterListCache.isFresh(cached)) return@launch
+            val cached = withContext(chapterListDispatcher) {
+                readerCaches.chapterListCache.load(baseUrl, sourceName)
+                    ?.let { it to normalizeChapterList(it.chapters) }
+            }
+            if (cached != null && cached.second.isNotEmpty()) {
+                applyFullChapterList(cached.second)
+                if (readerCaches.chapterListCache.isFresh(cached.first)) return@launch
             }
 
             runCatching {
                 if (cached == null) updateState { it.copy(isChaptersLoading = true) }
                 val details = exploreRepository.getNovelDetails(baseUrl, sourceName)
-                val normalizedChapters = normalizeChapterList(details?.chapters.orEmpty())
+                val normalizedChapters = withContext(chapterListDispatcher) {
+                    normalizeChapterList(details?.chapters.orEmpty()).also { chapters ->
+                        if (details != null && chapters.isNotEmpty()) {
+                            readerCaches.chapterListCache.save(baseUrl, sourceName, chapters)
+                        }
+                    }
+                }
                 if (details != null && normalizedChapters.isNotEmpty()) {
-                    readerCaches.chapterListCache.save(baseUrl, sourceName, normalizedChapters)
                     applyFullChapterList(normalizedChapters)
                 } else if (cached == null) {
                     updateState { it.copy(isChaptersLoading = false) }
@@ -1395,19 +1408,30 @@ class ReaderViewModel @Inject constructor(
     }
 
     private suspend fun applyFullChapterList(normalizedChapters: List<ChapterInfo>) {
+        // Now that the authoritative list is loaded, correct the header label if the current
+        // chapter's URL-derived number was wrong (e.g. Novelight's opaque /book/chapter/{id}).
+        // The lookup scans the whole list, so it runs off the main thread and the result is only
+        // applied while the chapter it was computed for is still the one on screen.
+        val labelUrl = _uiState.value.content?.url
+        val resolvedTitle = labelUrl?.let { url ->
+            val currentTitle = _uiState.value.chapterTitle
+            withContext(chapterListDispatcher) {
+                resolveChapterLabelFromList(url, currentTitle, normalizedChapters)
+            }
+        }
         updateState { state ->
-            // Now that the authoritative list is loaded, correct the header label if the current
-            // chapter's URL-derived number was wrong (e.g. Novelight's opaque /book/chapter/{id}).
-            val resolvedTitle = state.content?.url
-                ?.let { resolveChapterLabelFromList(it, state.chapterTitle, normalizedChapters) }
             state.copy(
                 fullChapterList = normalizedChapters,
                 isChaptersLoading = false,
                 isFullChapterListLoaded = true,
-                chapterTitle = resolvedTitle ?: state.chapterTitle
+                chapterTitle = if (state.content?.url == labelUrl) {
+                    resolvedTitle ?: state.chapterTitle
+                } else {
+                    state.chapterTitle
+                }
             )
         }
-        updateNavigationUrls()
+        updateNavigationUrlsOffMain()
         healLibraryItemForChapterList(normalizedChapters)
     }
 
@@ -1417,9 +1441,9 @@ class ReaderViewModel @Inject constructor(
         val newCount = normalizedChapters.size
         // Novelight stores the /book/chapter/{id} id as the current-chapter number; once the real
         // list is loaded, rewrite it so the library card shows the right chapter.
-        val healedChapter = healCurrentChapterLabel(
-            item.currentChapter, _uiState.value.content?.url, normalizedChapters
-        )
+        val healedChapter = withContext(chapterListDispatcher) {
+            healCurrentChapterLabel(item.currentChapter, _uiState.value.content?.url, normalizedChapters)
+        }
         val countChanged = item.totalChapters != newCount
 
         if (countChanged || healedChapter != null) {
@@ -1454,28 +1478,34 @@ class ReaderViewModel @Inject constructor(
             item.hasFinishedProgress()
     }
 
-    private fun updateNavigationUrls() {
+    private fun updateNavigationUrls() = applyAdjacentChapterUrls(currentChapterListIndex())
+
+    /** [updateNavigationUrls] with the per-chapter URL matching moved off the main thread. */
+    private suspend fun updateNavigationUrlsOffMain() =
+        applyAdjacentChapterUrls(withContext(chapterListDispatcher) { currentChapterListIndex() })
+
+    private fun currentChapterListIndex(): Int {
         val state = _uiState.value
-        if (!state.isFullChapterListLoaded) return
-        val currentUrl = state.content?.url ?: return
-        val list = state.fullChapterList
-        if (list.isEmpty()) return
+        val currentUrl = state.content?.url
+        if (!state.isFullChapterListLoaded || currentUrl == null || state.fullChapterList.isEmpty()) return -1
+        return matchChapterIndex(state.fullChapterList, currentUrl, state.chapterTitle)
+    }
 
-        val currentIndex = matchChapterIndex(list, currentUrl, state.chapterTitle)
-        if (currentIndex != -1) {
-            val prevUrl = if (currentIndex > 0) list[currentIndex - 1].url else null
-            val nextUrl = if (currentIndex < list.size - 1) list[currentIndex + 1].url else null
+    private fun applyAdjacentChapterUrls(currentIndex: Int) {
+        val list = _uiState.value.fullChapterList
+        if (currentIndex !in list.indices) return
+        val prevUrl = if (currentIndex > 0) list[currentIndex - 1].url else null
+        val nextUrl = if (currentIndex < list.size - 1) list[currentIndex + 1].url else null
 
-            updateState { s ->
-                s.copy(
-                    content = s.content?.copy(
-                        nextChapterUrl = nextUrl ?: s.content.nextChapterUrl,
-                        previousChapterUrl = prevUrl ?: s.content.previousChapterUrl
-                    ),
-                    canNavigateNext = nextUrl != null || (s.content?.hasNextChapter() == true),
-                    canNavigatePrevious = prevUrl != null || (s.content?.hasPreviousChapter() == true)
-                )
-            }
+        updateState { s ->
+            s.copy(
+                content = s.content?.copy(
+                    nextChapterUrl = nextUrl ?: s.content.nextChapterUrl,
+                    previousChapterUrl = prevUrl ?: s.content.previousChapterUrl
+                ),
+                canNavigateNext = nextUrl != null || (s.content?.hasNextChapter() == true),
+                canNavigatePrevious = prevUrl != null || (s.content?.hasPreviousChapter() == true)
+            )
         }
     }
 }

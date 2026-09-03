@@ -55,9 +55,7 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
     override fun onCreate() {
         super.onCreate()
         CrashRecorder.install(this)
-        if (!resetLegacyWebOfflinePipelineIfNeeded()) {
-            prewarmLastReadChapter()
-        }
+        resetLegacyWebOfflinePipelineIfNeeded()
         pruneImageDimensionCache()
         pruneChapterDownloadQueue()
         seedReadingHistory()
@@ -77,9 +75,9 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
         }
     }
 
-    private fun resetLegacyWebOfflinePipelineIfNeeded(): Boolean {
+    private fun resetLegacyWebOfflinePipelineIfNeeded() {
         val storedVersion = preferencesManager.webOfflinePipelineVersion
-        if (storedVersion >= WEB_OFFLINE_PIPELINE_VERSION) return false
+        if (storedVersion >= WEB_OFFLINE_PIPELINE_VERSION) return
         warmupScope.launch {
             if (storedVersion < 2) {
                 runCatching {
@@ -107,27 +105,13 @@ class EasyReaderApplication : Application(), SingletonImageLoader.Factory, Confi
                     Log.w(TAG, "web offline sweep failed message=${it.message}")
                 }
             }
-            prewarmLastReadChapter()
         }
-        return true
     }
 
     private fun pruneImageDimensionCache() {
         warmupScope.launch {
             runCatching { imageDimensionCache.prune() }
                 .onFailure { Log.w(TAG, "image dim cache prune failed message=${it.message}") }
-        }
-    }
-
-    // Kick off chapter parse on a background coroutine so it overlaps Hilt graph build,
-    // Compose first frame, and ViewModel init. Populates ParsedContentCache + in-memory memo,
-    // so by the time ReaderViewModel.loadContent runs the fast path is already primed.
-    // Fire-and-forget; failures are swallowed because pre-warm is best-effort.
-    private fun prewarmLastReadChapter() {
-        val url = preferencesManager.lastReadUrl?.takeIf { it.isNotBlank() } ?: return
-        warmupScope.launch {
-            runCatching { contentRepository.loadContent(url) }
-                .onFailure { Log.w(TAG, "prewarm failed url=$url message=${it.message}") }
         }
     }
 

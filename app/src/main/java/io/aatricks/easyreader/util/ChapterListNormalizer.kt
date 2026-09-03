@@ -36,11 +36,17 @@ internal fun normalizeChapterUrl(url: String): String {
 
 internal fun areChapterUrlsMatching(url1: String?, url2: String?): Boolean {
     if (url1.isNullOrBlank() || url2.isNullOrBlank()) return false
+    // The list scans below call this once per chapter and normalizeChapterUrl costs two URI
+    // parses, so an identical pair short-circuits before any normalization happens.
+    return url1 == url2 || areNormalizedChapterUrlsMatching(url1, url2)
+}
+
+private fun areNormalizedChapterUrlsMatching(url1: String, url2: String): Boolean {
     val norm1 = normalizeChapterUrl(url1)
     val norm2 = normalizeChapterUrl(url2)
     val noScheme1 = norm1.substringAfter("://")
     val noScheme2 = norm2.substringAfter("://")
-    return url1 == url2 || norm1 == norm2 || (noScheme1.isNotBlank() && noScheme1 == noScheme2)
+    return norm1 == norm2 || (noScheme1.isNotBlank() && noScheme1 == noScheme2)
 }
 
 internal fun matchChapterIndex(chapters: List<ChapterInfo>, targetUrl: String?, targetTitle: String? = null): Int {

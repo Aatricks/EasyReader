@@ -51,6 +51,7 @@ class ReaderViewModelTest {
         MockitoAnnotations.openMocks(this)
         Dispatchers.setMain(testDispatcher)
         ReaderViewModel.contentDimensionDispatcher = testDispatcher
+        ReaderViewModel.chapterListDispatcher = testDispatcher
 
         whenever(preferencesManager.fontSize).thenReturn(18f)
         whenever(preferencesManager.lineHeight).thenReturn(1.5f)
@@ -115,6 +116,7 @@ class ReaderViewModelTest {
     @After
     fun tearDown() {
         ReaderViewModel.contentDimensionDispatcher = Dispatchers.Default
+        ReaderViewModel.chapterListDispatcher = Dispatchers.IO
         Dispatchers.resetMain()
     }
 
@@ -401,7 +403,7 @@ class ReaderViewModelTest {
 
         verify(libraryRepository, never()).updateProgressExplicit(any(), any(), any(), any(), any(), any(), any(), any())
 
-        advanceTimeBy(200)
+        advanceTimeBy(1_100)
         runCurrent()
         advanceUntilIdle()
 
@@ -461,7 +463,7 @@ class ReaderViewModelTest {
         val progressAfterSecond = viewModel.progressState.value
         assertEquals(progressAfterFirst.scrollPosition, progressAfterSecond.scrollPosition, 0.001f)
 
-        advanceTimeBy(200)
+        advanceTimeBy(1_100)
         runCurrent()
         advanceUntilIdle()
 
@@ -770,7 +772,7 @@ class ReaderViewModelTest {
             elementKey = "txt:live-anchor",
             firstVisibleItemSize = 120
         )
-        advanceTimeBy(200)
+        advanceTimeBy(1_100)
         runCurrent()
         clearInvocations(libraryRepository)
 
@@ -826,7 +828,7 @@ class ReaderViewModelTest {
         )
 
         viewModel.persistLifecycleProgress()
-        advanceTimeBy(250)
+        advanceTimeBy(1_100)
         runCurrent()
         advanceUntilIdle()
 
@@ -981,7 +983,7 @@ class ReaderViewModelTest {
             elementKey = textKey,
             firstVisibleItemSize = 500
         )
-        advanceTimeBy(200)
+        advanceTimeBy(1_100)
         runCurrent()
 
         verify(libraryRepository).updateProgressExplicit(
@@ -1338,12 +1340,53 @@ class ReaderViewModelTest {
 
         whenever(libraryRepository.getItemByUrl(pageUrl)).thenReturn(item)
         whenever(libraryRepository.markDownloaded(item.id, false)).thenReturn(true)
+        whenever(contentRepository.inspectDownload(pageUrl)).thenReturn(
+            PrefetchResult(
+                url = pageUrl,
+                htmlCached = true,
+                totalImages = 2,
+                cachedImages = 1,
+                isComplete = false,
+                isPersistentDownload = true
+            )
+        )
         whenever(contentRepository.downloadAndCacheImage(imageUrl, pageUrl)).thenReturn(repairedFile)
 
         assertTrue(viewModel.repairVisibleImageNow(imageUrl, pageUrl))
 
         verify(contentRepository).invalidateCachedMediaFile(imageUrl, pageUrl)
         verify(libraryRepository).markDownloaded(item.id, false)
+        verify(contentRepository).downloadAndCacheImage(imageUrl, pageUrl)
+    }
+
+    @Test
+    fun `repairVisibleImageNow keeps downloaded flag when the download is still offline ready`() = runTest {
+        val imageUrl = "https://example.com/image.jpg"
+        val pageUrl = "https://example.com/chapter-1"
+        val item = LibraryItem(
+            id = "item-1",
+            title = "Chapter 1",
+            url = pageUrl,
+            isDownloaded = true
+        )
+
+        whenever(libraryRepository.getItemByUrl(pageUrl)).thenReturn(item)
+        whenever(contentRepository.inspectDownload(pageUrl)).thenReturn(
+            PrefetchResult(
+                url = pageUrl,
+                htmlCached = true,
+                totalImages = 2,
+                cachedImages = 2,
+                isComplete = true,
+                isPersistentDownload = true
+            )
+        )
+        whenever(contentRepository.downloadAndCacheImage(imageUrl, pageUrl)).thenReturn(File("repaired-image"))
+
+        assertTrue(viewModel.repairVisibleImageNow(imageUrl, pageUrl))
+
+        // Only the media cache was dropped, so the reconciler's flag must survive the retry.
+        verify(libraryRepository, never()).markDownloaded(any(), any())
         verify(contentRepository).downloadAndCacheImage(imageUrl, pageUrl)
     }
 

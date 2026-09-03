@@ -116,6 +116,7 @@ class ReaderEndToEndTest {
     fun setup() {
         MockitoAnnotations.openMocks(this)
         Dispatchers.setMain(testDispatcher)
+        ReaderViewModel.chapterListDispatcher = testDispatcher
 
         whenever(preferencesManager.fontSize).thenReturn(FLOAT_FONT_SIZE_DEFAULT)
         whenever(preferencesManager.lineHeight).thenReturn(FLOAT_ONE_POINT_FIVE)
@@ -180,6 +181,7 @@ class ReaderEndToEndTest {
 
     @After
     fun tearDown() {
+        ReaderViewModel.chapterListDispatcher = Dispatchers.IO
         Dispatchers.resetMain()
     }
 

@@ -44,6 +44,7 @@ class ReaderViewModelSecurityTest {
     fun setup() {
         MockitoAnnotations.openMocks(this)
         Dispatchers.setMain(testDispatcher)
+        ReaderViewModel.chapterListDispatcher = testDispatcher
 
         whenever(preferencesManager.fontSize).thenReturn(18f)
         whenever(preferencesManager.lineHeight).thenReturn(1.5f)
@@ -83,6 +84,7 @@ class ReaderViewModelSecurityTest {
 
     @After
     fun tearDown() {
+        ReaderViewModel.chapterListDispatcher = Dispatchers.IO
         Dispatchers.resetMain()
     }
 

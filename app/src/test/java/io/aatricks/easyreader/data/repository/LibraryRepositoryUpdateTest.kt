@@ -2,6 +2,7 @@ package io.aatricks.easyreader.data.repository
 
 import io.aatricks.easyreader.data.local.LibraryBatchUpdate
 import io.aatricks.easyreader.data.local.LibraryDao
+import io.aatricks.easyreader.data.local.LibraryProgressUpdate
 import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.model.ChapterInfo
 import io.aatricks.easyreader.data.model.ExploreItem
@@ -440,10 +441,21 @@ class LibraryRepositoryUpdateTest {
         val dbItems = mutableMapOf("1" to item)
         whenever(libraryDao.getAllItems()).thenAnswer { flowOf(dbItems.values.toList()) }
         whenever(libraryDao.getItemById("1")).thenAnswer { dbItems["1"] }
-        whenever(libraryDao.insertItem(any())).thenAnswer { inv ->
-            val itm = inv.arguments[0] as LibraryItem
-            dbItems[itm.id] = itm
-            Unit
+        whenever(libraryDao.updateProgressFields(any())).thenAnswer { inv ->
+            val update = inv.arguments[0] as LibraryProgressUpdate
+            dbItems[update.id]?.let { existing ->
+                dbItems[update.id] = existing.copy(
+                    currentChapter = update.currentChapter,
+                    progress = update.progress,
+                    currentChapterUrl = update.currentChapterUrl,
+                    lastScrollPosition = update.lastScrollPosition,
+                    lastReadIndex = update.lastReadIndex,
+                    lastReadElementKey = update.lastReadElementKey,
+                    lastReadOffsetFraction = update.lastReadOffsetFraction,
+                    lastRead = update.lastRead
+                )
+                1
+            } ?: 0
         }
         whenever(libraryDao.updateTotalChapters(any(), any())).thenAnswer { inv ->
             val id = inv.arguments[0] as String

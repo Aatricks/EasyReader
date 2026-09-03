@@ -98,7 +98,6 @@ class ReaderProgressController(
     private var lastReportedProgress: Float = -1f
 
     private var progressUpdateJob: Job? = null
-    private var lastUpdateTime: Long = 0L
     private var pendingUpdate: PendingProgressUpdate? = null
 
     private data class PendingProgressUpdate(
@@ -130,6 +129,9 @@ class ReaderProgressController(
         // far into the chapter, it is a partial-write ghost row: ignore the index and use the percent
         // fallback.
         private const val SUSPICIOUS_ZERO_INDEX_PERCENT_THRESHOLD = 5f
+        // Quiet period a scroll must reach before its position is written. Each write is a DB
+        // round-trip, and a fling produces ~10 persistable samples a second.
+        internal const val PROGRESS_WRITE_DEBOUNCE_MS = 1_000L
     }
 
     fun syncProgressState(state: ReaderProgressState) {
@@ -494,7 +496,7 @@ class ReaderProgressController(
             return
         }
 
-        lastUpdateTime = System.currentTimeMillis()
+        lastRawScrollOffset = scrollOffset
         pendingUpdate = PendingProgressUpdate(
             progress = progressInt,
             scrollPosition = progress,
@@ -505,32 +507,32 @@ class ReaderProgressController(
             forcePersist = isTerminal
         )
 
-        if (progressUpdateJob?.isActive != true) {
-            progressUpdateJob = scope.launch {
-                var update = pendingUpdate
-                if (update != null) {
-                    val now = System.currentTimeMillis()
-                    val elapsed = now - lastUpdateTime
-                    if (elapsed < 100) {
-                        delay(100 - elapsed)
-                    }
-                    update = pendingUpdate
-                    if (update != null) {
-                        if (update.progress >= 0) {
-                            updateReadingProgress(
-                                progress = update.progress,
-                                scrollPosition = update.scrollPosition,
-                                index = update.index,
-                                elementKey = update.elementKey,
-                                offsetFraction = update.offsetFraction,
-                                content = update.content,
-                                forcePersist = update.forcePersist
-                            )
-                        }
-                        pendingUpdate = null
-                    }
-                }
-                lastRawScrollOffset = scrollOffset
+        // Trailing debounce: restart the timer on every sample so a fling collapses into one
+        // write once the scroll settles, instead of one write per PROGRESS_WRITE_DEBOUNCE_MS.
+        // The pause / onCleared / seek paths write from the live snapshot and don't wait on
+        // this job; a terminal end-of-chapter sample skips the wait because the caller usually
+        // navigates away immediately after, which cancels the job.
+        progressUpdateJob?.cancel()
+        progressUpdateJob = scope.launch {
+            if (!isTerminal) {
+                delay(PROGRESS_WRITE_DEBOUNCE_MS)
+            }
+            val update = pendingUpdate ?: return@launch
+            if (update.progress >= 0) {
+                updateReadingProgress(
+                    progress = update.progress,
+                    scrollPosition = update.scrollPosition,
+                    index = update.index,
+                    elementKey = update.elementKey,
+                    offsetFraction = update.offsetFraction,
+                    content = update.content,
+                    forcePersist = update.forcePersist
+                )
+            }
+            // Identity check: a sample that landed while this write was in flight cancelled
+            // this job and installed its own pending update — don't drop it.
+            if (pendingUpdate === update) {
+                pendingUpdate = null
             }
         }
     }

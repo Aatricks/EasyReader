@@ -77,6 +77,12 @@ interface LibraryDao {
     @Query("UPDATE library_items SET currentChapter = :currentChapter WHERE id = :id")
     suspend fun updateCurrentChapter(id: String, currentChapter: String)
 
+    // Partial-entity update: touches only the reading-position columns, so a progress write no
+    // longer goes through the REPLACE funnel (DELETE + INSERT across every index, re-encoding
+    // chapterSummaries). Room matches the row by the POJO's primary key.
+    @Update(entity = LibraryItem::class)
+    suspend fun updateProgressFields(update: LibraryProgressUpdate): Int
+
     @Query("SELECT * FROM library_items WHERE isDownloaded = 1")
     suspend fun getDownloadedItems(): List<LibraryItem>
 
@@ -105,6 +111,19 @@ interface LibraryDao {
         markAsCurrentlyReading(id, timestamp)
     }
 }
+
+data class LibraryProgressUpdate(
+    @PrimaryKey
+    val id: String,
+    val currentChapter: String,
+    val progress: Int,
+    val currentChapterUrl: String,
+    val lastScrollPosition: Float,
+    val lastReadIndex: Int,
+    val lastReadElementKey: String,
+    val lastReadOffsetFraction: Float,
+    val lastRead: Long
+)
 
 data class LibraryBatchUpdate(
     val itemId: String,

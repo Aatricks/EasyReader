@@ -8,6 +8,7 @@ import io.aatricks.easyreader.util.rethrowCancellation
 import io.aatricks.easyreader.data.local.PreferencesManager
 import io.aatricks.easyreader.data.local.LibraryBatchUpdate
 import io.aatricks.easyreader.data.local.LibraryDao
+import io.aatricks.easyreader.data.local.LibraryProgressUpdate
 import io.aatricks.easyreader.data.model.LibraryItem
 import io.aatricks.easyreader.data.model.ContentType
 import io.aatricks.easyreader.data.model.ReadingMode
@@ -286,7 +287,11 @@ class LibraryRepository @Inject constructor(
     ): Boolean = progressMutex.withLock {
         runRepoCatching("Failed to update progress", false) {
             libraryDao.getItemById(itemId)?.let { item ->
-                val updated = item.copy(
+                // Targeted column update, not a whole-row REPLACE: a scroll write must not
+                // rewrite every index or re-encode chapterSummaries. The row is still read
+                // first so FieldUpdate.Unchanged keeps the stored value.
+                val update = LibraryProgressUpdate(
+                    id = item.id,
                     currentChapter = currentChapter.ifBlank { item.currentChapter },
                     progress = progress.resolve(item.progress, 0),
                     currentChapterUrl = currentChapterUrl.resolve(item.currentChapterUrl, ""),
@@ -299,8 +304,7 @@ class LibraryRepository @Inject constructor(
                     ),
                     lastRead = System.currentTimeMillis()
                 )
-                libraryDao.insertItem(updated)
-                true
+                libraryDao.updateProgressFields(update) > 0
             } ?: false
         } ?: false
     }
@@ -360,14 +364,18 @@ class LibraryRepository @Inject constructor(
     }
 
     private fun sortChapters(items: List<LibraryItem>): List<LibraryItem> {
-        return items.sortedWith { a, b ->
-            val aNum = parseChapterNumberOrNull(a)
-            val bNum = parseChapterNumberOrNull(b)
-            when {
-                aNum != null && bNum != null -> aNum.compareTo(bNum)
-                else -> a.dateAdded.compareTo(b.dateAdded)
+        // Decorate-sort-undecorate: parseChapterNumberOrNull runs up to three regex scans, and a
+        // comparator re-parses both sides on every one of the O(n log n) comparisons. Parse once.
+        return items.map { it to parseChapterNumberOrNull(it) }
+            .sortedWith { a, b ->
+                val aNum = a.second
+                val bNum = b.second
+                when {
+                    aNum != null && bNum != null -> aNum.compareTo(bNum)
+                    else -> a.first.dateAdded.compareTo(b.first.dateAdded)
+                }
             }
-        }
+            .map { it.first }
     }
 
     private fun parseChapterNumberOrNull(item: LibraryItem): Double? {

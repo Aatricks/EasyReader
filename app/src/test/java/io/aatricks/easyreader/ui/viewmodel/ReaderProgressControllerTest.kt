@@ -335,6 +335,52 @@ class ReaderProgressControllerTest {
     }
 
     @Test
+    fun `updateScrollPosition debounces a burst of scroll samples into a single write`() = runTest {
+        val controller = ReaderProgressController(libraryRepository, this)
+        controller.currentLibraryItemId = "test-id"
+        controller.markUserDragged()
+        val content = ChapterContent(
+            paragraphs = List(10) { ContentElement.Text("Paragraph $it") },
+            title = "Chapter 1",
+            url = "https://example.com/chapter-1"
+        )
+
+        repeat(5) { step ->
+            controller.updateScrollPosition(
+                scrollOffset = 1f + step,
+                maxScrollOffset = 100f,
+                viewportHeight = 1f,
+                index = step,
+                offsetFraction = 0.1f * step,
+                elementKey = "txt:step-$step",
+                content = content,
+                canScrollForward = true,
+                firstVisibleItemSize = 500
+            )
+            // Well inside the debounce window: every sample restarts the timer.
+            advanceTimeBy(ReaderProgressController.PROGRESS_WRITE_DEBOUNCE_MS / 2)
+        }
+        verify(libraryRepository, never()).updateProgressExplicit(
+            any(), any(), any(), any(), any(), any(), any(), any()
+        )
+
+        advanceTimeBy(ReaderProgressController.PROGRESS_WRITE_DEBOUNCE_MS + 1)
+        runCurrent()
+
+        // Only the last sample of the burst reaches the DB.
+        verify(libraryRepository, times(1)).updateProgressExplicit(
+            itemId = eq("test-id"),
+            currentChapter = any(),
+            progress = any(),
+            currentChapterUrl = eq(FieldUpdate.Set("https://example.com/chapter-1")),
+            lastScrollProgress = any(),
+            lastReadIndex = eq(FieldUpdate.Set(4)),
+            lastReadElementKey = eq(FieldUpdate.Set("txt:step-4")),
+            lastReadOffsetFraction = any()
+        )
+    }
+
+    @Test
     fun `updateScrollPosition skips persistence when item size is below stability threshold`() = runTest {
         val controller = ReaderProgressController(libraryRepository, this)
         controller.currentLibraryItemId = "test-id"
@@ -359,7 +405,7 @@ class ReaderProgressControllerTest {
             canScrollForward = true,
             firstVisibleItemSize = 48
         )
-        advanceTimeBy(200)
+        advanceTimeBy(1_100)
         runCurrent()
 
         // Index updates immediately for UI tracking, but no DB write while size is unstable.
