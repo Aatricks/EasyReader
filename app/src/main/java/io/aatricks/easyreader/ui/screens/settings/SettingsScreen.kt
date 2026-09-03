@@ -1,5 +1,7 @@
 package io.aatricks.easyreader.ui.screens.settings
 
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -97,7 +99,9 @@ fun SettingsScreen(
     val backupStatus by backupViewModel.status.collectAsState()
     val summaryViewModel: SummaryViewModel = hiltViewModel()
     val summaryUiState by summaryViewModel.uiState.collectAsState()
-    val updateViewModel: UpdateViewModel = hiltViewModel()
+    // Scope this to the activity, not to the Settings back-stack entry: the update dialog
+    // lives at the root of MainActivity and only ever sees the activity-scoped instance.
+    val updateViewModel: UpdateViewModel = hiltViewModel(LocalActivity.current as ComponentActivity)
     val updateState by updateViewModel.uiState.collectAsState()
     val appearanceSettings by settingsViewModel.appearanceSettings.collectAsState()
     val readerSettings by settingsViewModel.readerSettings.collectAsState()
