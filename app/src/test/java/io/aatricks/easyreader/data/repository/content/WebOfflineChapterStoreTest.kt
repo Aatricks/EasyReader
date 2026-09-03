@@ -138,7 +138,7 @@ class WebOfflineChapterStoreTest {
     }
 
     @Test
-    fun `operation inspection validates each image once and content load reuses it`() = runBlocking {
+    fun `inspection of a complete chapter reads no image bytes and content load reuses it`() = runBlocking {
         val tempDir = Files.createTempDirectory("offline-inspection-test").toFile()
         val chapterUrl = "https://example.com/chapter"
         val imageUrl = "https://example.com/page.jpg"
@@ -163,13 +163,79 @@ class WebOfflineChapterStoreTest {
         }
 
         val inspection = store.inspectChapter(chapterUrl)
-        val afterInspect = validationCount.get()
+        store.inspectChapter(chapterUrl)
+        val afterTwoInspects = validationCount.get()
         val content = store.loadContent(inspection)
 
-        assertEquals(1, afterInspect)
-        assertEquals(afterInspect, validationCount.get())
+        // Badge inspects run over the whole library: a record whose byte count still matches
+        // the file on disk answers without reading the file.
+        assertEquals(0, afterTwoInspects)
+        assertEquals(afterTwoInspects, validationCount.get())
         assertTrue(inspection.result.isComplete)
         assertTrue(content != null)
+
+        // The read path still pays for real validation.
+        assertTrue(store.inspectChapter(chapterUrl, deepValidation = true).result.isComplete)
+        assertEquals(1, validationCount.get())
+    }
+
+    @Test
+    fun `repeated invalid image payloads become a permanent failure`() = runBlocking {
+        val tempDir = Files.createTempDirectory("offline-store-test").toFile()
+        val chapterUrl = "https://example.com/avif-chapter"
+        val imageUrl = "https://example.com/page.avif"
+        val htmlParser = mock<HtmlParser>()
+        val (store, failureStore) = createStore(
+            htmlParser = htmlParser,
+            // A healthy 200 carrying bytes no registered decoder can render: retrying it
+            // returns exactly the same payload forever.
+            interceptor = Interceptor { chain ->
+                buildResponse(chain.request(), "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>", "text/plain")
+            },
+            tempDir = tempDir
+        )
+        val doc = Jsoup.parse("<html><body><img src=\"$imageUrl\"/></body></html>", chapterUrl)
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Image(imageUrl)))
+
+        val first = store.downloadChapter(chapterUrl, doc, null)
+        assertFalse(first.isComplete)
+        assertTrue(first.isRetryable)
+        assertTrue(failureStore.load(chapterUrl, 0L).isEmpty())
+
+        store.downloadChapter(chapterUrl, doc, null)
+        val third = store.downloadChapter(chapterUrl, doc, null)
+
+        assertTrue(failureStore.load(chapterUrl, 0L).contains(imageUrl))
+        assertTrue(third.isComplete)
+        assertTrue(third.hasPermanentFailures)
+        assertFalse(third.isRetryable)
+    }
+
+    @Test
+    fun `images the latest parse no longer references are deleted`() = runBlocking {
+        val tempDir = Files.createTempDirectory("offline-store-test").toFile()
+        val chapterUrl = "https://example.com/manga/chapter-11"
+        val oldImageUrl = "https://example.com/old/1.jpg"
+        val newImageUrl = "https://example.com/new/1.jpg"
+        val htmlParser = mock<HtmlParser>()
+        val (store, _) = createStore(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain -> buildResponse(chain.request(), "page", "image/jpeg") },
+            tempDir = tempDir
+        )
+        val doc = Jsoup.parse("<html><body></body></html>", chapterUrl)
+
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Image(oldImageUrl)))
+        assertTrue(store.downloadChapter(chapterUrl, doc, null).isComplete)
+
+        // The source renamed its image URLs: the manifest is rebuilt, the old file is orphaned.
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Image(newImageUrl)))
+        assertTrue(store.downloadChapter(chapterUrl, doc, null).isComplete)
+
+        val imageDir = File(File(File(tempDir, "web_offline"), CacheKeyUtils.keyFor(chapterUrl)), "images")
+        val remaining = imageDir.listFiles()!!.map { it.name }
+        assertEquals(1, remaining.size)
+        assertTrue(remaining.single().startsWith(CacheKeyUtils.keyFor(newImageUrl)))
     }
 
     @Test

@@ -54,6 +54,7 @@ class ChapterDownloadWorker @AssistedInject constructor(
             // Reconcile so an orphaned isDownloaded=false (e.g. VM was cancelled before its
             // own reconcile ran) gets promoted off the worker's durable execution.
             runCatching { reconcileFlag(url, existing) }
+                .onFailure { Log.w(TAG, "reconcile failed url=$safeUrl message=${it.message}") }
             return Result.success(existing.toTerminalData())
         }
 
@@ -73,6 +74,7 @@ class ChapterDownloadWorker @AssistedInject constructor(
             // Worker is the durable second writer for the DB flag. Flag must track on-disk reality
             // even if the user cleared the download mid-run.
             runCatching { reconcileFlag(url, contentRepository.inspectDownload(url)) }
+                .onFailure { Log.w(TAG, "reconcile failed url=$safeUrl message=${it.message}") }
             val terminal = result.toTerminalData()
             // Treat "complete with permanent failures" as success — the loop has nothing more
             // to do. The badge logic separately downgrades it via hasPermanentFailures.

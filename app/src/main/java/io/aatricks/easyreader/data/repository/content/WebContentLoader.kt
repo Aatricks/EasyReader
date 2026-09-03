@@ -155,17 +155,23 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
         val safeUrl = UrlSanitizer.sanitize(url)
         Log.d(TAG, "start load url=$safeUrl")
         try {
-            val offlineInspection = offlineChapterStore.inspectChapter(url)
+            val offlineInspection = offlineChapterStore.inspectChapter(url, deepValidation = true)
             offlineChapterStore.loadContent(offlineInspection)?.let { offline ->
                 Log.d(TAG, "offline manifest hit url=$safeUrl elapsedMs=${System.currentTimeMillis() - startedAtMs}")
                 return@withContext offline
             }
-            if (offlineInspection.hasCompleteManifestRecord) {
-                return@withContext ContentResult.Error("Downloaded chapter files are missing or corrupt")
-            }
             tryLoadFromParsedCache(url, safeUrl, startedAtMs)?.let { return@withContext it }
 
-            val cachedDocument = getDocumentFromCacheOrNetwork(url, writeTier = StorageTier.CACHE)
+            // A download whose files went missing used to be a hard error even with a working
+            // connection. It is only fatal when the network cannot serve the chapter either.
+            val cachedDocument = try {
+                getDocumentFromCacheOrNetwork(url, writeTier = StorageTier.CACHE)
+            } catch (e: IOException) {
+                if (offlineInspection.hasCompleteManifestRecord) {
+                    return@withContext ContentResult.Error("Downloaded chapter files are missing or corrupt")
+                }
+                throw e
+            }
             Log.d(
                 TAG,
                 "cache/html fetch complete url=$safeUrl fromCache=${cachedDocument.fromCache} " +
@@ -997,6 +1003,7 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                                     finalFile.delete()
                                     ImageDownloadResult.Failure(true)
                                 } else {
+                                    persistImageBounds(imageUrl, finalFile)
                                     ImageDownloadResult.Success(finalFile)
                                 }
                             }
@@ -1047,6 +1054,14 @@ class WebContentLoader @Suppress("LongParameterList") @Inject constructor(
                 throw e
             }
         }
+    }
+
+    // The reader sizes a long-strip page from its persisted dimensions; with none it has to
+    // compose a full-height decode of a 15k-px strip until the tiled rebuild replaces it.
+    // Parsing the bounds of the file we just wrote is far cheaper than that decode.
+    private suspend fun persistImageBounds(imageUrl: String, file: File) {
+        val bounds = ImageBoundsParser.parse(file) ?: return
+        imageDimensionCache.persist(imageUrl, bounds.first, bounds.second)
     }
 
     private suspend fun inspectCacheInternal(

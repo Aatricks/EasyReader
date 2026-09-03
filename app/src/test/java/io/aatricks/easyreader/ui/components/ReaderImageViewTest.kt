@@ -48,6 +48,12 @@ class ReaderImageViewTest {
     }
 
     @Test
+    fun `images of unknown size cap the decode height`() {
+        assertNull(readerImageDecodeMaxHeightPx(hasResolvedAspectRatio = true))
+        assertEquals(4096, readerImageDecodeMaxHeightPx(hasResolvedAspectRatio = false))
+    }
+
+    @Test
     fun `reader image referer source falls back to image url`() {
         assertEquals(
             "https://www.mangabats.com/manga/a-fortune-telling-princess/chapter-115",

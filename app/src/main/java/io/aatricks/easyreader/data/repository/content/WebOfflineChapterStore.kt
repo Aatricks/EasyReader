@@ -9,7 +9,6 @@ import io.aatricks.easyreader.data.repository.HtmlParser
 import io.aatricks.easyreader.di.WebOfflineDownloadsDir
 import io.aatricks.easyreader.util.CacheKeyUtils
 import io.aatricks.easyreader.util.FileSizeUtils
-import io.aatricks.easyreader.util.ImageIntegrity
 import io.aatricks.easyreader.util.UrlSanitizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -34,7 +33,17 @@ class WebOfflineChapterStore @Inject constructor(
     private val imageCache: ImageCache,
     private val permanentFailureStore: PermanentFailureStore
 ) {
-    internal var imageValidator: (File) -> Boolean = ImageIntegrity::isValidImageFile
+    // Routed through ImageCache so its (path, length, mtime) verdict memo absorbs repeat
+    // validations: re-opening a chapter no longer re-reads a header and 64 KB tail per image.
+    internal var imageValidator: (File) -> Boolean = imageCache::isValidImageFile
+
+    // A CDN serving a format this app cannot decode (AVIF/HEIF/SVG) answers every retry with
+    // the same healthy 200, so treating an invalid payload as retryable loops forever: the
+    // worker retries, auto-resume re-enqueues on the next library visit, the badge never
+    // settles. Counting attempts per image URL is process-local on purpose - once the image
+    // reaches the permanent-failure store the chapter reports complete and nothing re-enqueues
+    // it until that store's TTL expires.
+    private val invalidPayloadAttempts = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -112,9 +121,7 @@ class WebOfflineChapterStore @Inject constructor(
         keepExistingOnShrunkParse(url, payload.imageUrls.size)?.let { return@withContext it }
         handleZeroImageChapter(url, document, payload)?.let { return@withContext it }
 
-        val chapterDir = chapterDir(url)
-        val imageDir = File(chapterDir, IMAGE_DIR)
-        imageDir.mkdirs()
+        val imageDir = prepareChapterDir(url)
         val records = payload.imageUrls.map { imageUrl ->
             ImageRecord(
                 url = imageUrl,
@@ -164,6 +171,7 @@ class WebOfflineChapterStore @Inject constructor(
             downloadedAtMs = if (complete) System.currentTimeMillis() else null
         )
         writeManifest(url, finalManifest)
+        pruneOrphanImages(imageDir, latestRecords)
 
         val finalResult = inspectChapter(url).result.copy(isInProgress = false)
         onProgress?.invoke(finalResult)
@@ -216,7 +224,16 @@ class WebOfflineChapterStore @Inject constructor(
 
     suspend fun inspect(url: String): PrefetchResult = inspectChapter(url).result
 
-    internal suspend fun inspectChapter(url: String): OfflineChapterInspection = withContext(Dispatchers.IO) {
+    /**
+     * [deepValidation] re-reads every image's bytes. Only the read paths need that: a library
+     * open reconciles every downloaded chapter, and validating 200 chapters' worth of files
+     * costs hundreds of MB of reads for an answer the manifest's recorded byte counts already
+     * give (see [isImagePresent]).
+     */
+    internal suspend fun inspectChapter(
+        url: String,
+        deepValidation: Boolean = false
+    ): OfflineChapterInspection = withContext(Dispatchers.IO) {
         val manifest = readManifest(url)
             ?: return@withContext OfflineChapterInspection(
                 chapterUrl = url,
@@ -238,7 +255,9 @@ class WebOfflineChapterStore @Inject constructor(
         val resolvedFiles = manifest.images.associate { record ->
             record.url to fileFor(url, record.fileName)
         }
-        val validationResults = resolvedFiles.mapValues { (_, file) -> imageValidator(file) }
+        val validationResults = manifest.images.associate { record ->
+            record.url to isImagePresent(resolvedFiles.getValue(record.url), record, deepValidation)
+        }
         val onDisk = validationResults.values.count { it }
         val accountedPermanent = manifest.images.count { record ->
             record.url in fresh && validationResults[record.url] != true
@@ -405,7 +424,7 @@ class WebOfflineChapterStore @Inject constructor(
             !imageValidator(temp) -> {
                 Log.w(TAG, "invalid offline image url=${UrlSanitizer.sanitize(record.url)}")
                 temp.delete()
-                DownloadResult.Failure(retryable = true)
+                DownloadResult.Failure(retryable = registerInvalidPayload(record.url))
             }
             else -> {
                 target.delete()
@@ -457,6 +476,46 @@ class WebOfflineChapterStore @Inject constructor(
         )
     }
 
+    private fun prepareChapterDir(url: String): File {
+        val chapterDir = chapterDir(url)
+        // Nothing else sweeps these: they are excluded from the LRU trim (a live download owns
+        // one) and a process death mid-download leaves them behind.
+        FileSizeUtils.deleteStaleTempFiles(chapterDir)
+        return File(chapterDir, IMAGE_DIR).apply { mkdirs() }
+    }
+
+    /** @return true while the payload is still worth retrying. */
+    private fun registerInvalidPayload(imageUrl: String): Boolean {
+        if (invalidPayloadAttempts.size > MAX_TRACKED_INVALID_PAYLOADS) invalidPayloadAttempts.clear()
+        val attempts = invalidPayloadAttempts.merge(imageUrl, 1) { current, added -> current + added } ?: 1
+        return attempts < MAX_INVALID_PAYLOAD_ATTEMPTS
+    }
+
+    /**
+     * A record with a byte count makes the full validation read redundant on the inspect path:
+     * a file still matching the length the download recorded is the file the download wrote.
+     * Records without one - a failed image, a manifest written before the byte count existed -
+     * fall back to the (memoized) validator, as does every [deepValidation] caller.
+     */
+    private fun isImagePresent(file: File, record: ImageRecord, deepValidation: Boolean): Boolean =
+        if (!deepValidation && record.bytes > 0L) {
+            file.length() == record.bytes
+        } else {
+            imageValidator(file)
+        }
+
+    /**
+     * A source that renames its image URLs rebuilds the manifest from the new parse, leaving
+     * the files for the old URLs referenced by nothing. `.tmp` files belong to an in-flight
+     * attempt and are swept by age instead.
+     */
+    private fun pruneOrphanImages(imageDir: File, records: List<ImageRecord>) {
+        val keep = records.mapTo(mutableSetOf()) { it.fileName }
+        imageDir.listFiles()?.forEach { file ->
+            if (file.isFile && file.name !in keep && !file.name.endsWith(".tmp")) file.delete()
+        }
+    }
+
     private fun validationResultsFor(url: String, manifest: Manifest): Map<String, Boolean> =
         manifest.images.associate { it.url to imageValidator(fileFor(url, it.fileName)) }
 
@@ -491,6 +550,10 @@ class WebOfflineChapterStore @Inject constructor(
                 .takeIf { it.schemaVersion == SCHEMA_VERSION && it.chapterUrl == url }
         }.onFailure {
             Log.w(TAG, "manifest read failed url=${UrlSanitizer.sanitize(url)} message=${it.message}")
+            // Corrupt JSON never decodes again, so every later read pays the same failure and
+            // no path repairs the chapter. Only the manifest goes: the images stay reusable for
+            // the re-download, which prunes whatever the fresh parse no longer references.
+            file.delete()
         }.getOrNull()
     }
 
@@ -601,5 +664,7 @@ class WebOfflineChapterStore @Inject constructor(
         private const val MANIFEST_FILE = "manifest.json"
         private const val IMAGE_DIR = "images"
         private const val MAX_CONCURRENT_IMAGE_DOWNLOADS = 4
+        private const val MAX_INVALID_PAYLOAD_ATTEMPTS = 3
+        private const val MAX_TRACKED_INVALID_PAYLOADS = 1024
     }
 }

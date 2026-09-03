@@ -58,6 +58,8 @@ class WorkManagerChapterDownloadQueue @Inject constructor(
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED)
+                        // Download storage is never trimmed, so a full disk stays full.
+                        .setRequiresStorageNotLow(true)
                         .build()
                 )
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)

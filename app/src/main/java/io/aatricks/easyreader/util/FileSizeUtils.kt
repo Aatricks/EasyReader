@@ -9,6 +9,19 @@ import java.nio.file.SimpleFileVisitor
 import java.nio.file.attribute.BasicFileAttributes
 
 object FileSizeUtils {
+    // `.tmp` files are skipped by the trim below because a live download owns one, so a
+    // process death mid-download stranded them forever. Nothing this old is still being
+    // written to.
+    private const val STALE_TEMP_FILE_AGE_MS = 60L * 60L * 1000L
+
+    fun deleteStaleTempFiles(dir: File, nowMs: Long = System.currentTimeMillis()) {
+        if (!dir.exists()) return
+        dir.walkTopDown()
+            .filter { it.isFile && it.name.endsWith(".tmp") }
+            .filter { nowMs - it.lastModified() > STALE_TEMP_FILE_AGE_MS }
+            .forEach { it.delete() }
+    }
+
     fun calculateDirectorySize(dir: File): Long {
         if (!dir.exists()) return 0L
         var size = 0L
@@ -30,6 +43,7 @@ object FileSizeUtils {
 
     fun trimDirectoryToSize(dir: File, maxBytes: Long, onDelete: (File) -> Unit = {}): Long {
         if (!dir.exists()) return 0L
+        deleteStaleTempFiles(dir)
         val files = dir.walkTopDown()
             .filter { it.isFile && !it.name.endsWith(".tmp") }
             .sortedWith(compareBy<File> { it.lastModified() }.thenBy { it.absolutePath })

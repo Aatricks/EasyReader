@@ -4,6 +4,7 @@ import io.aatricks.easyreader.data.model.ImageRequestPriority
 import io.aatricks.easyreader.util.HttpRetry
 import io.aatricks.easyreader.util.HttpTimeouts
 import kotlinx.coroutines.delay
+import okhttp3.CacheControl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -78,6 +79,10 @@ class ImageDownloader @Inject constructor(
                         block = {
                             val requestBuilder = Request.Builder()
                                 .url(imageUrl)
+                                // Image bytes are already persisted by the caller (media cache
+                                // or the offline store). Letting the shared OkHttp disk cache
+                                // keep a third copy just evicts HTML pages that need it.
+                                .cacheControl(CacheControl.Builder().noStore().build())
                                 .addHeader("User-Agent", "Mozilla/5.0")
                                 .addHeader("Accept", SUPPORTED_IMAGE_ACCEPT_HEADER)
                                 .addHeader("Referer", getReferer(pageUrl))

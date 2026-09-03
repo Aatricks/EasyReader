@@ -5,6 +5,7 @@ import io.aatricks.easyreader.data.model.ContentResult
 import io.aatricks.easyreader.data.model.PrefetchMode
 import io.aatricks.easyreader.data.model.PrefetchResult
 import io.aatricks.easyreader.data.repository.HtmlParser
+import io.aatricks.easyreader.data.repository.ImageDimensionCacheRepository
 import io.aatricks.easyreader.testutil.fakeImageDimensionCacheRepository
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -868,11 +869,71 @@ class WebContentLoaderTest {
         assertTrue("shared image must be stored in offline manifest", loader.isImageDownloaded(chapterUrl, imageUrl))
     }
 
+    @Test
+    fun `complete manifest with missing files falls back to the network path`() = runBlocking {
+        val chapterUrl = "https://example.com/manga/chapter-4"
+        val imageUrl = "https://example.com/manga/4/1.png"
+        val htmlParser = mock<HtmlParser>()
+        val root = Files.createTempDirectory("web-loader-missing-files").toFile()
+        val loader = createLoader(
+            htmlParser = htmlParser,
+            interceptor = Interceptor { chain ->
+                val request = chain.request()
+                if (request.url.toString() == imageUrl) {
+                    buildByteResponse(request, tinyPng(width = 2, height = 3), "image/png")
+                } else {
+                    buildResponse(request, "<html><body></body></html>", "text/html")
+                }
+            },
+            root = root
+        )
+        whenever(htmlParser.parse(any(), eq(chapterUrl))).thenReturn(listOf(ContentElement.Image(imageUrl)))
+        assertTrue(loader.prefetch(chapterUrl, PrefetchMode.USER_REQUESTED).isComplete)
+
+        // Complete on paper, gone from disk: the chapter is still perfectly loadable online.
+        File(root, "web_offline").walkTopDown()
+            .filter { it.isFile && it.parentFile?.name == "images" }
+            .forEach { it.delete() }
+
+        val result = loader.loadWebContent(chapterUrl)
+
+        assertTrue(result is ContentResult.Success)
+        val urls = (result as ContentResult.Success).elements.flatMap { element ->
+            when (element) {
+                is ContentElement.Image -> listOf(element.url)
+                is ContentElement.ImageGroup -> element.images.map { it.url }
+                else -> emptyList()
+            }
+        }
+        assertEquals(listOf(imageUrl), urls)
+    }
+
+    @Test
+    fun `downloading an image persists its dimensions for the reader`() = runBlocking {
+        val pageUrl = "https://example.com/manga/chapter-9"
+        val imageUrl = "https://example.com/manga/9/1.png"
+        val dimensionCache = fakeImageDimensionCacheRepository()
+        val loader = createLoader(
+            htmlParser = mock<HtmlParser>(),
+            interceptor = Interceptor { chain ->
+                buildByteResponse(chain.request(), tinyPng(width = 2, height = 3), "image/png")
+            },
+            imageDimensionCache = dimensionCache
+        )
+
+        assertTrue(loader.downloadAndCacheImage(imageUrl, pageUrl) != null)
+
+        val persisted = dimensionCache.getMany(listOf(imageUrl))[imageUrl]
+        assertEquals(2, persisted?.width)
+        assertEquals(3, persisted?.height)
+    }
+
     private fun createLoader(
         htmlParser: HtmlParser,
-        interceptor: Interceptor
+        interceptor: Interceptor,
+        root: File = Files.createTempDirectory("web-loader-test").toFile(),
+        imageDimensionCache: ImageDimensionCacheRepository = fakeImageDimensionCacheRepository()
     ): WebContentLoader {
-        val root = Files.createTempDirectory("web-loader-test").toFile()
         val htmlCacheDir = File(root, "html_cache").apply { mkdirs() }
         val mediaCacheDir = File(root, "media_cache").apply { mkdirs() }
         val htmlDownloadsDir = File(root, "html_downloads").apply { mkdirs() }
@@ -893,7 +954,7 @@ class WebContentLoaderTest {
             htmlCacheDir,
             htmlDownloadsDir,
             InMemoryPermanentFailureStore(),
-            fakeImageDimensionCacheRepository(),
+            imageDimensionCache,
             offlineStore
         )
     }

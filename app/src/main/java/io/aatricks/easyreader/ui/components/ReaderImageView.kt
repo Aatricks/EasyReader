@@ -43,6 +43,20 @@ internal fun shouldUseAnimatedImageLoadingUi(enableZoom: Boolean, isCached: Bool
 internal fun shouldSubsampleReaderImage(enableZoom: Boolean, dynamicHeight: Boolean): Boolean =
     !enableZoom && !dynamicHeight
 
+// Also the hardware bitmap limit, so nothing renders above it anyway.
+private const val UNKNOWN_HEIGHT_DECODE_CAP_PX = 4096
+
+/**
+ * An element whose dimensions are still unknown would otherwise be decoded at its full native
+ * height: a 900x15000 manhwa strip is a single ~50 MB bitmap that then sits in the memory cache
+ * until the dimension manager rebuilds the page into tiles. Cap it; the rebuild replaces this
+ * placeholder either way.
+ *
+ * @return the decode height cap in px, or null when the aspect ratio is already known.
+ */
+internal fun readerImageDecodeMaxHeightPx(hasResolvedAspectRatio: Boolean): Int? =
+    if (hasResolvedAspectRatio) null else UNKNOWN_HEIGHT_DECODE_CAP_PX
+
 internal fun readerImageRefererSource(imageUrl: String, pageUrl: String): String =
     pageUrl.takeIf { it.isNotBlank() } ?: imageUrl
 
@@ -238,7 +252,17 @@ fun ReaderImageView(
                     // so a 900x15000 page becomes ~112x1875 → 9× upscale at display = pixelated.
                     // Width-only samples by width ratio alone, preserving native resolution
                     // along the scroll axis.
-                    size(CoilSize(Dimension.Pixels(screenWidthPx), Dimension.Undefined))
+                    val maxDecodeHeightPx = readerImageDecodeMaxHeightPx(hasResolvedAspectRatio)
+                    size(
+                        CoilSize(
+                            Dimension.Pixels(screenWidthPx),
+                            if (maxDecodeHeightPx == null) {
+                                Dimension.Undefined
+                            } else {
+                                Dimension.Pixels(maxDecodeHeightPx)
+                            }
+                        )
+                    )
                     scale(Scale.FIT)
                     precision(Precision.INEXACT)
                 }

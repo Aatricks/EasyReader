@@ -109,11 +109,12 @@ class OfflineProgressTest {
                 assertTrue(result.isComplete)
                 assertFalse(result.isInProgress)
 
-                // Each completed image is validated once, then once more by the mandatory
-                // terminal disk inspection that arbitrates downloaded state.
+                // Each completed image is validated once, by the download itself. The
+                // terminal disk inspection adds none: it answers from the byte counts the
+                // download just recorded in the manifest.
                 assertEquals(
                     "Validation count must be exactly linear for $totalImages images",
-                    totalImages * 2,
+                    totalImages,
                     validationCount.get()
                 )
 

@@ -67,6 +67,24 @@ class ImageDownloaderTest {
     }
 
     @Test
+    fun `executeImageRequest keeps image bytes out of the shared http cache`() = runBlocking {
+        val noStore = AtomicReference<Boolean?>()
+        val client = createClient { chain ->
+            noStore.set(chain.request().cacheControl.noStore)
+            buildResponse(chain.request(), "fake-image-binary", "image/jpeg")
+        }
+
+        ImageDownloader(client).executeImageRequest(
+            imageUrl = "https://example.com/image.jpg",
+            pageUrl = "https://example.com/page",
+            priority = ImageRequestPriority.USER_REQUESTED,
+            destinationFile = tempFolder.newFile("no_store.jpg")
+        )
+
+        assertEquals(true, noStore.get())
+    }
+
+    @Test
     fun `executeImageRequest uses MangaBat root referer for MangaBat CDN URLs`() = runBlocking {
         val imageUrl = "https://img-r1.2xstorage.com/mercenary-enrollment/238/0.webp"
         val refererHeader = AtomicReference<String?>()
