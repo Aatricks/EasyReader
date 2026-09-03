@@ -68,6 +68,7 @@ import io.aatricks.easyreader.data.model.MilestoneState
 import io.aatricks.easyreader.data.model.ScrollProgression
 import io.aatricks.easyreader.data.repository.FinishedSeriesData
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
+import io.aatricks.easyreader.ui.theme.rememberReducedMotion
 import io.aatricks.easyreader.ui.viewmodel.ScrollViewModel
 
 // Strip geometry (SEGMENT/MOUNTING/ROLLER/HAIRLINE shared with the painting renderer)
@@ -172,15 +173,19 @@ private fun ScrollCanvasArea(
         }
     }
 
-    val motion by rememberInfiniteTransition(label = "scrollMotion").animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = MOTION_PERIOD_MS, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "motionPhase"
-    )
+    val motion = if (rememberReducedMotion()) {
+        0f
+    } else {
+        rememberInfiniteTransition(label = "scrollMotion").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = MOTION_PERIOD_MS, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "motionPhase"
+        ).value
+    }
 
     BoxWithConstraints(modifier = modifier) {
             val stripHeight = maxHeight
@@ -300,22 +305,24 @@ private fun RankEndCap(
         )
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             LevelMedallion(progression, palette)
-            Spacer(modifier = Modifier.height(EasyReaderSpacing.lg))
-            Text(
-                text = progression.rankName,
-                style = MaterialTheme.typography.headlineMedium.copy(fontSize = RANK_TEXT_SP.sp),
-                fontFamily = FontFamily.Serif,
-                fontStyle = FontStyle.Italic,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                color = palette.labelInk
-            )
-            Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
-            Text(
-                text = "${progression.xpToNextLevel} XP to level ${progression.level + 1}",
-                style = MaterialTheme.typography.labelMedium,
-                color = palette.labelInk.copy(alpha = LEVEL_CAPTION_ALPHA)
-            )
+            if (progression.rankName.isNotBlank()) {
+                Spacer(modifier = Modifier.height(EasyReaderSpacing.lg))
+                Text(
+                    text = progression.rankName,
+                    style = MaterialTheme.typography.headlineMedium.copy(fontSize = RANK_TEXT_SP.sp),
+                    fontFamily = FontFamily.Serif,
+                    fontStyle = FontStyle.Italic,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    color = palette.onFrameInk
+                )
+                Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
+                Text(
+                    text = "${progression.xpToNextLevel} XP to level ${progression.level + 1}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = palette.onFrameInk.copy(alpha = LEVEL_CAPTION_ALPHA)
+                )
+            }
         }
     }
 }
@@ -327,7 +334,7 @@ private const val ENDCAP_SCRIM_ALPHA = 0.55f
 private fun LevelMedallion(progression: ScrollProgression, palette: ScrollPalette) {
     val current = progression.xpIntoLevel.toFloat()
     val next = progression.xpToNextLevel.toFloat()
-    val fraction = if (current + next <= 0f) 1f else current / (current + next)
+    val fraction = if (current + next <= 0f) 0f else current / (current + next)
     val animatedFraction by animateFloatAsState(
         targetValue = fraction,
         animationSpec = tween(durationMillis = MEDALLION_FILL_MS, easing = FastOutSlowInEasing),
@@ -394,22 +401,27 @@ private fun StatsCard(
         border = BorderStroke(HAIRLINE_DP.dp, palette.gold.copy(alpha = STATS_BORDER_ALPHA)),
         modifier = modifier.fillMaxWidth()
     ) {
-        Row(
-            modifier = Modifier.padding(
-                horizontal = EasyReaderSpacing.md,
-                vertical = EasyReaderSpacing.md
-            ),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            StatItem(
-                "TIME",
-                formatReadingTime(progression.totalActiveMillis),
-                palette,
-                Modifier.weight(TIME_STAT_WEIGHT)
+        Column(modifier = Modifier.padding(EasyReaderSpacing.md)) {
+            Row(horizontalArrangement = Arrangement.SpaceBetween) {
+                StatItem(
+                    "TIME",
+                    formatReadingTime(progression.totalActiveMillis),
+                    palette,
+                    Modifier.weight(TIME_STAT_WEIGHT)
+                )
+                StatItem("CHAPTERS", progression.totalChaptersCompleted.toString(), palette, Modifier.weight(1f))
+                StatItem("SERIES", progression.finishedSeriesCount.toString(), palette, Modifier.weight(1f))
+                StatItem("DAYS", progression.readingDayCount.toString(), palette, Modifier.weight(1f))
+            }
+            Spacer(modifier = Modifier.height(EasyReaderSpacing.sm))
+            Text(
+                text = "You earn XP for every minute read, every chapter finished, " +
+                    "every series completed and every day you read.",
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+                color = palette.onFrameInk.copy(alpha = LEVEL_CAPTION_ALPHA)
             )
-            StatItem("CHAPTERS", progression.totalChaptersCompleted.toString(), palette, Modifier.weight(1f))
-            StatItem("SERIES", progression.finishedSeriesCount.toString(), palette, Modifier.weight(1f))
-            StatItem("DAYS", progression.readingDayCount.toString(), palette, Modifier.weight(1f))
         }
     }
 }
@@ -423,14 +435,14 @@ private fun StatItem(label: String, value: String, palette: ScrollPalette, modif
             fontFamily = FontFamily.Serif,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
-            softWrap = false,
-            color = palette.gold
+            overflow = TextOverflow.Ellipsis,
+            color = palette.frameGold
         )
         Text(
             text = label,
             fontSize = STATS_LABEL_SP.sp,
             letterSpacing = STATS_LABEL_SPACING_SP.sp,
-            color = palette.labelInk.copy(alpha = LEVEL_CAPTION_ALPHA)
+            color = palette.onFrameInk.copy(alpha = LEVEL_CAPTION_ALPHA)
         )
     }
 }
