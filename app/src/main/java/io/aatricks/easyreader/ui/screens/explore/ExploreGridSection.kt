@@ -52,6 +52,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -60,6 +62,7 @@ import coil3.network.NetworkHeaders
 import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.ExploreItem
 import io.aatricks.easyreader.ui.components.ErrorTile
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
@@ -94,8 +97,13 @@ internal fun ExploreGrid(
             if (uiState.searchFailures.isNotEmpty()) {
                 items(uiState.searchFailures, span = { GridItemSpan(maxLineSpan) }) { failure ->
                     ErrorTile(
-                        message = "${failure.sourceName} is unavailable" +
-                            (failure.reason?.let { ": $it" } ?: ""),
+                        message = failure.reason?.let {
+                            stringResource(
+                                R.string.explore_source_unavailable_reason,
+                                failure.sourceName,
+                                it
+                            )
+                        } ?: stringResource(R.string.explore_source_unavailable, failure.sourceName),
                         onRetry = { onRetryFailedSource(failure.sourceName) }
                     )
                 }
@@ -112,7 +120,7 @@ internal fun ExploreGrid(
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         if (uiState.hasError || uiState.searchFailures.isNotEmpty()) {
                             ErrorTile(
-                                message = "Offline or failed to fetch results. Check your connection.",
+                                message = stringResource(R.string.explore_fetch_failed),
                                 onRetry = { onRetryFailedSource("") },
                                 modifier = Modifier.padding(top = EasyReaderSpacing.xxl)
                             )
@@ -191,15 +199,19 @@ private fun EmptyExploreState(
             verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)
         ) {
             Text(
-                text = if (query.isNotBlank()) "No matches for \"$query\"" else "Nothing to show yet",
+                text = if (query.isNotBlank()) {
+                    stringResource(R.string.library_empty_search_headline, query)
+                } else {
+                    stringResource(R.string.no_content_available)
+                },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
                 text = if (hasActiveFilters) {
-                    "Try another source or clear your filters to broaden the results."
+                    stringResource(R.string.explore_empty_filters_body)
                 } else {
-                    "Pull results from another source or try a different search."
+                    stringResource(R.string.explore_empty_body)
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -207,7 +219,7 @@ private fun EmptyExploreState(
             if (hasActiveFilters) {
                 Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
                 androidx.compose.material3.OutlinedButton(onClick = onClearFilters) {
-                    Text("Clear filters")
+                    Text(stringResource(R.string.explore_clear_filters))
                 }
             }
         }
@@ -244,7 +256,7 @@ private fun FeaturedExploreCard(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)) {
                     Text(
-                        text = "Popular on ${item.source}",
+                        text = stringResource(R.string.explore_popular_on, item.source),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -367,7 +379,7 @@ private fun EndOfResultsMarker(): Unit {
             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
         )
         Text(
-            text = "End of results",
+            text = stringResource(R.string.explore_end_of_results),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -549,11 +561,13 @@ internal fun rememberExploreImageRequest(item: ExploreItem): ImageRequest {
     }
 }
 
+@Composable
 private fun supportingLine(item: ExploreItem): String {
     return when {
-        item.chapterCount > 0 -> "${item.chapterCount} chapters"
+        item.chapterCount > 0 ->
+            pluralStringResource(R.plurals.explore_chapter_count, item.chapterCount, item.chapterCount)
         !item.author.isNullOrBlank() -> item.author
-        !item.rating.isNullOrBlank() -> "Rating ${item.rating}"
-        else -> "Open details"
+        !item.rating.isNullOrBlank() -> stringResource(R.string.explore_rating, item.rating)
+        else -> stringResource(R.string.explore_open_details)
     }
 }

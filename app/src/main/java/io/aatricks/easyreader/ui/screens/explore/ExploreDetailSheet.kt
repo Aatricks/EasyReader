@@ -39,9 +39,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.ExploreItem
 import io.aatricks.easyreader.ui.components.ErrorTile
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
@@ -105,7 +108,7 @@ private fun DetailHeader(item: ExploreItem, isInLibrary: Boolean) {
             if (isInLibrary) {
                 IconLabel(
                     icon = Icons.Default.CheckCircle,
-                    text = "In your library",
+                    text = stringResource(R.string.explore_in_your_library),
                     tint = MaterialTheme.colorScheme.primary,
                     iconSize = 14.dp,
                     bold = true
@@ -114,7 +117,7 @@ private fun DetailHeader(item: ExploreItem, isInLibrary: Boolean) {
             MetaPill(text = item.source)
             item.author?.takeIf { it.isNotBlank() }?.let { author ->
                 Text(
-                    text = "by $author",
+                    text = stringResource(R.string.explore_by_author, author),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -122,7 +125,7 @@ private fun DetailHeader(item: ExploreItem, isInLibrary: Boolean) {
             if (item.chapterCount > 0) {
                 IconLabel(
                     icon = Icons.Default.AutoStories,
-                    text = "${item.chapterCount} chapters",
+                    text = pluralStringResource(R.plurals.explore_chapter_count, item.chapterCount, item.chapterCount),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     iconSize = 14.dp,
                     bold = false
@@ -191,7 +194,11 @@ private fun DetailActions(isInLibrary: Boolean, onRead: () -> Unit, onAddToLibra
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-            Text(if (isInLibrary) "Read now" else "Add and read")
+            Text(
+                stringResource(
+                    if (isInLibrary) R.string.explore_read_now else R.string.explore_add_and_read
+                )
+            )
         }
 
         if (!isInLibrary) {
@@ -207,7 +214,7 @@ private fun DetailActions(isInLibrary: Boolean, onRead: () -> Unit, onAddToLibra
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(EasyReaderSpacing.xs))
-                Text("Save")
+                Text(stringResource(R.string.explore_save))
             }
         }
     }
@@ -219,7 +226,7 @@ private fun GenreSection(genres: List<String>) {
     if (genres.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)) {
         Text(
-            text = "Genres",
+            text = stringResource(R.string.explore_genres),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -257,7 +264,7 @@ private fun AboutSection(
     var summaryExpanded by remember(item.url) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(EasyReaderSpacing.xs)) {
         Text(
-            text = "About",
+            text = stringResource(R.string.explore_about),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold
         )
@@ -266,11 +273,11 @@ private fun AboutSection(
         when {
             uiState.isFetchingDetails -> LoadingDetailsRow()
             uiState.detailsFailed && rawSummary == null -> ErrorTile(
-                message = "Could not load this title's details.",
+                message = stringResource(R.string.explore_details_failed),
                 onRetry = onRetryDetails
             )
             rawSummary == null -> Text(
-                text = "Summary not available for this title yet.",
+                text = stringResource(R.string.explore_no_summary),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -293,7 +300,7 @@ private fun LoadingDetailsRow() {
         CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
         Spacer(modifier = Modifier.width(EasyReaderSpacing.sm))
         Text(
-            text = "Loading details\u2026",
+            text = stringResource(R.string.explore_loading_details),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -314,7 +321,11 @@ private fun SummaryText(summary: String, expanded: Boolean, onToggle: () -> Unit
     )
     if (needsToggle) {
         TextButton(onClick = onToggle, contentPadding = PaddingValues(horizontal = 0.dp)) {
-            Text(if (expanded) "Show less" else "Show more")
+            Text(
+                stringResource(
+                    if (expanded) R.string.explore_show_less else R.string.explore_show_more
+                )
+            )
         }
     }
 }

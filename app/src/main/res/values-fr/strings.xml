@@ -295,4 +295,58 @@
     <string name="library_unknown_author">Auteur inconnu</string>
     <string name="library_opening_book">Ouverture du livre…</string>
     <string name="library_file_unavailable">Ce fichier ne peut pas être ouvert. Il a peut-être été déplacé ou supprimé.</string>
+
+    <!-- Explore -->
+    <string name="explore_reset">Réinitialiser</string>
+    <string name="explore_search_placeholder">Rechercher un titre ou une série</string>
+    <string name="explore_clear_search">Effacer la recherche</string>
+    <plurals name="explore_filter_source_and_genres">
+        <item quantity="one">%1$s + %2$d genre</item>
+        <item quantity="other">%1$s + %2$d genres</item>
+    </plurals>
+    <plurals name="explore_filter_genres">
+        <item quantity="one">%1$d genre</item>
+        <item quantity="other">%1$d genres</item>
+    </plurals>
+    <string name="explore_filters">Filtres</string>
+    <string name="explore_remove_source_filter">Retirer le filtre de source</string>
+    <string name="explore_remove_tag">Retirer %1$s</string>
+    <string name="explore_filters_done">Terminé</string>
+    <string name="explore_source">Source</string>
+    <string name="explore_all_sources">Toutes les sources</string>
+    <string name="explore_genres">Genres</string>
+    <string name="explore_genres_count">Genres (%1$d)</string>
+    <string name="explore_clear_genres">Effacer les genres</string>
+    <string name="explore_no_genres">Aucun filtre de genre pour cette source.</string>
+    <string name="explore_open_library">Ouvrir la bibliothèque</string>
+    <string name="explore_saved_to_library">Ajouté à la bibliothèque</string>
+    <string name="explore_already_in_library">Déjà dans votre bibliothèque</string>
+    <string name="explore_add_failed">Impossible d\'ajouter : %1$s</string>
+    <string name="explore_add_failed_reason">une erreur est survenue</string>
+    <string name="explore_fetch_failed">Hors ligne ou échec de la récupération des résultats. Vérifiez votre connexion.</string>
+    <string name="explore_empty_filters_body">Essayez une autre source ou effacez vos filtres pour élargir les résultats.</string>
+    <string name="explore_empty_body">Essayez une autre source ou une autre recherche.</string>
+    <string name="explore_clear_filters">Effacer les filtres</string>
+    <string name="explore_popular_on">Populaire sur %1$s</string>
+    <string name="explore_end_of_results">Fin des résultats</string>
+    <plurals name="explore_chapter_count">
+        <item quantity="one">%1$d chapitre</item>
+        <item quantity="other">%1$d chapitres</item>
+    </plurals>
+    <string name="explore_rating">Note %1$s</string>
+    <string name="explore_open_details">Voir les détails</string>
+    <string name="explore_in_your_library">Dans votre bibliothèque</string>
+    <string name="explore_by_author">par %1$s</string>
+    <string name="explore_read_now">Lire maintenant</string>
+    <string name="explore_add_and_read">Ajouter et lire</string>
+    <string name="explore_save">Enregistrer</string>
+    <string name="explore_about">À propos</string>
+    <string name="explore_details_failed">Impossible de charger les détails de ce titre.</string>
+    <string name="explore_no_summary">Aucun résumé disponible pour ce titre.</string>
+    <string name="explore_loading_details">Chargement des détails…</string>
+    <string name="explore_show_less">Afficher moins</string>
+    <string name="explore_show_more">Afficher plus</string>
+    <string name="common_retry">Réessayer</string>
+    <string name="explore_source_unavailable">%1$s est indisponible</string>
+    <string name="explore_source_unavailable_reason">%1$s est indisponible : %2$s</string>
 </resources>

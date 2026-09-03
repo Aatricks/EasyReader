@@ -26,8 +26,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
 import io.aatricks.easyreader.ui.theme.rememberReducedMotion
 
@@ -102,7 +104,7 @@ fun ErrorTile(
             Spacer(modifier = Modifier.height(EasyReaderSpacing.xxs))
             AssistChip(
                 onClick = onRetry,
-                label = { Text("Retry") }
+                label = { Text(stringResource(R.string.common_retry)) }
             )
         }
     }

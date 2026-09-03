@@ -18,10 +18,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import android.content.Context
+import io.aatricks.easyreader.R
 import io.aatricks.easyreader.data.model.ExploreItem
 import io.aatricks.easyreader.data.repository.source.BrowseMode
 import io.aatricks.easyreader.ui.theme.EasyReaderSpacing
@@ -40,6 +45,7 @@ fun ExploreScreen(
 ): Unit {
     val uiState by exploreViewModel.uiState.collectAsState()
     val libraryUiState by libraryViewModel.uiState.collectAsState()
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var showFiltersSheet by remember { mutableStateOf(false) }
@@ -123,20 +129,15 @@ fun ExploreScreen(
                 onAddToLibrary = {
                     exploreViewModel.dismissItem()
                     scope.launch {
-                        saveExploreItem(activeItem, libraryViewModel, snackbarHostState, onOpenLibrary)
+                        saveExploreItem(context, activeItem, libraryViewModel, snackbarHostState, onOpenLibrary)
                     }
                 },
                 onRead = {
                     val alreadySaved = isInLibrary(activeItem)
                     exploreViewModel.dismissItem()
                     scope.launch {
-                        readExploreItem(
-                            activeItem,
-                            alreadySaved,
-                            libraryViewModel,
-                            snackbarHostState,
-                            onReadItem
-                        )
+                        readExploreItem(context, activeItem, alreadySaved, libraryViewModel, onReadItem)
+                            ?.let { snackbarHostState.showSnackbar(it) }
                     }
                 }
             )
@@ -152,19 +153,19 @@ private fun ExploreTopBar(
     onClearFilters: () -> Unit
 ): Unit {
     TopAppBar(
-        title = { Text("Explore") },
+        title = { Text(stringResource(R.string.explore_title)) },
         navigationIcon = {
             IconButton(onClick = onNavigateBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back"
+                    contentDescription = stringResource(R.string.common_back)
                 )
             }
         },
         actions = {
             if (hasActiveFilters) {
                 TextButton(onClick = onClearFilters) {
-                    Text("Reset")
+                    Text(stringResource(R.string.explore_reset))
                 }
             }
         }
@@ -251,7 +252,7 @@ private fun SearchField(
         value = query,
         onValueChange = onQueryChange,
         modifier = Modifier.fillMaxWidth(),
-        placeholder = { Text("Search titles or series") },
+        placeholder = { Text(stringResource(R.string.explore_search_placeholder)) },
         leadingIcon = {
             Icon(
                 imageVector = Icons.Default.Search,
@@ -263,7 +264,7 @@ private fun SearchField(
                 IconButton(onClick = { onQueryChange("") }) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Clear search"
+                        contentDescription = stringResource(R.string.explore_clear_search)
                     )
                 }
             }
@@ -310,11 +311,20 @@ private fun ActiveFilterBar(
                 Text(
                     text = when {
                         uiState.selectedSource != null && uiState.selectedTags.isNotEmpty() ->
-                            "${uiState.selectedSource} + ${uiState.selectedTags.size} genre${if (uiState.selectedTags.size > 1) "s" else ""}"
+                            pluralStringResource(
+                                R.plurals.explore_filter_source_and_genres,
+                                uiState.selectedTags.size,
+                                uiState.selectedSource,
+                                uiState.selectedTags.size
+                            )
                         uiState.selectedSource != null -> uiState.selectedSource
                         uiState.selectedTags.isNotEmpty() ->
-                            "${uiState.selectedTags.size} genre${if (uiState.selectedTags.size > 1) "s" else ""}"
-                        else -> "Filters"
+                            pluralStringResource(
+                                R.plurals.explore_filter_genres,
+                                uiState.selectedTags.size,
+                                uiState.selectedTags.size
+                            )
+                        else -> stringResource(R.string.explore_filters)
                     }
                 )
             }
@@ -329,7 +339,7 @@ private fun ActiveFilterBar(
                 trailingIcon = {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Remove source filter",
+                        contentDescription = stringResource(R.string.explore_remove_source_filter),
                         modifier = Modifier.size(14.dp)
                     )
                 }
@@ -345,7 +355,7 @@ private fun ActiveFilterBar(
                 trailingIcon = {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Remove $tag",
+                        contentDescription = stringResource(R.string.explore_remove_tag, tag),
                         modifier = Modifier.size(14.dp)
                     )
                 }
@@ -357,7 +367,7 @@ private fun ActiveFilterBar(
                 onClick = onClearFilters,
                 contentPadding = PaddingValues(horizontal = EasyReaderSpacing.xs)
             ) {
-                Text("Clear")
+                Text(stringResource(R.string.common_clear))
             }
         }
     }
@@ -403,15 +413,15 @@ private fun FiltersBottomSheetContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Filters",
+                text = stringResource(R.string.explore_filters),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold
             )
-            TextButton(onClick = onClose) { Text("Done") }
+            TextButton(onClick = onClose) { Text(stringResource(R.string.explore_filters_done)) }
         }
 
         Text(
-            text = "Source",
+            text = stringResource(R.string.explore_source),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -423,7 +433,7 @@ private fun FiltersBottomSheetContent(
             FilterChip(
                 selected = uiState.selectedSource == null,
                 onClick = { onSourceSelect(null) },
-                label = { Text("All sources") }
+                label = { Text(stringResource(R.string.explore_all_sources)) }
             )
             uiState.sources.forEach { source ->
                 FilterChip(
@@ -441,14 +451,18 @@ private fun FiltersBottomSheetContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Genres" + if (uiState.selectedTags.isNotEmpty()) " (${uiState.selectedTags.size})" else "",
+                    text = if (uiState.selectedTags.isNotEmpty()) {
+                        stringResource(R.string.explore_genres_count, uiState.selectedTags.size)
+                    } else {
+                        stringResource(R.string.explore_genres)
+                    },
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (uiState.selectedTags.isNotEmpty()) {
                     TextButton(onClick = onClearTags) {
-                        Text("Clear genres")
+                        Text(stringResource(R.string.explore_clear_genres))
                     }
                 }
             }
@@ -466,7 +480,7 @@ private fun FiltersBottomSheetContent(
             }
         } else {
             Text(
-                text = "No genre filters available for this source.",
+                text = stringResource(R.string.explore_no_genres),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -478,6 +492,7 @@ private fun FiltersBottomSheetContent(
 
 /** Saves the item, then reports the real outcome on Explore's own snackbar. */
 private suspend fun saveExploreItem(
+    context: Context,
     item: ExploreItem,
     libraryViewModel: LibraryViewModel,
     snackbarHostState: SnackbarHostState,
@@ -485,30 +500,40 @@ private suspend fun saveExploreItem(
 ) {
     val added = libraryViewModel.addExploreItem(item)
     val result = snackbarHostState.showSnackbar(
-        message = addOutcomeMessage(added),
-        actionLabel = if (added.isFailure) null else "Open library",
+        message = addOutcomeMessage(context, added),
+        actionLabel = if (added.isFailure) null else context.getString(R.string.explore_open_library),
         duration = SnackbarDuration.Short
     )
     if (result == SnackbarResult.ActionPerformed) onOpenLibrary()
 }
 
-/** Opens the item only once it is actually in the library; a failed add says why instead. */
+/**
+ * Opens the item only once it is actually in the library. Returns the message to show when the add
+ * failed, or null once the item is open.
+ */
 private suspend fun readExploreItem(
+    context: Context,
     item: ExploreItem,
     alreadySaved: Boolean,
     libraryViewModel: LibraryViewModel,
-    snackbarHostState: SnackbarHostState,
     onReadItem: (ExploreItem) -> Unit
-) {
+): String? {
     val added = if (alreadySaved) Result.success(false) else libraryViewModel.addExploreItem(item)
-    if (added.isFailure) {
-        snackbarHostState.showSnackbar(addOutcomeMessage(added))
-    } else {
-        onReadItem(item)
-    }
+    if (added.isFailure) return addOutcomeMessage(context, added)
+    onReadItem(item)
+    return null
 }
 
-private fun addOutcomeMessage(outcome: Result<Boolean>): String = outcome.fold(
-    onSuccess = { added -> if (added) "Saved to library" else "Already in your library" },
-    onFailure = { e -> "Could not add: ${e.message ?: "something went wrong"}" }
+private fun addOutcomeMessage(context: Context, outcome: Result<Boolean>): String = outcome.fold(
+    onSuccess = { added ->
+        context.getString(
+            if (added) R.string.explore_saved_to_library else R.string.explore_already_in_library
+        )
+    },
+    onFailure = { e ->
+        context.getString(
+            R.string.explore_add_failed,
+            e.message ?: context.getString(R.string.explore_add_failed_reason)
+        )
+    }
 )
